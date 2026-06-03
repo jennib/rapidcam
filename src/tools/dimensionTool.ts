@@ -85,6 +85,13 @@ export class DimensionTool implements Tool {
             this.p2 = edge.p2;
             this.phase = "placeLinear";
           }
+        } else if (hit) {
+          // Line / polyline body click: snap to nearest endpoint or vertex.
+          const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
+          if (entityPick) {
+            this.p1 = entityPick;
+            this.phase = "second";
+          }
         }
         break;
       }
@@ -95,6 +102,16 @@ export class DimensionTool implements Tool {
         if (pick && !samePos(pick.pos, this.p1!.pos)) {
           this.p2 = pick;
           this.phase = "placeLinear";
+          break;
+        }
+        // Entity body click: snap to nearest point on the hit entity.
+        const hit = ctx.doc.hitTest(e.worldRaw, tol);
+        if (hit) {
+          const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
+          if (entityPick && !samePos(entityPick.pos, this.p1!.pos)) {
+            this.p2 = entityPick;
+            this.phase = "placeLinear";
+          }
         }
         break;
       }
