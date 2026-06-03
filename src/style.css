@@ -280,10 +280,27 @@ button.cbtn.solve {
   display: none;
 }
 
+.settings-collapsed-label {
+  display: none;
+  transform: rotate(-90deg);
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+
+#settingsbar.collapsed .settings-collapsed-label {
+  display: block;
+}
+
 #settingsbar.collapsed .settings-header {
   border-bottom: none;
   padding: 12px 8px;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 #settingsbar.collapsed .settings-toggle {
@@ -300,9 +317,6 @@ button.cbtn.solve {
   z-index: 10;
 }
 
-#settingsbar.collapsed .settings-resizer {
-  display: none;
-}
 
 .settings-header {
   display: flex;

@@ -41,6 +41,11 @@ export class SettingsBar {
     toggleBtn.addEventListener("click", () => this.toggleCollapse());
     header.appendChild(toggleBtn);
 
+    const collapsedLabel = document.createElement("div");
+    collapsedLabel.className = "settings-collapsed-label";
+    collapsedLabel.textContent = "Settings";
+    header.appendChild(collapsedLabel);
+
     this.host.appendChild(header);
 
     // Content area
@@ -80,10 +85,14 @@ export class SettingsBar {
     const onMove = (e: PointerEvent) => {
       const delta = startX - e.clientX;
       this.panelWidth = Math.max(120, Math.min(600, startWidth + delta));
+      if (this.isCollapsed && delta > 0) {
+        this.isCollapsed = false;
+        this.host.classList.remove("collapsed");
+      }
       if (!this.isCollapsed) {
         this.host.style.width = `${this.panelWidth}px`;
       }
-      // trigger resize events by dispatching a resize event on window
+      // canvas listens to window resize to recalculate layout dimensions
       window.dispatchEvent(new Event("resize"));
     };
 
@@ -96,7 +105,7 @@ export class SettingsBar {
     };
 
     resizer.addEventListener("pointerdown", (e) => {
-      if (this.isCollapsed || e.button !== 0) return;
+      if (e.button !== 0) return;
       startX = e.clientX;
       startWidth = this.host.offsetWidth;
       this.host.classList.add("resizing");
@@ -115,8 +124,9 @@ export class SettingsBar {
     } else {
       this.host.classList.remove("collapsed");
     }
-    // ensure canvas resizes
-    setTimeout(() => window.dispatchEvent(new Event("resize")), 250);
+    this.host.addEventListener("transitionend", () => {
+      window.dispatchEvent(new Event("resize"));
+    }, { once: true });
   }
 
   private field(label: string, control: HTMLElement): HTMLElement {
