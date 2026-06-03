@@ -31,7 +31,7 @@ export class SettingsBar {
 
     const title = document.createElement("div");
     title.className = "settings-title";
-    title.textContent = "Settings";
+    title.textContent = "Project Settings";
     header.appendChild(title);
 
     const toggleBtn = document.createElement("button");
