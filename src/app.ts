@@ -26,6 +26,7 @@ import { DimensionTool } from "./tools/dimensionTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
+import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
 
@@ -66,6 +67,7 @@ export class App {
     palette: HTMLElement;
     topbar: HTMLElement;
     settingsbar: HTMLElement;
+    propertiesbar: HTMLElement;
     constraintbar: HTMLElement;
     statusbar: HTMLElement;
   }) {
@@ -107,6 +109,7 @@ export class App {
       canRedo: () => this.history.canRedo,
     });
     new SettingsBar(dom.settingsbar, this.doc);
+    new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory);
 

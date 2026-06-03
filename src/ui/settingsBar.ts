@@ -41,11 +41,6 @@ export class SettingsBar {
     toggleBtn.addEventListener("click", () => this.toggleCollapse());
     header.appendChild(toggleBtn);
 
-    const collapsedLabel = document.createElement("div");
-    collapsedLabel.className = "settings-collapsed-label";
-    collapsedLabel.textContent = "Settings";
-    header.appendChild(collapsedLabel);
-
     this.host.appendChild(header);
 
     // Content area
@@ -78,6 +73,10 @@ export class SettingsBar {
     });
   }
 
+  private get panel(): HTMLElement {
+    return this.host.parentElement as HTMLElement;
+  }
+
   private bindResizer(resizer: HTMLElement): void {
     let startX = 0;
     let startWidth = 0;
@@ -85,13 +84,7 @@ export class SettingsBar {
     const onMove = (e: PointerEvent) => {
       const delta = startX - e.clientX;
       this.panelWidth = Math.max(120, Math.min(600, startWidth + delta));
-      if (this.isCollapsed && delta > 0) {
-        this.isCollapsed = false;
-        this.host.classList.remove("collapsed");
-      }
-      if (!this.isCollapsed) {
-        this.host.style.width = `${this.panelWidth}px`;
-      }
+      this.panel.style.width = `${this.panelWidth}px`;
       // canvas listens to window resize to recalculate layout dimensions
       window.dispatchEvent(new Event("resize"));
     };
@@ -100,15 +93,15 @@ export class SettingsBar {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.body.style.cursor = "";
-      this.host.classList.remove("resizing");
+      this.panel.classList.remove("resizing");
       resizer.releasePointerCapture(e.pointerId);
     };
 
     resizer.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       startX = e.clientX;
-      startWidth = this.host.offsetWidth;
-      this.host.classList.add("resizing");
+      startWidth = this.panel.offsetWidth;
+      this.panel.classList.add("resizing");
       resizer.setPointerCapture(e.pointerId);
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
