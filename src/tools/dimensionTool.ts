@@ -249,25 +249,15 @@ function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;
 }
 
-/** Nearest point on an entity for use as a dimension anchor (DOF points + rect virtual corners). */
+/** Nearest point on an entity for use as a dimension anchor (pickable points). */
 function pickNearestEntityPoint(ent: Entity, p: Vec2): Pick | null {
   let best: Pick | null = null;
   let bestD = Infinity;
-  for (const dp of ent.dofPoints()) {
+  for (const dp of ent.pickablePoints()) {
     const d = dist(dp.pos, p);
     if (d < bestD) {
       bestD = d;
       best = { ref: { entityId: ent.id, key: dp.key }, pos: dp.pos };
-    }
-  }
-  if (ent.type === "rectangle") {
-    for (const key of ["br", "tl"] as const) {
-      const pos = ent.getPoint(key);
-      const d = dist(pos, p);
-      if (d < bestD) {
-        bestD = d;
-        best = { ref: { entityId: ent.id, key }, pos };
-      }
     }
   }
   return best;

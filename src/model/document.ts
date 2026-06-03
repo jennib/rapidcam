@@ -226,7 +226,7 @@ export class CADDocument {
     let bestD = tol;
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
-      for (const dp of e.dofPoints()) {
+      for (const dp of e.pickablePoints()) {
         const d = dist(dp.pos, p);
         if (d <= bestD) {
           bestD = d;

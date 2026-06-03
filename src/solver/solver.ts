@@ -90,7 +90,47 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // force to move stays put instead of sliding to absorb the dragged point. (This
   // is why dragging one end of a length-dimensioned line leaves the other end fixed.)
   const dragging = pinEntries.length > 0;
-  const pinnedKeys = new Set(pinEntries.map((p) => `${p.ent.id}:${p.key}`));
+  const pinnedComponents = new Set<string>();
+  if (pins) {
+    const coincidentGroups = new Map<string, string[]>();
+    for (const c of doc.constraints) {
+      if (c.type !== "coincident") continue;
+      if (c.points.length < 2) continue;
+      const k0 = `${c.points[0].entityId}:${c.points[0].key}`;
+      const k1 = `${c.points[1].entityId}:${c.points[1].key}`;
+      if (!coincidentGroups.has(k0)) coincidentGroups.set(k0, []);
+      if (!coincidentGroups.has(k1)) coincidentGroups.set(k1, []);
+      coincidentGroups.get(k0)!.push(k1);
+      coincidentGroups.get(k1)!.push(k0);
+    }
+
+    const allPinnedKeys = new Set<string>();
+    const queue: string[] = [];
+    for (const [key] of pins) {
+      allPinnedKeys.add(key);
+      queue.push(key);
+    }
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const neighbors = coincidentGroups.get(curr) ?? [];
+      for (const n of neighbors) {
+        if (!allPinnedKeys.has(n)) {
+          allPinnedKeys.add(n);
+          queue.push(n);
+        }
+      }
+    }
+
+    for (const key of allPinnedKeys) {
+      const i = key.indexOf(":");
+      const ent = byId.get(key.slice(0, i));
+      if (!ent) continue;
+      const k = key.slice(i + 1);
+      for (const affected of ent.dofsAffectedBy(k)) {
+        pinnedComponents.add(`${ent.id}:${affected.key}:${affected.axis}`);
+      }
+    }
+  }
 
   const vars: Variable[] = [];
   const anchorVars: Variable[] = [];
@@ -100,7 +140,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       const vx = pointComponent(ent, p.key, "x");
       const vy = pointComponent(ent, p.key, "y");
       vars.push(vx, vy);
-      if (dragging && !pinnedKeys.has(`${ent.id}:${p.key}`)) anchorVars.push(vx, vy);
+      if (dragging) {
+        if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) anchorVars.push(vx);
+        if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) anchorVars.push(vy);
+      }
     }
     for (const s of ent.dofScalars()) {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;

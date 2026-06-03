@@ -70,6 +70,17 @@ export abstract class Entity {
   dofPoints(): DofPoint[] {
     return [];
   }
+  /** All points that the user can pick to select or constrain. By default same as dofPoints. */
+  pickablePoints(): DofPoint[] {
+    return this.dofPoints();
+  }
+  /** Returns which DOF components are affected/controlled by a point key. */
+  dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    return [
+      { key, axis: "x" },
+      { key, axis: "y" },
+    ];
+  }
   /** Read a point DOF by key. */
   getPoint(key: string): Vec2 {
     throw new Error(`${this.type} has no point '${key}'`);
@@ -281,9 +292,39 @@ export class RectEntity extends Entity {
     if (key === "tl") return { x: this.p0.x, y: this.p1.y };
     return super.getPoint(key);
   }
+  override pickablePoints(): DofPoint[] {
+    return [
+      { key: "bl", pos: clone(this.p0) },
+      { key: "br", pos: this.getPoint("br") },
+      { key: "tr", pos: clone(this.p1) },
+      { key: "tl", pos: this.getPoint("tl") },
+    ];
+  }
+  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    if (key === "bl") {
+      return [{ key: "bl", axis: "x" }, { key: "bl", axis: "y" }];
+    }
+    if (key === "tr") {
+      return [{ key: "tr", axis: "x" }, { key: "tr", axis: "y" }];
+    }
+    if (key === "br") {
+      return [{ key: "tr", axis: "x" }, { key: "bl", axis: "y" }];
+    }
+    if (key === "tl") {
+      return [{ key: "bl", axis: "x" }, { key: "tr", axis: "y" }];
+    }
+    return [];
+  }
   override setPoint(key: string, v: Vec2): void {
     if (key === "bl") this.p0 = clone(v);
     else if (key === "tr") this.p1 = clone(v);
+    else if (key === "br") {
+      this.p1.x = v.x;
+      this.p0.y = v.y;
+    } else if (key === "tl") {
+      this.p0.x = v.x;
+      this.p1.y = v.y;
+    }
   }
 }
 

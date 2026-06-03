@@ -4,7 +4,7 @@
  */
 
 import { CADDocument } from "../src/model/document";
-import { LineEntity, CircleEntity } from "../src/model/entities";
+import { LineEntity, CircleEntity, RectEntity } from "../src/model/entities";
 import { makeConstraint, constraintResiduals, Geo } from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
@@ -156,6 +156,36 @@ const geoOf = (doc: CADDocument): Geo => {
   solve(doc, new Map([[`${l.id}:b`, { x: 120, y: 40 }]]));
   check("free drag: endpoint reaches cursor", dist(l.b, { x: 120, y: 40 }) < 1e-2, `gap=${dist(l.b, { x: 120, y: 40 }).toExponential(2)}`);
   check("free drag: other endpoint unmoved", dist(l.a, { x: 0, y: 0 }) < 1e-9);
+}
+
+// 12) Rectangle virtual corner anchoring & dragging --------------------------
+{
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 50, y: 40 })) as RectEntity;
+  const line = doc.add(new LineEntity({ x: 50, y: 10 }, { x: 100, y: 10 })) as LineEntity;
+
+  // Constrain the line's start endpoint 'a' to the rectangle's bottom-right corner 'br'
+  doc.addConstraint(
+    makeConstraint("coincident", {
+      points: [
+        { entityId: rect.id, key: "br" },
+        { entityId: line.id, key: "a" },
+      ],
+    }),
+  );
+
+  solve(doc);
+  check("rect br initial coincident satisfied", dist(rect.getPoint("br"), line.a) < 1e-4);
+
+  // Drag 'br' corner to (60, 5)
+  // This should resize the rectangle (setting tr.x to 60, bl.y to 5) and also pull line.a to (60, 5)
+  const pins = new Map([[`${rect.id}:br`, { x: 60, y: 5 }]]);
+  solve(doc, pins);
+
+  check("rect br resized to target", dist(rect.getPoint("br"), { x: 60, y: 5 }) < 1e-2);
+  check("rect bl.x stayed stationary (anchored)", Math.abs(rect.p0.x - 10) < 1e-2);
+  check("rect tr.y stayed stationary (anchored)", Math.abs(rect.p1.y - 40) < 1e-2);
+  check("coincident line.a followed rect.br to target", dist(line.a, { x: 60, y: 5 }) < 1e-2);
 }
 
 console.log(failures === 0 ? "\nALL SOLVER TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
