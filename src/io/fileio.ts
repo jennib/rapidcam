@@ -1,0 +1,109 @@
+import type { Unit } from "../core/units";
+import type { CADDocument, DocSnapshot } from "../model/document";
+
+export interface RcamFile {
+  version: 1;
+  name: string;
+  canvas: { width: number; height: number };
+  displayUnit: string;
+  entities: unknown[];
+  constraints: unknown[];
+  dimensions: unknown[];
+  isConstructionMode: boolean;
+  selectedPoints: unknown[];
+}
+
+export interface RecentEntry {
+  name: string;
+  savedAt: number;
+  data: RcamFile;
+}
+
+const RECENTS_KEY = "rcam-recents";
+const MAX_RECENTS = 5;
+
+export function getRecents(): RecentEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENTS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(entry: RecentEntry): void {
+  const list = getRecents().filter((r) => r.name !== entry.name);
+  list.unshift(entry);
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, MAX_RECENTS)));
+}
+
+export function saveFile(doc: CADDocument, name: string): void {
+  const snap = doc.snapshot();
+  const file: RcamFile = {
+    version: 1,
+    name,
+    canvas: { ...doc.canvas },
+    displayUnit: doc.displayUnit,
+    entities: snap.entities as unknown[],
+    constraints: snap.constraints as unknown[],
+    dimensions: snap.dimensions as unknown[],
+    isConstructionMode: snap.isConstructionMode,
+    selectedPoints: snap.selectedPoints as unknown[],
+  };
+  const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name.endsWith(".rcam") ? name : `${name}.rcam`;
+  a.click();
+  URL.revokeObjectURL(url);
+  pushRecent({ name, savedAt: Date.now(), data: file });
+}
+
+export function applyFile(doc: CADDocument, file: RcamFile): void {
+  doc.canvas = { ...file.canvas };
+  doc.displayUnit = file.displayUnit as Unit;
+  doc.restore(file as unknown as DocSnapshot);
+}
+
+export async function openFile(): Promise<{ name: string; file: RcamFile } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".rcam,application/json";
+
+    let settled = false;
+    const settle = (v: { name: string; file: RcamFile } | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+
+    input.addEventListener("change", () => {
+      const f = input.files?.[0];
+      if (!f) { settle(null); return; }
+      const name = f.name.replace(/\.rcam$/i, "");
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const file = JSON.parse(reader.result as string) as RcamFile;
+          if (file.version !== 1) throw new Error("Unsupported file version");
+          pushRecent({ name, savedAt: Date.now(), data: file });
+          settle({ name, file });
+        } catch {
+          alert("Could not open file — not a valid .rcam file.");
+          settle(null);
+        }
+      };
+      reader.readAsText(f);
+    });
+
+    // Detect picker cancellation via window focus regained
+    window.addEventListener(
+      "focus",
+      () => setTimeout(() => settle(null), 300),
+      { once: true },
+    );
+
+    input.click();
+  });
+}

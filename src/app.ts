@@ -26,6 +26,8 @@ import { DimensionTool } from "./tools/dimensionTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
+import { saveFile, openFile, applyFile } from "./io/fileio";
+import type { RecentEntry } from "./io/fileio";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
@@ -54,6 +56,8 @@ export class App {
   private renderScheduled = false;
 
   private history = new History<DocSnapshot>();
+
+  private currentFileName = "Untitled";
 
   // pan state
   private panning = false;
@@ -107,6 +111,12 @@ export class App {
       onConstructionToggle: () => this.toggleConstruction(),
       canUndo: () => this.history.canUndo,
       canRedo: () => this.history.canRedo,
+      file: {
+        onNew: () => this.fileNew(),
+        onOpen: () => this.fileOpen(),
+        onSave: () => this.fileSave(),
+        onOpenRecent: (e) => this.fileOpenRecent(e),
+      },
     });
     new SettingsBar(dom.settingsbar, this.doc);
     new PropertiesBar(dom.propertiesbar, this.doc);
@@ -147,6 +157,43 @@ export class App {
     this.closeDimEditor();
     this.doc.restore(snap);
     this.runSolve();
+  }
+
+  // --- file operations -----------------------------------------------------
+  private fileNew(): void {
+    if (this.doc.entities.length && !confirm("Discard current drawing and start new?")) return;
+    this.history = new History<DocSnapshot>();
+    this.doc.clear();
+    this.currentFileName = "Untitled";
+    this.fitView();
+  }
+
+  private async fileOpen(): Promise<void> {
+    const result = await openFile();
+    if (!result) return;
+    this.history = new History<DocSnapshot>();
+    this.closeDimEditor();
+    applyFile(this.doc, result.file);
+    this.currentFileName = result.name;
+    this.runSolve();
+    this.fitView();
+  }
+
+  private fileSave(): void {
+    const name = prompt("Save as:", this.currentFileName);
+    if (name === null) return;
+    this.currentFileName = name || "Untitled";
+    saveFile(this.doc, this.currentFileName);
+  }
+
+  private fileOpenRecent(entry: RecentEntry): void {
+    if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
+    this.history = new History<DocSnapshot>();
+    this.closeDimEditor();
+    applyFile(this.doc, entry.data);
+    this.currentFileName = entry.name;
+    this.runSolve();
+    this.fitView();
   }
 
   // --- render loop ---------------------------------------------------------
@@ -374,6 +421,21 @@ export class App {
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") {
       this.undoRedo("redo");
+      ev.preventDefault();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") {
+      this.fileSave();
+      ev.preventDefault();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "o") {
+      void this.fileOpen();
+      ev.preventDefault();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "n") {
+      this.fileNew();
       ev.preventDefault();
       return;
     }

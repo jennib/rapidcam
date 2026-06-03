@@ -306,7 +306,8 @@ button.cbtn.solve {
   align-items: center;
   justify-content: space-between;
   padding: 12px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  border-bottom: 2px solid var(--border);
 }
 
 .settings-title {
@@ -385,7 +386,7 @@ button.cbtn.solve {
 #propertiesbar {
   flex: 1 1 auto;
   background: var(--panel);
-  border-top: 1px solid var(--border);
+  border-top: 3px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -405,7 +406,8 @@ button.cbtn.solve {
   align-items: center;
   justify-content: space-between;
   padding: 12px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  border-bottom: 2px solid var(--border);
   flex: 0 0 auto;
 }
 
@@ -468,6 +470,59 @@ button.cbtn.solve {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+}
+
+/* ---------- File menu dropdown ---------- */
+.fmenu-dropdown {
+  display: none;
+  position: fixed;
+  z-index: 200;
+  min-width: 200px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.fmenu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 0;
+  gap: 24px;
+}
+.fmenu-item:hover {
+  background: var(--accent-dim);
+  color: #fff;
+}
+
+.fmenu-kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.fmenu-item:hover .fmenu-kbd {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.fmenu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.fmenu-section-label {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Inline dimension value editor floating over the canvas */

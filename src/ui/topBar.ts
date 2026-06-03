@@ -1,6 +1,7 @@
 /** Top bar: fit & clear actions. */
 
 import { CADDocument } from "../model/document";
+import { FileMenu, FileMenuCallbacks } from "./fileMenu";
 
 export interface TopBarCallbacks {
   onFit: () => void;
@@ -9,6 +10,7 @@ export interface TopBarCallbacks {
   onConstructionToggle: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
+  file: FileMenuCallbacks;
 }
 
 export class TopBar {
@@ -30,6 +32,8 @@ export class TopBar {
     const brand = el("div", "brand");
     brand.innerHTML = "Rapid<span>CAM</span>";
     this.host.appendChild(brand);
+
+    new FileMenu(this.host, this.cb.file);
 
     this.undoBtn = button("↩", () => this.cb.onUndo());
     this.undoBtn.title = "Undo (Ctrl+Z)";
