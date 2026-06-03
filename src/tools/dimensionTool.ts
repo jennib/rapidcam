@@ -22,9 +22,10 @@ import {
   chooseLinearType,
 } from "../model/dimensions";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
-type Phase = "first" | "second" | "placeLinear" | "placeCircle";
+type Phase = "first" | "second" | "placeLinear" | "placeCircle" | "secondLine" | "placeAngle";
 const POINT_PICK_PX = 8;
 
 interface Pick {
@@ -42,6 +43,8 @@ export class DimensionTool implements Tool {
   private p2: Pick | null = null;
   private circleId: string | null = null;
   private circleKind: DimensionType = "radius";
+  private line1Id: string | null = null;
+  private line2Id: string | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private dragDim: Dimension | null = null;
 
@@ -87,12 +90,26 @@ export class DimensionTool implements Tool {
             this.phase = "placeLinear";
           }
         } else if (hit) {
-          // Line / polyline body click: snap to nearest endpoint or vertex.
-          const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
-          if (entityPick) {
-            this.p1 = entityPick;
-            this.phase = "second";
+          if (hit.type === "line") {
+            // Line body click (not near a DOF point): start angle dimension.
+            this.line1Id = hit.id;
+            this.phase = "secondLine";
+          } else {
+            // Polyline body click: snap to nearest vertex.
+            const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
+            if (entityPick) {
+              this.p1 = entityPick;
+              this.phase = "second";
+            }
           }
+        }
+        break;
+      }
+      case "secondLine": {
+        const hit2 = ctx.doc.hitTest(e.worldRaw, tol);
+        if (hit2 && hit2.type === "line" && hit2.id !== this.line1Id) {
+          this.line2Id = hit2.id;
+          this.phase = "placeAngle";
         }
         break;
       }
@@ -121,6 +138,9 @@ export class DimensionTool implements Tool {
         break;
       case "placeCircle":
         this.commitCircle(ctx);
+        break;
+      case "placeAngle":
+        this.commitAngle(ctx);
         break;
     }
     this.recompute(ctx);
@@ -163,6 +183,8 @@ export class DimensionTool implements Tool {
     this.p1 = null;
     this.p2 = null;
     this.circleId = null;
+    this.line1Id = null;
+    this.line2Id = null;
     this.preview = { previews: [], selectionRect: null };
     ctx.requestRender();
   }
@@ -189,16 +211,47 @@ export class DimensionTool implements Tool {
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
+    } else if (this.phase === "placeAngle" && this.line1Id && this.line2Id) {
+      const dim = this.angleDim(0);
+      this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
+      dim.offset = this.curOffset;
+      this.previewFromLayout(dim, geo, unit);
     }
   }
 
   private previewFromLayout(dim: Dimension, geo: Geo, unit: Unit): void {
     const layout = dimensionLayout(dim, geo, unit);
     if (!layout) return;
-    this.preview.previews = [
+    const previews: PreviewShape[] = [
       ...layout.segments.map(([a, b]) => ({ kind: "line" as const, a, b })),
       { kind: "point" as const, pos: layout.textPos },
     ];
+    if (layout.arc) {
+      const { center, radius, startDir, endDir, ccw } = layout.arc;
+      previews.push({ kind: "polyline" as const, points: arcPolylinePoints(center, radius, startDir, endDir, ccw), closed: false });
+    }
+    this.preview.previews = previews;
+  }
+
+  private angleDim(offset: number): Dimension {
+    return makeDimension("angle", {
+      entities: [this.line1Id!, this.line2Id!],
+      value: 0,
+      offset,
+    });
+  }
+
+  private commitAngle(ctx: ToolContext): void {
+    ctx.pushHistory();
+    const geo = geoOf(ctx.doc.entities);
+    const dim = this.angleDim(this.curOffset);
+    dim.value = dimensionMeasure(dim, geo) ?? 0;
+    ctx.doc.addDimension(dim);
+    ctx.solve();
+    this.phase = "first";
+    this.line1Id = null;
+    this.line2Id = null;
+    ctx.openDimEditor(dim);
   }
 
   private linearDim(offset: number): Dimension {
@@ -244,6 +297,21 @@ export class DimensionTool implements Tool {
 function geoOf(entities: Entity[]): Geo {
   const m = new Map(entities.map((e) => [e.id, e]));
   return (id) => m.get(id);
+}
+
+function arcPolylinePoints(center: Vec2, radius: number, startDir: Vec2, endDir: Vec2, ccw: boolean): Vec2[] {
+  const a0 = Math.atan2(startDir.y, startDir.x);
+  const a1 = Math.atan2(endDir.y, endDir.x);
+  let delta = a1 - a0;
+  if (ccw && delta < 0) delta += 2 * Math.PI;
+  if (!ccw && delta > 0) delta -= 2 * Math.PI;
+  const N = Math.max(8, Math.ceil(Math.abs(delta) * 8));
+  const pts: Vec2[] = [];
+  for (let i = 0; i <= N; i++) {
+    const a = a0 + delta * (i / N);
+    pts.push({ x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a) });
+  }
+  return pts;
 }
 function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;

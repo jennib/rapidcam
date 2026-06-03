@@ -5,7 +5,7 @@
  */
 
 import { Vec2 } from "./core/vec2";
-import { parseLength, formatLength } from "./core/units";
+import { parseLength, formatLength, parseAngle, formatAngle } from "./core/units";
 import { CADDocument, DocSnapshot } from "./model/document";
 import { History } from "./model/history";
 import { Bounds, EntityId } from "./model/entities";
@@ -496,13 +496,17 @@ export class App {
     const input = document.createElement("input");
     input.type = "text";
     input.className = "dim-edit";
-    input.value = formatLength(dim.value, this.doc.displayUnit);
+    input.value = dim.type === "angle"
+      ? formatAngle(dim.value)
+      : formatLength(dim.value, this.doc.displayUnit);
     input.style.left = `${pos.x - 36}px`;
     input.style.top = `${pos.y - 11}px`;
 
     const commit = () => {
       if (this.dimEditor !== input) return; // already closed (avoid double-commit on blur)
-      const v = parseLength(input.value, this.doc.displayUnit);
+      const v = dim.type === "angle"
+        ? parseAngle(input.value)
+        : parseLength(input.value, this.doc.displayUnit);
       if (v !== null && v > 0) {
         this.pushHistory();
         dim.value = v;

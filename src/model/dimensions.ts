@@ -23,11 +23,13 @@ import {
   len,
   normalize,
   perp,
+  dot,
+  cross,
   angle as vecAngle,
 } from "../core/vec2";
 import { distToSegment } from "../core/geom";
-import { Unit, formatLengthWithUnit } from "../core/units";
-import { EntityId, CircleEntity } from "./entities";
+import { Unit, formatLengthWithUnit, formatAngle } from "../core/units";
+import { EntityId, CircleEntity, LineEntity } from "./entities";
 import { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
@@ -84,6 +86,41 @@ function readCircle(geo: Geo, id: EntityId | undefined): CircleEntity | null {
   const e = geo(id);
   return e instanceof CircleEntity ? e : null;
 }
+function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
+  if (!id) return null;
+  const e = geo(id);
+  return e instanceof LineEntity ? e : null;
+}
+
+/** Compute the vertex and arm directions for an angle between two lines. */
+function linesAngleGeometry(l1: LineEntity, l2: LineEntity): { vertex: Vec2; d1: Vec2; d2: Vec2 } | null {
+  const EPS = 1e-6;
+  // Prefer a shared endpoint as the vertex.
+  const ends1 = [{ v: l1.a, far: l1.b }, { v: l1.b, far: l1.a }];
+  const ends2 = [{ v: l2.a, far: l2.b }, { v: l2.b, far: l2.a }];
+  for (const e1 of ends1) {
+    for (const e2 of ends2) {
+      if (dist(e1.v, e2.v) < EPS) {
+        const d1 = normalize(sub(e1.far, e1.v));
+        const d2 = normalize(sub(e2.far, e2.v));
+        if (len(d1) < EPS || len(d2) < EPS) continue;
+        return { vertex: e1.v, d1, d2 };
+      }
+    }
+  }
+  // Find intersection of infinite lines.
+  const dir1 = sub(l1.b, l1.a);
+  const dir2 = sub(l2.b, l2.a);
+  const denom = cross(dir1, dir2);
+  if (Math.abs(denom) < EPS) return null; // parallel
+  const t = cross(sub(l2.a, l1.a), dir2) / denom;
+  const vertex = add(l1.a, scale(dir1, t));
+  // Arm directions: from vertex toward each line's midpoint.
+  const raw1 = sub(mid(l1.a, l1.b), vertex);
+  const raw2 = sub(mid(l2.a, l2.b), vertex);
+  if (len(raw1) < EPS || len(raw2) < EPS) return null;
+  return { vertex, d1: normalize(raw1), d2: normalize(raw2) };
+}
 
 // ---------------------------------------------------------------------------
 // Measurement + solver residual
@@ -111,8 +148,14 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       const c = readCircle(geo, dim.entities[0]);
       return c ? c.radius * 2 : null;
     }
-    case "angle":
-      return null; // not yet supported
+    case "angle": {
+      const l1 = readLine(geo, dim.entities[0]);
+      const l2 = readLine(geo, dim.entities[1]);
+      if (!l1 || !l2) return null;
+      const ag = linesAngleGeometry(l1, l2);
+      if (!ag) return null;
+      return Math.acos(Math.max(-1, Math.min(1, dot(ag.d1, ag.d2))));
+    }
   }
 }
 
@@ -135,6 +178,8 @@ export interface DimLayout {
   textPos: Vec2;
   /** Display string, e.g. "50.00 mm", "R8.00 mm", "⌀16.00 mm". */
   label: string;
+  /** Arc segment for angle dimensions (world-space). */
+  arc?: { center: Vec2; radius: number; startDir: Vec2; endDir: Vec2; ccw: boolean };
 }
 
 function linearNormal(type: LinearDimType, p: Vec2, q: Vec2): Vec2 {
@@ -158,6 +203,14 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   if (dim.type === "radius" || dim.type === "diameter") {
     const c = readCircle(geo, dim.entities[0]);
     return c ? vecAngle(sub(cursor, c.center)) : dim.offset;
+  }
+  if (dim.type === "angle") {
+    const l1 = readLine(geo, dim.entities[0]);
+    const l2 = readLine(geo, dim.entities[1]);
+    if (!l1 || !l2) return dim.offset;
+    const ag = linesAngleGeometry(l1, l2);
+    if (!ag) return dim.offset;
+    return Math.max(5, dist(cursor, ag.vertex));
   }
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
@@ -197,6 +250,39 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
       ],
       textPos: end,
       label: "⌀" + formatLengthWithUnit(displayVal, unit),
+    };
+  }
+
+  // angle
+  if (dim.type === "angle") {
+    const l1 = readLine(geo, dim.entities[0]);
+    const l2 = readLine(geo, dim.entities[1]);
+    if (!l1 || !l2) return null;
+    const ag = linesAngleGeometry(l1, l2);
+    if (!ag) return null;
+    const { vertex, d1, d2 } = ag;
+    const R = Math.max(2, dim.offset);
+    const arcEnd1 = add(vertex, scale(d1, R));
+    const arcEnd2 = add(vertex, scale(d2, R));
+    const ccw = cross(d1, d2) > 0;
+    const sum = add(d1, d2);
+    const bisectDir = len(sum) > 1e-6 ? normalize(sum) : perp(d1);
+    const gap = R * 0.12;
+    const perpSign = ccw ? 1 : -1;
+    const arrow1Dir: Vec2 = { x: -d1.y * perpSign, y: d1.x * perpSign };
+    const arrow2Dir: Vec2 = { x: d2.y * perpSign, y: -d2.x * perpSign };
+    return {
+      segments: [
+        [add(vertex, scale(d1, gap)), arcEnd1],
+        [add(vertex, scale(d2, gap)), arcEnd2],
+      ],
+      arrows: [
+        { tip: arcEnd1, dir: arrow1Dir },
+        { tip: arcEnd2, dir: arrow2Dir },
+      ],
+      textPos: add(vertex, scale(bisectDir, R + 3)),
+      label: formatAngle(displayVal),
+      arc: { center: vertex, radius: R, startDir: d1, endDir: d2, ccw },
     };
   }
 

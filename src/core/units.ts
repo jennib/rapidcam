@@ -103,3 +103,21 @@ export function formatLength(mm: number, unit: Unit, precision?: number): string
 export function formatLengthWithUnit(mm: number, unit: Unit, precision?: number): string {
   return `${formatLength(mm, unit, precision)} ${unit}`;
 }
+
+/** Parse an angle string to radians. Bare numbers or "45°" / "45deg" → degrees; "1.5rad" → radians. */
+export function parseAngle(input: string): number | null {
+  let s = input.trim().toLowerCase();
+  if (s === "") return null;
+  let isDeg = true;
+  if (s.endsWith("rad")) { isDeg = false; s = s.slice(0, -3).trim(); }
+  else if (s.endsWith("°")) { s = s.slice(0, -1).trim(); }
+  else if (s.endsWith("deg")) { s = s.slice(0, -3).trim(); }
+  const v = parseFloat(s);
+  if (isNaN(v)) return null;
+  return isDeg ? (v * Math.PI) / 180 : v;
+}
+
+/** Format radians as a degree string, e.g. "45.00°". */
+export function formatAngle(radians: number): string {
+  return ((radians * 180) / Math.PI).toFixed(2) + "°";
+}

@@ -326,6 +326,17 @@ export class Renderer {
       }
       ctx.stroke();
 
+      if (layout.arc) {
+        const { center, radius, startDir, endDir, ccw } = layout.arc;
+        const sc = view.worldToScreen(center);
+        const sr = view.toScreenLen(radius);
+        ctx.beginPath();
+        ctx.arc(sc.x, sc.y, sr,
+          -Math.atan2(startDir.y, startDir.x),
+          -Math.atan2(endDir.y, endDir.x),
+          ccw);
+        ctx.stroke();
+      }
       for (const ar of layout.arrows) this.drawArrowHead(ar.tip, ar.dir, view);
       this.drawDimText(view.worldToScreen(layout.textPos), layout.label, dim.driving, isSelected);
     }
