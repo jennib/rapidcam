@@ -1,0 +1,314 @@
+:root {
+  --bg: #1e1f24;
+  --panel: #26282f;
+  --panel-2: #2e313a;
+  --border: #3a3d47;
+  --text: #d7dae0;
+  --text-dim: #8b909c;
+  --accent: #4aa3ff;
+  --accent-dim: #2f6aa8;
+  --danger: #ff5d5d;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  user-select: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------- Top bar ---------- */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  margin-right: 8px;
+}
+.brand span {
+  color: var(--accent);
+}
+
+.field-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.field-group label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+input.dim,
+select.unit {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+}
+input.dim {
+  width: 78px;
+}
+input.dim:focus,
+select.unit:focus {
+  border-color: var(--accent);
+}
+
+.topbar-spacer {
+  flex: 1 1 auto;
+}
+
+button.btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+button.btn:hover {
+  border-color: var(--accent-dim);
+}
+button.btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+/* ---------- Constraint bar ---------- */
+#constraintbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  overflow-x: auto;
+}
+
+.cb-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+button.cbtn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  height: 24px;
+  min-width: 26px;
+  padding: 0 7px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button.cbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: #fff;
+}
+button.cbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+button.cbtn.solve {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.cb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+.cb-msg {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.cb-msg.error {
+  color: var(--danger);
+}
+.cb-msg.ok {
+  color: var(--accent);
+}
+
+/* ---------- Workspace ---------- */
+#workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---------- Tool palette ---------- */
+#toolpalette {
+  width: 56px;
+  flex: 0 0 auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.tool-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+.tool-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.tool-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+.tool-btn svg {
+  width: 22px;
+  height: 22px;
+}
+.tool-sep {
+  width: 32px;
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* tooltip */
+.tool-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #000;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+  z-index: 50;
+}
+.tool-btn:hover::after {
+  opacity: 0.92;
+}
+
+/* ---------- Canvas ---------- */
+#canvas-host {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  background: var(--bg);
+}
+#scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* Inline dimension value editor floating over the canvas */
+.dim-edit {
+  position: absolute;
+  width: 72px;
+  height: 22px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+  z-index: 100;
+}
+
+/* ---------- Status bar ---------- */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.status-item b {
+  color: var(--text);
+  font-weight: 600;
+}
+.status-toggle {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.status-toggle.on {
+  color: var(--accent);
+}
+.status-toggle:hover {
+  background: var(--panel-2);
+}
+.status-spacer {
+  flex: 1 1 auto;
+}

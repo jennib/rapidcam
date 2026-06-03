@@ -1,0 +1,114 @@
+/** Top bar: canvas width/height definition, unit selector, fit & clear actions. */
+
+import { Unit, parseLength, formatLength } from "../core/units";
+import { CADDocument } from "../model/document";
+
+export interface TopBarCallbacks {
+  onFit: () => void;
+}
+
+export class TopBar {
+  private widthInput!: HTMLInputElement;
+  private heightInput!: HTMLInputElement;
+  private unitSelect!: HTMLSelectElement;
+
+  constructor(
+    private host: HTMLElement,
+    private doc: CADDocument,
+    private cb: TopBarCallbacks,
+  ) {
+    this.build();
+    this.doc.onChange(() => this.refresh());
+    this.refresh();
+  }
+
+  private build(): void {
+    const brand = el("div", "brand");
+    brand.innerHTML = "Rapid<span>CAM</span>";
+    this.host.appendChild(brand);
+
+    // Canvas width
+    this.host.appendChild(this.field("Width", (this.widthInput = dimInput())));
+    // Canvas height
+    this.host.appendChild(this.field("Height", (this.heightInput = dimInput())));
+
+    // Unit selector
+    this.unitSelect = document.createElement("select");
+    this.unitSelect.className = "unit";
+    for (const u of ["mm", "in"] as Unit[]) {
+      const opt = document.createElement("option");
+      opt.value = u;
+      opt.textContent = u;
+      this.unitSelect.appendChild(opt);
+    }
+    this.host.appendChild(this.field("Units", this.unitSelect));
+
+    const spacer = el("div", "topbar-spacer");
+    this.host.appendChild(spacer);
+
+    const fitBtn = button("Fit", () => this.cb.onFit());
+    const clearBtn = button("Clear", () => {
+      if (this.doc.entities.length && confirm("Delete all geometry?")) this.doc.clear();
+    });
+    this.host.appendChild(fitBtn);
+    this.host.appendChild(clearBtn);
+
+    // events
+    this.widthInput.addEventListener("change", () => this.commitSize());
+    this.heightInput.addEventListener("change", () => this.commitSize());
+    this.unitSelect.addEventListener("change", () => {
+      this.doc.displayUnit = this.unitSelect.value as Unit;
+      this.doc.emitChange();
+    });
+  }
+
+  private field(label: string, control: HTMLElement): HTMLElement {
+    const group = el("div", "field-group");
+    const lab = document.createElement("label");
+    lab.textContent = label;
+    group.appendChild(lab);
+    group.appendChild(control);
+    return group;
+  }
+
+  private commitSize(): void {
+    const u = this.doc.displayUnit;
+    const w = parseLength(this.widthInput.value, u);
+    const h = parseLength(this.heightInput.value, u);
+    if (w !== null && w > 0) this.doc.canvas.width = w;
+    if (h !== null && h > 0) this.doc.canvas.height = h;
+    this.doc.emitChange();
+  }
+
+  private refresh(): void {
+    const u = this.doc.displayUnit;
+    if (document.activeElement !== this.widthInput) {
+      this.widthInput.value = formatLength(this.doc.canvas.width, u);
+    }
+    if (document.activeElement !== this.heightInput) {
+      this.heightInput.value = formatLength(this.doc.canvas.height, u);
+    }
+    this.unitSelect.value = u;
+  }
+}
+
+// --- small DOM helpers -------------------------------------------------------
+function el(tag: string, cls: string): HTMLElement {
+  const e = document.createElement(tag);
+  e.className = cls;
+  return e;
+}
+function dimInput(): HTMLInputElement {
+  const i = document.createElement("input");
+  i.className = "dim";
+  i.type = "text";
+  i.spellcheck = false;
+  return i;
+}
+function button(text: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "btn";
+  b.textContent = text;
+  b.addEventListener("click", onClick);
+  return b;
+}
