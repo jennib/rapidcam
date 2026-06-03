@@ -1,6 +1,5 @@
-/** Top bar: canvas width/height definition, unit selector, fit & clear actions. */
+/** Top bar: fit & clear actions. */
 
-import { Unit, parseLength, formatLength } from "../core/units";
 import { CADDocument } from "../model/document";
 
 export interface TopBarCallbacks {
@@ -13,9 +12,6 @@ export interface TopBarCallbacks {
 }
 
 export class TopBar {
-  private widthInput!: HTMLInputElement;
-  private heightInput!: HTMLInputElement;
-  private unitSelect!: HTMLSelectElement;
   private constructionBtn!: HTMLButtonElement;
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
@@ -42,22 +38,6 @@ export class TopBar {
     this.host.appendChild(this.undoBtn);
     this.host.appendChild(this.redoBtn);
 
-    // Canvas width
-    this.host.appendChild(this.field("Width", (this.widthInput = dimInput())));
-    // Canvas height
-    this.host.appendChild(this.field("Height", (this.heightInput = dimInput())));
-
-    // Unit selector
-    this.unitSelect = document.createElement("select");
-    this.unitSelect.className = "unit";
-    for (const u of ["mm", "in"] as Unit[]) {
-      const opt = document.createElement("option");
-      opt.value = u;
-      opt.textContent = u;
-      this.unitSelect.appendChild(opt);
-    }
-    this.host.appendChild(this.field("Units", this.unitSelect));
-
     const spacer = el("div", "topbar-spacer");
     this.host.appendChild(spacer);
 
@@ -69,44 +49,9 @@ export class TopBar {
     this.host.appendChild(this.constructionBtn);
     this.host.appendChild(fitBtn);
     this.host.appendChild(clearBtn);
-
-    // events
-    this.widthInput.addEventListener("change", () => this.commitSize());
-    this.heightInput.addEventListener("change", () => this.commitSize());
-    this.unitSelect.addEventListener("change", () => {
-      this.doc.displayUnit = this.unitSelect.value as Unit;
-      this.doc.emitChange();
-    });
-  }
-
-  private field(label: string, control: HTMLElement): HTMLElement {
-    const group = el("div", "field-group");
-    const lab = document.createElement("label");
-    lab.textContent = label;
-    group.appendChild(lab);
-    group.appendChild(control);
-    return group;
-  }
-
-  private commitSize(): void {
-    const u = this.doc.displayUnit;
-    const w = parseLength(this.widthInput.value, u);
-    const h = parseLength(this.heightInput.value, u);
-    if (w !== null && w > 0) this.doc.canvas.width = w;
-    if (h !== null && h > 0) this.doc.canvas.height = h;
-    this.doc.emitChange();
   }
 
   private refresh(): void {
-    const u = this.doc.displayUnit;
-    if (document.activeElement !== this.widthInput) {
-      this.widthInput.value = formatLength(this.doc.canvas.width, u);
-    }
-    if (document.activeElement !== this.heightInput) {
-      this.heightInput.value = formatLength(this.doc.canvas.height, u);
-    }
-    this.unitSelect.value = u;
-
     this.undoBtn.disabled = !this.cb.canUndo();
     this.redoBtn.disabled = !this.cb.canRedo();
 
@@ -123,13 +68,6 @@ function el(tag: string, cls: string): HTMLElement {
   const e = document.createElement(tag);
   e.className = cls;
   return e;
-}
-function dimInput(): HTMLInputElement {
-  const i = document.createElement("input");
-  i.className = "dim";
-  i.type = "text";
-  i.spellcheck = false;
-  return i;
 }
 function button(text: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");

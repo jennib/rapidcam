@@ -254,6 +254,111 @@ button.cbtn.solve {
   opacity: 0.92;
 }
 
+/* ---------- Settings bar ---------- */
+#settingsbar {
+  width: 200px;
+  flex: 0 0 auto;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+#settingsbar.resizing {
+  transition: none;
+}
+
+#settingsbar.collapsed {
+  width: 40px !important;
+}
+
+#settingsbar.collapsed .settings-content,
+#settingsbar.collapsed .settings-title {
+  display: none;
+}
+
+#settingsbar.collapsed .settings-header {
+  border-bottom: none;
+  padding: 12px 8px;
+  justify-content: center;
+}
+
+#settingsbar.collapsed .settings-toggle {
+  transform: rotate(180deg);
+}
+
+.settings-resizer {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+#settingsbar.collapsed .settings-resizer {
+  display: none;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.settings-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0 0 2px 0;
+}
+.settings-toggle:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.settings-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-field-group label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+#settingsbar input.dim,
+#settingsbar select.unit {
+  width: 100%;
+}
+
 /* ---------- Canvas ---------- */
 #canvas-host {
   flex: 1 1 auto;

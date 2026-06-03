@@ -25,6 +25,7 @@ import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
+import { SettingsBar } from "./ui/settingsBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
 
@@ -64,6 +65,7 @@ export class App {
   constructor(private canvas: HTMLCanvasElement, dom: {
     palette: HTMLElement;
     topbar: HTMLElement;
+    settingsbar: HTMLElement;
     constraintbar: HTMLElement;
     statusbar: HTMLElement;
   }) {
@@ -90,6 +92,11 @@ export class App {
       "select",
     );
 
+    this.tools.onActiveChange(() => {
+      canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
+    });
+    canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
+
     new ToolPalette(dom.palette, this.tools);
     new TopBar(dom.topbar, this.doc, {
       onFit: () => this.fitView(),
@@ -99,6 +106,7 @@ export class App {
       canUndo: () => this.history.canUndo,
       canRedo: () => this.history.canRedo,
     });
+    new SettingsBar(dom.settingsbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory);
 
