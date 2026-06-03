@@ -2,6 +2,39 @@
 
 import { Unit } from "../core/units";
 import { Vec2, dist } from "../core/vec2";
+
+// --- origin types ------------------------------------------------------------
+
+export type OriginX = "left" | "center" | "right";
+export type OriginY = "front" | "center" | "back";
+export type OriginZ = "top" | "bed";
+
+export interface OriginDef {
+  x: OriginX;
+  y: OriginY;
+  z: OriginZ;
+}
+
+/**
+ * Resolve the named origin into concrete offsets used by G-code generation.
+ * ox / oy: subtract from canvas coords to get G-code coords.
+ * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
+ */
+export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffset: number } {
+  const ox =
+    doc.origin.x === "left"   ? 0 :
+    doc.origin.x === "right"  ? doc.canvas.width :
+    doc.canvas.width / 2;
+
+  const oy =
+    doc.origin.y === "front"  ? 0 :
+    doc.origin.y === "back"   ? doc.canvas.height :
+    doc.canvas.height / 2;
+
+  const zOffset = doc.origin.z === "top" ? 0 : doc.stockThickness;
+
+  return { ox, oy, zOffset };
+}
 import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity } from "./entities";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
@@ -36,11 +69,10 @@ export class CADDocument {
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
   /**
-   * Work-coordinate-system origin in canvas mm.
-   * All G-code X/Y are output relative to this point.
-   * Default (0, 0) = front-left corner of the stock (Y-up world).
+   * Work-coordinate-system origin expressed as named positions.
+   * Default = front-left-top (the most common CNC router convention).
    */
-  origin: Vec2 = { x: 0, y: 0 };
+  origin: OriginDef = { x: "left", y: "front", z: "top" };
 
   entities: Entity[] = [];
   constraints: Constraint[] = [];

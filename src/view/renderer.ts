@@ -2,7 +2,7 @@
 
 import { Vec2 } from "../core/vec2";
 import { Unit, fromMM } from "../core/units";
-import { CADDocument } from "../model/document";
+import { CADDocument, resolveOrigin } from "../model/document";
 import {
   Entity,
   LineEntity,
@@ -174,7 +174,8 @@ export class Renderer {
   // --- origin marker -------------------------------------------------------
   private drawOrigin(doc: CADDocument, view: Viewport): void {
     const ctx = this.ctx;
-    const o = view.worldToScreen(doc.origin);
+    const { ox, oy } = resolveOrigin(doc);
+    const o = view.worldToScreen({ x: ox, y: oy });
     const arm = 22; // screen px
 
     ctx.save();

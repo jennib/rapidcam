@@ -1,12 +1,13 @@
 import { Unit, parseLength, formatLength } from "../core/units";
-import { CADDocument } from "../model/document";
+import { type CADDocument, type OriginX, type OriginY, type OriginZ } from "../model/document";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
   private stockInput!: HTMLInputElement;
-  private originXInput!: HTMLInputElement;
-  private originYInput!: HTMLInputElement;
+  private originXSelect!: HTMLSelectElement;
+  private originYSelect!: HTMLSelectElement;
+  private originZSelect!: HTMLSelectElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -22,80 +23,93 @@ export class SettingsBar {
   }
 
   private build(): void {
-    // Resizer handle
     const resizer = document.createElement("div");
     resizer.className = "settings-resizer";
     this.host.appendChild(resizer);
     this.bindResizer(resizer);
 
-    // Header
     const header = document.createElement("div");
     header.className = "settings-header";
-
     const title = document.createElement("div");
     title.className = "settings-title";
     title.textContent = "Project Settings";
     header.appendChild(title);
-
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "settings-toggle";
     toggleBtn.textContent = "›";
     toggleBtn.title = "Collapse/Expand";
     toggleBtn.addEventListener("click", () => this.toggleCollapse());
     header.appendChild(toggleBtn);
-
     this.host.appendChild(header);
 
-    // Content area
     this.content = document.createElement("div");
     this.content.className = "settings-content";
     this.host.appendChild(this.content);
 
+    // Canvas size
     const canvasGroup = this.group("Canvas Size");
     canvasGroup.appendChild(this.field("Width", (this.widthInput = this.dimInput())));
     canvasGroup.appendChild(this.field("Height", (this.heightInput = this.dimInput())));
     this.content.appendChild(canvasGroup);
 
-    // Stock material
+    // Material
     const stockGroup = this.group("Material");
-    this.stockInput = this.dimInput();
-    stockGroup.appendChild(this.field("Stock thickness", this.stockInput));
+    stockGroup.appendChild(this.field("Stock thickness", (this.stockInput = this.dimInput())));
     this.content.appendChild(stockGroup);
 
-    // Origin
+    // Origin (WCS)
     const originGroup = this.group("Origin (WCS)");
-    originGroup.appendChild(this.field("X", (this.originXInput = this.dimInput())));
-    originGroup.appendChild(this.field("Y", (this.originYInput = this.dimInput())));
+
+    this.originXSelect = this.makeSelect([
+      ["left",   "Left"],
+      ["center", "Center"],
+      ["right",  "Right"],
+    ]);
+    originGroup.appendChild(this.field("X", this.originXSelect));
+
+    this.originYSelect = this.makeSelect([
+      ["front",  "Front"],
+      ["center", "Center"],
+      ["back",   "Back"],
+    ]);
+    originGroup.appendChild(this.field("Y", this.originYSelect));
+
+    this.originZSelect = this.makeSelect([
+      ["top", "Top of stock"],
+      ["bed", "Bed"],
+    ]);
+    originGroup.appendChild(this.field("Z", this.originZSelect));
+
     this.content.appendChild(originGroup);
 
-    // Unit selector
+    // Units
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
     for (const u of ["mm", "in"] as Unit[]) {
       const opt = document.createElement("option");
-      opt.value = u;
-      opt.textContent = u;
+      opt.value = u; opt.textContent = u;
       this.unitSelect.appendChild(opt);
     }
     this.content.appendChild(this.field("Units", this.unitSelect));
 
-    // events
+    // Events
     this.widthInput.addEventListener("change", () => this.commitSize());
     this.heightInput.addEventListener("change", () => this.commitSize());
     this.stockInput.addEventListener("change", () => {
       const v = parseLength(this.stockInput.value, this.doc.displayUnit);
-      if (v !== null && v > 0) {
-        this.doc.stockThickness = v;
-        this.doc.emitChange();
-      }
+      if (v !== null && v > 0) { this.doc.stockThickness = v; this.doc.emitChange(); }
     });
-    this.originXInput.addEventListener("change", () => {
-      const v = parseLength(this.originXInput.value, this.doc.displayUnit);
-      if (v !== null) { this.doc.origin.x = v; this.doc.emitChange(); }
+    this.originXSelect.addEventListener("change", () => {
+      this.doc.origin.x = this.originXSelect.value as OriginX;
+      this.doc.emitChange();
     });
-    this.originYInput.addEventListener("change", () => {
-      const v = parseLength(this.originYInput.value, this.doc.displayUnit);
-      if (v !== null) { this.doc.origin.y = v; this.doc.emitChange(); }
+    this.originYSelect.addEventListener("change", () => {
+      this.doc.origin.y = this.originYSelect.value as OriginY;
+      this.doc.emitChange();
+    });
+    this.originZSelect.addEventListener("change", () => {
+      this.doc.origin.z = this.originZSelect.value as OriginZ;
+      this.doc.emitChange();
     });
     this.unitSelect.addEventListener("change", () => {
       this.doc.displayUnit = this.unitSelect.value as Unit;
@@ -108,17 +122,13 @@ export class SettingsBar {
   }
 
   private bindResizer(resizer: HTMLElement): void {
-    let startX = 0;
-    let startWidth = 0;
-
+    let startX = 0, startWidth = 0;
     const onMove = (e: PointerEvent) => {
       const delta = startX - e.clientX;
       this.panelWidth = Math.max(120, Math.min(600, startWidth + delta));
       this.panel.style.width = `${this.panelWidth}px`;
-      // canvas listens to window resize to recalculate layout dimensions
       window.dispatchEvent(new Event("resize"));
     };
-
     const onUp = (e: PointerEvent) => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
@@ -126,11 +136,9 @@ export class SettingsBar {
       this.panel.classList.remove("resizing");
       resizer.releasePointerCapture(e.pointerId);
     };
-
     resizer.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      startX = e.clientX;
-      startWidth = this.panel.offsetWidth;
+      startX = e.clientX; startWidth = this.panel.offsetWidth;
       this.panel.classList.add("resizing");
       resizer.setPointerCapture(e.pointerId);
       document.addEventListener("pointermove", onMove);
@@ -142,11 +150,7 @@ export class SettingsBar {
 
   private toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
-    if (this.isCollapsed) {
-      this.host.classList.add("collapsed");
-    } else {
-      this.host.classList.remove("collapsed");
-    }
+    this.host.classList.toggle("collapsed", this.isCollapsed);
     this.host.addEventListener("transitionend", () => {
       window.dispatchEvent(new Event("resize"));
     }, { once: true });
@@ -174,10 +178,19 @@ export class SettingsBar {
 
   private dimInput(): HTMLInputElement {
     const i = document.createElement("input");
-    i.className = "dim";
-    i.type = "text";
-    i.spellcheck = false;
+    i.className = "dim"; i.type = "text"; i.spellcheck = false;
     return i;
+  }
+
+  private makeSelect(options: [string, string][]): HTMLSelectElement {
+    const sel = document.createElement("select");
+    sel.className = "unit";
+    for (const [v, l] of options) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = l;
+      sel.appendChild(opt);
+    }
+    return sel;
   }
 
   private commitSize(): void {
@@ -191,21 +204,15 @@ export class SettingsBar {
 
   private refresh(): void {
     const u = this.doc.displayUnit;
-    if (document.activeElement !== this.widthInput) {
+    if (document.activeElement !== this.widthInput)
       this.widthInput.value = formatLength(this.doc.canvas.width, u);
-    }
-    if (document.activeElement !== this.heightInput) {
+    if (document.activeElement !== this.heightInput)
       this.heightInput.value = formatLength(this.doc.canvas.height, u);
-    }
-    if (document.activeElement !== this.stockInput) {
+    if (document.activeElement !== this.stockInput)
       this.stockInput.value = formatLength(this.doc.stockThickness, u);
-    }
-    if (document.activeElement !== this.originXInput) {
-      this.originXInput.value = formatLength(this.doc.origin.x, u);
-    }
-    if (document.activeElement !== this.originYInput) {
-      this.originYInput.value = formatLength(this.doc.origin.y, u);
-    }
+    this.originXSelect.value = this.doc.origin.x;
+    this.originYSelect.value = this.doc.origin.y;
+    this.originZSelect.value = this.doc.origin.z;
     this.unitSelect.value = u;
   }
 }
