@@ -19,7 +19,9 @@ export class LineTool implements Tool {
       this.start = e.world;
     } else {
       if (distSq(this.start, e.world) > 1e-9) {
-        ctx.doc.addSelected(new LineEntity(this.start, e.world));
+        const ent = new LineEntity(this.start, e.world);
+        ent.isConstruction = ctx.doc.isConstructionMode;
+        ctx.doc.addSelected(ent);
       }
       this.start = null;
     }

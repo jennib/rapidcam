@@ -12,6 +12,7 @@ export const COLORS = {
   workAreaBorder: "#4a6075",
 
   entity: "#cdd2da",
+  entityConstruction: "#8b909c",
   entityHover: "#ffffff",
   entitySelected: "#4aa3ff",
 

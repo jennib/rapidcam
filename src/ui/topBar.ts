@@ -11,6 +11,7 @@ export class TopBar {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
+  private constructionBtn!: HTMLButtonElement;
 
   constructor(
     private host: HTMLElement,
@@ -46,10 +47,23 @@ export class TopBar {
     const spacer = el("div", "topbar-spacer");
     this.host.appendChild(spacer);
 
+    this.constructionBtn = button("Construction", () => {
+      const selected = this.doc.selected;
+      if (selected.length > 0) {
+        const allAreConstruction = selected.every((e) => e.isConstruction);
+        for (const e of selected) {
+          e.isConstruction = !allAreConstruction;
+        }
+      } else {
+        this.doc.isConstructionMode = !this.doc.isConstructionMode;
+      }
+      this.doc.emitChange();
+    });
     const fitBtn = button("Fit", () => this.cb.onFit());
     const clearBtn = button("Clear", () => {
       if (this.doc.entities.length && confirm("Delete all geometry?")) this.doc.clear();
     });
+    this.host.appendChild(this.constructionBtn);
     this.host.appendChild(fitBtn);
     this.host.appendChild(clearBtn);
 
@@ -89,6 +103,12 @@ export class TopBar {
       this.heightInput.value = formatLength(this.doc.canvas.height, u);
     }
     this.unitSelect.value = u;
+    
+    if (this.doc.isConstructionMode) {
+      this.constructionBtn.classList.add("active");
+    } else {
+      this.constructionBtn.classList.remove("active");
+    }
   }
 }
 

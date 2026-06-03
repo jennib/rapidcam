@@ -178,9 +178,16 @@ export class Renderer {
         ? COLORS.entitySelected
         : isHover
           ? COLORS.entityHover
-          : COLORS.entity;
+          : e.isConstruction
+            ? COLORS.entityConstruction
+            : COLORS.entity;
       const width = e.selected ? 2 : 1.5;
+      this.ctx.save();
+      if (e.isConstruction) {
+        this.ctx.setLineDash([5, 5]);
+      }
       this.drawEntity(e, view, color, width);
+      this.ctx.restore();
       if (e.selected) this.drawHandles(e, view);
     }
   }

@@ -73,7 +73,11 @@ export class PolylineTool implements Tool {
 
   private finish(ctx: ToolContext, closed: boolean): void {
     const pts = dedupeConsecutive(this.points);
-    if (pts.length >= 2) ctx.doc.addSelected(new PolylineEntity(pts, closed));
+    if (pts.length >= 2) {
+      const ent = new PolylineEntity(pts, closed);
+      ent.isConstruction = ctx.doc.isConstructionMode;
+      ctx.doc.addSelected(ent);
+    }
     this.points = [];
     ctx.requestRender();
   }

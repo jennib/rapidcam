@@ -45,6 +45,7 @@ export abstract class Entity {
   readonly id: EntityId;
   abstract readonly type: EntityType;
   selected = false;
+  isConstruction = false;
 
   constructor(id?: EntityId) {
     this.id = id ?? nextId("ent");
@@ -117,7 +118,9 @@ export class LineEntity extends Entity {
     this.b = add(this.b, d);
   }
   override duplicate(): LineEntity {
-    return new LineEntity(this.a, this.b);
+    const e = new LineEntity(this.a, this.b);
+    e.isConstruction = this.isConstruction;
+    return e;
   }
   get length(): number {
     return dist(this.a, this.b);
@@ -176,7 +179,9 @@ export class CircleEntity extends Entity {
     this.center = add(this.center, d);
   }
   override duplicate(): CircleEntity {
-    return new CircleEntity(this.center, this.radius);
+    const e = new CircleEntity(this.center, this.radius);
+    e.isConstruction = this.isConstruction;
+    return e;
   }
   override dofPoints(): DofPoint[] {
     return [{ key: "c", pos: clone(this.center) }];
@@ -259,7 +264,9 @@ export class RectEntity extends Entity {
     this.p1 = add(this.p1, d);
   }
   override duplicate(): RectEntity {
-    return new RectEntity(this.p0, this.p1);
+    const e = new RectEntity(this.p0, this.p1);
+    e.isConstruction = this.isConstruction;
+    return e;
   }
 }
 
@@ -324,7 +331,9 @@ export class PolylineEntity extends Entity {
     this.points = this.points.map((p) => add(p, d));
   }
   override duplicate(): PolylineEntity {
-    return new PolylineEntity(this.points, this.closed);
+    const e = new PolylineEntity(this.points, this.closed);
+    e.isConstruction = this.isConstruction;
+    return e;
   }
   override dofPoints(): DofPoint[] {
     return this.points.map((p, i) => ({ key: `v${i}`, pos: clone(p) }));

@@ -308,6 +308,23 @@ export class App {
       return;
     }
 
+    if (ev.key.toLowerCase() === "x" && !ev.ctrlKey && !ev.metaKey) {
+      const selected = this.doc.selected;
+      if (selected.length > 0) {
+        // Toggle construction state of selected entities
+        const allAreConstruction = selected.every((e) => e.isConstruction);
+        for (const e of selected) {
+          e.isConstruction = !allAreConstruction;
+        }
+      } else {
+        // Toggle global mode if nothing is selected
+        this.doc.isConstructionMode = !this.doc.isConstructionMode;
+      }
+      this.doc.emitChange();
+      ev.preventDefault();
+      return;
+    }
+
     // Let the active tool consume the key first (Enter, Backspace, Escape…).
     this.tools.keyDown(ev);
 

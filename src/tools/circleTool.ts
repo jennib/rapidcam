@@ -19,7 +19,11 @@ export class CircleTool implements Tool {
       this.center = e.world;
     } else {
       const r = dist(this.center, e.world);
-      if (r > 1e-6) ctx.doc.addSelected(new CircleEntity(this.center, r));
+      if (r > 1e-6) {
+        const ent = new CircleEntity(this.center, r);
+        ent.isConstruction = ctx.doc.isConstructionMode;
+        ctx.doc.addSelected(ent);
+      }
       this.center = null;
     }
   }

@@ -23,6 +23,7 @@ export class CADDocument {
   entities: Entity[] = [];
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
+  isConstructionMode = false;
 
   /** Individually selected point DOFs (in addition to whole-entity selection). */
   selectedPoints: PointRef[] = [];
