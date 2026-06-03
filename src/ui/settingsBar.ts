@@ -53,10 +53,10 @@ export class SettingsBar {
     this.content.className = "settings-content";
     this.host.appendChild(this.content);
 
-    // Canvas width
-    this.content.appendChild(this.field("Width", (this.widthInput = this.dimInput())));
-    // Canvas height
-    this.content.appendChild(this.field("Height", (this.heightInput = this.dimInput())));
+    const canvasGroup = this.group("Canvas Size");
+    canvasGroup.appendChild(this.field("Width", (this.widthInput = this.dimInput())));
+    canvasGroup.appendChild(this.field("Height", (this.heightInput = this.dimInput())));
+    this.content.appendChild(canvasGroup);
 
     // Unit selector
     this.unitSelect = document.createElement("select");
@@ -127,6 +127,16 @@ export class SettingsBar {
     this.host.addEventListener("transitionend", () => {
       window.dispatchEvent(new Event("resize"));
     }, { once: true });
+  }
+
+  private group(title: string): HTMLElement {
+    const g = document.createElement("div");
+    g.className = "settings-section";
+    const h = document.createElement("div");
+    h.className = "settings-section-title";
+    h.textContent = title;
+    g.appendChild(h);
+    return g;
   }
 
   private field(label: string, control: HTMLElement): HTMLElement {
