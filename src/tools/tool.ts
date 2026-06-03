@@ -3,6 +3,7 @@
 import { Vec2 } from "../core/vec2";
 import { SnapPoint } from "../model/entities";
 import { CADDocument } from "../model/document";
+import { Dimension } from "../model/dimensions";
 import { Viewport } from "../view/viewport";
 import { PreviewShape } from "../view/overlay";
 import { PinMap } from "../solver/solver";
@@ -16,6 +17,8 @@ export interface ToolContext {
   solve(pins?: PinMap): void;
   /** Snapshot the document state before a mutation so it can be undone. */
   pushHistory(): void;
+  /** Open the inline dimension value editor for the given dimension. */
+  openDimEditor(dim: Dimension): void;
 }
 
 export interface ToolPointerEvent {

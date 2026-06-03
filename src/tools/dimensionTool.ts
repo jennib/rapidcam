@@ -226,6 +226,7 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
+    ctx.openDimEditor(dim);
   }
   private commitCircle(ctx: ToolContext): void {
     ctx.pushHistory();
@@ -236,6 +237,7 @@ export class DimensionTool implements Tool {
     ctx.solve();
     this.phase = "first";
     this.circleId = null;
+    ctx.openDimEditor(dim);
   }
 }
 

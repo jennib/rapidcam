@@ -77,6 +77,7 @@ export class App {
         requestRender: this.requestRender,
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.pushHistory,
+        openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
       },
       [
         new SelectTool(),
