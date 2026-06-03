@@ -20,6 +20,7 @@ export class CircleTool implements Tool {
     } else {
       const r = dist(this.center, e.world);
       if (r > 1e-6) {
+        ctx.pushHistory();
         const ent = new CircleEntity(this.center, r);
         ent.isConstruction = ctx.doc.isConstructionMode;
         ctx.doc.addSelected(ent);

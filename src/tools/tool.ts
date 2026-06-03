@@ -14,6 +14,8 @@ export interface ToolContext {
   requestRender(): void;
   /** Run the constraint solver, optionally pinning point DOFs to targets, then render. */
   solve(pins?: PinMap): void;
+  /** Snapshot the document state before a mutation so it can be undone. */
+  pushHistory(): void;
 }
 
 export interface ToolPointerEvent {

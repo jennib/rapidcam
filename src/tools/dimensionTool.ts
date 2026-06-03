@@ -59,6 +59,7 @@ export class DimensionTool implements Tool {
         // Grab an existing dimension to reposition it (offset only — no re-solve).
         const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8));
         if (existing) {
+          ctx.pushHistory();
           this.dragDim = existing;
           return;
         }
@@ -216,6 +217,7 @@ export class DimensionTool implements Tool {
   }
 
   private commitLinear(ctx: ToolContext): void {
+    ctx.pushHistory();
     const geo = geoOf(ctx.doc.entities);
     const dim = this.linearDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
@@ -226,6 +228,7 @@ export class DimensionTool implements Tool {
     this.p2 = null;
   }
   private commitCircle(ctx: ToolContext): void {
+    ctx.pushHistory();
     const geo = geoOf(ctx.doc.entities);
     const dim = this.circleDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
@@ -242,6 +245,30 @@ function geoOf(entities: Entity[]): Geo {
 }
 function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;
+}
+
+/** Nearest point on an entity for use as a dimension anchor (DOF points + rect virtual corners). */
+function pickNearestEntityPoint(ent: Entity, p: Vec2): Pick | null {
+  let best: Pick | null = null;
+  let bestD = Infinity;
+  for (const dp of ent.dofPoints()) {
+    const d = dist(dp.pos, p);
+    if (d < bestD) {
+      bestD = d;
+      best = { ref: { entityId: ent.id, key: dp.key }, pos: dp.pos };
+    }
+  }
+  if (ent.type === "rectangle") {
+    for (const key of ["br", "tl"] as const) {
+      const pos = ent.getPoint(key);
+      const d = dist(pos, p);
+      if (d < bestD) {
+        bestD = d;
+        best = { ref: { entityId: ent.id, key }, pos };
+      }
+    }
+  }
+  return best;
 }
 
 /** Pick the br or tl corner of any rectangle — these aren't DOF points so pickPoint misses them. */

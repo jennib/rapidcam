@@ -6,7 +6,8 @@
 
 import { Vec2 } from "./core/vec2";
 import { parseLength, formatLength } from "./core/units";
-import { CADDocument } from "./model/document";
+import { CADDocument, DocSnapshot } from "./model/document";
+import { History } from "./model/history";
 import { Bounds, EntityId } from "./model/entities";
 import { Geo } from "./model/constraints";
 import { Dimension, dimensionLayout } from "./model/dimensions";
@@ -50,6 +51,8 @@ export class App {
   private currentHover: EntityId | null = null;
   private renderScheduled = false;
 
+  private history = new History<DocSnapshot>();
+
   // pan state
   private panning = false;
   private panLast: Vec2 = { x: 0, y: 0 };
@@ -73,6 +76,7 @@ export class App {
         view: this.view,
         requestRender: this.requestRender,
         solve: (pins) => this.runSolve(pins),
+        pushHistory: this.pushHistory,
       },
       [
         new SelectTool(),
@@ -86,15 +90,51 @@ export class App {
     );
 
     new ToolPalette(dom.palette, this.tools);
-    new TopBar(dom.topbar, this.doc, { onFit: () => this.fitView() });
+    new TopBar(dom.topbar, this.doc, {
+      onFit: () => this.fitView(),
+      onUndo: () => this.undoRedo("undo"),
+      onRedo: () => this.undoRedo("redo"),
+      onConstructionToggle: () => this.toggleConstruction(),
+      canUndo: () => this.history.canUndo,
+      canRedo: () => this.history.canRedo,
+    });
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
-    new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve());
+    new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory);
 
     this.doc.onChange(this.requestRender);
 
     this.bindEvents();
     this.handleResize();
     this.fitView();
+  }
+
+  // --- history -------------------------------------------------------------
+  private pushHistory = (): void => {
+    this.history.push(this.doc.snapshot());
+  };
+
+  private toggleConstruction(): void {
+    const selected = this.doc.selected;
+    if (selected.length > 0) {
+      const allAreConstruction = selected.every((e) => e.isConstruction);
+      this.pushHistory();
+      for (const e of selected) e.isConstruction = !allAreConstruction;
+    } else {
+      this.pushHistory();
+      this.doc.isConstructionMode = !this.doc.isConstructionMode;
+    }
+    this.doc.emitChange();
+  }
+
+  private undoRedo(dir: "undo" | "redo"): void {
+    const snap =
+      dir === "undo"
+        ? this.history.undo(this.doc.snapshot())
+        : this.history.redo(this.doc.snapshot());
+    if (!snap) return;
+    this.closeDimEditor();
+    this.doc.restore(snap);
+    this.runSolve();
   }
 
   // --- render loop ---------------------------------------------------------
@@ -262,6 +302,7 @@ export class App {
       if (this.dimEditor !== input) return; // already closed (avoid double-commit on blur)
       const v = parseLength(input.value, this.doc.displayUnit);
       if (v !== null && v > 0) {
+        this.pushHistory();
         dim.value = v;
         dim.driving = true;
         this.runSolve();
@@ -309,18 +350,18 @@ export class App {
     }
 
     if (ev.key.toLowerCase() === "x" && !ev.ctrlKey && !ev.metaKey) {
-      const selected = this.doc.selected;
-      if (selected.length > 0) {
-        // Toggle construction state of selected entities
-        const allAreConstruction = selected.every((e) => e.isConstruction);
-        for (const e of selected) {
-          e.isConstruction = !allAreConstruction;
-        }
-      } else {
-        // Toggle global mode if nothing is selected
-        this.doc.isConstructionMode = !this.doc.isConstructionMode;
-      }
-      this.doc.emitChange();
+      this.toggleConstruction();
+      ev.preventDefault();
+      return;
+    }
+
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
+      this.undoRedo(ev.shiftKey ? "redo" : "undo");
+      ev.preventDefault();
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") {
+      this.undoRedo("redo");
       ev.preventDefault();
       return;
     }
@@ -335,6 +376,7 @@ export class App {
 
     const isSelect = this.tools.active.id === "select";
     if (ev.key === "Delete" || (ev.key === "Backspace" && isSelect)) {
+      this.pushHistory();
       this.doc.removeSelected();
       this.runSolve();
       ev.preventDefault();

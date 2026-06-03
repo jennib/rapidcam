@@ -2,9 +2,23 @@
 
 import { Unit } from "../core/units";
 import { Vec2, dist } from "../core/vec2";
-import { Entity, EntityId, SnapPoint, Bounds } from "./entities";
+import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity } from "./entities";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
+
+type EntitySnapshot =
+  | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean }
+  | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean }
+  | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean }
+  | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; selected: boolean; isConstruction: boolean };
+
+export interface DocSnapshot {
+  entities: EntitySnapshot[];
+  constraints: Constraint[];
+  dimensions: Dimension[];
+  isConstructionMode: boolean;
+  selectedPoints: PointRef[];
+}
 
 export interface CanvasSize {
   /** Work-area width in mm. */
@@ -213,5 +227,69 @@ export class CADDocument {
       max.y = Math.max(max.y, b.max.y);
     }
     return { min, max };
+  }
+
+  // --- undo/redo snapshots --------------------------------------------------
+  snapshot(): DocSnapshot {
+    return {
+      entities: this.entities.map((e): EntitySnapshot => {
+        if (e instanceof LineEntity)
+          return { type: "line", id: e.id, a: { ...e.a }, b: { ...e.b }, selected: e.selected, isConstruction: e.isConstruction };
+        if (e instanceof CircleEntity)
+          return { type: "circle", id: e.id, center: { ...e.center }, radius: e.radius, selected: e.selected, isConstruction: e.isConstruction };
+        if (e instanceof RectEntity)
+          return { type: "rectangle", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, selected: e.selected, isConstruction: e.isConstruction };
+        const pe = e as PolylineEntity;
+        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed, selected: pe.selected, isConstruction: pe.isConstruction };
+      }),
+      constraints: this.constraints.map((c) => ({
+        id: c.id, type: c.type,
+        points: c.points.map((p) => ({ ...p })),
+        entities: [...c.entities],
+      })),
+      dimensions: this.dimensions.map((d) => ({
+        ...d,
+        points: d.points.map((p) => ({ ...p })),
+        entities: [...d.entities],
+      })),
+      isConstructionMode: this.isConstructionMode,
+      selectedPoints: this.selectedPoints.map((p) => ({ ...p })),
+    };
+  }
+
+  restore(s: DocSnapshot): void {
+    this.entities = s.entities.map((es): Entity => {
+      switch (es.type) {
+        case "line": {
+          const e = new LineEntity({ ...es.a }, { ...es.b }, es.id);
+          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+        }
+        case "circle": {
+          const e = new CircleEntity({ ...es.center }, es.radius, es.id);
+          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+        }
+        case "rectangle": {
+          const e = new RectEntity({ ...es.p0 }, { ...es.p1 }, es.id);
+          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+        }
+        case "polyline": {
+          const e = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id);
+          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+        }
+      }
+    });
+    this.constraints = s.constraints.map((c) => ({
+      id: c.id, type: c.type,
+      points: c.points.map((p) => ({ ...p })),
+      entities: [...c.entities],
+    }));
+    this.dimensions = s.dimensions.map((d) => ({
+      ...d,
+      points: d.points.map((p) => ({ ...p })),
+      entities: [...d.entities],
+    }));
+    this.isConstructionMode = s.isConstructionMode;
+    this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
+    this.emitChange();
   }
 }

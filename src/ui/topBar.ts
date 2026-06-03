@@ -5,6 +5,11 @@ import { CADDocument } from "../model/document";
 
 export interface TopBarCallbacks {
   onFit: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onConstructionToggle: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 export class TopBar {
@@ -12,6 +17,8 @@ export class TopBar {
   private heightInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private constructionBtn!: HTMLButtonElement;
+  private undoBtn!: HTMLButtonElement;
+  private redoBtn!: HTMLButtonElement;
 
   constructor(
     private host: HTMLElement,
@@ -27,6 +34,13 @@ export class TopBar {
     const brand = el("div", "brand");
     brand.innerHTML = "Rapid<span>CAM</span>";
     this.host.appendChild(brand);
+
+    this.undoBtn = button("↩", () => this.cb.onUndo());
+    this.undoBtn.title = "Undo (Ctrl+Z)";
+    this.redoBtn = button("↪", () => this.cb.onRedo());
+    this.redoBtn.title = "Redo (Ctrl+Y / Ctrl+Shift+Z)";
+    this.host.appendChild(this.undoBtn);
+    this.host.appendChild(this.redoBtn);
 
     // Canvas width
     this.host.appendChild(this.field("Width", (this.widthInput = dimInput())));
@@ -47,18 +61,7 @@ export class TopBar {
     const spacer = el("div", "topbar-spacer");
     this.host.appendChild(spacer);
 
-    this.constructionBtn = button("Construction", () => {
-      const selected = this.doc.selected;
-      if (selected.length > 0) {
-        const allAreConstruction = selected.every((e) => e.isConstruction);
-        for (const e of selected) {
-          e.isConstruction = !allAreConstruction;
-        }
-      } else {
-        this.doc.isConstructionMode = !this.doc.isConstructionMode;
-      }
-      this.doc.emitChange();
-    });
+    this.constructionBtn = button("Construction", () => this.cb.onConstructionToggle());
     const fitBtn = button("Fit", () => this.cb.onFit());
     const clearBtn = button("Clear", () => {
       if (this.doc.entities.length && confirm("Delete all geometry?")) this.doc.clear();
@@ -103,7 +106,10 @@ export class TopBar {
       this.heightInput.value = formatLength(this.doc.canvas.height, u);
     }
     this.unitSelect.value = u;
-    
+
+    this.undoBtn.disabled = !this.cb.canUndo();
+    this.redoBtn.disabled = !this.cb.canRedo();
+
     if (this.doc.isConstructionMode) {
       this.constructionBtn.classList.add("active");
     } else {

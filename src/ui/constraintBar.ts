@@ -46,6 +46,7 @@ export class ConstraintBar {
     private host: HTMLElement,
     private doc: CADDocument,
     private onSolve: () => void,
+    private pushHistory: () => void,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -96,6 +97,7 @@ export class ConstraintBar {
       this.message(res.error, "error");
       return;
     }
+    this.pushHistory();
     for (const c of res.constraints) this.doc.addConstraint(c);
     this.doc.clearSelection();
     this.onSolve();
