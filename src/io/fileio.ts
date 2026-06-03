@@ -33,15 +33,15 @@ export function getRecents(): RecentEntry[] {
   }
 }
 
-function pushRecent(entry: RecentEntry): void {
+export function pushRecent(entry: RecentEntry): void {
   const list = getRecents().filter((r) => r.name !== entry.name);
   list.unshift(entry);
   localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, MAX_RECENTS)));
 }
 
-export function saveFile(doc: CADDocument, name: string): void {
+export function serializeDoc(doc: CADDocument, name: string): RcamFile {
   const snap = doc.snapshot();
-  const file: RcamFile = {
+  return {
     version: 1,
     name,
     canvas: { ...doc.canvas },
@@ -55,6 +55,10 @@ export function saveFile(doc: CADDocument, name: string): void {
     isConstructionMode: snap.isConstructionMode,
     selectedPoints: snap.selectedPoints as unknown[],
   };
+}
+
+export function saveFile(doc: CADDocument, name: string): void {
+  const file = serializeDoc(doc, name);
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -80,7 +84,29 @@ export function applyFile(doc: CADDocument, file: RcamFile): void {
   doc.restore(file as unknown as DocSnapshot);
 }
 
-export async function openFile(): Promise<{ name: string; file: RcamFile } | null> {
+export async function openFile(): Promise<{ name: string; file: RcamFile; handle?: FileSystemFileHandle } | null> {
+  if ('showOpenFilePicker' in window) {
+    try {
+      const [handle] = await (window as any).showOpenFilePicker({
+        types: [{
+          description: 'RapidCAM Project (.rcam)',
+          accept: {
+            'application/json': ['.rcam'],
+          }
+        }]
+      });
+      const fileObj = await handle.getFile();
+      const text = await fileObj.text();
+      const file = JSON.parse(text) as RcamFile;
+      if (file.version !== 1) throw new Error("Unsupported file version");
+      const name = fileObj.name.replace(/\.rcam$/i, "");
+      pushRecent({ name, savedAt: Date.now(), data: file });
+      return { name, file, handle };
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return null;
+    }
+  }
+
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";

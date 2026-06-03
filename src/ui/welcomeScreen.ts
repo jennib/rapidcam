@@ -17,8 +17,21 @@ function formatRelativeTime(timestamp: number): string {
 export function showWelcomeScreen(
   onNew: () => void,
   onOpen: () => void,
-  onOpenRecent: (entry: RecentEntry) => void
+  onOpenRecent: (entry: RecentEntry) => void,
+  onRestoreDraft: () => void
 ): void {
+  const recents = getRecents();
+
+  const draftRaw = localStorage.getItem("rapidcam:autosave-draft");
+  let draft: { name: string; savedAt: number } | null = null;
+  try {
+    if (draftRaw) {
+      draft = JSON.parse(draftRaw);
+    }
+  } catch (e) {
+    // Ignore parse errors
+  }
+
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
 
@@ -47,6 +60,52 @@ export function showWelcomeScreen(
 
   const cards = document.createElement("div");
   cards.className = "welcome-cards";
+
+  // Restore Draft Card (if it exists)
+  if (draft) {
+    const restoreCard = document.createElement("div");
+    restoreCard.className = "welcome-card welcome-card-restore";
+    restoreCard.innerHTML = `
+      <div class="welcome-card-icon welcome-card-icon-restore">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 4v6h-6"></path>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+      </div>
+      <div class="welcome-card-details">
+        <div class="welcome-card-title">Restore Unsaved Draft</div>
+        <div class="welcome-card-desc">Recover "${draft.name}" (${formatRelativeTime(draft.savedAt)})</div>
+      </div>
+    `;
+    restoreCard.addEventListener("click", () => {
+      backdrop.remove();
+      onRestoreDraft();
+    });
+    cards.appendChild(restoreCard);
+  }
+
+  // Resume Last Project Card (if recents exist)
+  if (recents.length > 0) {
+    const lastProject = recents[0];
+    const resumeCard = document.createElement("div");
+    resumeCard.className = "welcome-card welcome-card-resume";
+    resumeCard.innerHTML = `
+      <div class="welcome-card-icon welcome-card-icon-resume">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </div>
+      <div class="welcome-card-details">
+        <div class="welcome-card-title">Resume Last Project</div>
+        <div class="welcome-card-desc">Open "${lastProject.name}"</div>
+      </div>
+    `;
+    resumeCard.addEventListener("click", () => {
+      backdrop.remove();
+      onOpenRecent(lastProject);
+    });
+    cards.appendChild(resumeCard);
+  }
 
   // New Project Card
   const newCard = document.createElement("div");
@@ -103,8 +162,6 @@ export function showWelcomeScreen(
 
   const recentsContainer = document.createElement("div");
   recentsContainer.className = "welcome-recents";
-
-  const recents = getRecents();
   if (recents.length === 0) {
     const emptyState = document.createElement("div");
     emptyState.className = "welcome-recents-empty";
