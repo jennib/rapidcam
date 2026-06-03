@@ -8,6 +8,7 @@ export class SettingsBar {
   private originXSelect!: HTMLSelectElement;
   private originYSelect!: HTMLSelectElement;
   private originZSelect!: HTMLSelectElement;
+  private toolChangerCheck!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -82,6 +83,14 @@ export class SettingsBar {
 
     this.content.appendChild(originGroup);
 
+    // Machine
+    const machineGroup = this.group("Machine");
+    this.toolChangerCheck = document.createElement("input");
+    this.toolChangerCheck.type = "checkbox";
+    this.toolChangerCheck.className = "settings-checkbox";
+    machineGroup.appendChild(this.field("Tool changer", this.toolChangerCheck));
+    this.content.appendChild(machineGroup);
+
     // Units
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
@@ -109,6 +118,10 @@ export class SettingsBar {
     });
     this.originZSelect.addEventListener("change", () => {
       this.doc.origin.z = this.originZSelect.value as OriginZ;
+      this.doc.emitChange();
+    });
+    this.toolChangerCheck.addEventListener("change", () => {
+      this.doc.hasToolChanger = this.toolChangerCheck.checked;
       this.doc.emitChange();
     });
     this.unitSelect.addEventListener("change", () => {
@@ -213,6 +226,7 @@ export class SettingsBar {
     this.originXSelect.value = this.doc.origin.x;
     this.originYSelect.value = this.doc.origin.y;
     this.originZSelect.value = this.doc.origin.z;
+    this.toolChangerCheck.checked = this.doc.hasToolChanger;
     this.unitSelect.value = u;
   }
 }

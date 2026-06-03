@@ -140,10 +140,24 @@ export class CamBar {
     nameEl.textContent = op.name;
     const params = document.createElement("div");
     params.className = "tp-op-params";
-    params.textContent = `⌀${op.diameter}mm  ${op.depth}mm`;
+    params.textContent = `T${op.toolNumber} ⌀${op.diameter}mm  ${op.depth}mm`;
     info.appendChild(nameEl);
     info.appendChild(params);
     item.appendChild(info);
+
+    const dlBtn = document.createElement("button");
+    dlBtn.className = "tp-icon-btn";
+    dlBtn.title = "Export this toolpath";
+    dlBtn.innerHTML =
+      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">` +
+      `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>` +
+      `<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>` +
+      `</svg>`;
+    dlBtn.addEventListener("click", () => {
+      const code = generateGCode([op], this.doc);
+      this.download(code, op.name);
+    });
+    item.appendChild(dlBtn);
 
     const editBtn = document.createElement("button");
     editBtn.className = "tp-icon-btn";
@@ -187,9 +201,11 @@ export class CamBar {
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
+      toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
       diameter: existing?.diameter ?? DEFAULTS.diameter,
       feedrate: existing?.feedrate ?? DEFAULTS.feedrate,
       plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,
+      spindleSpeed: existing?.spindleSpeed ?? DEFAULTS.spindleSpeed,
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
@@ -259,7 +275,9 @@ export class CamBar {
       inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
       return this.dField(lbl, inp);
     };
+    toolSec.appendChild(numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); }));
     toolSec.appendChild(numRow("Diameter (mm)", () => state.diameter, (v) => { state.diameter = v; }));
+    toolSec.appendChild(numRow("Spindle (rpm)", () => state.spindleSpeed, (v) => { state.spindleSpeed = Math.round(v); }));
     toolSec.appendChild(numRow("Feed (mm/min)", () => state.feedrate, (v) => { state.feedrate = v; }));
     toolSec.appendChild(numRow("Plunge (mm/min)", () => state.plungeRate, (v) => { state.plungeRate = v; }));
     toolSec.appendChild(numRow("Safe Z (mm)", () => state.safeZ, (v) => { state.safeZ = v; }));
@@ -366,9 +384,10 @@ export class CamBar {
         id: existing?.id ?? nextId("cam"),
         name: state.name || this.autoName(state.combo),
         type, side, entityIds: ids,
+        toolNumber: state.toolNumber,
         diameter: state.diameter, feedrate: state.feedrate,
-        plungeRate: state.plungeRate, safeZ: state.safeZ,
-        depth: state.depth, stepdown: state.stepdown,
+        plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
+        safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
       };
 
       if (existing) {
@@ -392,11 +411,17 @@ export class CamBar {
 
   private generate(): void {
     if (this.ops.length === 0) { alert("Add at least one toolpath first."); return; }
-    const code = generateGCode(this.ops, this.doc);
+    this.download(generateGCode(this.ops, this.doc), "toolpaths");
+  }
+
+  private download(code: string, name: string): void {
+    const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "toolpath.nc"; a.click();
+    a.href = url;
+    a.download = `${safe || "toolpath"}.nc`;
+    a.click();
     URL.revokeObjectURL(url);
   }
 

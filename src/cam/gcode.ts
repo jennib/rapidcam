@@ -65,7 +65,6 @@ function profileCircle(
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
     lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
     lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-    // I/J are relative offsets so no origin adjustment
     lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-cutR)} J0 F${n(op.feedrate)}`);
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -125,75 +124,123 @@ function drillPoint(
   ];
 }
 
+// --- toolpath body (no spindle/tool-change preamble) -------------------------
+
+function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number, zOff: number): string[] {
+  const lines: string[] = [];
+  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+
+  for (const id of op.entityIds) {
+    const ent = entityMap.get(id);
+    if (!ent || ent.isConstruction) continue;
+
+    if (op.type === "drill") {
+      if (ent instanceof CircleEntity)
+        lines.push(...drillPoint(ent.center.x, ent.center.y, op, ox, oy, zOff));
+      continue;
+    }
+
+    if (op.type === "engrave") {
+      if (ent instanceof LineEntity)
+        lines.push(...engravePoints([ent.a, ent.b], false, op, ox, oy, zOff));
+      else if (ent instanceof CircleEntity)
+        lines.push(...engraveCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
+      else if (ent instanceof RectEntity)
+        lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOff));
+      else if (ent instanceof PolylineEntity)
+        lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
+      continue;
+    }
+
+    // profile
+    if (ent instanceof CircleEntity)
+      lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
+    else if (ent instanceof RectEntity)
+      lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOff));
+    else if (ent instanceof PolylineEntity && ent.closed)
+      lines.push(...profilePolygon(ent.points, op, ox, oy, zOff));
+    else if (ent instanceof LineEntity)
+      lines.push("; NOTE: open line skipped — profile requires closed geometry");
+  }
+  return lines;
+}
+
 // --- main entry --------------------------------------------------------------
 
 export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
+  if (ops.length === 0) return "; No toolpaths\nM30\n";
+
   const { ox, oy, zOffset } = resolveOrigin(doc);
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
   const zLabel = doc.origin.z === "top"
-    ? `Top of stock (Z=0 at surface)`
-    : `Bed (Z=0 at bed, top of stock at Z=${n(doc.stockThickness)}mm)`;
+    ? "Top of stock"
+    : `Bed (top at Z=${n(doc.stockThickness)}mm)`;
+
+  // Unique tools summary
+  const toolsSeen = new Map<number, CAMOperation>();
+  for (const op of ops) {
+    if (!toolsSeen.has(op.toolNumber)) toolsSeen.set(op.toolNumber, op);
+  }
+  const toolSummary = [...toolsSeen.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([t, op]) => `T${t} ⌀${op.diameter}mm ${op.spindleSpeed}rpm`)
+    .join(", ");
 
   const lines: string[] = [
     "; RapidCAM generated G-code",
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}  Z: ${zLabel}`,
     `; Stock: ${doc.canvas.width} × ${doc.canvas.height} × ${doc.stockThickness}mm`,
+    `; Tools: ${toolSummary}`,
     "G21 ; metric",
     "G90 ; absolute",
     "G17 ; XY plane",
     "",
   ];
 
-  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+  let currentTool: number | null = null;
+  let currentSpeed: number | null = null;
 
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i];
+  for (const op of ops) {
+    const toolChanged = op.toolNumber !== currentTool;
+    const speedChanged = op.spindleSpeed !== currentSpeed;
+    const isFirst = currentTool === null;
+
+    if (toolChanged || isFirst) {
+      if (!isFirst) {
+        // Retract and stop spindle before tool change
+        lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
+        lines.push("M5 ; spindle stop");
+      }
+
+      if (doc.hasToolChanger) {
+        lines.push(`T${op.toolNumber} M6 ; tool change`);
+      } else if (!isFirst && toolChanged) {
+        lines.push(`; *** Manual tool change to T${op.toolNumber} (⌀${op.diameter}mm) ***`);
+        lines.push("; M0 ; uncomment to pause for manual tool change");
+      }
+
+      lines.push(`M3 S${op.spindleSpeed} ; spindle on`);
+      lines.push("");
+    } else if (speedChanged) {
+      lines.push(`S${op.spindleSpeed} ; spindle speed change`);
+    }
+
+    currentTool = op.toolNumber;
+    currentSpeed = op.spindleSpeed;
+
     const typeLabel =
       op.type === "profile" ? `Profile (${op.side})`
       : op.type === "engrave" ? "Engrave"
       : "Drill";
-    lines.push(
-      `; --- ${typeLabel} "${op.name}"  ⌀${op.diameter}mm  feed:${op.feedrate}  depth:${op.depth}mm ---`,
-    );
-
-    for (const id of op.entityIds) {
-      const ent = entityMap.get(id);
-      if (!ent || ent.isConstruction) continue;
-
-      if (op.type === "drill") {
-        if (ent instanceof CircleEntity)
-          lines.push(...drillPoint(ent.center.x, ent.center.y, op, ox, oy, zOffset));
-        continue;
-      }
-
-      if (op.type === "engrave") {
-        if (ent instanceof LineEntity)
-          lines.push(...engravePoints([ent.a, ent.b], false, op, ox, oy, zOffset));
-        else if (ent instanceof CircleEntity)
-          lines.push(...engraveCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOffset));
-        else if (ent instanceof RectEntity)
-          lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOffset));
-        else if (ent instanceof PolylineEntity)
-          lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOffset));
-        continue;
-      }
-
-      // profile
-      if (ent instanceof CircleEntity)
-        lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOffset));
-      else if (ent instanceof RectEntity)
-        lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOffset));
-      else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...profilePolygon(ent.points, op, ox, oy, zOffset));
-      else if (ent instanceof LineEntity)
-        lines.push("; NOTE: open line skipped — profile requires closed geometry");
-    }
+    lines.push(`; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm  depth:${op.depth}mm ---`);
+    lines.push(...toolpathBody(op, doc, ox, oy, zOffset));
     lines.push("");
   }
 
+  lines.push("M5 ; spindle stop");
   lines.push("M30 ; end program");
   return lines.join("\n");
 }

@@ -383,6 +383,13 @@ button.cbtn.solve {
   width: 100%;
 }
 
+.settings-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 /* ---------- Properties bar ---------- */
 #propertiesbar {
   flex: 0 0 auto;

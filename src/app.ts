@@ -32,6 +32,7 @@ import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
 import { CamBar } from "./ui/camBar";
+import { openNewProjectDialog } from "./ui/newProjectDialog";
 
 const HOVER_TOLERANCE_PX = 8;
 
@@ -131,6 +132,9 @@ export class App {
     this.bindEvents();
     this.handleResize();
     this.fitView();
+
+    // Show setup wizard on startup for a fresh empty project
+    this.openSetupDialog();
   }
 
   // --- history -------------------------------------------------------------
@@ -165,10 +169,27 @@ export class App {
   // --- file operations -----------------------------------------------------
   private fileNew(): void {
     if (this.doc.entities.length && !confirm("Discard current drawing and start new?")) return;
-    this.history = new History<DocSnapshot>();
-    this.doc.clear();
-    this.currentFileName = "Untitled";
-    this.fitView();
+    this.openSetupDialog();
+  }
+
+  private openSetupDialog(): void {
+    openNewProjectDialog(
+      {
+        name: this.currentFileName === "Untitled" ? "Untitled" : "Untitled",
+      },
+      (cfg) => {
+        this.history = new History<DocSnapshot>();
+        this.doc.clear();
+        this.doc.canvas = { width: cfg.width, height: cfg.height };
+        this.doc.stockThickness = cfg.stockThickness;
+        this.doc.displayUnit = cfg.displayUnit;
+        this.doc.origin = { ...cfg.origin };
+        this.doc.hasToolChanger = cfg.hasToolChanger;
+        this.doc.emitChange();
+        this.currentFileName = cfg.name;
+        this.fitView();
+      },
+    );
   }
 
   private async fileOpen(): Promise<void> {

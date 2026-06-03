@@ -68,6 +68,8 @@ export class CADDocument {
   displayUnit: Unit;
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
+  /** Whether the machine has an automatic tool changer (emits T/M6 commands in G-code). */
+  hasToolChanger = false;
   /**
    * Work-coordinate-system origin expressed as named positions.
    * Default = front-left-top (the most common CNC router convention).

@@ -57,7 +57,7 @@ export class FileMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("New", "Ctrl+N", () => { this.close(); this.cb.onNew(); });
+    this.item("New Project", "Ctrl+N", () => { this.close(); this.cb.onNew(); });
     this.sep();
     this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
     this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });
