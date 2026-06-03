@@ -6,7 +6,7 @@ export class PropertiesBar {
 
   constructor(
     private host: HTMLElement,
-    private doc: CADDocument,
+    _doc: CADDocument,
   ) {
     this.build();
   }

@@ -31,6 +31,7 @@ import type { RecentEntry } from "./io/fileio";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
+import { CamBar } from "./ui/camBar";
 
 const HOVER_TOLERANCE_PX = 8;
 
@@ -72,6 +73,7 @@ export class App {
     topbar: HTMLElement;
     settingsbar: HTMLElement;
     propertiesbar: HTMLElement;
+    cambar: HTMLElement;
     constraintbar: HTMLElement;
     statusbar: HTMLElement;
   }) {
@@ -122,6 +124,7 @@ export class App {
     new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory);
+    new CamBar(dom.cambar, this.doc);
 
     this.doc.onChange(this.requestRender);
 

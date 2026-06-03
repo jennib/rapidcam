@@ -4,6 +4,7 @@ import { CADDocument } from "../model/document";
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
+  private stockInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -53,6 +54,12 @@ export class SettingsBar {
     canvasGroup.appendChild(this.field("Height", (this.heightInput = this.dimInput())));
     this.content.appendChild(canvasGroup);
 
+    // Stock material
+    const stockGroup = this.group("Material");
+    this.stockInput = this.dimInput();
+    stockGroup.appendChild(this.field("Stock thickness", this.stockInput));
+    this.content.appendChild(stockGroup);
+
     // Unit selector
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
@@ -67,6 +74,13 @@ export class SettingsBar {
     // events
     this.widthInput.addEventListener("change", () => this.commitSize());
     this.heightInput.addEventListener("change", () => this.commitSize());
+    this.stockInput.addEventListener("change", () => {
+      const v = parseLength(this.stockInput.value, this.doc.displayUnit);
+      if (v !== null && v > 0) {
+        this.doc.stockThickness = v;
+        this.doc.emitChange();
+      }
+    });
     this.unitSelect.addEventListener("change", () => {
       this.doc.displayUnit = this.unitSelect.value as Unit;
       this.doc.emitChange();
@@ -166,6 +180,9 @@ export class SettingsBar {
     }
     if (document.activeElement !== this.heightInput) {
       this.heightInput.value = formatLength(this.doc.canvas.height, u);
+    }
+    if (document.activeElement !== this.stockInput) {
+      this.stockInput.value = formatLength(this.doc.stockThickness, u);
     }
     this.unitSelect.value = u;
   }

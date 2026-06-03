@@ -33,6 +33,8 @@ export class CADDocument {
   canvas: CanvasSize;
   /** Unit the UI presents values in. Geometry is always stored in mm. */
   displayUnit: Unit;
+  /** Thickness of the stock material in mm — used as a reference for through-cuts. */
+  stockThickness = 10;
 
   entities: Entity[] = [];
   constraints: Constraint[] = [];
