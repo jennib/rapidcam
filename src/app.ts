@@ -34,6 +34,8 @@ import { ConstraintBar } from "./ui/constraintBar";
 import { CamBar } from "./ui/camBar";
 import { openNewProjectDialog } from "./ui/newProjectDialog";
 
+import { showWelcomeScreen } from "./ui/welcomeScreen";
+
 const HOVER_TOLERANCE_PX = 8;
 
 const SHORTCUTS: Record<string, string> = {
@@ -133,8 +135,12 @@ export class App {
     this.handleResize();
     this.fitView();
 
-    // Show setup wizard on startup for a fresh empty project
-    this.openSetupDialog();
+    // Show welcome screen on startup for a fresh empty project
+    showWelcomeScreen(
+      () => this.openSetupDialog(),
+      () => { void this.fileOpen(); },
+      (entry) => this.fileOpenRecent(entry)
+    );
   }
 
   // --- history -------------------------------------------------------------

@@ -930,3 +930,216 @@ button.cbtn.solve {
 .status-spacer {
   flex: 1 1 auto;
 }
+
+/* ---------- Welcome Screen ---------- */
+.welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 17, 23, 0.85);
+  backdrop-filter: blur(12px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: welcomeFadeIn 0.25s ease-out;
+}
+
+.welcome-container {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 680px;
+  max-width: 90%;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: relative;
+  overflow: hidden;
+  animation: welcomeScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.welcome-title {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  color: var(--text);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome-title span {
+  color: var(--accent);
+}
+
+.welcome-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: -20px 0 0 0;
+}
+
+.welcome-content {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 32px;
+  min-height: 240px;
+}
+
+.welcome-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.welcome-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.welcome-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.welcome-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.welcome-card:hover {
+  border-color: var(--accent);
+  background: rgba(74, 163, 255, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(74, 163, 255, 0.15);
+}
+
+.welcome-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: rgba(74, 163, 255, 0.1);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.welcome-card-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.welcome-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.welcome-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.welcome-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.welcome-recents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.welcome-recent-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.welcome-recent-item:hover {
+  border-color: var(--accent);
+  background: rgba(74, 163, 255, 0.04);
+}
+
+.welcome-recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.welcome-recent-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.welcome-recent-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.welcome-recent-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  display: flex;
+  justify-content: space-between;
+}
+
+.welcome-recents-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes welcomeScaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
