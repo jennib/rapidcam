@@ -27,7 +27,11 @@ export function openNewProjectDialog(
   let defaults: Partial<NewProjectConfig> = {};
   try {
     const stored = localStorage.getItem("rapidcam:defaultProjectSettings");
-    if (stored) defaults = JSON.parse(stored);
+    if (stored) {
+      defaults = JSON.parse(stored);
+      // Explicitly delete name to ensure we never load or reuse a saved project name as a default
+      delete defaults.name;
+    }
   } catch (e) {
     // Ignore parse errors
   }
@@ -162,6 +166,8 @@ export function openNewProjectDialog(
           origin: cfg.origin,
           hasToolChanger: cfg.hasToolChanger,
         };
+        // Explicitly ensure the project name is never saved with the default settings
+        delete defaultsToSave.name;
         localStorage.setItem("rapidcam:defaultProjectSettings", JSON.stringify(defaultsToSave));
       } catch (e) {
         console.error("Failed to save default project settings:", e);
