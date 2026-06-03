@@ -8,8 +8,9 @@
  */
 
 import { Vec2, dist } from "../core/vec2";
+import { distToSegment } from "../core/geom";
 import { Unit } from "../core/units";
-import { Entity } from "../model/entities";
+import { Entity, RectEntity } from "../model/entities";
 import { Geo, PointRef } from "../model/constraints";
 import {
   Dimension,
@@ -61,7 +62,11 @@ export class DimensionTool implements Tool {
           this.dragDim = existing;
           return;
         }
-        const pick = ctx.doc.pickPoint(e.worldRaw, tol);
+        // Pick a DOF point (line endpoints, circle center, rect bl/tr corners),
+        // falling back to the two virtual rect corners (br, tl) not in dofPoints.
+        const pick =
+          ctx.doc.pickPoint(e.worldRaw, tol) ??
+          pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
         if (pick) {
           this.p1 = pick;
           this.phase = "second";
@@ -72,11 +77,21 @@ export class DimensionTool implements Tool {
           this.circleId = hit.id;
           this.circleKind = "radius";
           this.phase = "placeCircle";
+        } else if (hit && hit.type === "rectangle") {
+          // Clicking an edge directly sets both endpoints and skips the second pick.
+          const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+          if (edge) {
+            this.p1 = edge.p1;
+            this.p2 = edge.p2;
+            this.phase = "placeLinear";
+          }
         }
         break;
       }
       case "second": {
-        const pick = ctx.doc.pickPoint(e.worldRaw, tol);
+        const pick =
+          ctx.doc.pickPoint(e.worldRaw, tol) ??
+          pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
         if (pick && !samePos(pick.pos, this.p1!.pos)) {
           this.p2 = pick;
           this.phase = "placeLinear";
@@ -210,4 +225,50 @@ function geoOf(entities: Entity[]): Geo {
 }
 function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;
+}
+
+/** Pick the br or tl corner of any rectangle — these aren't DOF points so pickPoint misses them. */
+function pickVirtualRectCorner(entities: Entity[], p: Vec2, tol: number): Pick | null {
+  let best: Pick | null = null;
+  let bestD = tol;
+  for (const ent of entities) {
+    if (ent.type !== "rectangle") continue;
+    for (const key of ["br", "tl"] as const) {
+      const pos = ent.getPoint(key);
+      const d = dist(pos, p);
+      if (d < bestD) {
+        bestD = d;
+        best = { ref: { entityId: ent.id, key }, pos };
+      }
+    }
+  }
+  return best;
+}
+
+/** Find the closest edge of a rectangle and return its two corner PointRefs. */
+function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick } | null {
+  const bl = rect.getPoint("bl");
+  const br = rect.getPoint("br");
+  const tr = rect.getPoint("tr");
+  const tl = rect.getPoint("tl");
+  const edges: [string, Vec2, string, Vec2][] = [
+    ["bl", bl, "br", br],
+    ["br", br, "tr", tr],
+    ["tr", tr, "tl", tl],
+    ["tl", tl, "bl", bl],
+  ];
+  let best: [string, Vec2, string, Vec2] | null = null;
+  let bestD = Infinity;
+  for (const edge of edges) {
+    const d = distToSegment(p, edge[1], edge[3]);
+    if (d < bestD) {
+      bestD = d;
+      best = edge;
+    }
+  }
+  if (!best) return null;
+  return {
+    p1: { ref: { entityId: rect.id, key: best[0] }, pos: best[1] },
+    p2: { ref: { entityId: rect.id, key: best[2] }, pos: best[3] },
+  };
 }

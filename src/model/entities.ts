@@ -211,8 +211,8 @@ export class RectEntity extends Entity {
 
   constructor(p0: Vec2, p1: Vec2, id?: EntityId) {
     super(id);
-    this.p0 = clone(p0);
-    this.p1 = clone(p1);
+    this.p0 = { x: Math.min(p0.x, p1.x), y: Math.min(p0.y, p1.y) };
+    this.p1 = { x: Math.max(p0.x, p1.x), y: Math.max(p0.y, p1.y) };
   }
 
   get minPt(): Vec2 {
@@ -267,6 +267,23 @@ export class RectEntity extends Entity {
     const e = new RectEntity(this.p0, this.p1);
     e.isConstruction = this.isConstruction;
     return e;
+  }
+  override dofPoints(): DofPoint[] {
+    return [
+      { key: "bl", pos: clone(this.p0) },
+      { key: "tr", pos: clone(this.p1) },
+    ];
+  }
+  override getPoint(key: string): Vec2 {
+    if (key === "bl") return clone(this.p0);
+    if (key === "tr") return clone(this.p1);
+    if (key === "br") return { x: this.p1.x, y: this.p0.y };
+    if (key === "tl") return { x: this.p0.x, y: this.p1.y };
+    return super.getPoint(key);
+  }
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "bl") this.p0 = clone(v);
+    else if (key === "tr") this.p1 = clone(v);
   }
 }
 
