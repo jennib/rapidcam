@@ -35,6 +35,12 @@ export class CADDocument {
   displayUnit: Unit;
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
+  /**
+   * Work-coordinate-system origin in canvas mm.
+   * All G-code X/Y are output relative to this point.
+   * Default (0, 0) = front-left corner of the stock (Y-up world).
+   */
+  origin: Vec2 = { x: 0, y: 0 };
 
   entities: Entity[] = [];
   constraints: Constraint[] = [];

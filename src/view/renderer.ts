@@ -48,6 +48,7 @@ export class Renderer {
 
     this.drawGrid(doc, view);
     this.drawWorkArea(doc, view);
+    this.drawOrigin(doc, view);
     this.drawEntities(doc, view, overlay);
     this.drawDimensions(doc, view);
     this.drawConstraints(doc, view);
@@ -167,6 +168,64 @@ export class Renderer {
     ctx.strokeStyle = COLORS.workAreaBorder;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+    ctx.restore();
+  }
+
+  // --- origin marker -------------------------------------------------------
+  private drawOrigin(doc: CADDocument, view: Viewport): void {
+    const ctx = this.ctx;
+    const o = view.worldToScreen(doc.origin);
+    const arm = 22; // screen px
+
+    ctx.save();
+    ctx.lineWidth = 1.5;
+
+    // X arm → red
+    ctx.strokeStyle = "#e05555";
+    ctx.fillStyle = "#e05555";
+    ctx.beginPath();
+    ctx.moveTo(o.x, o.y);
+    ctx.lineTo(o.x + arm, o.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(o.x + arm, o.y);
+    ctx.lineTo(o.x + arm - 6, o.y - 3.5);
+    ctx.lineTo(o.x + arm - 6, o.y + 3.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Y arm ↑ green
+    ctx.strokeStyle = "#4fc87a";
+    ctx.fillStyle = "#4fc87a";
+    ctx.beginPath();
+    ctx.moveTo(o.x, o.y);
+    ctx.lineTo(o.x, o.y - arm);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(o.x, o.y - arm);
+    ctx.lineTo(o.x - 3.5, o.y - arm + 6);
+    ctx.lineTo(o.x + 3.5, o.y - arm + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Centre dot
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Axis labels
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.fillStyle = "#e05555";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText("X", o.x + arm + 4, o.y);
+    ctx.fillStyle = "#4fc87a";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("Y", o.x, o.y - arm - 3);
+
     ctx.restore();
   }
 

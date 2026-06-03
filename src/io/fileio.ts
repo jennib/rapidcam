@@ -7,6 +7,7 @@ export interface RcamFile {
   canvas: { width: number; height: number };
   displayUnit: string;
   stockThickness?: number;
+  origin?: { x: number; y: number };
   entities: unknown[];
   constraints: unknown[];
   dimensions: unknown[];
@@ -45,6 +46,7 @@ export function saveFile(doc: CADDocument, name: string): void {
     canvas: { ...doc.canvas },
     displayUnit: doc.displayUnit,
     stockThickness: doc.stockThickness,
+    origin: { ...doc.origin },
     entities: snap.entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
@@ -65,6 +67,7 @@ export function applyFile(doc: CADDocument, file: RcamFile): void {
   doc.canvas = { ...file.canvas };
   doc.displayUnit = file.displayUnit as Unit;
   if (file.stockThickness !== undefined) doc.stockThickness = file.stockThickness;
+  if (file.origin !== undefined) doc.origin = { ...file.origin };
   doc.restore(file as unknown as DocSnapshot);
 }
 

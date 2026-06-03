@@ -5,6 +5,8 @@ export class SettingsBar {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
   private stockInput!: HTMLInputElement;
+  private originXInput!: HTMLInputElement;
+  private originYInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -60,6 +62,12 @@ export class SettingsBar {
     stockGroup.appendChild(this.field("Stock thickness", this.stockInput));
     this.content.appendChild(stockGroup);
 
+    // Origin
+    const originGroup = this.group("Origin (WCS)");
+    originGroup.appendChild(this.field("X", (this.originXInput = this.dimInput())));
+    originGroup.appendChild(this.field("Y", (this.originYInput = this.dimInput())));
+    this.content.appendChild(originGroup);
+
     // Unit selector
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
@@ -80,6 +88,14 @@ export class SettingsBar {
         this.doc.stockThickness = v;
         this.doc.emitChange();
       }
+    });
+    this.originXInput.addEventListener("change", () => {
+      const v = parseLength(this.originXInput.value, this.doc.displayUnit);
+      if (v !== null) { this.doc.origin.x = v; this.doc.emitChange(); }
+    });
+    this.originYInput.addEventListener("change", () => {
+      const v = parseLength(this.originYInput.value, this.doc.displayUnit);
+      if (v !== null) { this.doc.origin.y = v; this.doc.emitChange(); }
     });
     this.unitSelect.addEventListener("change", () => {
       this.doc.displayUnit = this.unitSelect.value as Unit;
@@ -183,6 +199,12 @@ export class SettingsBar {
     }
     if (document.activeElement !== this.stockInput) {
       this.stockInput.value = formatLength(this.doc.stockThickness, u);
+    }
+    if (document.activeElement !== this.originXInput) {
+      this.originXInput.value = formatLength(this.doc.origin.x, u);
+    }
+    if (document.activeElement !== this.originYInput) {
+      this.originYInput.value = formatLength(this.doc.origin.y, u);
     }
     this.unitSelect.value = u;
   }
