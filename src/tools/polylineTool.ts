@@ -7,7 +7,8 @@
  */
 
 import { Vec2, distSq, dist } from "../core/vec2";
-import { PolylineEntity } from "../model/entities";
+import { PolylineEntity, SnapPoint } from "../model/entities";
+import { makeConstraint } from "../model/constraints";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
@@ -17,6 +18,7 @@ export class PolylineTool implements Tool {
   readonly icon = ICONS.polyline;
 
   private points: Vec2[] = [];
+  private snaps: (SnapPoint | null)[] = [];
   private cursor: Vec2 = { x: 0, y: 0 };
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -33,6 +35,7 @@ export class PolylineTool implements Tool {
       }
     }
     this.points.push(e.world);
+    this.snaps.push(e.snap?.key ? e.snap : null);
     ctx.requestRender();
   }
 
@@ -50,6 +53,7 @@ export class PolylineTool implements Tool {
     else if (e.key === "Escape") this.cancel(ctx);
     else if (e.key === "Backspace") {
       this.points.pop();
+      this.snaps.pop();
       ctx.requestRender();
     }
   }
@@ -68,27 +72,46 @@ export class PolylineTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     this.points = [];
+    this.snaps = [];
     ctx.requestRender();
   }
 
   private finish(ctx: ToolContext, closed: boolean): void {
-    const pts = dedupeConsecutive(this.points);
+    const { pts, snaps } = dedupeConsecutive(this.points, this.snaps);
     if (pts.length >= 2) {
       ctx.pushHistory();
       const ent = new PolylineEntity(pts, closed);
       ent.isConstruction = ctx.doc.isConstructionMode;
       ctx.doc.addSelected(ent);
+      for (let i = 0; i < snaps.length; i++) {
+        const snap = snaps[i];
+        if (!snap?.key) continue;
+        ctx.doc.addConstraint(
+          makeConstraint("coincident", {
+            points: [
+              { entityId: ent.id, key: `v${i}` },
+              { entityId: snap.entityId, key: snap.key },
+            ],
+          }),
+        );
+      }
     }
     this.points = [];
+    this.snaps = [];
     ctx.requestRender();
   }
 }
 
-function dedupeConsecutive(points: Vec2[]): Vec2[] {
-  const out: Vec2[] = [];
-  for (const p of points) {
-    const last = out[out.length - 1];
-    if (!last || distSq(last, p) > 1e-9) out.push(p);
+function dedupeConsecutive(points: Vec2[], snaps: (SnapPoint | null)[]): { pts: Vec2[]; snaps: (SnapPoint | null)[] } {
+  const pts: Vec2[] = [];
+  const outSnaps: (SnapPoint | null)[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const last = pts[pts.length - 1];
+    if (!last || distSq(last, p) > 1e-9) {
+      pts.push(p);
+      outSnaps.push(snaps[i]);
+    }
   }
-  return out;
+  return { pts, snaps: outSnaps };
 }

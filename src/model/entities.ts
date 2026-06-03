@@ -27,6 +27,8 @@ export interface SnapPoint {
   pos: Vec2;
   kind: SnapKind;
   entityId: EntityId;
+  /** DOF point key on the entity, present when the snap maps to a constrainable point. */
+  key?: string;
 }
 
 /** A draggable/solvable point degree-of-freedom, addressed within an entity by `key`. */
@@ -119,8 +121,8 @@ export class LineEntity extends Entity {
   }
   override snapPoints(): SnapPoint[] {
     return [
-      { pos: clone(this.a), kind: "endpoint", entityId: this.id },
-      { pos: clone(this.b), kind: "endpoint", entityId: this.id },
+      { pos: clone(this.a), kind: "endpoint", entityId: this.id, key: "a" },
+      { pos: clone(this.b), kind: "endpoint", entityId: this.id, key: "b" },
       { pos: mid(this.a, this.b), kind: "midpoint", entityId: this.id },
     ];
   }
@@ -179,7 +181,7 @@ export class CircleEntity extends Entity {
     const c = this.center;
     const r = this.radius;
     return [
-      { pos: clone(c), kind: "center", entityId: this.id },
+      { pos: clone(c), kind: "center", entityId: this.id, key: "center" },
       { pos: { x: c.x + r, y: c.y }, kind: "quadrant", entityId: this.id },
       { pos: { x: c.x - r, y: c.y }, kind: "quadrant", entityId: this.id },
       { pos: { x: c.x, y: c.y + r }, kind: "quadrant", entityId: this.id },
@@ -263,7 +265,13 @@ export class RectEntity extends Entity {
   }
   override snapPoints(): SnapPoint[] {
     const c = this.corners();
-    const pts: SnapPoint[] = c.map((pos) => ({ pos, kind: "endpoint" as const, entityId: this.id }));
+    const cornerKeys = ["bl", "br", "tr", "tl"] as const;
+    const pts: SnapPoint[] = c.map((pos, i) => ({
+      pos,
+      kind: "endpoint" as const,
+      entityId: this.id,
+      key: cornerKeys[i],
+    }));
     for (let i = 0; i < 4; i++) {
       pts.push({ pos: mid(c[i], c[(i + 1) % 4]), kind: "midpoint", entityId: this.id });
     }
@@ -373,10 +381,11 @@ export class PolylineEntity extends Entity {
     return d;
   }
   override snapPoints(): SnapPoint[] {
-    const pts: SnapPoint[] = this.points.map((pos) => ({
+    const pts: SnapPoint[] = this.points.map((pos, i) => ({
       pos: clone(pos),
       kind: "vertex" as const,
       entityId: this.id,
+      key: `v${i}`,
     }));
     const segs = this.segmentCount();
     for (let i = 0; i < segs; i++) {

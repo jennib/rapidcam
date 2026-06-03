@@ -51,6 +51,8 @@ export interface DocSnapshot {
   dimensions: Dimension[];
   isConstructionMode: boolean;
   selectedPoints: PointRef[];
+  selectedConstraintId: string | null;
+  selectedDimensionId: string | null;
 }
 
 export interface CanvasSize {
@@ -83,6 +85,10 @@ export class CADDocument {
 
   /** Individually selected point DOFs (in addition to whole-entity selection). */
   selectedPoints: PointRef[] = [];
+  /** Selected constraint ID, or null. */
+  selectedConstraintId: string | null = null;
+  /** Selected dimension ID, or null. */
+  selectedDimensionId: string | null = null;
 
   private listeners = new Set<ChangeListener>();
 
@@ -137,6 +143,8 @@ export class CADDocument {
     this.constraints = [];
     this.dimensions = [];
     this.selectedPoints = [];
+    this.selectedConstraintId = null;
+    this.selectedDimensionId = null;
     this.emitChange();
   }
 
@@ -151,6 +159,10 @@ export class CADDocument {
         d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
     );
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
+    if (this.selectedConstraintId && !this.constraints.find((c) => c.id === this.selectedConstraintId))
+      this.selectedConstraintId = null;
+    if (this.selectedDimensionId && !this.dimensions.find((d) => d.id === this.selectedDimensionId))
+      this.selectedDimensionId = null;
   }
 
   // --- constraints ---------------------------------------------------------
@@ -162,7 +174,10 @@ export class CADDocument {
   removeConstraint(id: string): void {
     const before = this.constraints.length;
     this.constraints = this.constraints.filter((c) => c.id !== id);
-    if (this.constraints.length !== before) this.emitChange();
+    if (this.constraints.length !== before) {
+      if (this.selectedConstraintId === id) this.selectedConstraintId = null;
+      this.emitChange();
+    }
   }
 
   // --- dimensions ----------------------------------------------------------
@@ -174,7 +189,10 @@ export class CADDocument {
   removeDimension(id: string): void {
     const before = this.dimensions.length;
     this.dimensions = this.dimensions.filter((d) => d.id !== id);
-    if (this.dimensions.length !== before) this.emitChange();
+    if (this.dimensions.length !== before) {
+      if (this.selectedDimensionId === id) this.selectedDimensionId = null;
+      this.emitChange();
+    }
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -196,8 +214,10 @@ export class CADDocument {
     return this.entities.filter((e) => e.selected);
   }
   clearSelection(): void {
-    let changed = this.selectedPoints.length > 0;
+    let changed = this.selectedPoints.length > 0 || this.selectedConstraintId !== null || this.selectedDimensionId !== null;
     this.selectedPoints = [];
+    this.selectedConstraintId = null;
+    this.selectedDimensionId = null;
     for (const e of this.entities) {
       if (e.selected) {
         e.selected = false;
@@ -218,6 +238,18 @@ export class CADDocument {
   }
   selectPoint(ref: PointRef): void {
     this.selectedPoints = [ref];
+  }
+
+  selectConstraint(id: string | null): void {
+    this.clearSelection();
+    this.selectedConstraintId = id;
+    this.emitChange();
+  }
+
+  selectDimension(id: string | null): void {
+    this.clearSelection();
+    this.selectedDimensionId = id;
+    this.emitChange();
   }
 
   /** Nearest pickable point DOF within `tol` mm of `p`, or null. */
@@ -296,6 +328,8 @@ export class CADDocument {
       })),
       isConstructionMode: this.isConstructionMode,
       selectedPoints: this.selectedPoints.map((p) => ({ ...p })),
+      selectedConstraintId: this.selectedConstraintId,
+      selectedDimensionId: this.selectedDimensionId,
     };
   }
 
@@ -332,6 +366,8 @@ export class CADDocument {
     }));
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
+    this.selectedConstraintId = s.selectedConstraintId ?? null;
+    this.selectedDimensionId = s.selectedDimensionId ?? null;
     this.emitChange();
   }
 }

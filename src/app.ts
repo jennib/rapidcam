@@ -117,6 +117,7 @@ export class App {
       onUndo: () => this.undoRedo("undo"),
       onRedo: () => this.undoRedo("redo"),
       onConstructionToggle: () => this.toggleConstruction(),
+      onDelete: () => this.deleteSelected(),
       canUndo: () => this.history.canUndo,
       canRedo: () => this.history.canRedo,
       file: {
@@ -540,6 +541,22 @@ export class App {
     this.requestRender();
   };
 
+  private deleteSelected(): void {
+    if (this.doc.selectedConstraintId) {
+      this.pushHistory();
+      this.doc.removeConstraint(this.doc.selectedConstraintId);
+      this.runSolve();
+    } else if (this.doc.selectedDimensionId) {
+      this.pushHistory();
+      this.doc.removeDimension(this.doc.selectedDimensionId);
+      this.runSolve();
+    } else if (this.doc.selected.length > 0 || this.doc.selectedPoints.length > 0) {
+      this.pushHistory();
+      this.doc.removeSelected();
+      this.runSolve();
+    }
+  }
+
   // --- keyboard ------------------------------------------------------------
   private onKeyDown = (ev: KeyboardEvent): void => {
     if (isTypingTarget(ev.target)) return;
@@ -592,9 +609,7 @@ export class App {
 
     const isSelect = this.tools.active.id === "select";
     if (ev.key === "Delete" || (ev.key === "Backspace" && isSelect)) {
-      this.pushHistory();
-      this.doc.removeSelected();
-      this.runSolve();
+      this.deleteSelected();
       ev.preventDefault();
       return;
     }

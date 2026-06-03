@@ -111,6 +111,15 @@ button.btn.active {
   background: var(--accent-dim);
   border-color: var(--accent);
 }
+button.btn.danger {
+  background: #3a2222;
+  border-color: #5e3535;
+}
+button.btn.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: #502c2c;
+  color: #fff;
+}
 
 /* ---------- Constraint bar ---------- */
 #constraintbar {

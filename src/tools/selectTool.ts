@@ -12,10 +12,11 @@
 import { Vec2, dist, sub } from "../core/vec2";
 import { Bounds } from "../model/entities";
 import { CADDocument } from "../model/document";
-import { PointRef, pointRefKey } from "../model/constraints";
+import { Constraint, constraintAnchor, PointRef, pointRefKey } from "../model/constraints";
 import { PinMap } from "../solver/solver";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { Viewport } from "../view/viewport";
 
 type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee";
 
@@ -40,7 +41,26 @@ export class SelectTool implements Tool {
     this.downScreen = e.screen;
     this.lastWorld = e.worldRaw;
 
-    // 1) Point handles take priority over entity bodies.
+    // 1) Constraint badges and dimensions take priority for selection.
+    const constraint = pickConstraintAt(ctx.doc, ctx.view, e.screen);
+    if (constraint) {
+      if (!e.shiftKey) {
+        ctx.doc.selectConstraint(constraint.id);
+      }
+      this.mode = "idle";
+      return;
+    }
+
+    const dim = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(PICK_TOLERANCE_PX));
+    if (dim) {
+      if (!e.shiftKey) {
+        ctx.doc.selectDimension(dim.id);
+      }
+      this.mode = "idle";
+      return;
+    }
+
+    // 2) Point handles take priority over entity bodies.
     const pick = ctx.doc.pickPoint(e.worldRaw, ctx.view.toWorldLen(POINT_PICK_PX));
     if (pick) {
       if (e.shiftKey) {
@@ -165,4 +185,30 @@ function boundsContainsBounds(outer: Bounds, inner: Bounds): boolean {
     inner.min.y >= outer.min.y &&
     inner.max.y <= outer.max.y
   );
+}
+
+function pickConstraintAt(doc: CADDocument, view: Viewport, screen: Vec2): Constraint | null {
+  const byId = new Map(doc.entities.map((e) => [e.id, e]));
+  const geo = (id: string) => byId.get(id);
+  const stack = new Map<string, number>();
+
+  for (const c of doc.constraints) {
+    const anchor = constraintAnchor(c, geo);
+    if (!anchor) continue;
+    const s = view.worldToScreen(anchor);
+    const cellKey = `${Math.round(s.x / 16)},${Math.round(s.y / 16)}`;
+    const n = stack.get(cellKey) ?? 0;
+    stack.set(cellKey, n + 1);
+
+    const bx = s.x + 10 + n * 16;
+    const by = s.y - 10;
+    const r = 7;
+
+    const dx = screen.x - bx;
+    const dy = screen.y - by;
+    if (Math.hypot(dx, dy) <= r + 2) {
+      return c;
+    }
+  }
+  return null;
 }

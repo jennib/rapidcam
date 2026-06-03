@@ -8,6 +8,7 @@ export interface TopBarCallbacks {
   onUndo: () => void;
   onRedo: () => void;
   onConstructionToggle: () => void;
+  onDelete: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   file: FileMenuCallbacks;
@@ -17,6 +18,7 @@ export class TopBar {
   private constructionBtn!: HTMLButtonElement;
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
+  private deleteBtn!: HTMLButtonElement;
 
   constructor(
     private host: HTMLElement,
@@ -45,6 +47,11 @@ export class TopBar {
     const spacer = el("div", "topbar-spacer");
     this.host.appendChild(spacer);
 
+    this.deleteBtn = button("Delete", () => this.cb.onDelete());
+    this.deleteBtn.classList.add("danger");
+    this.deleteBtn.title = "Delete Selected (Delete / Backspace)";
+    this.host.appendChild(this.deleteBtn);
+
     this.constructionBtn = button("Construction", () => this.cb.onConstructionToggle());
     const fitBtn = button("Fit", () => this.cb.onFit());
     const clearBtn = button("Clear", () => {
@@ -64,6 +71,13 @@ export class TopBar {
     } else {
       this.constructionBtn.classList.remove("active");
     }
+
+    const hasSelection =
+      this.doc.selected.length > 0 ||
+      this.doc.selectedPoints.length > 0 ||
+      this.doc.selectedConstraintId !== null ||
+      this.doc.selectedDimensionId !== null;
+    this.deleteBtn.disabled = !hasSelection;
   }
 }
 

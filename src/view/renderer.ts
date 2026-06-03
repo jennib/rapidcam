@@ -313,9 +313,10 @@ export class Renderer {
       const layout = dimensionLayout(dim, geo, unit);
       if (!layout) continue;
 
-      ctx.strokeStyle = COLORS.dimension;
-      ctx.fillStyle = COLORS.dimension;
-      ctx.lineWidth = 1;
+      const isSelected = dim.id === doc.selectedDimensionId;
+      ctx.strokeStyle = isSelected ? COLORS.entitySelected : COLORS.dimension;
+      ctx.fillStyle = isSelected ? COLORS.entitySelected : COLORS.dimension;
+      ctx.lineWidth = isSelected ? 1.5 : 1;
       ctx.beginPath();
       for (const [a, b] of layout.segments) {
         const sa = view.worldToScreen(a);
@@ -326,7 +327,7 @@ export class Renderer {
       ctx.stroke();
 
       for (const ar of layout.arrows) this.drawArrowHead(ar.tip, ar.dir, view);
-      this.drawDimText(view.worldToScreen(layout.textPos), layout.label, dim.driving);
+      this.drawDimText(view.worldToScreen(layout.textPos), layout.label, dim.driving, isSelected);
     }
   }
 
@@ -353,7 +354,7 @@ export class Renderer {
     ctx.fill();
   }
 
-  private drawDimText(pos: Vec2, label: string, driving: boolean): void {
+  private drawDimText(pos: Vec2, label: string, driving: boolean, isSelected = false): void {
     const ctx = this.ctx;
     ctx.font = "11px ui-monospace, monospace";
     ctx.textAlign = "center";
@@ -363,7 +364,11 @@ export class Renderer {
     const h = 15;
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(pos.x - w / 2 - padX, pos.y - h / 2, w + padX * 2, h);
-    ctx.fillStyle = driving ? COLORS.dimensionText : COLORS.dimensionTextRef;
+    ctx.fillStyle = isSelected
+      ? COLORS.entitySelected
+      : driving
+        ? COLORS.dimensionText
+        : COLORS.dimensionTextRef;
     ctx.fillText(label, pos.x, pos.y + 0.5);
   }
 
@@ -391,14 +396,15 @@ export class Renderer {
       const by = s.y - 10;
       const r = 7;
 
-      ctx.fillStyle = COLORS.constraintBadgeBg;
-      ctx.strokeStyle = COLORS.constraintBadgeBorder;
+      const isSelected = c.id === doc.selectedConstraintId;
+      ctx.fillStyle = isSelected ? COLORS.entitySelected : COLORS.constraintBadgeBg;
+      ctx.strokeStyle = isSelected ? COLORS.selectedPointRing : COLORS.constraintBadgeBorder;
       ctx.lineWidth = 1;
       roundRect(ctx, bx - r, by - r, r * 2, r * 2, 3);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = COLORS.constraintGlyph;
+      ctx.fillStyle = isSelected ? "#ffffff" : COLORS.constraintGlyph;
       ctx.fillText(CONSTRAINT_GLYPH[c.type], bx, by + 0.5);
     }
   }
