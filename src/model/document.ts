@@ -49,6 +49,15 @@ export class CADDocument {
     this.emitChange();
     return e;
   }
+  /** Add an entity and make it the sole selection (used right after drawing it). */
+  addSelected(e: Entity): Entity {
+    for (const ent of this.entities) ent.selected = false;
+    this.selectedPoints = [];
+    this.entities.push(e);
+    e.selected = true;
+    this.emitChange();
+    return e;
+  }
   remove(e: Entity | EntityId): void {
     const id = typeof e === "string" ? e : e.id;
     const i = this.entities.findIndex((x) => x.id === id);

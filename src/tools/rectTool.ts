@@ -21,7 +21,7 @@ export class RectTool implements Tool {
       const w = Math.abs(e.world.x - this.corner.x);
       const h = Math.abs(e.world.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
-        ctx.doc.add(new RectEntity(this.corner, e.world));
+        ctx.doc.addSelected(new RectEntity(this.corner, e.world));
       }
       this.corner = null;
     }
