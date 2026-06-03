@@ -100,8 +100,12 @@ button.btn {
   cursor: pointer;
   font-size: 12px;
 }
-button.btn:hover {
+button.btn:hover:not(:disabled) {
   border-color: var(--accent-dim);
+}
+button.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 button.btn.active {
   background: var(--accent-dim);
