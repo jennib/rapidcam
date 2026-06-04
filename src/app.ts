@@ -141,6 +141,7 @@ export class App {
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
+        onExportSvg: () => this.project.svgExport(),
       },
     });
     new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory);

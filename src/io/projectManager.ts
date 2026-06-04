@@ -1,6 +1,7 @@
 import { CADDocument, DocSnapshot } from "../model/document";
 import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
+import { exportSvg } from "./svgExport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 
@@ -200,6 +201,17 @@ export class ProjectManager {
     localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
       name: this.currentFileName, savedAt: Date.now(), data,
     }));
+  }
+
+  svgExport(): void {
+    const svg = exportSvg(this.doc);
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${this.currentFileName}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   restoreDraft(): void {
