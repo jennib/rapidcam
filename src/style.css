@@ -528,6 +528,16 @@ button.cbtn.solve {
   opacity: 0.5;
 }
 
+.props-content .btn {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.props-content .btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
 .props-section > .btn {
   width: 100%;
 }
