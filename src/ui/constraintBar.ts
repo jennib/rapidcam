@@ -10,6 +10,8 @@ import {
   ConstraintType,
   CONSTRAINT_GLYPH,
   makeConstraint,
+  constraintResiduals,
+  Geo,
 } from "../model/constraints";
 import { Entity } from "../model/entities";
 
@@ -52,6 +54,7 @@ export class ConstraintBar {
     private doc: CADDocument,
     private onSolve: () => void,
     private pushHistory: () => void,
+    private getDof: () => number,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -100,6 +103,16 @@ export class ConstraintBar {
     const res = this.buildFor(spec.type);
     if (!res.ok) {
       this.message(res.error, "error");
+      return;
+    }
+    // Pre-check: count how many equations the new constraints would add, and
+    // reject if it would take the sketch below 0 free DOFs.
+    const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
+    const geo: Geo = (id) => byId.get(id);
+    const newEqs = res.constraints.reduce((n, c) => n + constraintResiduals(c, geo).length, 0);
+    const dof = this.getDof();
+    if (newEqs > 0 && dof - newEqs < 0) {
+      this.message(`Would over-constrain (${dof} DOF free, needs ${newEqs})`, "error");
       return;
     }
     this.pushHistory();

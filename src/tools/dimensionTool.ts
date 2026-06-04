@@ -253,12 +253,25 @@ export class DimensionTool implements Tool {
     const geo = geoOf(ctx.doc.entities);
     const dim = this.angleDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
-    ctx.doc.addDimension(dim);
-    ctx.solve();
     this.phase = "first";
     this.line1Id = null;
     this.line2Id = null;
-    ctx.openDimEditor(dim);
+    this.finaliseDim(dim, ctx);
+  }
+
+  /**
+   * Add a dimension to the doc. If adding it as driving would over-constrain
+   * (DOF is already 0), demote it to a reference dimension instead and skip
+   * the editor. Otherwise add driving and open the editor.
+   */
+  private finaliseDim(dim: Dimension, ctx: ToolContext): void {
+    if (ctx.currentDof() < 1) {
+      // Sketch is fully or already over-constrained — add as reference only.
+      dim.driving = false;
+    }
+    ctx.doc.addDimension(dim);
+    ctx.solve();
+    if (dim.driving) ctx.openDimEditor(dim);
   }
 
   private linearDim(offset: number): Dimension {
@@ -281,23 +294,19 @@ export class DimensionTool implements Tool {
     const geo = geoOf(ctx.doc.entities);
     const dim = this.linearDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
-    ctx.doc.addDimension(dim);
-    ctx.solve();
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
-    ctx.openDimEditor(dim);
+    this.finaliseDim(dim, ctx);
   }
   private commitCircle(ctx: ToolContext): void {
     ctx.pushHistory();
     const geo = geoOf(ctx.doc.entities);
     const dim = this.circleDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
-    ctx.doc.addDimension(dim);
-    ctx.solve();
     this.phase = "first";
     this.circleId = null;
-    ctx.openDimEditor(dim);
+    this.finaliseDim(dim, ctx);
   }
 }
 

@@ -226,7 +226,7 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   if (dim.type === "arclength") {
     const a = readArc(geo, dim.entities[0]);
     if (!a) return dim.offset;
-    return Math.max(4, dist(cursor, a.center) - a.radius); // radial outward offset
+    return Math.max(5, Math.min(40, dist(cursor, a.center) - a.radius));
   }
   if (dim.type === "angle") {
     const l1 = readLine(geo, dim.entities[0]);
@@ -252,26 +252,25 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   if (dim.type === "radius" || dim.type === "diameter") {
     const g = circularGeom(geo, dim.entities[0]);
     if (!g) return null;
+    const isArcEnt = readArc(geo, dim.entities[0]) !== null;
     const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
+    const edge = add(g.center, scale(u, g.radius));
+    const end  = add(g.center, scale(u, g.radius + LEADER_MM));
     if (dim.type === "radius") {
-      const edge = add(g.center, scale(u, g.radius));
-      const end = add(g.center, scale(u, g.radius + LEADER_MM));
       return {
-        segments: [[g.center, end]],
+        // Arcs: short leader from arc surface only (circle: full center-to-label).
+        segments: isArcEnt ? [[edge, end]] : [[g.center, end]],
         arrows: [{ tip: edge, dir: u }],
         textPos: end,
         label: "R" + formatLengthWithUnit(displayVal, unit),
       };
     }
-    const e1 = add(g.center, scale(u, g.radius));
     const e2 = sub(g.center, scale(u, g.radius));
-    const end = add(g.center, scale(u, g.radius + LEADER_MM));
     return {
-      segments: [[e2, end]],
-      arrows: [
-        { tip: e1, dir: u },
-        { tip: e2, dir: scale(u, -1) },
-      ],
+      segments: isArcEnt ? [[edge, end]] : [[e2, end]],
+      arrows: isArcEnt
+        ? [{ tip: edge, dir: u }]
+        : [{ tip: edge, dir: u }, { tip: e2, dir: scale(u, -1) }],
       textPos: end,
       label: "⌀" + formatLengthWithUnit(displayVal, unit),
     };
@@ -280,7 +279,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   if (dim.type === "arclength") {
     const a = readArc(geo, dim.entities[0]);
     if (!a) return null;
-    const R = a.radius + Math.max(6, dim.offset); // dim arc sits outside the actual arc
+    const R = a.radius + Math.max(6, Math.min(40, dim.offset));
     const span = ((a.endAngle - a.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
     const midAngle = a.startAngle + span / 2;
     const d1: Vec2 = { x: Math.cos(a.startAngle), y: Math.sin(a.startAngle) };

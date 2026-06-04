@@ -101,6 +101,7 @@ export class App {
         openValueEditor: (worldPos, placeholder, onCommit, onCancel) =>
           setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0),
         closeValueEditor: () => this.closeValueEditor(),
+        currentDof: () => this.currentDof(),
       },
       [
         new SelectTool(),
@@ -138,7 +139,7 @@ export class App {
     new SettingsBar(dom.settingsbar, this.doc);
     new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
-    new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory);
+    new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory, () => this.currentDof());
     new CamBar(dom.cambar, this.doc);
 
     this.doc.onChange(this.requestRender);
@@ -358,8 +359,16 @@ export class App {
   };
 
   // --- constraint solving --------------------------------------------------
+  private lastSolveResult: import("./solver/solver").SolveResult | null = null;
+
+  private currentDof(): number {
+    if (!this.lastSolveResult) return Infinity;
+    return this.lastSolveResult.variables - this.lastSolveResult.equations;
+  }
+
   private runSolve(pins?: PinMap): void {
     const res = solve(this.doc, pins);
+    if (!pins) this.lastSolveResult = res; // only store non-drag results for DOF checks
     this.statusBar.setSolveStatus(res.hasConstraints ? res : null);
     this.requestRender();
   }
@@ -516,6 +525,25 @@ export class App {
         ? parseAngle(input.value)
         : parseLength(input.value, this.doc.displayUnit);
       if (v !== null && v > 0) {
+        // If this dimension isn't yet driving, making it driving adds one equation.
+        // Reject if the sketch is already fully constrained.
+        if (!dim.driving && this.currentDof() < 1) {
+          input.style.color = "#e05555";
+          setTimeout(() => { input.style.color = ""; }, 600);
+          return;
+        }
+        // Arc length: reject values that exceed the full circumference.
+        if (dim.type === "arclength") {
+          const geo = ((m) => (id: string) => m.get(id))(
+            new Map(this.doc.entities.map((e) => [e.id, e])),
+          );
+          const ent = geo(dim.entities[0]) as import("./model/entities").ArcEntity | undefined;
+          if (ent?.type === "arc" && v >= 2 * Math.PI * ent.radius) {
+            input.style.color = "#e05555";
+            setTimeout(() => { input.style.color = ""; }, 600);
+            return;
+          }
+        }
         this.pushHistory();
         dim.value = v;
         dim.driving = true;
