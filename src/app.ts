@@ -17,7 +17,7 @@ import { Overlay } from "./view/overlay";
 import { SnapEngine, SnapResult } from "./input/snapping";
 import { solve, PinMap } from "./solver/solver";
 import { ToolManager, ToolPointerEvent } from "./tools/tool";
-import { SelectTool } from "./tools/selectTool";
+import { SelectTool, pickConstraintAt } from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
 import { RectTool } from "./tools/rectTool";
 import { CircleTool } from "./tools/circleTool";
@@ -62,6 +62,7 @@ export class App {
 
   private currentSnap: SnapResult["snap"] = null;
   private currentHover: EntityId | null = null;
+  private currentHoverConstraint: EntityId | null = null;
   private renderScheduled = false;
 
   private project: ProjectManager;
@@ -229,6 +230,7 @@ export class App {
       selectionRect: to.selectionRect,
       snap: this.currentSnap,
       hover: this.currentHover,
+      hoverConstraint: this.currentHoverConstraint,
       transformBox: to.transformBox,
     };
     this.renderer.render(this.doc, this.view, overlay);
@@ -320,6 +322,9 @@ export class App {
       (this.tools.active.id === "select" || this.tools.active.id === "offset")
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)
         : null;
+        
+    this.currentHoverConstraint = pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null;
+
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);
     this.requestRender();

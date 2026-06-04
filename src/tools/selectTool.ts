@@ -482,7 +482,7 @@ function boundsContainsBounds(outer: Bounds, inner: Bounds): boolean {
   );
 }
 
-function pickConstraintAt(doc: CADDocument, view: Viewport, screen: Vec2): Constraint | null {
+export function pickConstraintAt(doc: CADDocument, view: Viewport, screen: Vec2): Constraint | null {
   const byId = new Map(doc.entities.map((e) => [e.id, e]));
   const geo = (id: string) => byId.get(id);
   const stack = new Map<string, number>();

@@ -53,7 +53,7 @@ export class Renderer {
     this.drawOrigin(doc, view);
     this.drawEntities(doc, view, overlay);
     this.drawDimensions(doc, view);
-    this.drawConstraints(doc, view);
+    this.drawConstraints(doc, view, overlay);
     this.drawSelectedPoints(doc, view);
     this.drawSelectionRect(view, overlay);
     this.drawPreviews(view, overlay.previews);
@@ -441,7 +441,7 @@ export class Renderer {
   }
 
   // --- constraints ---------------------------------------------------------
-  private drawConstraints(doc: CADDocument, view: Viewport): void {
+  private drawConstraints(doc: CADDocument, view: Viewport, overlay: Overlay): void {
     if (doc.constraints.length === 0) return;
     const ctx = this.ctx;
     const byId = new Map(doc.entities.map((e) => [e.id, e]));
@@ -474,6 +474,27 @@ export class Renderer {
 
       ctx.fillStyle = isSelected ? "#ffffff" : COLORS.constraintGlyph;
       ctx.fillText(CONSTRAINT_GLYPH[c.type], bx, by + 0.5);
+      
+      // Draw tooltip if hovered
+      if (overlay.hoverConstraint === c.id) {
+        ctx.save();
+        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+        const label = c.type.charAt(0).toUpperCase() + c.type.slice(1);
+        const tw = ctx.measureText(label).width;
+        const th = 14;
+        const px = bx;
+        const py = by - 16;
+        
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        roundRect(ctx, px - tw/2 - 4, py - th/2, tw + 8, th, 4);
+        ctx.fill();
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, px, py + 1);
+        ctx.restore();
+      }
     }
   }
 

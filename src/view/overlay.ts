@@ -33,10 +33,12 @@ export interface Overlay {
   selectionRect: { a: Vec2; b: Vec2 } | null;
   /** Entity currently under the cursor. */
   hover: EntityId | null;
+  /** Constraint currently under the cursor. */
+  hoverConstraint: string | null;
   /** Interactive transform handles (drawn in fixed screen size) */
   transformBox?: TransformBox | null;
 }
 
 export function emptyOverlay(): Overlay {
-  return { previews: [], snap: null, selectionRect: null, hover: null };
+  return { previews: [], snap: null, selectionRect: null, hover: null, hoverConstraint: null };
 }
