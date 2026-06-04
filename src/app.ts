@@ -146,7 +146,12 @@ export class App {
       },
     });
     new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory);
-    new PropertiesBar(dom.propertiesbar, this.doc);
+    new PropertiesBar(
+      dom.propertiesbar,
+      this.doc,
+      this.project.pushHistory,
+      () => this.runSolve()
+    );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(
       dom.constraintbar,
