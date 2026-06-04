@@ -671,8 +671,8 @@ export class Renderer {
       }
     }
 
-    // Draw rotation stem line only for the top-center rotate handle (from SelectTool)
-    const rotHandle = handles.find(h => h.id === "rot");
+    // Draw rotation stem line for whichever handle has stem:true
+    const rotHandle = handles.find(h => h.stem);
     if (rotHandle) {
       const topCenterX = x + w / 2;
       const topCenterY = y;
@@ -685,6 +685,19 @@ export class Renderer {
 
     ctx.setLineDash([]);
     const hw = 4;
+
+    // Hoist centroid — used by scale-arrow handles to determine outward direction
+    const poly = overlay.transformBox.polygon;
+    let arrowCx: number, arrowCy: number;
+    if (poly && poly.length > 0) {
+      arrowCx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+      arrowCy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+    } else {
+      arrowCx = (bounds.min.x + bounds.max.x) / 2;
+      arrowCy = (bounds.min.y + bounds.max.y) / 2;
+    }
+    const arrowCenterS = view.worldToScreen({ x: arrowCx, y: arrowCy });
+
     for (const hnd of handles) {
       const s = view.worldToScreen(hnd.pos);
       if (hnd.type === "scale") {
@@ -698,7 +711,7 @@ export class Renderer {
         ctx.fillStyle = "#3b82f6"; // Blue
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1.5;
-        
+
         ctx.beginPath();
         ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -724,17 +737,7 @@ export class Renderer {
         ctx.fill();
         ctx.stroke(); // White border
 
-        // Find centroid in screen space to determine exact outward direction
-        let cx = 0, cy = 0;
-        if (overlay.transformBox.polygon && overlay.transformBox.polygon.length > 0) {
-          for (const p of overlay.transformBox.polygon) { cx += p.x; cy += p.y; }
-          cx /= overlay.transformBox.polygon.length;
-          cy /= overlay.transformBox.polygon.length;
-        } else {
-          cx = (bounds.min.x + bounds.max.x) / 2;
-          cy = (bounds.min.y + bounds.max.y) / 2;
-        }
-        const centerS = view.worldToScreen({ x: cx, y: cy });
+        const centerS = arrowCenterS;
         
         let dx = s.x - centerS.x;
         let dy = s.y - centerS.y;

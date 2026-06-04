@@ -10,7 +10,7 @@
 import { Vec2, dist } from "../core/vec2";
 import { distToSegment } from "../core/geom";
 import { Unit } from "../core/units";
-import { Entity, RectEntity } from "../model/entities";
+import { Entity, LineEntity, RectEntity } from "../model/entities";
 import { Geo, PointRef } from "../model/constraints";
 import {
   Dimension,
@@ -91,9 +91,11 @@ export class DimensionTool implements Tool {
           }
         } else if (hit) {
           if (hit.type === "line") {
-            // Line body click (not near a DOF point): start angle dimension.
-            this.line1Id = hit.id;
-            this.phase = "secondLine";
+            // Line body click: dimension the line length directly.
+            const line = hit as LineEntity;
+            this.p1 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
+            this.p2 = { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } };
+            this.phase = "placeLinear";
           } else {
             // Polyline body click: snap to nearest vertex.
             const entityPick = pickNearestEntityPoint(hit, e.worldRaw);

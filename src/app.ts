@@ -326,7 +326,9 @@ export class App {
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)
         : null;
         
-    this.currentHoverConstraint = pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null;
+    this.currentHoverConstraint = this.tools.active.id === "select"
+      ? (pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null)
+      : null;
 
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);

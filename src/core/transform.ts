@@ -1,6 +1,6 @@
 import { Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "../model/entities";
 import type { Bounds } from "../model/entities";
-import type { Vec2 } from "./vec2";
+import { Vec2, dist } from "./vec2";
 
 export function selectionBounds(entities: Entity[]): Bounds | null {
   if (entities.length === 0) return null;
@@ -102,6 +102,27 @@ function normalizeAngle(a: number): number {
   while (a <= -Math.PI) a += Math.PI * 2;
   while (a > Math.PI) a -= Math.PI * 2;
   return a;
+}
+
+/** Returns the 4 corners (CCW-sorted) if `sel` is exactly 4 connected lines forming a closed quad; otherwise null. */
+export function getRectanglePolygon(sel: Entity[]): Vec2[] | null {
+  if (sel.length !== 4) return null;
+  const lines = sel.filter(e => e.type === "line") as LineEntity[];
+  if (lines.length !== 4) return null;
+
+  const pts: Vec2[] = [];
+  for (const l of lines) { pts.push(l.a); pts.push(l.b); }
+
+  const unique: Vec2[] = [];
+  for (const p of pts) {
+    if (!unique.find(u => dist(u, p) < 1e-4)) unique.push(p);
+  }
+  if (unique.length !== 4) return null;
+
+  const cx = unique.reduce((s, p) => s + p.x, 0) / 4;
+  const cy = unique.reduce((s, p) => s + p.y, 0) / 4;
+  unique.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  return unique;
 }
 
 export function applyFlipH(entities: Entity[], cx: number): void {

@@ -273,10 +273,9 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       break;
     }
     case "symmetric": {
-      for (const p of c.points) {
-        const pt = readPoint(geo, p);
-        if (pt) anchors.push({ ...pt });
-      }
+      const p = readPoint(geo, c.points[0]);
+      const q = readPoint(geo, c.points[1]);
+      if (p && q) anchors.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
       break;
     }
     case "pointOnLine":
@@ -284,11 +283,6 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     case "midpoint": {
       const p = readPoint(geo, c.points[0]);
       if (p) anchors.push({ ...p });
-      const e = geo(c.entities[0]);
-      if (e) {
-        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
-        else if (e instanceof ArcEntity) anchors.push({ ...e.center });
-      }
       break;
     }
     case "horizontal":
@@ -306,7 +300,8 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     }
     case "parallel":
     case "equal":
-    case "collinear": {
+    case "collinear":
+    case "tangent": {
       for (const eid of c.entities) {
         const e = geo(eid);
         if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
@@ -319,15 +314,6 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       for (const eid of c.entities) {
         const circ = asCircle(geo, eid) ?? asArc(geo, eid);
         if (circ) anchors.push({ ...circ.center });
-      }
-      break;
-    }
-    case "tangent": {
-      for (const eid of c.entities) {
-        const e = geo(eid);
-        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
-        else if (e instanceof CircleEntity) anchors.push({ ...e.center });
-        else if (e instanceof ArcEntity) anchors.push({ ...e.center });
       }
       break;
     }

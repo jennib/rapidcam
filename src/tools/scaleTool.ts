@@ -1,6 +1,5 @@
 import { Vec2, dist } from "../core/vec2";
-import { applyScale, selectionBounds } from "../core/transform";
-import { Entity } from "../model/entities";
+import { applyScale, selectionBounds, getRectanglePolygon } from "../core/transform";
 import { DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { TransformBox, TransformHandle } from "../view/overlay";
@@ -44,7 +43,7 @@ export class ScaleTool implements Tool {
     }
 
     // Special case for a drawn rectangle (4 lines forming a closed quad)
-    const rectPoly = this.getRectanglePolygon(sel);
+    const rectPoly = getRectanglePolygon(sel);
     if (rectPoly) {
       const b = selectionBounds(sel)!;
       this.currentTransformBox = {
@@ -222,44 +221,5 @@ export class ScaleTool implements Tool {
       selectionRect: this.mode === "marquee" ? { a: this.marqueeStart, b: this.marqueeEnd } : null,
       transformBox: this.currentTransformBox,
     };
-  }
-
-  private getRectanglePolygon(sel: Entity[]): Vec2[] | null {
-    if (sel.length !== 4) return null;
-    const lines = sel.filter(e => e.type === "line") as any[];
-    if (lines.length !== 4) return null;
-
-    const pts: Vec2[] = [];
-    for (const l of lines) {
-      pts.push(l.a);
-      pts.push(l.b);
-    }
-
-    const unique: Vec2[] = [];
-    for (const p of pts) {
-      if (!unique.find(u => dist(u, p) < 1e-4)) {
-        unique.push(p);
-      }
-    }
-    
-    if (unique.length !== 4) return null;
-
-    const cx = unique.reduce((sum, p) => sum + p.x, 0) / 4;
-    const cy = unique.reduce((sum, p) => sum + p.y, 0) / 4;
-    
-    unique.sort((a, b) => {
-      const angleA = Math.atan2(a.y - cy, a.x - cx);
-      const angleB = Math.atan2(b.y - cy, b.x - cx);
-      return angleA - angleB;
-    });
-
-    const padded = unique.map(p => {
-      const dir = { x: p.x - cx, y: p.y - cy };
-      const len = Math.hypot(dir.x, dir.y);
-      if (len < 1e-4) return p;
-      return p;
-    });
-
-    return padded;
   }
 }

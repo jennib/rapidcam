@@ -168,6 +168,7 @@ export class SelectTool implements Tool {
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "maybeDragPoint" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
       ctx.pushHistory();
+      this.dragSnapshot = ctx.doc.snapshot();
       this.mode = "dragPoint";
     } else if (this.mode === "maybeDragEntity" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
       ctx.pushHistory();
@@ -455,7 +456,7 @@ export class SelectTool implements Tool {
       { id: "s", type: "scale", pos: { x: cx, y: min.y } },
       { id: "sw", type: "scale", pos: { x: min.x, y: min.y } },
       { id: "w", type: "scale", pos: { x: min.x, y: cy } },
-      { id: "rot", type: "rotate", pos: { x: cx, y: max.y + ctx.view.toWorldLen(24) } } 
+      { id: "rot", type: "rotate", stem: true, pos: { x: cx, y: max.y + ctx.view.toWorldLen(24) } } 
     ];
 
     return { bounds, handles };

@@ -16,6 +16,7 @@ export interface TransformHandle {
   type: "scale" | "rotate" | "scale-arrow";
   pos: Vec2; // world coords
   id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot", "rot-nw", "rot-ne", "rot-sw", "rot-se", "scale-a", etc.
+  stem?: boolean; // draw a stem line from the selection box top-center to this handle
 }
 
 export interface TransformBox {

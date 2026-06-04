@@ -1,6 +1,5 @@
 import { Vec2, dist } from "../core/vec2";
-import { applyRotate, selectionBounds } from "../core/transform";
-import { Entity } from "../model/entities";
+import { applyRotate, selectionBounds, getRectanglePolygon } from "../core/transform";
 import { DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { TransformBox, TransformHandle } from "../view/overlay";
@@ -44,7 +43,7 @@ export class RotateTool implements Tool {
     }
 
     // Special case for a drawn rectangle (4 lines forming a closed quad)
-    const rectPoly = this.getRectanglePolygon(sel);
+    const rectPoly = getRectanglePolygon(sel);
     if (rectPoly) {
       const b = selectionBounds(sel)!;
       this.currentTransformBox = {
@@ -226,55 +225,5 @@ export class RotateTool implements Tool {
       selectionRect: this.mode === "marquee" ? { a: this.marqueeStart, b: this.marqueeEnd } : null,
       transformBox: this.currentTransformBox,
     };
-  }
-
-  private getRectanglePolygon(sel: Entity[]): Vec2[] | null {
-    if (sel.length !== 4) return null;
-    const lines = sel.filter(e => e.type === "line") as any[];
-    if (lines.length !== 4) return null;
-
-    // Extract all endpoints
-    const pts: Vec2[] = [];
-    for (const l of lines) {
-      pts.push(l.a);
-      pts.push(l.b);
-    }
-
-    // Find unique points (with small tolerance)
-    const unique: Vec2[] = [];
-    for (const p of pts) {
-      if (!unique.find(u => dist(u, p) < 1e-4)) {
-        unique.push(p);
-      }
-    }
-    
-    // A closed quadrilateral should have exactly 4 unique points
-    if (unique.length !== 4) return null;
-
-    // Sort points in geometric order around their centroid to form a convex polygon
-    const cx = unique.reduce((sum, p) => sum + p.x, 0) / 4;
-    const cy = unique.reduce((sum, p) => sum + p.y, 0) / 4;
-    
-    unique.sort((a, b) => {
-      const angleA = Math.atan2(a.y - cy, a.x - cx);
-      const angleB = Math.atan2(b.y - cy, b.x - cx);
-      return angleA - angleB;
-    });
-
-    // We can assume it's roughly a rectangle if they were drawn with RectTool and have 4 unique corners.
-    // To make the handles a bit larger than the exact corners (like padding), we scale them out by 10px.
-    // Wait, the user wants to get rid of the square around the rotating rectangle.
-    // If we pad it, it looks like a tight bounding box. If we don't pad it, the handles are ON the corners.
-    // Let's add the standard 10px visual padding outwards from the centroid!
-    const padded = unique.map(p => {
-      const dir = { x: p.x - cx, y: p.y - cy };
-      const len = Math.hypot(dir.x, dir.y);
-      if (len < 1e-4) return p;
-      // Add 10 world-units of padding (should ideally be screen pixels, but we don't have ctx.view.scale here easily without passing it)
-      // Actually we can just return exact corners and let them sit on the vertices!
-      return p;
-    });
-
-    return padded;
   }
 }
