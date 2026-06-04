@@ -40,6 +40,7 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
       return (
         e instanceof CircleEntity ||
         e instanceof RectEntity ||
+        e instanceof LineEntity ||
         (e instanceof PolylineEntity && e.closed)
       );
     case "engrave":

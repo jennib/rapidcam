@@ -9,6 +9,7 @@ export interface NewProjectConfig {
   displayUnit: Unit;
   origin: OriginDef;
   hasToolChanger: boolean;
+  postProcessor: string;
 }
 
 /**
@@ -105,6 +106,9 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
+  const ppSel = sel([["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]]);
+  ppSel.value = initial.postProcessor ?? defaults.postProcessor ?? "linuxcnc";
+  macSec.appendChild(row("Post-processor", ppSel));
   const tcChk = document.createElement("input");
   tcChk.type = "checkbox";
   tcChk.className = "settings-checkbox";
@@ -154,6 +158,7 @@ export function openNewProjectDialog(
         z: ozSel.value as OriginZ,
       },
       hasToolChanger: tcChk.checked,
+      postProcessor: ppSel.value,
     };
 
     if (saveDefaultChk.checked) {
@@ -165,6 +170,7 @@ export function openNewProjectDialog(
           displayUnit: cfg.displayUnit,
           origin: cfg.origin,
           hasToolChanger: cfg.hasToolChanger,
+          postProcessor: cfg.postProcessor,
         };
         // Explicitly ensure the project name is never saved with the default settings
         delete defaultsToSave.name;

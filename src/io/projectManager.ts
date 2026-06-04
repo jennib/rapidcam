@@ -76,6 +76,7 @@ export class ProjectManager {
     openNewProjectDialog(
       {
         name: this.currentFileName === "Untitled" ? "Untitled" : this.currentFileName,
+        postProcessor: this.doc.postProcessor,
       },
       (cfg) => {
         this.isDocumentLoading = true;
@@ -86,6 +87,7 @@ export class ProjectManager {
         this.doc.displayUnit = cfg.displayUnit;
         this.doc.origin = { ...cfg.origin };
         this.doc.hasToolChanger = cfg.hasToolChanger;
+        this.doc.postProcessor = cfg.postProcessor;
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
         localStorage.removeItem("rapidcam:autosave-draft");
