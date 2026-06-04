@@ -249,6 +249,74 @@ export class SelectTool implements Tool {
     }
   }
 
+  onDoubleClick(e: ToolPointerEvent, ctx: ToolContext): void {
+    let hitEntId: string | null = null;
+    let entDist = Infinity;
+    for (const ent of ctx.doc.entities) {
+      const d = ent.distanceTo(e.worldRaw);
+      const px = d * ctx.view.scale;
+      if (px < 10 && px < entDist) {
+        hitEntId = ent.id;
+        entDist = px;
+      }
+    }
+
+    if (!hitEntId) return;
+
+    // Chain select: find all connected entities
+    const toSelect = new Set<string>();
+    const queue = [hitEntId];
+    toSelect.add(hitEntId);
+
+    const EPS = 1e-6;
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const currentEnt = ctx.doc.entities.find(e => e.id === currentId);
+      if (!currentEnt) continue;
+
+      const currentPts = currentEnt.dofPoints().map(p => p.pos);
+
+      for (const other of ctx.doc.entities) {
+        if (toSelect.has(other.id)) continue;
+        const otherPts = other.dofPoints().map(p => p.pos);
+        
+        let connected = false;
+        for (const p1 of currentPts) {
+          for (const p2 of otherPts) {
+            if (dist(p1, p2) < EPS) {
+              connected = true;
+              break;
+            }
+          }
+          if (connected) break;
+        }
+
+        if (connected) {
+          toSelect.add(other.id);
+          queue.push(other.id);
+        }
+      }
+    }
+
+    // Select them all
+    if (!e.shiftKey) ctx.doc.clearSelection();
+    for (const ent of ctx.doc.entities) {
+      if (toSelect.has(ent.id)) {
+        ent.selected = true;
+        // Also select the whole group if part of a group
+        const group = ctx.doc.groupOf(ent.id);
+        if (group) {
+          for (const id of group.entityIds) {
+            const ge = ctx.doc.entities.find(x => x.id === id);
+            if (ge) ge.selected = true;
+          }
+        }
+      }
+    }
+    ctx.doc.emitChange();
+  }
+
   onPointerUp(_e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "marquee") {
       this.applyMarquee(ctx);
