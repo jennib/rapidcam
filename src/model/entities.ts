@@ -10,11 +10,11 @@
  */
 
 import { Vec2, clone, add, mid, dist } from "../core/vec2";
-import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU } from "../core/geom";
+import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flattenBezier, bezierBounds } from "../core/geom";
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc";
+export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier";
 
 export interface Bounds {
   min: Vec2;
@@ -540,6 +540,89 @@ export class ArcEntity extends Entity {
     if (key === "start") return ["sa"];
     if (key === "end") return ["ea"];
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Cubic Bezier curve: start p0, control handle near start p1,
+ * control handle near end p2, end p3.
+ *
+ * Endpoint DOFs (p0, p3) participate fully in the constraint system.
+ * Handle DOFs (p1, p2) are drag-only — they are anchored during solves so
+ * the curve shape is preserved, but they are never constraint targets.
+ */
+export class BezierEntity extends Entity {
+  readonly type = "bezier" as const;
+  p0: Vec2;
+  p1: Vec2;
+  p2: Vec2;
+  p3: Vec2;
+
+  constructor(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, id?: EntityId) {
+    super(id);
+    this.p0 = clone(p0); this.p1 = clone(p1);
+    this.p2 = clone(p2); this.p3 = clone(p3);
+  }
+
+  override bounds(): Bounds {
+    return bezierBounds(this.p0, this.p1, this.p2, this.p3);
+  }
+
+  override distanceTo(p: Vec2): number {
+    const pts = flattenBezier(this.p0, this.p1, this.p2, this.p3, 0.1);
+    let d = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) {
+      d = Math.min(d, distToSegment(p, pts[i], pts[i + 1]));
+    }
+    return d;
+  }
+
+  override snapPoints(): SnapPoint[] {
+    return [
+      { pos: clone(this.p0), kind: "endpoint", entityId: this.id, key: "p0" },
+      { pos: clone(this.p3), kind: "endpoint", entityId: this.id, key: "p3" },
+    ];
+  }
+
+  override translate(d: Vec2): void {
+    this.p0 = add(this.p0, d); this.p1 = add(this.p1, d);
+    this.p2 = add(this.p2, d); this.p3 = add(this.p3, d);
+  }
+
+  override duplicate(): BezierEntity {
+    const e = new BezierEntity(this.p0, this.p1, this.p2, this.p3);
+    e.isConstruction = this.isConstruction;
+    return e;
+  }
+
+  override dofPoints(): DofPoint[] {
+    return [
+      { key: "p0", pos: clone(this.p0) },
+      { key: "p1", pos: clone(this.p1) },
+      { key: "p2", pos: clone(this.p2) },
+      { key: "p3", pos: clone(this.p3) },
+    ];
+  }
+
+  override pickablePoints(): DofPoint[] {
+    return this.dofPoints();
+  }
+
+  override getPoint(key: string): Vec2 {
+    if (key === "p0") return clone(this.p0);
+    if (key === "p1") return clone(this.p1);
+    if (key === "p2") return clone(this.p2);
+    if (key === "p3") return clone(this.p3);
+    return super.getPoint(key);
+  }
+
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "p0") this.p0 = clone(v);
+    else if (key === "p1") this.p1 = clone(v);
+    else if (key === "p2") this.p2 = clone(v);
+    else if (key === "p3") this.p3 = clone(v);
   }
 }
 

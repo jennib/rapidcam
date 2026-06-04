@@ -24,6 +24,7 @@ import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
 import { ArcTool } from "./tools/arcTool";
 import { OffsetTool } from "./tools/offsetTool";
+import { BezierTool } from "./tools/bezierTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -45,6 +46,7 @@ const SHORTCUTS: Record<string, string> = {
   p: "polyline",
   d: "dimension",
   o: "offset",
+  b: "bezier",
 };
 
 export class App {
@@ -115,6 +117,7 @@ export class App {
         new PolylineTool(),
         new DimensionTool(),
         new OffsetTool(),
+        new BezierTool(),
       ],
       "select",
     );

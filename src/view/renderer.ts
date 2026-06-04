@@ -10,6 +10,7 @@ import {
   RectEntity,
   PolylineEntity,
   ArcEntity,
+  BezierEntity,
 } from "../model/entities";
 import { constraintAnchor, CONSTRAINT_GLYPH, Geo } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
@@ -300,17 +301,59 @@ export class Renderer {
         ctx.arc(sc.x, sc.y, sr, -arc.startAngle, -arc.endAngle, true);
         break;
       }
+      case "bezier": {
+        const bz = e as BezierEntity;
+        const s0 = view.worldToScreen(bz.p0);
+        const s1 = view.worldToScreen(bz.p1);
+        const s2 = view.worldToScreen(bz.p2);
+        const s3 = view.worldToScreen(bz.p3);
+        ctx.moveTo(s0.x, s0.y);
+        ctx.bezierCurveTo(s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
+        break;
+      }
     }
     ctx.stroke();
   }
 
   private drawHandles(e: Entity, view: Viewport): void {
+    if (e.type === "bezier") { this.drawBezierHandles(e as BezierEntity, view); return; }
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.entitySelected;
     for (const sp of e.snapPoints()) {
       if (sp.kind === "midpoint" || sp.kind === "quadrant") continue;
       const s = view.worldToScreen(sp.pos);
       ctx.fillRect(s.x - 2.5, s.y - 2.5, 5, 5);
+    }
+  }
+
+  private drawBezierHandles(e: BezierEntity, view: Viewport): void {
+    const ctx = this.ctx;
+    const s0 = view.worldToScreen(e.p0), s1 = view.worldToScreen(e.p1);
+    const s2 = view.worldToScreen(e.p2), s3 = view.worldToScreen(e.p3);
+
+    // Control arms (dashed, half-opacity)
+    ctx.save();
+    ctx.strokeStyle = COLORS.entitySelected;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y);
+    ctx.moveTo(s3.x, s3.y); ctx.lineTo(s2.x, s2.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Endpoint squares (p0, p3)
+    ctx.fillStyle = COLORS.entitySelected;
+    for (const s of [s0, s3]) ctx.fillRect(s.x - 2.5, s.y - 2.5, 5, 5);
+
+    // Control handle circles (p1, p2)
+    ctx.strokeStyle = COLORS.entitySelected;
+    ctx.lineWidth = 1.5;
+    for (const s of [s1, s2]) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 
@@ -482,6 +525,14 @@ export class Renderer {
           const sc = view.worldToScreen(p.center);
           const sr = view.toScreenLen(p.radius);
           ctx.arc(sc.x, sc.y, sr, -p.startAngle, -p.endAngle, true);
+          ctx.stroke();
+          break;
+        }
+        case "bezier": {
+          const s0 = view.worldToScreen(p.p0), s1 = view.worldToScreen(p.p1);
+          const s2 = view.worldToScreen(p.p2), s3 = view.worldToScreen(p.p3);
+          ctx.moveTo(s0.x, s0.y);
+          ctx.bezierCurveTo(s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
           ctx.stroke();
           break;
         }

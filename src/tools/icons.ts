@@ -13,4 +13,5 @@ export const ICONS = {
   dimension: wrap('<path d="M4 7v10M20 7v10"/><path d="M4 12h16"/><path d="M7 9l-3 3 3 3M17 9l3 3-3 3"/>'),
   arc: wrap('<path d="M5 19 A10 10 0 0 1 19 5"/><circle cx="5" cy="19" r="1.4" fill="currentColor"/><circle cx="19" cy="5" r="1.4" fill="currentColor"/>'),
   offset: wrap('<circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="8.5"/>'),
+  bezier: wrap('<path d="M4 18 C6 4 18 20 20 6"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/><line x1="4" y1="18" x2="6" y2="4" opacity="0.5"/><line x1="20" y1="6" x2="18" y2="20" opacity="0.5"/>'),
 } as const;
