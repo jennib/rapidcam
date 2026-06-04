@@ -5,8 +5,8 @@
  */
 
 import { Vec2 } from "./core/vec2";
-import { CADDocument, DocSnapshot } from "./model/document";
-import { History } from "./model/history";
+import { CADDocument } from "./model/document";
+import { ProjectManager } from "./io/projectManager";
 import { Bounds, EntityId } from "./model/entities";
 import { Geo } from "./model/constraints";
 import { Dimension, dimensionLayout } from "./model/dimensions";
@@ -26,13 +26,10 @@ import { ArcTool } from "./tools/arcTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
-import { saveFile, openFile, applyFile, serializeDoc, pushRecent } from "./io/fileio";
-import type { RecentEntry, RcamFile } from "./io/fileio";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
 import { CamBar } from "./ui/camBar";
-import { openNewProjectDialog } from "./ui/newProjectDialog";
 import { DimEditor } from "./ui/dimEditor";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 
@@ -60,13 +57,7 @@ export class App {
   private currentHover: EntityId | null = null;
   private renderScheduled = false;
 
-  private history = new History<DocSnapshot>();
-
-  private currentFileName = "Untitled";
-  private currentFileHandle: FileSystemFileHandle | null = null;
-  private autosaveTimeout: number | null = null;
-  private isDocumentLoading = false;
-  private isDirty = false;
+  private project: ProjectManager;
 
   // pan state
   private panning = false;
@@ -89,13 +80,23 @@ export class App {
     this.doc = new CADDocument({ width: 200, height: 150 }, "mm");
     this.renderer = new Renderer(canvas);
 
+    this.project = new ProjectManager(this.doc, {
+      onDocumentChange: () => this.requestRender(),
+      onSolve: () => this.runSolve(),
+      onFitView: () => this.fitView(),
+      onCloseEditors: () => {
+        this.dimEditor.close();
+        this.closeValueEditor();
+      }
+    });
+
     this.tools = new ToolManager(
       {
         doc: this.doc,
         view: this.view,
         requestRender: this.requestRender,
         solve: (pins) => this.runSolve(pins),
-        pushHistory: this.pushHistory,
+        pushHistory: this.project.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
         openValueEditor: (worldPos, placeholder, onCommit, onCancel) => {
           setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0);
@@ -123,36 +124,33 @@ export class App {
     new ToolPalette(dom.palette, this.tools);
     new TopBar(dom.topbar, this.doc, {
       onFit: () => this.fitView(),
-      onUndo: () => this.undoRedo("undo"),
-      onRedo: () => this.undoRedo("redo"),
+      onUndo: () => this.project.undoRedo("undo"),
+      onRedo: () => this.project.undoRedo("redo"),
       onConstructionToggle: () => this.toggleConstruction(),
       onDelete: () => this.deleteSelected(),
-      canUndo: () => this.history.canUndo,
-      canRedo: () => this.history.canRedo,
+      canUndo: () => this.project.history.canUndo,
+      canRedo: () => this.project.history.canRedo,
       file: {
-        onNew: () => this.fileNew(),
-        onOpen: () => this.fileOpen(),
-        onSave: () => this.fileSave(),
-        onOpenRecent: (e) => this.fileOpenRecent(e),
+        onNew: () => this.project.fileNew(),
+        onOpen: () => this.project.fileOpen(),
+        onSave: () => this.project.fileSave(),
+        onOpenRecent: (e) => this.project.fileOpenRecent(e),
       },
     });
-    new SettingsBar(dom.settingsbar, this.doc, this.pushHistory);
+    new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory);
     new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(
       dom.constraintbar,
       this.doc,
       () => { this.runSolve(); return this.lastSolveResult; },
-      this.pushHistory,
+      this.project.pushHistory,
       () => this.currentDof(),
-      () => this.undoRedo("undo")
+      () => this.project.undoRedo("undo")
     );
     new CamBar(dom.cambar, this.doc);
 
     this.doc.onChange(this.requestRender);
-    this.doc.onChange(() => this.scheduleAutosave());
-    this.doc.onChange(() => this.markDirty());
-    this.updateTitle();
 
     this.bindEvents();
     this.handleResize();
@@ -160,212 +158,27 @@ export class App {
 
     // Show welcome screen on startup for a fresh empty project
     showWelcomeScreen(
-      () => this.openSetupDialog(),
-      () => { void this.fileOpen(); },
-      (entry) => this.fileOpenRecent(entry),
-      () => this.restoreDraft()
+      () => this.project.openSetupDialog(),
+      () => { void this.project.fileOpen(); },
+      (entry) => this.project.fileOpenRecent(entry),
+      () => this.project.restoreDraft()
     );
   }
-
-  // --- title / dirty flag --------------------------------------------------
-  private updateTitle(): void {
-    document.title = this.isDirty
-      ? `${this.currentFileName}* — RapidCAM`
-      : `${this.currentFileName} — RapidCAM`;
-  }
-
-  private markDirty(): void {
-    if (this.isDocumentLoading) return;
-    if (this.isDirty) return;
-    this.isDirty = true;
-    this.updateTitle();
-  }
-
-  private markClean(): void {
-    this.isDirty = false;
-    this.updateTitle();
-  }
-
-  // --- history -------------------------------------------------------------
-  private pushHistory = (): void => {
-    this.history.push(this.doc.snapshot());
-  };
 
   private toggleConstruction(): void {
     const selected = this.doc.selected;
     if (selected.length > 0) {
       const allAreConstruction = selected.every((e) => e.isConstruction);
-      this.pushHistory();
+      this.project.pushHistory();
       for (const e of selected) e.isConstruction = !allAreConstruction;
     } else {
-      this.pushHistory();
+      this.project.pushHistory();
       this.doc.isConstructionMode = !this.doc.isConstructionMode;
     }
     this.doc.emitChange();
   }
 
-  private undoRedo(dir: "undo" | "redo"): void {
-    const snap =
-      dir === "undo"
-        ? this.history.undo(this.doc.snapshot())
-        : this.history.redo(this.doc.snapshot());
-    if (!snap) return;
-    this.closeDimEditor();
-    this.doc.restore(snap);
-    this.runSolve();
-  }
 
-  // --- file operations -----------------------------------------------------
-  private fileNew(): void {
-    if (this.doc.entities.length && !confirm("Discard current drawing and start new?")) return;
-    this.openSetupDialog();
-  }
-
-  private openSetupDialog(): void {
-    openNewProjectDialog(
-      {
-        name: this.currentFileName === "Untitled" ? "Untitled" : "Untitled",
-      },
-      (cfg) => {
-        this.isDocumentLoading = true;
-        this.history = new History<DocSnapshot>();
-        this.doc.clear();
-        this.doc.canvas = { width: cfg.width, height: cfg.height };
-        this.doc.stockThickness = cfg.stockThickness;
-        this.doc.displayUnit = cfg.displayUnit;
-        this.doc.origin = { ...cfg.origin };
-        this.doc.hasToolChanger = cfg.hasToolChanger;
-        this.currentFileName = cfg.name;
-        this.currentFileHandle = null;
-        localStorage.removeItem("rapidcam:autosave-draft");
-        this.doc.emitChange();
-        this.fitView();
-        this.isDocumentLoading = false;
-        this.markClean();
-      },
-    );
-  }
-
-  private async fileOpen(): Promise<void> {
-    const result = await openFile();
-    if (!result) return;
-    this.loadDocument(result.file, result.name, result.handle ?? null);
-  }
-
-  private async fileSave(): Promise<void> {
-    if ('showSaveFilePicker' in window) {
-      if (this.currentFileHandle) {
-        try {
-          await this.writeToHandle(this.currentFileHandle);
-          const data = serializeDoc(this.doc, this.currentFileName);
-          pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-          localStorage.removeItem("rapidcam:autosave-draft");
-          this.markClean();
-          return;
-        } catch (e) {
-          console.error("Save to file handle failed, prompting for a new file:", e);
-        }
-      }
-
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: this.currentFileName.endsWith(".rcam") ? this.currentFileName : `${this.currentFileName}.rcam`,
-          types: [{
-            description: "RapidCAM Project (.rcam)",
-            accept: { "application/json": [".rcam"] }
-          }]
-        });
-        this.currentFileHandle = handle;
-        const fileObj = await handle.getFile();
-        this.currentFileName = fileObj.name.replace(/\.rcam$/i, "");
-        await this.writeToHandle(handle);
-        const data = serializeDoc(this.doc, this.currentFileName);
-        pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-        localStorage.removeItem("rapidcam:autosave-draft");
-        this.markClean();
-        return;
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') return;
-      }
-    }
-
-    const name = prompt("Save as:", this.currentFileName);
-    if (name === null) return;
-    this.currentFileName = name || "Untitled";
-    this.currentFileHandle = null;
-    saveFile(this.doc, this.currentFileName);
-    localStorage.removeItem("rapidcam:autosave-draft");
-    this.markClean();
-  }
-
-  private fileOpenRecent(entry: RecentEntry): void {
-    if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
-    this.loadDocument(entry.data, entry.name);
-  }
-
-  /** Shared load path for open-file, open-recent, and draft-restore. */
-  private loadDocument(file: RcamFile, name: string, handle: FileSystemFileHandle | null = null, clearDraft = true): void {
-    this.isDocumentLoading = true;
-    this.history = new History<DocSnapshot>();
-    this.dimEditor.close();
-    applyFile(this.doc, file);
-    this.currentFileName = name;
-    this.currentFileHandle = handle;
-    if (clearDraft) localStorage.removeItem("rapidcam:autosave-draft");
-    this.runSolve();
-    this.fitView();
-    this.isDocumentLoading = false;
-    this.markClean();
-  }
-
-  private async writeToHandle(handle: FileSystemFileHandle): Promise<void> {
-    const data = serializeDoc(this.doc, this.currentFileName);
-    const writable = await handle.createWritable();
-    await writable.write(JSON.stringify(data, null, 2));
-    await writable.close();
-  }
-
-  private scheduleAutosave(): void {
-    if (this.isDocumentLoading) return;
-    if (this.autosaveTimeout !== null) {
-      clearTimeout(this.autosaveTimeout);
-    }
-    this.autosaveTimeout = window.setTimeout(() => {
-      void this.performAutosave();
-    }, 2000);
-  }
-
-  private async performAutosave(): Promise<void> {
-    if (this.isDocumentLoading) return;
-    const docData = serializeDoc(this.doc, this.currentFileName);
-    
-    const draft = {
-      name: this.currentFileName,
-      savedAt: Date.now(),
-      data: docData
-    };
-    localStorage.setItem("rapidcam:autosave-draft", JSON.stringify(draft));
-
-    if (this.currentFileHandle) {
-      try {
-        await this.writeToHandle(this.currentFileHandle);
-        console.log(`Autosaved successfully to ${this.currentFileName}`);
-      } catch (e) {
-        console.error("Autosave to file handle failed:", e);
-      }
-    }
-  }
-
-  private restoreDraft(): void {
-    const raw = localStorage.getItem("rapidcam:autosave-draft");
-    if (!raw) return;
-    try {
-      const draft = JSON.parse(raw);
-      this.loadDocument(draft.data, draft.name, null, false); // keep draft — autosave will overwrite it
-    } catch (e) {
-      console.error("Failed to restore draft:", e);
-    }
-  }
 
   // --- render loop ---------------------------------------------------------
   private requestRender = (): void => {
@@ -562,13 +375,11 @@ export class App {
       return false;
     }
 
-    this.history.push(docSnap);
+    this.project.pushHistory(docSnap);
     return true;
   }
 
-  private closeDimEditor(): void {
-    this.dimEditor.close();
-  }
+
 
   private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void {
     this.closeValueEditor();
@@ -628,15 +439,15 @@ export class App {
 
   private deleteSelected(): void {
     if (this.doc.selectedConstraintId) {
-      this.pushHistory();
+      this.project.pushHistory();
       this.doc.removeConstraint(this.doc.selectedConstraintId);
       this.runSolve();
     } else if (this.doc.selectedDimensionId) {
-      this.pushHistory();
+      this.project.pushHistory();
       this.doc.removeDimension(this.doc.selectedDimensionId);
       this.runSolve();
     } else if (this.doc.selected.length > 0 || this.doc.selectedPoints.length > 0) {
-      this.pushHistory();
+      this.project.pushHistory();
       this.doc.removeSelected();
       this.runSolve();
     }
@@ -659,27 +470,27 @@ export class App {
     }
 
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
-      this.undoRedo(ev.shiftKey ? "redo" : "undo");
+      this.project.undoRedo(ev.shiftKey ? "redo" : "undo");
       ev.preventDefault();
       return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") {
-      this.undoRedo("redo");
+      this.project.undoRedo("redo");
       ev.preventDefault();
       return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") {
-      this.fileSave();
+      this.project.fileSave();
       ev.preventDefault();
       return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "o") {
-      void this.fileOpen();
+      void this.project.fileOpen();
       ev.preventDefault();
       return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "n") {
-      this.fileNew();
+      this.project.fileNew();
       ev.preventDefault();
       return;
     }
