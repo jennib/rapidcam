@@ -262,54 +262,102 @@ export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
   fixed: "⚓",
 };
 
-/** A world-space anchor near which to draw the constraint's glyph badge. */
-export function constraintAnchor(c: Constraint, geo: Geo): Vec2 | null {
+/** World-space anchors near which to draw the constraint's glyph badges. */
+export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
+  const anchors: Vec2[] = [];
+  
   switch (c.type) {
-    case "coincident":
+    case "coincident": {
+      const pt = c.points[0] ? readPoint(geo, c.points[0]) : null;
+      if (pt) anchors.push({ ...pt });
+      break;
+    }
+    case "symmetric": {
+      for (const p of c.points) {
+        const pt = readPoint(geo, p);
+        if (pt) anchors.push({ ...pt });
+      }
+      break;
+    }
     case "pointOnLine":
-      return c.points[0] ? readPoint(geo, c.points[0]) : null;
+    case "pointOnArc":
+    case "midpoint": {
+      const p = readPoint(geo, c.points[0]);
+      if (p) anchors.push({ ...p });
+      const e = geo(c.entities[0]);
+      if (e) {
+        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
+        else if (e instanceof ArcEntity) anchors.push({ ...e.center });
+      }
+      break;
+    }
     case "horizontal":
     case "vertical": {
       const l = asLine(geo, c.entities[0]);
-      return l ? mid(l.a, l.b) : null;
+      if (l) {
+        anchors.push(mid(l.a, l.b));
+      } else {
+        const p1 = readPoint(geo, c.points[0]);
+        const p2 = readPoint(geo, c.points[1]);
+        if (p1) anchors.push({ ...p1 });
+        if (p2) anchors.push({ ...p2 });
+      }
+      break;
     }
     case "parallel":
-    case "perpendicular":
-    case "equal": {
-      const l = asLine(geo, c.entities[0]);
-      if (l) return mid(l.a, l.b);
-      const circ = asCircle(geo, c.entities[0]);
-      if (circ) return { ...circ.center };
-      const arc = asArc(geo, c.entities[0]);
-      return arc ? { ...arc.center } : null;
+    case "equal":
+    case "collinear": {
+      for (const eid of c.entities) {
+        const e = geo(eid);
+        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
+        else if (e instanceof CircleEntity) anchors.push({ ...e.center });
+        else if (e instanceof ArcEntity) anchors.push({ ...e.center });
+      }
+      break;
     }
     case "concentric": {
-      const circ = asCircle(geo, c.entities[0]);
-      return circ ? { ...circ.center } : null;
+      for (const eid of c.entities) {
+        const circ = asCircle(geo, eid) ?? asArc(geo, eid);
+        if (circ) anchors.push({ ...circ.center });
+      }
+      break;
     }
     case "tangent": {
-      const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
-      if (circ) return { ...circ.center };
-      const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
-      return arc ? { ...arc.center } : null;
+      for (const eid of c.entities) {
+        const e = geo(eid);
+        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
+        else if (e instanceof CircleEntity) anchors.push({ ...e.center });
+        else if (e instanceof ArcEntity) anchors.push({ ...e.center });
+      }
+      break;
     }
-    case "pointOnArc":
-    case "midpoint":
-      return c.points[0] ? readPoint(geo, c.points[0]) : null;
-    case "symmetric": {
-      const p = readPoint(geo, c.points[0]);
-      const q = readPoint(geo, c.points[1]);
-      return p && q ? { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 } : null;
-    }
-    case "collinear": {
-      const l = asLine(geo, c.entities[0]);
-      return l ? mid(l.a, l.b) : null;
+    case "perpendicular": {
+      const l1 = asLine(geo, c.entities[0]);
+      const l2 = asLine(geo, c.entities[1]);
+      if (l1 && l2) {
+        // Find closest endpoint to the other line to approximate the corner
+        const cornerOnL1 = Math.abs(signedLineDistance(l2, l1.a)) < Math.abs(signedLineDistance(l2, l1.b)) ? l1.a : l1.b;
+        const cornerOnL2 = Math.abs(signedLineDistance(l1, l2.a)) < Math.abs(signedLineDistance(l1, l2.b)) ? l2.a : l2.b;
+        
+        // Push slightly away from the exact endpoint towards the midpoint so it's not right on top of a point constraint
+        const m1 = mid(l1.a, l1.b);
+        const m2 = mid(l2.a, l2.b);
+        anchors.push({ x: cornerOnL1.x * 0.8 + m1.x * 0.2, y: cornerOnL1.y * 0.8 + m1.y * 0.2 });
+        anchors.push({ x: cornerOnL2.x * 0.8 + m2.x * 0.2, y: cornerOnL2.y * 0.8 + m2.y * 0.2 });
+      }
+      break;
     }
     case "fixed": {
-      const e = geo(c.entities[0]);
-      if (!e) return null;
-      const b = e.bounds();
-      return { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+      for (const eid of c.entities) {
+        const e = geo(eid);
+        if (e) {
+          const b = e.bounds();
+          anchors.push({ x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 });
+        }
+      }
+      break;
     }
   }
+  
+  return anchors;
 }

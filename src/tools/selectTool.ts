@@ -1,6 +1,6 @@
 import { Vec2, dist, sub } from "../core/vec2";
 import { Bounds, LineEntity } from "../model/entities";
-import { PointRef, pointRefKey, Constraint, constraintAnchor } from "../model/constraints";
+import { PointRef, pointRefKey, Constraint, constraintAnchors } from "../model/constraints";
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { Viewport } from "../view/viewport";
@@ -488,21 +488,22 @@ export function pickConstraintAt(doc: CADDocument, view: Viewport, screen: Vec2)
   const stack = new Map<string, number>();
 
   for (const c of doc.constraints) {
-    const anchor = constraintAnchor(c, geo);
-    if (!anchor) continue;
-    const s = view.worldToScreen(anchor);
-    const cellKey = `${Math.round(s.x / 16)},${Math.round(s.y / 16)}`;
-    const n = stack.get(cellKey) ?? 0;
-    stack.set(cellKey, n + 1);
+    const anchors = constraintAnchors(c, geo);
+    for (const anchor of anchors) {
+      const s = view.worldToScreen(anchor);
+      const cellKey = `${Math.round(s.x / 16)},${Math.round(s.y / 16)}`;
+      const n = stack.get(cellKey) ?? 0;
+      stack.set(cellKey, n + 1);
 
-    const bx = s.x + 10 + n * 16;
-    const by = s.y - 10;
-    const r = 7;
+      const bx = s.x + 10 + n * 16;
+      const by = s.y - 10;
+      const r = 7;
 
-    const dx = screen.x - bx;
-    const dy = screen.y - by;
-    if (Math.hypot(dx, dy) <= r + 2) {
-      return c;
+      const dx = screen.x - bx;
+      const dy = screen.y - by;
+      if (Math.hypot(dx, dy) <= r + 2) {
+        return c;
+      }
     }
   }
   return null;

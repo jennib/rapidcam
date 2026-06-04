@@ -12,7 +12,7 @@ import {
   ArcEntity,
   BezierEntity,
 } from "../model/entities";
-import { constraintAnchor, CONSTRAINT_GLYPH, Geo } from "../model/constraints";
+import { constraintAnchors, CONSTRAINT_GLYPH, Geo } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
 import { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
@@ -453,47 +453,48 @@ export class Renderer {
     ctx.textBaseline = "middle";
 
     for (const c of doc.constraints) {
-      const anchor = constraintAnchor(c, geo);
-      if (!anchor) continue;
-      const s = view.worldToScreen(anchor);
-      const cellKey = `${Math.round(s.x / 16)},${Math.round(s.y / 16)}`;
-      const n = stack.get(cellKey) ?? 0;
-      stack.set(cellKey, n + 1);
+      const anchors = constraintAnchors(c, geo);
+      for (const anchor of anchors) {
+        const s = view.worldToScreen(anchor);
+        const cellKey = `${Math.round(s.x / 16)},${Math.round(s.y / 16)}`;
+        const n = stack.get(cellKey) ?? 0;
+        stack.set(cellKey, n + 1);
 
-      const bx = s.x + 10 + n * 16;
-      const by = s.y - 10;
-      const r = 7;
+        const bx = s.x + 10 + n * 16;
+        const by = s.y - 10;
+        const r = 7;
 
-      const isSelected = c.id === doc.selectedConstraintId;
-      ctx.fillStyle = isSelected ? COLORS.entitySelected : COLORS.constraintBadgeBg;
-      ctx.strokeStyle = isSelected ? COLORS.selectedPointRing : COLORS.constraintBadgeBorder;
-      ctx.lineWidth = 1;
-      roundRect(ctx, bx - r, by - r, r * 2, r * 2, 3);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = isSelected ? "#ffffff" : COLORS.constraintGlyph;
-      ctx.fillText(CONSTRAINT_GLYPH[c.type], bx, by + 0.5);
-      
-      // Draw tooltip if hovered
-      if (overlay.hoverConstraint === c.id) {
-        ctx.save();
-        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
-        const label = c.type.charAt(0).toUpperCase() + c.type.slice(1);
-        const tw = ctx.measureText(label).width;
-        const th = 14;
-        const px = bx;
-        const py = by - 16;
-        
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-        roundRect(ctx, px - tw/2 - 4, py - th/2, tw + 8, th, 4);
+        const isSelected = c.id === doc.selectedConstraintId;
+        ctx.fillStyle = isSelected ? COLORS.entitySelected : COLORS.constraintBadgeBg;
+        ctx.strokeStyle = isSelected ? COLORS.selectedPointRing : COLORS.constraintBadgeBorder;
+        ctx.lineWidth = 1;
+        roundRect(ctx, bx - r, by - r, r * 2, r * 2, 3);
         ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isSelected ? "#ffffff" : COLORS.constraintGlyph;
+        ctx.fillText(CONSTRAINT_GLYPH[c.type], bx, by + 0.5);
         
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, px, py + 1);
-        ctx.restore();
+        // Draw tooltip if hovered
+        if (overlay.hoverConstraint === c.id) {
+          ctx.save();
+          ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+          const label = c.type.charAt(0).toUpperCase() + c.type.slice(1);
+          const tw = ctx.measureText(label).width;
+          const th = 14;
+          const px = bx;
+          const py = by - 16;
+          
+          ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+          roundRect(ctx, px - tw/2 - 4, py - th/2, tw + 8, th, 4);
+          ctx.fill();
+          
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, px, py + 1);
+          ctx.restore();
+        }
       }
     }
   }
