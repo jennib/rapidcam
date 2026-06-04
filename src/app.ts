@@ -141,6 +141,7 @@ export class App {
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
+        onImportSvg: () => this.project.svgImport(),
         onExportSvg: () => this.project.svgExport(),
       },
     });

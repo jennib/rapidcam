@@ -2,6 +2,7 @@ import { CADDocument, DocSnapshot } from "../model/document";
 import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
 import { exportSvg } from "./svgExport";
+import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 
@@ -201,6 +202,30 @@ export class ProjectManager {
     localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
       name: this.currentFileName, savedAt: Date.now(), data,
     }));
+  }
+
+  async svgImport(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".svg,image/svg+xml";
+    const file = await new Promise<File | null>((resolve) => {
+      let settled = false;
+      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      input.addEventListener("change", () => settle(input.files?.[0] ?? null));
+      window.addEventListener("focus", () => setTimeout(() => settle(null), 300), { once: true });
+      input.click();
+    });
+    if (!file) return;
+
+    const text = await file.text();
+    const entities = importSvg(text);
+    if (entities.length === 0) {
+      alert("No supported geometry found in the SVG file.");
+      return;
+    }
+    this.pushHistory();
+    for (const e of entities) this.doc.entities.push(e);
+    this.doc.emitChange();
   }
 
   svgExport(): void {

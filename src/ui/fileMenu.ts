@@ -6,6 +6,7 @@ export interface FileMenuCallbacks {
   onOpen: () => void;
   onSave: () => void;
   onOpenRecent: (entry: RecentEntry) => void;
+  onImportSvg: () => void;
   onExportSvg: () => void;
 }
 
@@ -63,6 +64,7 @@ export class FileMenu {
     this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
     this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });
     this.sep();
+    this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
     this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
 
     const recents = getRecents();
