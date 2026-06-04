@@ -1,5 +1,6 @@
 import { CADDocument, GroupDef } from "../model/document";
 import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../core/transform";
+import { nextId } from "../model/ids";
 
 export class PropertiesBar {
   private content!: HTMLElement;
@@ -82,6 +83,8 @@ export class PropertiesBar {
 
     if (matchingGroup) {
       this.buildGroupSection(matchingGroup);
+    } else if (selected.length >= 2) {
+      this.buildCreateGroupSection();
     }
 
     this.buildPositionSection(bounds.min.x, bounds.min.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y);
@@ -103,6 +106,23 @@ export class PropertiesBar {
     btn.addEventListener("click", () => {
       this.pushHistory();
       this.doc.groups = this.doc.groups.filter(g => g.id !== group.id);
+      this.doc.emitChange();
+    });
+    sec.appendChild(btn);
+    this.content.appendChild(sec);
+  }
+
+  private buildCreateGroupSection(): void {
+    const sec = this.createSection(`Selection · ${this.doc.selected.length} entities`);
+    const btn = document.createElement("button");
+    btn.textContent = "Group";
+    btn.addEventListener("click", () => {
+      this.pushHistory();
+      const group = {
+        id: nextId("grp"),
+        entityIds: this.doc.selected.map(e => e.id)
+      };
+      this.doc.groups.push(group);
       this.doc.emitChange();
     });
     sec.appendChild(btn);
