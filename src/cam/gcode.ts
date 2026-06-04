@@ -2,7 +2,7 @@ import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity } from "../model/entities";
 import type { CAMOperation } from "./types";
-import { offsetPolygon } from "./offset";
+import { offsetPolygon, isConcave } from "./offset";
 
 /** Format a number to ≤3 decimal places, stripping trailing zeros. */
 function n(v: number): string {
@@ -165,6 +165,27 @@ function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number
       lines.push("; NOTE: open line skipped — profile requires closed geometry");
   }
   return lines;
+}
+
+// --- pre-flight check --------------------------------------------------------
+
+/**
+ * Returns human-readable warnings about operations that may produce unsafe
+ * toolpaths. Call before generateGCode and surface the results to the user.
+ */
+export function checkOperations(ops: CAMOperation[], doc: CADDocument): string[] {
+  const warnings: string[] = [];
+  const byId = new Map(doc.entities.map((e) => [e.id, e]));
+  for (const op of ops) {
+    if (op.type !== "profile") continue;
+    for (const id of op.entityIds) {
+      const ent = byId.get(id);
+      if (ent instanceof PolylineEntity && ent.closed && isConcave(ent.points)) {
+        warnings.push(`"${op.name}": polyline has concave corners — the miter offset may self-intersect, producing incorrect cut paths`);
+      }
+    }
+  }
+  return warnings;
 }
 
 // --- main entry --------------------------------------------------------------

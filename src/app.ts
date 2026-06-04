@@ -27,7 +27,7 @@ import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
 import { saveFile, openFile, applyFile, serializeDoc, pushRecent } from "./io/fileio";
-import type { RecentEntry } from "./io/fileio";
+import type { RecentEntry, RcamFile } from "./io/fileio";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
@@ -66,6 +66,7 @@ export class App {
   private currentFileHandle: FileSystemFileHandle | null = null;
   private autosaveTimeout: number | null = null;
   private isDocumentLoading = false;
+  private isDirty = false;
 
   // pan state
   private panning = false;
@@ -150,6 +151,8 @@ export class App {
 
     this.doc.onChange(this.requestRender);
     this.doc.onChange(() => this.scheduleAutosave());
+    this.doc.onChange(() => this.markDirty());
+    this.updateTitle();
 
     this.bindEvents();
     this.handleResize();
@@ -162,6 +165,25 @@ export class App {
       (entry) => this.fileOpenRecent(entry),
       () => this.restoreDraft()
     );
+  }
+
+  // --- title / dirty flag --------------------------------------------------
+  private updateTitle(): void {
+    document.title = this.isDirty
+      ? `${this.currentFileName}* — RapidCAM`
+      : `${this.currentFileName} — RapidCAM`;
+  }
+
+  private markDirty(): void {
+    if (this.isDocumentLoading) return;
+    if (this.isDirty) return;
+    this.isDirty = true;
+    this.updateTitle();
+  }
+
+  private markClean(): void {
+    this.isDirty = false;
+    this.updateTitle();
   }
 
   // --- history -------------------------------------------------------------
@@ -219,6 +241,7 @@ export class App {
         this.doc.emitChange();
         this.fitView();
         this.isDocumentLoading = false;
+        this.markClean();
       },
     );
   }
@@ -226,16 +249,7 @@ export class App {
   private async fileOpen(): Promise<void> {
     const result = await openFile();
     if (!result) return;
-    this.isDocumentLoading = true;
-    this.history = new History<DocSnapshot>();
-    this.closeDimEditor();
-    applyFile(this.doc, result.file);
-    this.currentFileName = result.name;
-    this.currentFileHandle = result.handle ?? null;
-    localStorage.removeItem("rapidcam:autosave-draft");
-    this.runSolve();
-    this.fitView();
-    this.isDocumentLoading = false;
+    this.loadDocument(result.file, result.name, result.handle ?? null);
   }
 
   private async fileSave(): Promise<void> {
@@ -246,7 +260,7 @@ export class App {
           const data = serializeDoc(this.doc, this.currentFileName);
           pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
           localStorage.removeItem("rapidcam:autosave-draft");
-          console.log(`Saved successfully to ${this.currentFileName}`);
+          this.markClean();
           return;
         } catch (e) {
           console.error("Save to file handle failed, prompting for a new file:", e);
@@ -268,6 +282,7 @@ export class App {
         const data = serializeDoc(this.doc, this.currentFileName);
         pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
         localStorage.removeItem("rapidcam:autosave-draft");
+        this.markClean();
         return;
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
@@ -280,20 +295,27 @@ export class App {
     this.currentFileHandle = null;
     saveFile(this.doc, this.currentFileName);
     localStorage.removeItem("rapidcam:autosave-draft");
+    this.markClean();
   }
 
   private fileOpenRecent(entry: RecentEntry): void {
     if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
+    this.loadDocument(entry.data, entry.name);
+  }
+
+  /** Shared load path for open-file, open-recent, and draft-restore. */
+  private loadDocument(file: RcamFile, name: string, handle: FileSystemFileHandle | null = null, clearDraft = true): void {
     this.isDocumentLoading = true;
     this.history = new History<DocSnapshot>();
-    this.closeDimEditor();
-    applyFile(this.doc, entry.data);
-    this.currentFileName = entry.name;
-    this.currentFileHandle = null;
-    localStorage.removeItem("rapidcam:autosave-draft");
+    this.dimEditor.close();
+    applyFile(this.doc, file);
+    this.currentFileName = name;
+    this.currentFileHandle = handle;
+    if (clearDraft) localStorage.removeItem("rapidcam:autosave-draft");
     this.runSolve();
     this.fitView();
     this.isDocumentLoading = false;
+    this.markClean();
   }
 
   private async writeToHandle(handle: FileSystemFileHandle): Promise<void> {
@@ -339,16 +361,7 @@ export class App {
     if (!raw) return;
     try {
       const draft = JSON.parse(raw);
-      this.isDocumentLoading = true;
-      this.history = new History<DocSnapshot>();
-      this.closeDimEditor();
-      applyFile(this.doc, draft.data);
-      this.currentFileName = draft.name;
-      this.currentFileHandle = null;
-      this.runSolve();
-      this.fitView();
-      this.isDocumentLoading = false;
-      console.log("Restored auto-save draft successfully");
+      this.loadDocument(draft.data, draft.name, null, false); // keep draft — autosave will overwrite it
     } catch (e) {
       console.error("Failed to restore draft:", e);
     }

@@ -233,7 +233,11 @@ export class Renderer {
 
   // --- entities ------------------------------------------------------------
   private drawEntities(doc: CADDocument, view: Viewport, overlay: Overlay): void {
+    const vb = view.visibleWorldBounds();
     for (const e of doc.entities) {
+      const b = e.bounds();
+      if (b.max.x < vb.min.x || b.min.x > vb.max.x ||
+          b.max.y < vb.min.y || b.min.y > vb.max.y) continue;
       const isHover = overlay.hover === e.id;
       const color = e.selected
         ? COLORS.entitySelected

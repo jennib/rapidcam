@@ -4,7 +4,7 @@
  */
 
 import { CADDocument } from "../src/model/document";
-import { LineEntity, CircleEntity, RectEntity } from "../src/model/entities";
+import { LineEntity, CircleEntity, RectEntity, ArcEntity } from "../src/model/entities";
 import { makeConstraint, constraintResiduals, Geo } from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
@@ -186,6 +186,96 @@ const geoOf = (doc: CADDocument): Geo => {
   check("rect bl.x stayed stationary (anchored)", Math.abs(rect.p0.x - 10) < 1e-2);
   check("rect tr.y stayed stationary (anchored)", Math.abs(rect.p1.y - 40) < 1e-2);
   check("coincident line.a followed rect.br to target", dist(line.a, { x: 60, y: 5 }) < 1e-2);
+}
+
+// ── Arc tests ────────────────────────────────────────────────────────────────
+
+// 13) Coincident: arc start endpoint snaps to line endpoint -------------------
+{
+  // Arc center (0,0), r=10, startAngle=π/4 → startPoint≈(7.07, 7.07).
+  // Coincident with line.a=(10,0): solver should drive sa → 0.
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 10, Math.PI / 4, Math.PI / 2)) as ArcEntity;
+  const line = doc.add(new LineEntity({ x: 10, y: 0 }, { x: 30, y: 0 })) as LineEntity;
+  doc.addConstraint(makeConstraint("coincident", {
+    points: [{ entityId: arc.id, key: "start" }, { entityId: line.id, key: "a" }],
+  }));
+  const r = solve(doc);
+  check("arc coincident: startPoint meets line.a", dist(arc.startPoint, line.a) < 1e-3,
+    `gap=${dist(arc.startPoint, line.a).toExponential(2)}`);
+  check("arc coincident converged", r.converged);
+}
+
+// 14) Equal radius: arc and circle equalize ----------------------------------
+{
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 20, 0, Math.PI / 2)) as ArcEntity;
+  const circ = doc.add(new CircleEntity({ x: 50, y: 50 }, 40)) as CircleEntity;
+  doc.addConstraint(makeConstraint("equal", { entities: [arc.id, circ.id] }));
+  solve(doc);
+  check("arc equal radius: radii match", Math.abs(arc.radius - circ.radius) < 1e-3,
+    `Δr=${(arc.radius - circ.radius).toExponential(2)}`);
+}
+
+// 15) Concentric: arc centre merges with circle centre -----------------------
+{
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const arc = doc.add(new ArcEntity({ x: 20, y: 30 }, 15, 0, Math.PI)) as ArcEntity;
+  const circ = doc.add(new CircleEntity({ x: 60, y: 80 }, 10)) as CircleEntity;
+  doc.addConstraint(makeConstraint("concentric", { entities: [arc.id, circ.id] }));
+  solve(doc);
+  check("arc concentric: centres coincide", dist(arc.center, circ.center) < 1e-3,
+    `gap=${dist(arc.center, circ.center).toExponential(2)}`);
+}
+
+// 16) Tangent: arc tangent to horizontal line --------------------------------
+{
+  // Line along y=0; arc centre (50, 25), r=20. Tangent → dist(centre, line) = r.
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
+  const arc = doc.add(new ArcEntity({ x: 50, y: 25 }, 20, 0, Math.PI)) as ArcEntity;
+  doc.addConstraint(makeConstraint("tangent", { entities: [line.id, arc.id] }));
+  solve(doc);
+  const d = sub(line.b, line.a);
+  const distToLine = Math.abs(cross(d, sub(arc.center, line.a)) / len(d));
+  check("arc tangent to line: dist(centre, line) ≈ radius",
+    Math.abs(distToLine - arc.radius) < 1e-2,
+    `dist=${distToLine.toFixed(4)} r=${arc.radius.toFixed(4)}`);
+}
+
+// 17) Point-on-arc: line endpoint pulled onto arc ----------------------------
+{
+  // Arc centre (0,0) r=20. line.a starts at (0,35) — outside the arc.
+  // pointOnArc should drive dist(line.a, arc.center) → 20.
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 20, 0, Math.PI)) as ArcEntity;
+  const line = doc.add(new LineEntity({ x: 0, y: 35 }, { x: 50, y: 35 })) as LineEntity;
+  doc.addConstraint(makeConstraint("pointOnArc", {
+    points: [{ entityId: line.id, key: "a" }],
+    entities: [arc.id],
+  }));
+  solve(doc);
+  const d = dist(line.a, arc.center);
+  check("pointOnArc: endpoint lies on arc", Math.abs(d - arc.radius) < 1e-2,
+    `dist=${d.toFixed(4)} r=${arc.radius.toFixed(4)}`);
+}
+
+// 18) Fixed arc + drag: centre stays, angle follows cursor -------------------
+{
+  // Fix the arc, then drag its start endpoint. Centre must not move.
+  const doc = new CADDocument({ width: 200, height: 150 });
+  const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 20, 0, Math.PI / 2)) as ArcEntity;
+  doc.addConstraint(makeConstraint("fixed", { entities: [arc.id] }));
+  // Drag start endpoint (originally at (20,0)) toward (14, 14) — ~45° on arc.
+  const pins = new Map([[`${arc.id}:start`, { x: 14, y: 14 }]]);
+  solve(doc, pins);
+  check("fixed arc: centre unmoved", dist(arc.center, { x: 0, y: 0 }) < 1e-2,
+    `centre=${arc.center.x.toFixed(3)},${arc.center.y.toFixed(3)}`);
+  check("fixed arc: radius unmoved", Math.abs(arc.radius - 20) < 1e-2,
+    `r=${arc.radius.toFixed(3)}`);
+  check("fixed arc: start follows drag direction",
+    Math.abs(arc.startAngle - Math.PI / 4) < 0.1,
+    `sa=${arc.startAngle.toFixed(3)}`);
 }
 
 console.log(failures === 0 ? "\nALL SOLVER TESTS PASSED" : `\n${failures} TEST(S) FAILED`);

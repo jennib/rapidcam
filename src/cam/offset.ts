@@ -1,5 +1,24 @@
 import type { Vec2 } from "../core/vec2";
 
+/**
+ * Returns true if the closed polygon has at least one reflex (concave) vertex.
+ * Triangles are always convex. Uses the sign of consecutive cross products.
+ */
+export function isConcave(pts: Vec2[]): boolean {
+  const n = pts.length;
+  if (n < 4) return false;
+  let sign = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n], c = pts[(i + 2) % n];
+    const z = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(z) < 1e-10) continue;
+    const s = z > 0 ? 1 : -1;
+    if (sign === 0) sign = s;
+    else if (s !== sign) return true;
+  }
+  return false;
+}
+
 /** Signed area of a closed polygon (positive = CCW in Y-up world). */
 export function signedArea(pts: Vec2[]): number {
   let a = 0;
