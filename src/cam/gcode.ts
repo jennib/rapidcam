@@ -31,20 +31,23 @@ function profilePolygon(
   ox: number, oy: number, zOff: number,
 ): string[] {
   const toolR = op.diameter / 2;
-  const path = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
-  if (path.length < 2) return [];
+  const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
+  if (paths.length === 0) return [];
 
   const lines: string[] = [];
-  const s = path[0];
   for (const z of depthPasses(op)) {
-    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-    lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-    lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-    for (let i = 1; i < path.length; i++) {
-      const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-      lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+    for (const path of paths) {
+      if (path.length < 2) continue;
+      const s = path[0];
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+      for (let i = 1; i < path.length; i++) {
+        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+      }
+      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
     }
-    lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;
