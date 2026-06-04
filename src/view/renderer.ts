@@ -255,7 +255,7 @@ export class Renderer {
       }
       this.drawEntity(e, view, color, width);
       this.ctx.restore();
-      if (e.selected) this.drawHandles(e, view);
+      if (e.selected && !doc.groupOf(e.id)) this.drawHandles(e, view);
     }
   }
 

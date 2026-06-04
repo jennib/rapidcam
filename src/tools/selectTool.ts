@@ -62,6 +62,7 @@ export class SelectTool implements Tool {
     let hitPoint: PointRef | null = null;
     let hitDist = Infinity;
     for (const ent of ctx.doc.entities) {
+      if (ctx.doc.groupOf(ent.id)) continue; // ignore points for grouped entities
       for (const p of ent.dofPoints()) {
         const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
         if (d < 10 && d < hitDist) {
