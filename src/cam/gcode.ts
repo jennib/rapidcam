@@ -1,28 +1,18 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity } from "../model/entities";
+import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity } from "../model/entities";
 import type { CAMOperation } from "./types";
 import { offsetPolygon } from "./offset";
+import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
+import { LinuxCNC } from "./postprocessors/linuxcnc";
+import { Grbl } from "./postprocessors/grbl";
 
-/** Format a number to ≤3 decimal places, stripping trailing zeros. */
-function n(v: number): string {
-  return parseFloat(v.toFixed(3)).toString();
-}
-
-function depthPasses(op: CAMOperation): number[] {
-  const total = Math.abs(op.depth);
-  const count = Math.max(1, Math.ceil(total / op.stepdown));
-  const passes: number[] = [];
-  for (let i = 1; i <= count; i++) {
-    passes.push(-Math.min(i * op.stepdown, total));
+export function getPostProcessor(name: string): PostProcessor {
+  switch (name) {
+    case "grbl":     return new Grbl();
+    default:         return new LinuxCNC();
   }
-  return passes;
 }
-
-// Coordinate helpers — apply WCS offsets
-function X(v: number, ox: number): string { return n(v - ox); }
-function Y(v: number, oy: number): string { return n(v - oy); }
-function Z(v: number, zOff: number): string { return n(v + zOff); }
 
 // --- profile -----------------------------------------------------------------
 
@@ -129,7 +119,11 @@ function drillPoint(
 
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
-function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number, zOff: number): string[] {
+function toolpathBody(
+  op: CAMOperation, doc: CADDocument,
+  ox: number, oy: number, zOff: number,
+  pp: PostProcessor,
+): string[] {
   const lines: string[] = [];
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
 
@@ -152,6 +146,8 @@ function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number
         lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
         lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
+      else if (ent instanceof BezierEntity)
+        lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, op, ox, oy, zOff));
       continue;
     }
 
@@ -166,6 +162,8 @@ function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number
       lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
     else if (ent instanceof LineEntity)
       lines.push("; NOTE: open line skipped — profile requires closed geometry");
+    else if (ent instanceof BezierEntity)
+      lines.push(`; NOTE: bezier (${ent.id}) skipped in profile — beziers are open paths`);
   }
   return lines;
 }
@@ -176,6 +174,7 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
   if (ops.length === 0) return "; No toolpaths\nM30\n";
 
   const { ox, oy, zOffset } = resolveOrigin(doc);
+  const pp = getPostProcessor(doc.postProcessor ?? "linuxcnc");
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
@@ -183,7 +182,6 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
     ? "Top of stock"
     : `Bed (top at Z=${n(doc.stockThickness)}mm)`;
 
-  // Unique tools summary
   const toolsSeen = new Map<number, CAMOperation>();
   for (const op of ops) {
     if (!toolsSeen.has(op.toolNumber)) toolsSeen.set(op.toolNumber, op);
@@ -195,6 +193,7 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
 
   const lines: string[] = [
     "; RapidCAM generated G-code",
+    `; Post-processor: ${pp.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}  Z: ${zLabel}`,
     `; Stock: ${doc.canvas.width} × ${doc.canvas.height} × ${doc.stockThickness}mm`,
@@ -215,7 +214,6 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
 
     if (toolChanged || isFirst) {
       if (!isFirst) {
-        // Retract and stop spindle before tool change
         lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
         lines.push("M5 ; spindle stop");
       }
@@ -241,7 +239,7 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
       : op.type === "engrave" ? "Engrave"
       : "Drill";
     lines.push(`; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm  depth:${op.depth}mm ---`);
-    lines.push(...toolpathBody(op, doc, ox, oy, zOffset));
+    lines.push(...toolpathBody(op, doc, ox, oy, zOffset, pp));
     lines.push("");
   }
 

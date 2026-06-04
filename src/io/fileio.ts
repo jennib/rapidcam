@@ -9,6 +9,7 @@ export interface RcamFile {
   stockThickness?: number;
   hasToolChanger?: boolean;
   origin?: { x: string; y: string; z: string };
+  postProcessor?: string;
   entities: unknown[];
   constraints: unknown[];
   dimensions: unknown[];
@@ -49,6 +50,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     stockThickness: doc.stockThickness,
     hasToolChanger: doc.hasToolChanger,
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
+    postProcessor: doc.postProcessor,
     entities: snap.entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
@@ -81,6 +83,7 @@ export function applyFile(doc: CADDocument, file: RcamFile): void {
       z: (file.origin.z as import("../model/document").OriginZ) ?? "top",
     };
   }
+  if (file.postProcessor) doc.postProcessor = file.postProcessor;
   doc.restore(file as unknown as DocSnapshot);
 }
 

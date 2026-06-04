@@ -9,6 +9,7 @@ export class SettingsBar {
   private originYSelect!: HTMLSelectElement;
   private originZSelect!: HTMLSelectElement;
   private toolChangerCheck!: HTMLInputElement;
+  private postProcessorSelect!: HTMLSelectElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -90,6 +91,11 @@ export class SettingsBar {
     this.toolChangerCheck.type = "checkbox";
     this.toolChangerCheck.className = "settings-checkbox";
     machineGroup.appendChild(this.field("Tool changer", this.toolChangerCheck));
+    this.postProcessorSelect = this.makeSelect([
+      ["linuxcnc", "LinuxCNC"],
+      ["grbl",     "GRBL / FluidNC"],
+    ]);
+    machineGroup.appendChild(this.field("Post-processor", this.postProcessorSelect));
     this.content.appendChild(machineGroup);
 
     // Units
@@ -127,6 +133,10 @@ export class SettingsBar {
     this.toolChangerCheck.addEventListener("change", () => {
       this.pushHistory();
       this.doc.hasToolChanger = this.toolChangerCheck.checked;
+      this.doc.emitChange();
+    });
+    this.postProcessorSelect.addEventListener("change", () => {
+      this.doc.postProcessor = this.postProcessorSelect.value;
       this.doc.emitChange();
     });
     this.unitSelect.addEventListener("change", () => {
@@ -233,6 +243,7 @@ export class SettingsBar {
     this.originYSelect.value = this.doc.origin.y;
     this.originZSelect.value = this.doc.origin.z;
     this.toolChangerCheck.checked = this.doc.hasToolChanger;
+    this.postProcessorSelect.value = this.doc.postProcessor;
     this.unitSelect.value = u;
   }
 }

@@ -61,6 +61,7 @@ export interface DocSnapshot {
   stockThickness?: number;
   hasToolChanger?: boolean;
   origin?: OriginDef;
+  postProcessor?: string;
 }
 
 export interface CanvasSize {
@@ -85,6 +86,8 @@ export class CADDocument {
    * Default = front-left-top (the most common CNC router convention).
    */
   origin: OriginDef = { x: "left", y: "front", z: "top" };
+  /** Post-processor to use when generating G-code. */
+  postProcessor = "linuxcnc";
 
   entities: Entity[] = [];
   constraints: Constraint[] = [];
@@ -347,6 +350,7 @@ export class CADDocument {
       stockThickness: this.stockThickness,
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
+      postProcessor: this.postProcessor,
     };
   }
 
@@ -397,6 +401,7 @@ export class CADDocument {
     if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
+    if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.emitChange();
   }
 }
