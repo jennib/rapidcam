@@ -9,6 +9,7 @@ import { Geo } from "../model/constraints";
 import { PinMap } from "../solver/solver";
 import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
+import { ICONS } from "./icons";
 
 type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee" | "dragScale" | "dragRotate";
 
@@ -17,7 +18,7 @@ const DRAG_THRESHOLD_PX = 4;
 export class SelectTool implements Tool {
   readonly id = "select";
   readonly label = "Select";
-  readonly icon = `<path d="M7 2l12 11.2-5.8.5 3.3 7.3-2.2.9-3.2-7.4-4.4 4.7z"/>`;
+  readonly icon = ICONS.select;
 
   private mode: Mode = "idle";
   private downScreen: Vec2 = { x: 0, y: 0 };
