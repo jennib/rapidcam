@@ -224,7 +224,10 @@ export class ProjectManager {
       return;
     }
     this.pushHistory();
-    for (const e of entities) this.doc.entities.push(e);
+    for (const e of entities) {
+      e.selected = true;
+      this.doc.entities.push(e);
+    }
     this.doc.emitChange();
   }
 
