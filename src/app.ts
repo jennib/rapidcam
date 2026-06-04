@@ -5,7 +5,6 @@
  */
 
 import { Vec2 } from "./core/vec2";
-import { parseLength, formatLength, parseAngle, formatAngle } from "./core/units";
 import { CADDocument, DocSnapshot } from "./model/document";
 import { History } from "./model/history";
 import { Bounds, EntityId } from "./model/entities";
@@ -34,7 +33,7 @@ import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
 import { CamBar } from "./ui/camBar";
 import { openNewProjectDialog } from "./ui/newProjectDialog";
-
+import { DimEditor } from "./ui/dimEditor";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 
 const HOVER_TOLERANCE_PX = 8;
@@ -73,8 +72,7 @@ export class App {
   private panLast: Vec2 = { x: 0, y: 0 };
   private spaceDown = false;
 
-  // inline dimension value editor
-  private dimEditor: HTMLInputElement | null = null;
+  private dimEditor = new DimEditor();
   // generic floating value editor (e.g. arc length)
   private valueEditor: HTMLInputElement | null = null;
 
@@ -510,90 +508,53 @@ export class App {
 
   // --- inline dimension value editor ---------------------------------------
   private openDimEditor(dim: Dimension): void {
-    this.closeDimEditor();
     const geo: Geo = ((m) => (id: string) => m.get(id))(
       new Map(this.doc.entities.map((e) => [e.id, e])),
     );
     const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
     if (!layout) return;
-    const pos = this.view.worldToScreen(layout.textPos);
 
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "dim-edit";
-    input.value = dim.type === "angle"
-      ? formatAngle(dim.value)
-      : formatLength(dim.value, this.doc.displayUnit);
-    input.style.left = `${pos.x - 36}px`;
-    input.style.top = `${pos.y - 11}px`;
-
-    const commit = () => {
-      if (this.dimEditor !== input) return; // already closed (avoid double-commit on blur)
-      const v = dim.type === "angle"
-        ? parseAngle(input.value)
-        : parseLength(input.value, this.doc.displayUnit);
-      if (v !== null && v > 0) {
-        // If this dimension isn't yet driving, making it driving adds one equation.
-        // Reject if the sketch is already fully constrained.
-        if (!dim.driving && this.currentDof() < 1) {
-          input.style.color = "#e05555";
-          setTimeout(() => { input.style.color = ""; }, 600);
-          return;
-        }
-        // Arc length: reject values that exceed the full circumference.
-        if (dim.type === "arclength") {
-          const geo = ((m) => (id: string) => m.get(id))(
-            new Map(this.doc.entities.map((e) => [e.id, e])),
-          );
-          const ent = geo(dim.entities[0]) as import("./model/entities").ArcEntity | undefined;
-          if (ent?.type === "arc" && v >= 2 * Math.PI * ent.radius) {
-            input.style.color = "#e05555";
-            setTimeout(() => { input.style.color = ""; }, 600);
-            return;
-          }
-        }
-        
-        const docSnap = this.doc.snapshot();
-        const oldVal = dim.value;
-        const oldDriving = dim.driving;
-        
-        dim.value = v;
-        dim.driving = true;
-        this.runSolve();
-        
-        if (this.lastSolveResult && !this.lastSolveResult.converged) {
-          input.style.color = "#e05555";
-          setTimeout(() => { input.style.color = ""; }, 600);
-          
-          dim.value = oldVal;
-          dim.driving = oldDriving;
-          this.runSolve();
-          return;
-        }
-        
-        this.history.push(docSnap);
-      }
-      this.closeDimEditor();
-    };
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") commit();
-      else if (e.key === "Escape") this.closeDimEditor();
-      e.stopPropagation();
+    this.dimEditor.open({
+      dim,
+      container: this.canvas.parentElement!,
+      screenPos: this.view.worldToScreen(layout.textPos),
+      displayUnit: this.doc.displayUnit,
+      onCommit: (v) => this.commitDimValue(dim, v),
     });
-    input.addEventListener("blur", commit);
+  }
 
-    this.canvas.parentElement!.appendChild(input);
-    this.dimEditor = input;
-    input.focus();
-    input.select();
+  private commitDimValue(dim: Dimension, v: number): boolean {
+    // Adding a driving equation to a fully-constrained sketch is rejected.
+    if (!dim.driving && this.currentDof() < 1) return false;
+
+    // Arc-length cannot exceed full circumference.
+    if (dim.type === "arclength") {
+      const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
+      const ent = byId.get(dim.entities[0]) as import("./model/entities").ArcEntity | undefined;
+      if (ent?.type === "arc" && v >= 2 * Math.PI * ent.radius) return false;
+    }
+
+    const docSnap = this.doc.snapshot();
+    const oldVal = dim.value;
+    const oldDriving = dim.driving;
+
+    dim.value = v;
+    dim.driving = true;
+    this.runSolve();
+
+    if (this.lastSolveResult && !this.lastSolveResult.converged) {
+      dim.value = oldVal;
+      dim.driving = oldDriving;
+      this.runSolve();
+      return false;
+    }
+
+    this.history.push(docSnap);
+    return true;
   }
 
   private closeDimEditor(): void {
-    if (this.dimEditor) {
-      const el = this.dimEditor;
-      this.dimEditor = null;
-      el.remove();
-    }
+    this.dimEditor.close();
   }
 
   private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void {
