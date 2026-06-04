@@ -1,24 +1,16 @@
-import type { RecentEntry } from "../io/fileio";
-import { getRecents } from "../io/fileio";
-
-export interface FileMenuCallbacks {
-  onNew: () => void;
-  onOpen: () => void;
-  onSave: () => void;
-  onOpenRecent: (entry: RecentEntry) => void;
-  onImportSvg: () => void;
-  onExportSvg: () => void;
+export interface EditMenuCallbacks {
+  onDelete: () => void;
 }
 
-export class FileMenu {
+export class EditMenu {
   private btn: HTMLButtonElement;
   private dropdown: HTMLElement;
   private isOpen = false;
 
-  constructor(host: HTMLElement, private cb: FileMenuCallbacks) {
+  constructor(host: HTMLElement, private cb: EditMenuCallbacks) {
     this.btn = document.createElement("button");
     this.btn.className = "btn";
-    this.btn.textContent = "File";
+    this.btn.textContent = "Edit";
     this.btn.addEventListener("click", () => this.toggle());
     host.appendChild(this.btn);
 
@@ -58,22 +50,7 @@ export class FileMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("New Project", "Ctrl+N", () => { this.close(); this.cb.onNew(); });
-    this.sep();
-    this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
-    this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });
-    this.sep();
-    this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
-    this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
-
-    const recents = getRecents();
-    if (recents.length) {
-      this.sep();
-      this.sectionLabel("Recent Files");
-      for (const entry of recents) {
-        this.item(entry.name, "", () => { this.close(); this.cb.onOpenRecent(entry); });
-      }
-    }
+    this.item("Delete Selected", "Del", () => { this.close(); this.cb.onDelete(); });
   }
 
   private item(text: string, shortcut: string, onClick: () => void): void {
@@ -89,19 +66,6 @@ export class FileMenu {
       div.appendChild(kbd);
     }
     div.addEventListener("click", onClick);
-    this.dropdown.appendChild(div);
-  }
-
-  private sep(): void {
-    const div = document.createElement("div");
-    div.className = "fmenu-sep";
-    this.dropdown.appendChild(div);
-  }
-
-  private sectionLabel(text: string): void {
-    const div = document.createElement("div");
-    div.className = "fmenu-section-label";
-    div.textContent = text;
     this.dropdown.appendChild(div);
   }
 }

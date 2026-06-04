@@ -1,24 +1,21 @@
-/** Top bar: fit & clear actions. */
-
 import { CADDocument } from "../model/document";
 import { FileMenu, FileMenuCallbacks } from "./fileMenu";
+import { EditMenu, EditMenuCallbacks } from "./editMenu";
+import { ViewMenu, ViewMenuCallbacks } from "./viewMenu";
 
 export interface TopBarCallbacks {
-  onFit: () => void;
   onUndo: () => void;
   onRedo: () => void;
-  onConstructionToggle: () => void;
-  onDelete: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   file: FileMenuCallbacks;
+  edit: EditMenuCallbacks;
+  view: ViewMenuCallbacks;
 }
 
 export class TopBar {
-  private constructionBtn!: HTMLButtonElement;
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
-  private deleteBtn!: HTMLButtonElement;
 
   constructor(
     private host: HTMLElement,
@@ -36,6 +33,8 @@ export class TopBar {
     this.host.appendChild(brand);
 
     new FileMenu(this.host, this.cb.file);
+    new EditMenu(this.host, this.cb.edit);
+    new ViewMenu(this.host, this.cb.view);
 
     this.undoBtn = button("↩", () => this.cb.onUndo());
     this.undoBtn.title = "Undo (Ctrl+Z)";
@@ -46,38 +45,11 @@ export class TopBar {
 
     const spacer = el("div", "topbar-spacer");
     this.host.appendChild(spacer);
-
-    this.deleteBtn = button("Delete", () => this.cb.onDelete());
-    this.deleteBtn.classList.add("danger");
-    this.deleteBtn.title = "Delete Selected (Delete / Backspace)";
-    this.host.appendChild(this.deleteBtn);
-
-    this.constructionBtn = button("Construction", () => this.cb.onConstructionToggle());
-    const fitBtn = button("Fit", () => this.cb.onFit());
-    const clearBtn = button("Clear", () => {
-      if (this.doc.entities.length && confirm("Delete all geometry?")) this.doc.clear();
-    });
-    this.host.appendChild(this.constructionBtn);
-    this.host.appendChild(fitBtn);
-    this.host.appendChild(clearBtn);
   }
 
   private refresh(): void {
     this.undoBtn.disabled = !this.cb.canUndo();
     this.redoBtn.disabled = !this.cb.canRedo();
-
-    if (this.doc.isConstructionMode) {
-      this.constructionBtn.classList.add("active");
-    } else {
-      this.constructionBtn.classList.remove("active");
-    }
-
-    const hasSelection =
-      this.doc.selected.length > 0 ||
-      this.doc.selectedPoints.length > 0 ||
-      this.doc.selectedConstraintId !== null ||
-      this.doc.selectedDimensionId !== null;
-    this.deleteBtn.disabled = !hasSelection;
   }
 }
 

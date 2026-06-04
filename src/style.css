@@ -532,6 +532,10 @@ button.cbtn.solve {
   background: var(--accent-dim);
   border-color: var(--accent);
 }
+
+.props-construction-btn {
+  width: 100%;
+}
 .props-content .btn:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);

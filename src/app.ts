@@ -137,11 +137,8 @@ export class App {
 
     new ToolPalette(dom.palette, this.tools);
     new TopBar(dom.topbar, this.doc, {
-      onFit: () => this.fitView(),
       onUndo: () => this.project.undoRedo("undo"),
       onRedo: () => this.project.undoRedo("redo"),
-      onConstructionToggle: () => this.toggleConstruction(),
-      onDelete: () => this.deleteSelected(),
       canUndo: () => this.project.history.canUndo,
       canRedo: () => this.project.history.canRedo,
       file: {
@@ -152,13 +149,20 @@ export class App {
         onImportSvg: () => this.project.svgImport(),
         onExportSvg: () => this.project.svgExport(),
       },
+      edit: {
+        onDelete: () => this.deleteSelected(),
+      },
+      view: {
+        onFit: () => this.fitView(),
+      },
     });
     new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory);
     new PropertiesBar(
       dom.propertiesbar,
       this.doc,
       this.project.pushHistory,
-      () => this.runSolve()
+      () => this.runSolve(),
+      () => this.toggleConstruction(),
     );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(

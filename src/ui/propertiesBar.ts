@@ -4,6 +4,7 @@ import { nextId } from "../model/ids";
 
 export class PropertiesBar {
   private content!: HTMLElement;
+  private constructionBtn!: HTMLButtonElement;
   private isCollapsed = false;
   private aspectLocked = true;
 
@@ -11,7 +12,8 @@ export class PropertiesBar {
     private host: HTMLElement,
     private doc: CADDocument,
     private pushHistory: () => void,
-    private solve: () => void
+    private solve: () => void,
+    private onConstructionToggle: () => void,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -20,7 +22,7 @@ export class PropertiesBar {
 
   private build(): void {
     this.host.innerHTML = "";
-    
+
     const header = document.createElement("div");
     header.className = "props-header";
 
@@ -40,6 +42,14 @@ export class PropertiesBar {
 
     this.content = document.createElement("div");
     this.content.className = "props-content";
+
+    this.constructionBtn = document.createElement("button");
+    this.constructionBtn.className = "btn props-construction-btn";
+    this.constructionBtn.textContent = "Construction Mode";
+    this.constructionBtn.title = "Toggle construction geometry mode";
+    this.constructionBtn.addEventListener("click", () => this.onConstructionToggle());
+    this.content.appendChild(this.constructionBtn);
+
     this.host.appendChild(this.content);
   }
 
@@ -57,6 +67,9 @@ export class PropertiesBar {
 
   private refresh(): void {
     this.content.innerHTML = "";
+    this.content.appendChild(this.constructionBtn);
+    this.constructionBtn.classList.toggle("active", this.doc.isConstructionMode);
+
     const selected = this.doc.selected;
 
     if (selected.length === 0) {
