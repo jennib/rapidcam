@@ -17,20 +17,23 @@ import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity } from "./entitie
 import { nextId } from "./ids";
 
 export type ConstraintType =
-  | "coincident" // points[2]            → the two points are equal
-  | "horizontal" // entities[1] (line)   → endpoints share Y
-  | "vertical" //   entities[1] (line)   → endpoints share X
-  | "parallel" //   entities[2] (lines)
+  | "coincident"    // points[2]                     → the two points are equal
+  | "horizontal"    // entities[1] (line)             → endpoints share Y
+  | "vertical"      // entities[1] (line)             → endpoints share X
+  | "parallel"      // entities[2] (lines)
   | "perpendicular" // entities[2] (lines)
-  | "equal" //      entities[2] (lines→length, or circles→radius)
-  | "concentric" //  entities[2] (circles) → centres coincide
-  | "pointOnLine" //  points[1] + entities[1] (line)
-  | "tangent" //     entities[2] (line + circle, or line + arc, or arc + arc)
-  | "pointOnArc" //  points[1] + entities[1] (arc)
-  | "symmetric" //   points[2] + entities[1] (line) → symmetric about the line
-  | "collinear" //   entities[2] (lines)   → both on same infinite line
-  | "midpoint" //    points[1] + entities[1] (line) → point at midpoint of line
-  | "fixed"; //      entities[1+]         → lock all its DOFs (no equation)
+  | "equal"         // entities[2] (lines→length, or circles/arcs→radius)
+  | "concentric"    // entities[2] (circles/arcs)     → centres coincide
+  | "pointOnLine"   // points[1] + entities[1] (line)
+  | "tangent"       // entities[2] (line+circle, line+arc, arc+arc, etc.)
+  | "pointOnArc"    // points[1] + entities[1] (arc)
+  | "pointOnCircle" // points[1] + entities[1] (circle)
+  | "symmetric"     // points[2] + entities[1] (line) → symmetric about the line
+  | "collinear"     // entities[2] (lines)             → both on same infinite line
+  | "midpoint"      // points[1] + entities[1] (line) → point at midpoint of line
+  | "angle"         // entities[2] (lines) + params[0]=target radians → fixed angle
+  | "fixedPoint"    // points[1+] + params[0]=x, params[1]=y → pin point to world pos
+  | "fixed";        // entities[1+]                   → lock all its DOFs (no equation)
 
 /** A reference to one specific point DOF inside an entity. */
 export interface PointRef {
@@ -43,13 +46,14 @@ export interface Constraint {
   type: ConstraintType;
   points: PointRef[];
   entities: EntityId[];
+  params?: number[]; // type-specific numeric parameters (e.g. target angle, target position)
 }
 
 export function makeConstraint(
   type: ConstraintType,
-  opts: { points?: PointRef[]; entities?: EntityId[] },
+  opts: { points?: PointRef[]; entities?: EntityId[]; params?: number[] },
 ): Constraint {
-  return { id: nextId("con"), type, points: opts.points ?? [], entities: opts.entities ?? [] };
+  return { id: nextId("con"), type, points: opts.points ?? [], entities: opts.entities ?? [], params: opts.params };
 }
 
 export const pointRefKey = (r: PointRef): string => `${r.entityId}:${r.key}`;
@@ -209,9 +213,35 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       const m = { x: (l.a.x + l.b.x) / 2, y: (l.a.y + l.b.y) / 2 };
       return [p.x - m.x, p.y - m.y];
     }
+    case "pointOnCircle": {
+      const p = readPoint(geo, c.points[0]);
+      const circ = asCircle(geo, c.entities[0]);
+      if (!p || !circ) return [];
+      return [len(sub(p, circ.center)) - circ.radius];
+    }
+    case "angle": {
+      const l1 = asLine(geo, c.entities[0]);
+      const l2 = asLine(geo, c.entities[1]);
+      if (!l1 || !l2) return [];
+      const alpha = c.params?.[0] ?? 0;
+      const u1 = unitDir(l1), u2 = unitDir(l2);
+      // sin(θ − α) = 0  where θ is the signed angle from l1 to l2
+      return [cross(u1, u2) * Math.cos(alpha) - dot(u1, u2) * Math.sin(alpha)];
+    }
+    case "fixedPoint": {
+      const p = readPoint(geo, c.points[0]);
+      if (!p || !c.params) return [];
+      return [p.x - c.params[0], p.y - c.params[1]];
+    }
     case "fixed":
       return []; // enforced by removing DOFs, not by an equation
   }
+}
+
+/** Signed angle (radians, range −π..π) from l1's direction to l2's direction. */
+export function measureAngleBetweenLines(l1: LineEntity, l2: LineEntity): number {
+  const u1 = unitDir(l1), u2 = unitDir(l2);
+  return Math.atan2(cross(u1, u2), dot(u1, u2));
 }
 
 function readPair(geo: Geo, pts: PointRef[]): [Vec2 | null, Vec2 | null] {
@@ -256,9 +286,12 @@ export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
   pointOnLine: "—",
   tangent: "T",
   pointOnArc: "⌒",
+  pointOnCircle: "○",
   symmetric: "↔",
   collinear: "◀▶",
   midpoint: "M",
+  angle: "∠",
+  fixedPoint: "⊕",
   fixed: "⚓",
 };
 
@@ -280,7 +313,9 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     }
     case "pointOnLine":
     case "pointOnArc":
-    case "midpoint": {
+    case "pointOnCircle":
+    case "midpoint":
+    case "fixedPoint": {
       const p = readPoint(geo, c.points[0]);
       if (p) anchors.push({ ...p });
       break;
@@ -301,7 +336,8 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     case "parallel":
     case "equal":
     case "collinear":
-    case "tangent": {
+    case "tangent":
+    case "angle": {
       for (const eid of c.entities) {
         const e = geo(eid);
         if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));

@@ -11,9 +11,10 @@ import {
   CONSTRAINT_GLYPH,
   makeConstraint,
   constraintResiduals,
+  measureAngleBetweenLines,
   Geo,
 } from "../model/constraints";
-import { Entity } from "../model/entities";
+import { Entity, LineEntity } from "../model/entities";
 import { SolveResult } from "../solver/solver";
 
 interface ButtonSpec {
@@ -40,6 +41,10 @@ const BUTTONS: (ButtonSpec | "sep")[] = [
   "sep",
   { type: "symmetric", name: "Symmetric", hint: "Select 2 points and 1 line (symmetry axis)" },
   { type: "collinear", name: "Collinear", hint: "Select 2 lines" },
+  "sep",
+  { type: "pointOnCircle", name: "Point on circle", hint: "Select 1 point and 1 circle" },
+  { type: "angle", name: "Lock angle", hint: "Select 2 lines (locks current angle)" },
+  { type: "fixedPoint", name: "Fix point", hint: "Select 1+ points to lock in place" },
   "sep",
   { type: "fixed", name: "Fix", hint: "Select 1+ entities to lock in place" },
 ];
@@ -215,6 +220,31 @@ export class ConstraintBar {
         return lines.length === 2
           ? ok([makeConstraint("collinear", { entities: ids(lines) })])
           : err("Select 2 lines");
+
+      case "pointOnCircle":
+        return pts.length === 1 && circles.length === 1
+          ? ok([makeConstraint("pointOnCircle", { points: [pts[0]], entities: [circles[0].id] })])
+          : err("Select 1 point and 1 circle");
+
+      case "angle": {
+        if (lines.length !== 2) return err("Select 2 lines");
+        const angle = measureAngleBetweenLines(lines[0] as LineEntity, lines[1] as LineEntity);
+        return ok([makeConstraint("angle", { entities: ids(lines), params: [angle] })]);
+      }
+
+      case "fixedPoint": {
+        if (pts.length < 1) return err("Select 1+ points");
+        const constraints: Constraint[] = [];
+        for (const pt of pts) {
+          const ent = this.doc.entities.find(e => e.id === pt.entityId);
+          if (!ent) continue;
+          try {
+            const pos = ent.getPoint(pt.key);
+            constraints.push(makeConstraint("fixedPoint", { points: [pt], params: [pos.x, pos.y] }));
+          } catch { /* skip invalid point refs */ }
+        }
+        return constraints.length > 0 ? ok(constraints) : err("Select 1+ points");
+      }
 
       case "fixed":
         return ents.length >= 1

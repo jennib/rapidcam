@@ -347,6 +347,7 @@ export class CADDocument {
         id: c.id, type: c.type,
         points: c.points.map((p) => ({ ...p })),
         entities: [...c.entities],
+        params: c.params ? [...c.params] : undefined,
       })),
       dimensions: this.dimensions.map((d) => ({
         ...d,
@@ -399,6 +400,7 @@ export class CADDocument {
       id: c.id, type: c.type,
       points: c.points.map((p) => ({ ...p })),
       entities: [...c.entities],
+      params: c.params ? [...c.params] : undefined,
     }));
     this.dimensions = s.dimensions.map((d) => ({
       ...d,
