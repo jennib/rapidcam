@@ -1,5 +1,5 @@
 import { Vec2, dist, sub } from "../core/vec2";
-import { Bounds } from "../model/entities";
+import { Bounds, LineEntity } from "../model/entities";
 import { PointRef, pointRefKey, Constraint, constraintAnchor } from "../model/constraints";
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
@@ -21,8 +21,8 @@ export class SelectTool implements Tool {
 
   private mode: Mode = "idle";
   private downScreen: Vec2 = { x: 0, y: 0 };
+  private dragStartWorld: Vec2 = { x: 0, y: 0 };
   private dragPoint: PointRef | null = null;
-  private lastWorld: Vec2 = { x: 0, y: 0 };
   private marqueeStart: Vec2 = { x: 0, y: 0 };
   private marqueeEnd: Vec2 = { x: 0, y: 0 };
 
@@ -34,7 +34,7 @@ export class SelectTool implements Tool {
     if (e.button !== 0) return; // Left click only
 
     this.downScreen = e.screen;
-    this.lastWorld = e.worldRaw;
+    this.dragStartWorld = e.worldRaw;
 
     // 0) Hit test transform handles first
     if (ctx.doc.selected.length > 0) {
@@ -171,17 +171,63 @@ export class SelectTool implements Tool {
     } else if (this.mode === "maybeDragEntity" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
       ctx.pushHistory();
       this.mode = "dragEntity";
+      this.dragSnapshot = ctx.doc.snapshot();
+      this.originalBounds = selectionBounds(ctx.doc.selected);
     }
 
-    if (this.mode === "dragPoint" && this.dragPoint) {
-      const pins: PinMap = new Map([[pointRefKey(this.dragPoint), e.world]]);
-      ctx.solve(pins);
-    } else if (this.mode === "dragEntity") {
-      const d = sub(e.worldRaw, this.lastWorld);
-      if (d.x !== 0 || d.y !== 0) {
-        for (const ent of ctx.doc.selected) ent.translate(d);
-        this.lastWorld = e.worldRaw;
-        ctx.solve(pinsForSelected(ctx.doc));
+    if (this.mode === "dragPoint" && this.dragPoint && this.dragSnapshot) {
+      if (e.shiftKey) {
+        ctx.doc.restore(this.dragSnapshot);
+        const ent = ctx.doc.entities.find(x => x.id === this.dragPoint!.entityId);
+        if (ent) {
+          const origPos = ent.getPoint(this.dragPoint!.key);
+          const d = sub(e.world, origPos);
+          for (const se of ctx.doc.selected) se.translate(d);
+
+          if (e.snap && e.snap.entityId !== ent.id) {
+            const targetEnt = ctx.doc.entities.find(x => x.id === e.snap!.entityId);
+            if (ent.type === "line" && targetEnt?.type === "line") {
+              const lineOrig = ent as LineEntity;
+              const lineTarget = targetEnt as LineEntity;
+              if ((this.dragPoint!.key === "a" || this.dragPoint!.key === "b") && 
+                  (e.snap.key === "a" || e.snap.key === "b" || e.snap.kind === "endpoint")) {
+                
+                const dragDir = this.dragPoint!.key === "a" ? sub(lineOrig.b, lineOrig.a) : sub(lineOrig.a, lineOrig.b);
+                const targetKey = e.snap.key || (dist(e.snap.pos, lineTarget.a) < dist(e.snap.pos, lineTarget.b) ? "a" : "b");
+                const targetDir = targetKey === "a" ? sub(lineTarget.b, lineTarget.a) : sub(lineTarget.a, lineTarget.b);
+
+                const startAngle = Math.atan2(dragDir.y, dragDir.x);
+                const targetAngle = Math.atan2(targetDir.y, targetDir.x) + Math.PI; // point away
+                
+                applyRotate(ctx.doc.selected, e.world.x, e.world.y, targetAngle - startAngle);
+              }
+            }
+          }
+          ctx.solve(pinsForSelected(ctx.doc));
+        }
+      } else {
+        const pins: PinMap = new Map([[pointRefKey(this.dragPoint), e.world]]);
+        ctx.solve(pins);
+      }
+    } else if (this.mode === "dragEntity" && this.dragSnapshot && this.originalBounds) {
+      ctx.doc.restore(this.dragSnapshot);
+      if (e.altKey) {
+        const ob = this.originalBounds;
+        const cx = (ob.min.x + ob.max.x) / 2;
+        const cy = (ob.min.y + ob.max.y) / 2;
+        
+        const startAngle = Math.atan2(this.dragStartWorld.y - cy, this.dragStartWorld.x - cx);
+        const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
+        const angle = currentAngle - startAngle;
+        
+        applyRotate(ctx.doc.selected, cx, cy, angle);
+        ctx.solve();
+      } else {
+        const d = sub(e.worldRaw, this.dragStartWorld);
+        if (d.x !== 0 || d.y !== 0) {
+          for (const ent of ctx.doc.selected) ent.translate(d);
+          ctx.solve(pinsForSelected(ctx.doc));
+        }
       }
     } else if (this.mode === "marquee") {
       this.marqueeEnd = e.worldRaw;
