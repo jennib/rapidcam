@@ -183,22 +183,23 @@ export class ProjectManager {
 
   async performAutosave(): Promise<void> {
     if (this.isDocumentLoading) return;
-    const docData = serializeDoc(this.doc, this.currentFileName);
-    
-    const draft = {
-      name: this.currentFileName,
-      savedAt: Date.now(),
-      data: docData
-    };
-    localStorage.setItem("rapidcam:autosave-draft", JSON.stringify(draft));
 
     if (this.currentFileHandle) {
       try {
-        await this.writeToHandle(this.currentFileHandle);
+        const data = await this.writeToHandle(this.currentFileHandle);
+        localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
+          name: this.currentFileName, savedAt: Date.now(), data,
+        }));
+        return;
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
       }
     }
+
+    const data = serializeDoc(this.doc, this.currentFileName);
+    localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
+      name: this.currentFileName, savedAt: Date.now(), data,
+    }));
   }
 
   restoreDraft(): void {
