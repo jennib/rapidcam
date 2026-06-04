@@ -102,6 +102,7 @@ export class PropertiesBar {
   private buildGroupSection(group: GroupDef): void {
     const sec = this.createSection(`Group · ${group.entityIds.length} entities`);
     const btn = document.createElement("button");
+    btn.className = "btn";
     btn.textContent = "Ungroup";
     btn.addEventListener("click", () => {
       this.pushHistory();
@@ -115,6 +116,7 @@ export class PropertiesBar {
   private buildCreateGroupSection(): void {
     const sec = this.createSection(`Selection · ${this.doc.selected.length} entities`);
     const btn = document.createElement("button");
+    btn.className = "btn";
     btn.textContent = "Group";
     btn.addEventListener("click", () => {
       this.pushHistory();
@@ -131,19 +133,23 @@ export class PropertiesBar {
 
   private buildPositionSection(x: number, y: number, w: number, h: number): void {
     const sec = this.createSection("BOUNDING BOX");
-    
+
     const rowSize = document.createElement("div");
     rowSize.className = "props-row";
-    rowSize.innerHTML = `<span>W</span> <input disabled value="${w.toFixed(2)}"> <span>H</span> <input disabled value="${h.toFixed(2)}">`;
+    const lblW2 = document.createElement("span"); lblW2.textContent = "W";
+    const inW2 = document.createElement("input"); inW2.type = "text"; inW2.value = w.toFixed(2); inW2.disabled = true;
+    const lblH2 = document.createElement("span"); lblH2.textContent = "H";
+    const inH2 = document.createElement("input"); inH2.type = "text"; inH2.value = h.toFixed(2); inH2.disabled = true;
+    rowSize.append(lblW2, inW2, lblH2, inH2);
     sec.appendChild(rowSize);
 
     const rowPos = document.createElement("div");
     rowPos.className = "props-row";
-    
+
     const lblX = document.createElement("span"); lblX.textContent = "X";
-    const inX = document.createElement("input"); inX.type = "number"; inX.value = x.toFixed(2);
+    const inX = document.createElement("input"); inX.type = "text"; inX.value = x.toFixed(2);
     const lblY = document.createElement("span"); lblY.textContent = "Y";
-    const inY = document.createElement("input"); inY.type = "number"; inY.value = y.toFixed(2);
+    const inY = document.createElement("input"); inY.type = "text"; inY.value = y.toFixed(2);
     
     rowPos.append(lblX, inX, lblY, inY);
 
@@ -176,14 +182,17 @@ export class PropertiesBar {
     
     const lblW = document.createElement("span"); lblW.textContent = "W";
     const inW = document.createElement("input"); inW.type = "text"; inW.value = w.toFixed(2);
-    const btnLock = document.createElement("button"); btnLock.textContent = this.aspectLocked ? "🔒" : "🔓";
+    const btnLock = document.createElement("button");
+    btnLock.className = this.aspectLocked ? "btn active" : "btn";
+    btnLock.textContent = this.aspectLocked ? "🔒" : "🔓";
     btnLock.title = "Toggle aspect ratio lock";
     const lblH = document.createElement("span"); lblH.textContent = "H";
     const inH = document.createElement("input"); inH.type = "text"; inH.value = h.toFixed(2);
-    
+
     btnLock.addEventListener("click", () => {
       this.aspectLocked = !this.aspectLocked;
       btnLock.textContent = this.aspectLocked ? "🔒" : "🔓";
+      btnLock.className = this.aspectLocked ? "btn active" : "btn";
     });
 
     const parseInput = (val: string, base: number) => {
@@ -207,6 +216,7 @@ export class PropertiesBar {
     sec.appendChild(row);
 
     const btnApply = document.createElement("button");
+    btnApply.className = "btn";
     btnApply.textContent = "Apply Scale";
     btnApply.addEventListener("click", () => {
       const newW = parseInput(inW.value, w);
@@ -226,19 +236,19 @@ export class PropertiesBar {
     const row = document.createElement("div");
     row.className = "props-row";
     
-    const lblA = document.createElement("span"); lblA.textContent = "Angle";
-    const inA = document.createElement("input"); inA.type = "number"; inA.value = "0";
-    const lblD = document.createElement("span"); lblD.textContent = "°";
-    
-    const btnCCW = document.createElement("button"); btnCCW.textContent = "↺90";
+    const lblA = document.createElement("span"); lblA.textContent = "°";
+    const inA = document.createElement("input"); inA.type = "text"; inA.value = "0";
+
+    const btnCCW = document.createElement("button"); btnCCW.className = "btn"; btnCCW.textContent = "↺ 90";
     btnCCW.addEventListener("click", () => { inA.value = ((parseFloat(inA.value) || 0) + 90).toString(); });
-    const btnCW = document.createElement("button"); btnCW.textContent = "↻90";
+    const btnCW = document.createElement("button"); btnCW.className = "btn"; btnCW.textContent = "↻ 90";
     btnCW.addEventListener("click", () => { inA.value = ((parseFloat(inA.value) || 0) - 90).toString(); });
     
-    row.append(lblA, inA, lblD, btnCCW, btnCW);
+    row.append(inA, lblA, btnCCW, btnCW);
     sec.appendChild(row);
 
     const btnApply = document.createElement("button");
+    btnApply.className = "btn";
     btnApply.textContent = "Apply Rotation";
     btnApply.addEventListener("click", () => {
       const angle = parseFloat(inA.value) * Math.PI / 180;
@@ -258,20 +268,21 @@ export class PropertiesBar {
   private buildFlipSection(cx: number, cy: number): void {
     const sec = this.createSection("FLIP");
     const row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.gap = "8px";
-    
+    row.className = "props-row";
+
     const btnH = document.createElement("button");
-    btnH.textContent = "Flip Horizontal";
+    btnH.className = "btn"; btnH.style.flex = "1";
+    btnH.textContent = "Flip H";
     btnH.addEventListener("click", () => {
       this.pushHistory();
       applyFlipH(this.doc.selected, cx);
       this.solve();
       this.doc.emitChange();
     });
-    
+
     const btnV = document.createElement("button");
-    btnV.textContent = "Flip Vertical";
+    btnV.className = "btn"; btnV.style.flex = "1";
+    btnV.textContent = "Flip V";
     btnV.addEventListener("click", () => {
       this.pushHistory();
       applyFlipV(this.doc.selected, cy);
@@ -287,8 +298,7 @@ export class PropertiesBar {
   private buildAlignSection(): void {
     const sec = this.createSection("ALIGN");
     const row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.gap = "4px";
+    row.className = "props-row props-align-row";
 
     const align = (mode: "left"|"right"|"top"|"bottom"|"centerH"|"centerV") => {
       const bounds = selectionBounds(this.doc.selected);
@@ -311,6 +321,7 @@ export class PropertiesBar {
 
     const makeBtn = (text: string, m: Parameters<typeof align>[0]) => {
       const b = document.createElement("button");
+      b.className = "btn";
       b.textContent = text;
       b.title = `Align ${m}`;
       b.addEventListener("click", () => align(m));
@@ -335,18 +346,17 @@ export class PropertiesBar {
     row.className = "props-row";
     
     const lblM = document.createElement("span"); lblM.textContent = "Margin";
-    const inM = document.createElement("input"); inM.type = "number"; inM.value = "10";
+    const inM = document.createElement("input"); inM.type = "text"; inM.value = "10";
     const lblU = document.createElement("span"); lblU.textContent = "mm";
     
     row.append(lblM, inM, lblU);
     sec.appendChild(row);
 
     const btnRow = document.createElement("div");
-    btnRow.style.display = "flex";
-    btnRow.style.gap = "8px";
-    btnRow.style.marginTop = "8px";
+    btnRow.className = "props-row";
 
     const btnFit = document.createElement("button");
+    btnFit.className = "btn"; btnFit.style.flex = "1";
     btnFit.textContent = "Fit & Center";
     btnFit.addEventListener("click", () => {
       const margin = parseFloat(inM.value) || 0;
@@ -382,6 +392,7 @@ export class PropertiesBar {
     });
 
     const btnCenter = document.createElement("button");
+    btnCenter.className = "btn"; btnCenter.style.flex = "1";
     btnCenter.textContent = "Center";
     btnCenter.addEventListener("click", () => {
       const bounds = selectionBounds(this.doc.selected);

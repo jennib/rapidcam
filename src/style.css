@@ -471,6 +471,79 @@ button.cbtn.solve {
   padding: 16px 0;
 }
 
+.props-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px 8px;
+  border: 2px solid var(--text-dim);
+  border-radius: 4px;
+}
+
+.props-section-title {
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  padding: 0 4px;
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.props-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.props-row span {
+  color: var(--text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.props-content input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  min-width: 0;
+  width: 0;
+  flex: 1 1 0;
+}
+
+.props-content input:focus {
+  border-color: var(--accent);
+}
+
+.props-content input:disabled {
+  opacity: 0.5;
+}
+
+.props-section > .btn {
+  width: 100%;
+}
+
+.props-row .btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.props-align-row .btn {
+  flex: 1;
+  text-align: center;
+  padding: 4px 0;
+}
+
 /* ---------- Canvas ---------- */
 #canvas-host {
   flex: 1 1 auto;
