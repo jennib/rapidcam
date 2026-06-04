@@ -4,8 +4,9 @@
  * browser event system — everything below it works in clean model/view terms.
  */
 
-import { Vec2 } from "./core/vec2";
 import { CADDocument } from "./model/document";
+import { nextId } from "./model/ids";
+import { Vec2 } from "./core/vec2";
 import { ProjectManager } from "./io/projectManager";
 import { Bounds, EntityId } from "./model/entities";
 import { Geo } from "./model/constraints";
@@ -523,14 +524,12 @@ export class App {
         // Group
         if (this.doc.selected.length >= 2) {
           this.project.pushHistory();
-          import("./model/ids").then(({ nextId }) => {
-            const group = {
-              id: nextId("grp"),
-              entityIds: this.doc.selected.map(e => e.id)
-            };
-            this.doc.groups.push(group);
-            this.doc.emitChange();
-          });
+          const group = {
+            id: nextId("grp"),
+            entityIds: this.doc.selected.map(e => e.id)
+          };
+          this.doc.groups.push(group);
+          this.doc.emitChange();
         }
       }
       return;
