@@ -241,10 +241,13 @@ export class PropertiesBar {
     const btnApply = document.createElement("button");
     btnApply.textContent = "Apply Rotation";
     btnApply.addEventListener("click", () => {
-      const deg = parseFloat(inA.value);
-      if (isNaN(deg) || deg === 0) return;
+      const angle = parseFloat(inA.value) * Math.PI / 180;
+      if (isNaN(angle) || angle === 0) return;
       this.pushHistory();
-      applyRotate(this.doc.selected, cx, cy, deg * Math.PI / 180);
+      applyRotate(this.doc.selected, cx, cy, angle, (oldE, newE) => {
+        const idx = this.doc.entities.findIndex(x => x.id === oldE.id);
+        if (idx >= 0) this.doc.entities[idx] = newE;
+      });
       this.solve();
       this.doc.emitChange();
     });

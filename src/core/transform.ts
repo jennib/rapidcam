@@ -54,7 +54,7 @@ export function applyScale(entities: Entity[], cx: number, cy: number, sx: numbe
   }
 }
 
-export function applyRotate(entities: Entity[], cx: number, cy: number, angle: number): void {
+export function applyRotate(entities: Entity[], cx: number, cy: number, angle: number, onReplace?: (oldE: Entity, newE: Entity) => void): void {
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const rotPt = (p: Vec2) => {
     const dx = p.x - cx, dy = p.y - cy;
@@ -92,6 +92,7 @@ export function applyRotate(entities: Entity[], cx: number, cy: number, angle: n
         poly.selected = e.selected;
         poly.isConstruction = e.isConstruction;
         entities[i] = poly;
+        if (onReplace) onReplace(e, poly);
       }
     }
   }

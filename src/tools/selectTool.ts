@@ -200,7 +200,10 @@ export class SelectTool implements Tool {
                 const startAngle = Math.atan2(dragDir.y, dragDir.x);
                 const targetAngle = Math.atan2(targetDir.y, targetDir.x) + Math.PI; // point away
                 
-                applyRotate(ctx.doc.selected, e.world.x, e.world.y, targetAngle - startAngle);
+                applyRotate(ctx.doc.selected, e.world.x, e.world.y, targetAngle - startAngle, (oldE, newE) => {
+                  const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
+                  if (idx >= 0) ctx.doc.entities[idx] = newE;
+                });
               }
             }
           }
@@ -221,7 +224,10 @@ export class SelectTool implements Tool {
         const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
         const angle = currentAngle - startAngle;
         
-        applyRotate(ctx.doc.selected, cx, cy, angle);
+        applyRotate(ctx.doc.selected, cx, cy, angle, (oldE, newE) => {
+          const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
+          if (idx >= 0) ctx.doc.entities[idx] = newE;
+        });
         ctx.solve();
       } else {
         const d = sub(e.worldRaw, this.dragStartWorld);
@@ -292,7 +298,10 @@ export class SelectTool implements Tool {
       const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
       const angle = currentAngle - startAngle;
       
-      applyRotate(ctx.doc.selected, cx, cy, angle);
+      applyRotate(ctx.doc.selected, cx, cy, angle, (oldE, newE) => {
+        const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
+        if (idx >= 0) ctx.doc.entities[idx] = newE;
+      });
       ctx.solve();
     }
   }
