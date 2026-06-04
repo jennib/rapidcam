@@ -694,28 +694,78 @@ export class Renderer {
         ctx.fillRect(s.x - hw, s.y - hw, hw * 2, hw * 2);
         ctx.strokeRect(s.x - hw, s.y - hw, hw * 2, hw * 2);
       } else if (hnd.type === "rotate") {
-        ctx.fillStyle = "#4fc87a";
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, hw + 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else if (hnd.type === "scale-arrow") {
-        // Draw an outward/inward arrow at the corner
-        ctx.fillStyle = "#ffb020";
+        const r = 8;
+        ctx.fillStyle = "#3b82f6"; // Blue
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1.5;
         
-        // Let's just draw a slightly larger diamond to represent scale arrow for now, or a double arrow!
-        // We'll draw a diamond
         ctx.beginPath();
-        ctx.moveTo(s.x, s.y - hw - 2);
-        ctx.lineTo(s.x + hw + 2, s.y);
-        ctx.lineTo(s.x, s.y + hw + 2);
-        ctx.lineTo(s.x - hw - 2, s.y);
-        ctx.closePath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke(); // White border
+
+        // White rotate arrow inside
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 3.5, -Math.PI/2, Math.PI, false);
+        // Arrow head at left side (pointing up)
+        ctx.moveTo(s.x - 3.5 - 2, s.y + 1.5);
+        ctx.lineTo(s.x - 3.5, s.y - 0.5);
+        ctx.lineTo(s.x - 3.5 + 2, s.y + 1.5);
+        ctx.stroke();
+
+      } else if (hnd.type === "scale-arrow") {
+        const r = 8;
+        ctx.fillStyle = "#f59e0b"; // Amber/Orange
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke(); // White border
+
+        // Find centroid in screen space to determine exact outward direction
+        let cx = 0, cy = 0;
+        if (overlay.transformBox.polygon && overlay.transformBox.polygon.length > 0) {
+          for (const p of overlay.transformBox.polygon) { cx += p.x; cy += p.y; }
+          cx /= overlay.transformBox.polygon.length;
+          cy /= overlay.transformBox.polygon.length;
+        } else {
+          cx = (bounds.min.x + bounds.max.x) / 2;
+          cy = (bounds.min.y + bounds.max.y) / 2;
+        }
+        const centerS = view.worldToScreen({ x: cx, y: cy });
+        
+        let dx = s.x - centerS.x;
+        let dy = s.y - centerS.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 1e-4) {
+          dx /= len; dy /= len;
+        } else {
+          dx = 0; dy = -1; // Fallback to pointing up
+        }
+
+        // White double-arrow inside
+        ctx.beginPath();
+        
+        const L = 3.5; // Half-length of the arrow line
+        const P1 = { x: s.x + dx * L, y: s.y + dy * L }; // Outward tip
+        const P2 = { x: s.x - dx * L, y: s.y - dy * L }; // Inward tip
+        
+        // Main diagonal line
+        ctx.moveTo(P2.x, P2.y);
+        ctx.lineTo(P1.x, P1.y);
+
+        // Outward arrowhead (tip is P1, vector is dir)
+        ctx.moveTo(P1.x - 3*dx - 3*dy, P1.y - 3*dy + 3*dx);
+        ctx.lineTo(P1.x, P1.y);
+        ctx.lineTo(P1.x - 3*dx + 3*dy, P1.y - 3*dy - 3*dx);
+
+        // Inward arrowhead (tip is P2, vector is -dir)
+        ctx.moveTo(P2.x + 3*dx + 3*dy, P2.y + 3*dy - 3*dx);
+        ctx.lineTo(P2.x, P2.y);
+        ctx.lineTo(P2.x + 3*dx - 3*dy, P2.y + 3*dy + 3*dx);
+
         ctx.stroke();
       }
     }
