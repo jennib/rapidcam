@@ -15,7 +15,7 @@ export class ProjectManager {
   history = new History<DocSnapshot>();
   currentFileName = "Untitled";
   currentFileHandle: FileSystemFileHandle | null = null;
-  isDocumentLoading = false;
+  private isDocumentLoading = false;
   isDirty = false;
 
   private autosaveTimeout: number | null = null;
@@ -24,8 +24,7 @@ export class ProjectManager {
     private doc: CADDocument,
     private cb: ProjectManagerCallbacks
   ) {
-    this.doc.onChange(() => this.scheduleAutosave());
-    this.doc.onChange(() => this.markDirty());
+    this.doc.onChange(() => { this.markDirty(); this.scheduleAutosave(); });
     this.updateTitle();
   }
 
@@ -73,7 +72,7 @@ export class ProjectManager {
   openSetupDialog(): void {
     openNewProjectDialog(
       {
-        name: this.currentFileName === "Untitled" ? "Untitled" : "Untitled",
+        name: this.currentFileName === "Untitled" ? "Untitled" : this.currentFileName,
       },
       (cfg) => {
         this.isDocumentLoading = true;
@@ -105,8 +104,7 @@ export class ProjectManager {
     if ('showSaveFilePicker' in window) {
       if (this.currentFileHandle) {
         try {
-          await this.writeToHandle(this.currentFileHandle);
-          const data = serializeDoc(this.doc, this.currentFileName);
+          const data = await this.writeToHandle(this.currentFileHandle);
           pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
           localStorage.removeItem("rapidcam:autosave-draft");
           this.markClean();
@@ -125,10 +123,8 @@ export class ProjectManager {
           }]
         });
         this.currentFileHandle = handle;
-        const fileObj = await handle.getFile();
-        this.currentFileName = fileObj.name.replace(/\.rcam$/i, "");
-        await this.writeToHandle(handle);
-        const data = serializeDoc(this.doc, this.currentFileName);
+        this.currentFileName = handle.name.replace(/\.rcam$/i, "");
+        const data = await this.writeToHandle(handle);
         pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
         localStorage.removeItem("rapidcam:autosave-draft");
         this.markClean();
@@ -167,11 +163,12 @@ export class ProjectManager {
     this.markClean();
   }
 
-  async writeToHandle(handle: FileSystemFileHandle): Promise<void> {
+  async writeToHandle(handle: FileSystemFileHandle): Promise<RcamFile> {
     const data = serializeDoc(this.doc, this.currentFileName);
     const writable = await handle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
     await writable.close();
+    return data;
   }
 
   scheduleAutosave(): void {
@@ -198,7 +195,6 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         await this.writeToHandle(this.currentFileHandle);
-        console.log(`Autosaved successfully to ${this.currentFileName}`);
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
       }
@@ -219,7 +215,7 @@ export class ProjectManager {
       this.cb.onSolve();
       this.cb.onFitView();
       this.isDocumentLoading = false;
-      console.log("Restored auto-save draft successfully");
+      this.markClean();
     } catch (e) {
       console.error("Failed to restore draft:", e);
     }
