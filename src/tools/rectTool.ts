@@ -75,11 +75,10 @@ export class RectTool implements Tool {
     // Add all 4, select all 4.
     for (const s of sides) { ctx.doc.entities.push(s); s.selected = true; }
 
-    // Horizontal / vertical constraints.
-    ctx.doc.addConstraint(makeConstraint("horizontal", { entities: [bottom.id] }));
-    ctx.doc.addConstraint(makeConstraint("horizontal", { entities: [top.id] }));
-    ctx.doc.addConstraint(makeConstraint("vertical",   { entities: [right.id] }));
-    ctx.doc.addConstraint(makeConstraint("vertical",   { entities: [left.id] }));
+    // Use parallel and perpendicular constraints so the rectangle can be rotated!
+    ctx.doc.addConstraint(makeConstraint("parallel", { entities: [bottom.id, top.id] }));
+    ctx.doc.addConstraint(makeConstraint("parallel", { entities: [left.id, right.id] }));
+    ctx.doc.addConstraint(makeConstraint("perpendicular", { entities: [bottom.id, left.id] }));
 
     // Coincident at the 4 corners.
     const coin = (eid1: string, k1: string, eid2: string, k2: string) =>

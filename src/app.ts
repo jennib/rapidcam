@@ -26,6 +26,7 @@ import { DimensionTool } from "./tools/dimensionTool";
 import { ArcTool } from "./tools/arcTool";
 import { OffsetTool } from "./tools/offsetTool";
 import { BezierTool } from "./tools/bezierTool";
+import { RotateTool } from "./tools/rotateTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -48,6 +49,7 @@ const SHORTCUTS: Record<string, string> = {
   d: "dimension",
   o: "offset",
   b: "bezier",
+  q: "rotate",
 };
 
 export class App {
@@ -119,6 +121,7 @@ export class App {
         new DimensionTool(),
         new OffsetTool(),
         new BezierTool(),
+        new RotateTool(),
       ],
       "select",
     );
@@ -226,6 +229,7 @@ export class App {
       selectionRect: to.selectionRect,
       snap: this.currentSnap,
       hover: this.currentHover,
+      transformBox: to.transformBox,
     };
     this.renderer.render(this.doc, this.view, overlay);
     this.statusBar.setZoom(this.view.scale);

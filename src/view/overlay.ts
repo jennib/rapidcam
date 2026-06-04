@@ -15,12 +15,13 @@ export type PreviewShape =
 export interface TransformHandle {
   type: "scale" | "rotate";
   pos: Vec2; // world coords
-  id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot"
+  id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot", "rot-nw", "rot-ne", "rot-sw", "rot-se"
 }
 
 export interface TransformBox {
   bounds: Bounds;
   handles: TransformHandle[];
+  hideBox?: boolean;
 }
 
 export interface Overlay {

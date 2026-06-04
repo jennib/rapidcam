@@ -14,4 +14,5 @@ export const ICONS = {
   arc: wrap('<path d="M5 19 A10 10 0 0 1 19 5"/><circle cx="5" cy="19" r="1.4" fill="currentColor"/><circle cx="19" cy="5" r="1.4" fill="currentColor"/>'),
   offset: wrap('<circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="8.5"/>'),
   bezier: wrap('<path d="M4 18 C6 4 18 20 20 6"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/><line x1="4" y1="18" x2="6" y2="4" opacity="0.5"/><line x1="20" y1="6" x2="18" y2="20" opacity="0.5"/>'),
+  rotate: wrap('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
 } as const;

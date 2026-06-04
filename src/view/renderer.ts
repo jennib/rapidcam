@@ -634,7 +634,9 @@ export class Renderer {
     ctx.strokeStyle = COLORS.selectionRectBorder;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 5]);
-    ctx.strokeRect(x, y, w, h);
+    if (!overlay.transformBox.hideBox) {
+      ctx.strokeRect(x, y, w, h);
+    }
 
     // Draw rotation stem line if rotate handle exists
     const rotHandle = handles.find(h => h.type === "rotate");
