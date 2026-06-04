@@ -478,6 +478,13 @@ export class Renderer {
           ctx.stroke();
           break;
         }
+        case "arc": {
+          const sc = view.worldToScreen(p.center);
+          const sr = view.toScreenLen(p.radius);
+          ctx.arc(sc.x, sc.y, sr, -p.startAngle, -p.endAngle, true);
+          ctx.stroke();
+          break;
+        }
         case "rect": {
           const a = view.worldToScreen(p.p0);
           const b = view.worldToScreen(p.p1);

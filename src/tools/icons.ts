@@ -12,4 +12,5 @@ export const ICONS = {
   polyline: wrap('<polyline points="4,18 9,8 14,14 20,5"/>'),
   dimension: wrap('<path d="M4 7v10M20 7v10"/><path d="M4 12h16"/><path d="M7 9l-3 3 3 3M17 9l3 3-3 3"/>'),
   arc: wrap('<path d="M5 19 A10 10 0 0 1 19 5"/><circle cx="5" cy="19" r="1.4" fill="currentColor"/><circle cx="19" cy="5" r="1.4" fill="currentColor"/>'),
+  offset: wrap('<circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="8.5"/>'),
 } as const;

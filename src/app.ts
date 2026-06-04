@@ -23,6 +23,7 @@ import { CircleTool } from "./tools/circleTool";
 import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
 import { ArcTool } from "./tools/arcTool";
+import { OffsetTool } from "./tools/offsetTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -43,6 +44,7 @@ const SHORTCUTS: Record<string, string> = {
   a: "arc",
   p: "polyline",
   d: "dimension",
+  o: "offset",
 };
 
 export class App {
@@ -112,6 +114,7 @@ export class App {
         new ArcTool(),
         new PolylineTool(),
         new DimensionTool(),
+        new OffsetTool(),
       ],
       "select",
     );
@@ -299,7 +302,7 @@ export class App {
     }
     const e = this.toolEvent(ev, screen);
     this.currentHover =
-      this.tools.active.id === "select"
+      (this.tools.active.id === "select" || this.tools.active.id === "offset")
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)
         : null;
     this.statusBar.setCursor(e.world);

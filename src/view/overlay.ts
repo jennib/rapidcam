@@ -6,6 +6,7 @@ import { SnapPoint, EntityId } from "../model/entities";
 export type PreviewShape =
   | { kind: "line"; a: Vec2; b: Vec2 }
   | { kind: "circle"; center: Vec2; radius: number }
+  | { kind: "arc"; center: Vec2; radius: number; startAngle: number; endAngle: number }
   | { kind: "rect"; p0: Vec2; p1: Vec2 }
   | { kind: "polyline"; points: Vec2[]; closed: boolean }
   | { kind: "point"; pos: Vec2 };
