@@ -660,8 +660,8 @@ export class Renderer {
       ctx.strokeRect(x, y, w, h);
     }
 
-    // Draw rotation stem line if rotate handle exists
-    const rotHandle = handles.find(h => h.type === "rotate");
+    // Draw rotation stem line only for the top-center rotate handle (from SelectTool)
+    const rotHandle = handles.find(h => h.id === "rot");
     if (rotHandle) {
       const topCenterX = x + w / 2;
       const topCenterY = y;
