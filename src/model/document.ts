@@ -239,6 +239,7 @@ export class CADDocument {
   }
   selectPoint(ref: PointRef): void {
     this.selectedPoints = [ref];
+    this.emitChange();
   }
 
   selectConstraint(id: string | null): void {

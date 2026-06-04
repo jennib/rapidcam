@@ -98,8 +98,9 @@ export class App {
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
-        openValueEditor: (worldPos, placeholder, onCommit, onCancel) =>
-          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0),
+        openValueEditor: (worldPos, placeholder, onCommit, onCancel) => {
+          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0);
+        },
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
       },
@@ -595,7 +596,7 @@ export class App {
     }
   }
 
-  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => void, onCancel: () => void): void {
+  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void {
     this.closeValueEditor();
     const pos = this.view.worldToScreen(worldPos);
     const input = document.createElement("input");
@@ -608,8 +609,13 @@ export class App {
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         const raw = input.value;
-        this.closeValueEditor();
-        onCommit(raw);
+        const ok = onCommit(raw);
+        if (ok === false) {
+          input.style.color = "#e05555";
+          setTimeout(() => { input.style.color = ""; }, 600);
+        } else {
+          this.closeValueEditor();
+        }
       } else if (e.key === "Escape") {
         this.closeValueEditor();
         onCancel();

@@ -97,11 +97,11 @@ export class ArcTool implements Tool {
     ctx.requestRender();
   }
 
-  private commitByLength(raw: string, ctx: ToolContext): void {
+  private commitByLength(raw: string, ctx: ToolContext): boolean {
     const len = parseLength(raw, ctx.doc.displayUnit);
-    if (!len || len <= 0 || this.radius < 1e-6) return;
+    if (!len || len <= 0 || this.radius < 1e-6) return false;
     const spanRad = len / this.radius; // arc length = r * θ
-    if (spanRad < 1e-4 || spanRad > 2 * Math.PI) return;
+    if (spanRad < 1e-4 || spanRad > 2 * Math.PI) return false;
     const endAngle = this.startAngle + spanRad;
     ctx.pushHistory();
     const arc = new ArcEntity(this.center!, this.radius, this.startAngle, endAngle);
@@ -113,6 +113,7 @@ export class ArcTool implements Tool {
     this.center = null;
     this.centerSnap = null;
     this.startSnap = null;
+    return true;
   }
 
   private commit(e: ToolPointerEvent, ctx: ToolContext): void {

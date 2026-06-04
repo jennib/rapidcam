@@ -159,6 +159,8 @@ function toolpathBody(op: CAMOperation, doc: CADDocument, ox: number, oy: number
       lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOff));
     else if (ent instanceof PolylineEntity && ent.closed)
       lines.push(...profilePolygon(ent.points, op, ox, oy, zOff));
+    else if (ent instanceof PolylineEntity)
+      lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
     else if (ent instanceof LineEntity)
       lines.push("; NOTE: open line skipped — profile requires closed geometry");
   }

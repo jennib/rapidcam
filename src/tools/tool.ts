@@ -21,8 +21,9 @@ export interface ToolContext {
   openDimEditor(dim: Dimension): void;
   /** Returns variables − equations from the last non-drag solve (≥ 0 means free DOFs remain; 0 = fully constrained). */
   currentDof(): number;
-  /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`; Escape calls `onCancel`. */
-  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => void, onCancel: () => void): void;
+  /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
+   *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it. */
+  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;
 }

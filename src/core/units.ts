@@ -112,6 +112,7 @@ export function parseAngle(input: string): number | null {
   if (s.endsWith("rad")) { isDeg = false; s = s.slice(0, -3).trim(); }
   else if (s.endsWith("°")) { s = s.slice(0, -1).trim(); }
   else if (s.endsWith("deg")) { s = s.slice(0, -3).trim(); }
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const v = parseFloat(s);
   if (isNaN(v)) return null;
   return isDeg ? (v * Math.PI) / 180 : v;

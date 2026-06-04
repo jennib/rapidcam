@@ -475,6 +475,13 @@ export class ArcEntity extends Entity {
     const span = ((this.endAngle - this.startAngle) % TAU + TAU) % TAU;
     const midAngle = this.startAngle + span / 2;
     pts.push({ pos: { x: this.center.x + this.radius * Math.cos(midAngle), y: this.center.y + this.radius * Math.sin(midAngle) }, kind: "midpoint", entityId: this.id });
+    // Quadrant snaps for any cardinal angle that falls within the arc span.
+    for (let k = 0; k < 4; k++) {
+      const a = k * (Math.PI / 2);
+      if (angleInArc(a, this.startAngle, this.endAngle)) {
+        pts.push({ pos: { x: this.center.x + this.radius * Math.cos(a), y: this.center.y + this.radius * Math.sin(a) }, kind: "quadrant", entityId: this.id });
+      }
+    }
     return pts;
   }
 

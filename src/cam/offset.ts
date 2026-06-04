@@ -14,11 +14,10 @@ export function signedArea(pts: Vec2[]): number {
 /**
  * Offset a closed polygon by `d` mm.
  * Positive d expands (outward), negative d shrinks (inward).
- * Uses miter-join at each vertex (intersection of adjacent offset edges).
- * Works correctly for convex polygons; for concave shapes, very large offsets
- * may produce self-intersecting results — acceptable for mill-width offsets.
+ * Uses miter-join at each vertex (intersection of adjacent offset edges),
+ * falling back to a bevel when the miter distance exceeds miterLimit × |d|.
  */
-export function offsetPolygon(pts: Vec2[], d: number): Vec2[] {
+export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[] {
   if (pts.length < 3) return pts.map((p) => ({ ...p }));
 
   // Normalise to CCW so outward normals are consistent
@@ -59,12 +58,19 @@ export function offsetPolygon(pts: Vec2[], d: number): Vec2[] {
     // Intersect the two infinite offset lines: pi + t*di = po + s*doo
     const denom = di.x * doo.y - di.y * doo.x;
     if (Math.abs(denom) < 1e-10) {
-      // Parallel edges — average the two offset points
+      // Parallel edges — average the two offset points (bevel)
       result.push({ x: (pi.x + po.x) / 2, y: (pi.y + po.y) / 2 });
     } else {
       const dx = po.x - pi.x, dy = po.y - pi.y;
       const t = (dx * doo.y - dy * doo.x) / denom;
-      result.push({ x: pi.x + t * di.x, y: pi.y + t * di.y });
+      const mx = pi.x + t * di.x, my = pi.y + t * di.y;
+      // Bevel if miter spike exceeds miterLimit × |d| from the original vertex.
+      const miterDist = Math.hypot(mx - curr.x, my - curr.y);
+      if (miterDist > miterLimit * Math.abs(d)) {
+        result.push({ x: (pi.x + po.x) / 2, y: (pi.y + po.y) / 2 });
+      } else {
+        result.push({ x: mx, y: my });
+      }
     }
   }
 
