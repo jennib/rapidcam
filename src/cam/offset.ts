@@ -30,11 +30,58 @@ export function signedArea(pts: Vec2[]): number {
   return a / 2;
 }
 
+// --- self-intersection removal -----------------------------------------------
+
+function segIntersect(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): Vec2 | null {
+  const dx1 = a2.x - a1.x, dy1 = a2.y - a1.y;
+  const dx2 = b2.x - b1.x, dy2 = b2.y - b1.y;
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-10) return null;
+  const ex = b1.x - a1.x, ey = b1.y - a1.y;
+  const t = (ex * dy2 - ey * dx2) / denom;
+  const u = (ex * dy1 - ey * dx1) / denom;
+  if (t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9)
+    return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
+  return null;
+}
+
+/**
+ * Remove self-intersecting loops from a polygon.
+ * Each pass finds the first edge crossing, discards the smaller-area sub-loop,
+ * and repeats until the polygon is simple. O(n²) per pass — fine for CAD
+ * polygon sizes (≤ a few hundred vertices).
+ */
+export function removeLoops(pts: Vec2[]): Vec2[] {
+  let verts = pts;
+  for (let pass = 0; pass < pts.length; pass++) {
+    const n = verts.length;
+    let found = false;
+    scan:
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue; // wrap-around adjacent edges
+        const p = segIntersect(verts[i], verts[(i + 1) % n], verts[j], verts[(j + 1) % n]);
+        if (!p) continue;
+        const ear  = [p, ...verts.slice(i + 1, j + 1)];
+        const main = [...verts.slice(0, i + 1), p, ...verts.slice(j + 1)];
+        verts = Math.abs(signedArea(ear)) >= Math.abs(signedArea(main)) ? ear : main;
+        found = true;
+        break scan;
+      }
+    }
+    if (!found) break;
+  }
+  return verts;
+}
+
+// --- polygon offset ----------------------------------------------------------
+
 /**
  * Offset a closed polygon by `d` mm.
  * Positive d expands (outward), negative d shrinks (inward).
  * Uses miter-join at each vertex (intersection of adjacent offset edges),
  * falling back to a bevel when the miter distance exceeds miterLimit × |d|.
+ * Self-intersecting loops produced by concave vertices are removed automatically.
  */
 export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[] {
   if (pts.length < 3) return pts.map((p) => ({ ...p }));
@@ -93,6 +140,7 @@ export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[] {
     }
   }
 
-  // Restore original winding
-  return area < 0 ? result.reverse() : result;
+  // Remove self-intersecting loops, then restore original winding
+  const simple = removeLoops(result);
+  return area < 0 ? simple.reverse() : simple;
 }

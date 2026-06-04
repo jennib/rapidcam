@@ -9,7 +9,7 @@ import {
 import { formatLength } from "../core/units";
 import { dist } from "../core/vec2";
 import { DEFAULTS, type CAMOperation, type CAMOpType } from "../cam/types";
-import { generateGCode, checkOperations } from "../cam/gcode";
+import { generateGCode } from "../cam/gcode";
 import { nextId } from "../model/ids";
 
 // ---- helpers ----------------------------------------------------------------
@@ -411,15 +411,6 @@ export class CamBar {
 
   private generate(): void {
     if (this.ops.length === 0) { alert("Add at least one toolpath first."); return; }
-    const warnings = checkOperations(this.ops, this.doc);
-    if (warnings.length > 0) {
-      const msg =
-        `⚠ Toolpath warning${warnings.length > 1 ? "s" : ""}:\n\n` +
-        warnings.map((w) => `• ${w}`).join("\n") +
-        `\n\nThe miter-join offset used for concave shapes may self-intersect ` +
-        `and produce incorrect or unsafe cut paths.\n\nGenerate anyway?`;
-      if (!confirm(msg)) return;
-    }
     this.download(generateGCode(this.ops, this.doc), "toolpaths");
   }
 
