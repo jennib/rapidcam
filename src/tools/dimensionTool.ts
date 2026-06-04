@@ -77,7 +77,7 @@ export class DimensionTool implements Tool {
           break;
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
-        if (hit && hit.type === "circle") {
+        if (hit && (hit.type === "circle" || hit.type === "arc")) {
           this.circleId = hit.id;
           this.circleKind = "radius";
           this.phase = "placeCircle";
@@ -167,7 +167,14 @@ export class DimensionTool implements Tool {
     if (e.key === "Escape") {
       this.cancel(ctx);
     } else if (e.key === "Tab" && this.phase === "placeCircle") {
-      this.circleKind = this.circleKind === "radius" ? "diameter" : "radius";
+      const ent = this.circleId ? ctx.doc.entities.find(e => e.id === this.circleId) : null;
+      if (ent?.type === "arc") {
+        // arc: cycle radius → diameter → arclength → radius
+        this.circleKind = this.circleKind === "radius" ? "diameter"
+          : this.circleKind === "diameter" ? "arclength" : "radius";
+      } else {
+        this.circleKind = this.circleKind === "radius" ? "diameter" : "radius";
+      }
       e.preventDefault();
       this.recompute(ctx);
       ctx.requestRender();

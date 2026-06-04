@@ -29,11 +29,11 @@ import {
 } from "../core/vec2";
 import { distToSegment } from "../core/geom";
 import { Unit, formatLengthWithUnit, formatAngle } from "../core/units";
-import { EntityId, CircleEntity, LineEntity } from "./entities";
+import { EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
 import { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
-export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle";
+export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength";
 export type LinearDimType = "distance" | "horizontal" | "vertical";
 
 export interface Dimension {
@@ -85,6 +85,19 @@ function readCircle(geo: Geo, id: EntityId | undefined): CircleEntity | null {
   if (!id) return null;
   const e = geo(id);
   return e instanceof CircleEntity ? e : null;
+}
+function readArc(geo: Geo, id: EntityId | undefined): ArcEntity | null {
+  if (!id) return null;
+  const e = geo(id);
+  return e instanceof ArcEntity ? e : null;
+}
+/** Center + radius from a circle OR arc entity, or null if neither. */
+function circularGeom(geo: Geo, id: EntityId | undefined): { center: Vec2; radius: number } | null {
+  const c = readCircle(geo, id);
+  if (c) return { center: c.center, radius: c.radius };
+  const a = readArc(geo, id);
+  if (a) return { center: a.center, radius: a.radius };
+  return null;
 }
 function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
   if (!id) return null;
@@ -141,12 +154,18 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       return p && q ? Math.abs(p.y - q.y) : null;
     }
     case "radius": {
-      const c = readCircle(geo, dim.entities[0]);
-      return c ? c.radius : null;
+      const g = circularGeom(geo, dim.entities[0]);
+      return g ? g.radius : null;
     }
     case "diameter": {
-      const c = readCircle(geo, dim.entities[0]);
-      return c ? c.radius * 2 : null;
+      const g = circularGeom(geo, dim.entities[0]);
+      return g ? g.radius * 2 : null;
+    }
+    case "arclength": {
+      const a = readArc(geo, dim.entities[0]);
+      if (!a) return null;
+      const span = ((a.endAngle - a.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      return a.radius * span;
     }
     case "angle": {
       const l1 = readLine(geo, dim.entities[0]);
@@ -201,8 +220,13 @@ export function chooseLinearType(p: Vec2, q: Vec2, cursor: Vec2): LinearDimType 
 /** Recompute `offset` from the cursor for the dimension's current type. */
 export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2): number {
   if (dim.type === "radius" || dim.type === "diameter") {
-    const c = readCircle(geo, dim.entities[0]);
-    return c ? vecAngle(sub(cursor, c.center)) : dim.offset;
+    const g = circularGeom(geo, dim.entities[0]);
+    return g ? vecAngle(sub(cursor, g.center)) : dim.offset;
+  }
+  if (dim.type === "arclength") {
+    const a = readArc(geo, dim.entities[0]);
+    if (!a) return dim.offset;
+    return Math.max(4, dist(cursor, a.center) - a.radius); // radial outward offset
   }
   if (dim.type === "angle") {
     const l1 = readLine(geo, dim.entities[0]);
@@ -226,22 +250,22 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   const displayVal = dim.driving ? dim.value : (dimensionMeasure(dim, geo) ?? 0);
 
   if (dim.type === "radius" || dim.type === "diameter") {
-    const c = readCircle(geo, dim.entities[0]);
-    if (!c) return null;
+    const g = circularGeom(geo, dim.entities[0]);
+    if (!g) return null;
     const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
     if (dim.type === "radius") {
-      const edge = add(c.center, scale(u, c.radius));
-      const end = add(c.center, scale(u, c.radius + LEADER_MM));
+      const edge = add(g.center, scale(u, g.radius));
+      const end = add(g.center, scale(u, g.radius + LEADER_MM));
       return {
-        segments: [[c.center, end]],
+        segments: [[g.center, end]],
         arrows: [{ tip: edge, dir: u }],
         textPos: end,
         label: "R" + formatLengthWithUnit(displayVal, unit),
       };
     }
-    const e1 = add(c.center, scale(u, c.radius));
-    const e2 = sub(c.center, scale(u, c.radius));
-    const end = add(c.center, scale(u, c.radius + LEADER_MM));
+    const e1 = add(g.center, scale(u, g.radius));
+    const e2 = sub(g.center, scale(u, g.radius));
+    const end = add(g.center, scale(u, g.radius + LEADER_MM));
     return {
       segments: [[e2, end]],
       arrows: [
@@ -250,6 +274,32 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
       ],
       textPos: end,
       label: "⌀" + formatLengthWithUnit(displayVal, unit),
+    };
+  }
+
+  if (dim.type === "arclength") {
+    const a = readArc(geo, dim.entities[0]);
+    if (!a) return null;
+    const R = a.radius + Math.max(6, dim.offset); // dim arc sits outside the actual arc
+    const span = ((a.endAngle - a.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const midAngle = a.startAngle + span / 2;
+    const d1: Vec2 = { x: Math.cos(a.startAngle), y: Math.sin(a.startAngle) };
+    const d2: Vec2 = { x: Math.cos(a.endAngle),   y: Math.sin(a.endAngle) };
+    // Tangential arrow directions (CCW tangent at each end, then negate for "inward").
+    const arrow1Dir: Vec2 = { x: -d1.y, y: d1.x };           // CCW tangent at start
+    const arrow2Dir: Vec2 = { x:  d2.y, y: -d2.x };          // reverse CCW tangent at end
+    return {
+      segments: [
+        [add(a.center, scale(d1, a.radius)), add(a.center, scale(d1, R))],  // ext line start
+        [add(a.center, scale(d2, a.radius)), add(a.center, scale(d2, R))],  // ext line end
+      ],
+      arrows: [
+        { tip: add(a.center, scale(d1, R)), dir: arrow1Dir },
+        { tip: add(a.center, scale(d2, R)), dir: arrow2Dir },
+      ],
+      textPos: add(a.center, scale({ x: Math.cos(midAngle), y: Math.sin(midAngle) }, R + 2)),
+      label: "∩" + formatLengthWithUnit(displayVal, unit),
+      arc: { center: a.center, radius: R, startDir: d1, endDir: d2, ccw: true },
     };
   }
 
