@@ -54,6 +54,12 @@ export interface DocSnapshot {
   selectedPoints: PointRef[];
   selectedConstraintId: string | null;
   selectedDimensionId: string | null;
+  // document-level settings — present in all in-memory snapshots; may be
+  // absent in snapshots deserialized from old .rcam files (handled in restore)
+  canvas?: CanvasSize;
+  stockThickness?: number;
+  hasToolChanger?: boolean;
+  origin?: OriginDef;
 }
 
 export interface CanvasSize {
@@ -334,6 +340,10 @@ export class CADDocument {
       selectedPoints: this.selectedPoints.map((p) => ({ ...p })),
       selectedConstraintId: this.selectedConstraintId,
       selectedDimensionId: this.selectedDimensionId,
+      canvas: { ...this.canvas },
+      stockThickness: this.stockThickness,
+      hasToolChanger: this.hasToolChanger,
+      origin: { ...this.origin },
     };
   }
 
@@ -376,6 +386,10 @@ export class CADDocument {
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
     this.selectedConstraintId = s.selectedConstraintId ?? null;
     this.selectedDimensionId = s.selectedDimensionId ?? null;
+    if (s.canvas)       this.canvas         = { ...s.canvas };
+    if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
+    if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
+    if (s.origin)       this.origin         = { ...s.origin };
     this.emitChange();
   }
 }

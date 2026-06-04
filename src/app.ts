@@ -135,7 +135,7 @@ export class App {
         onOpenRecent: (e) => this.fileOpenRecent(e),
       },
     });
-    new SettingsBar(dom.settingsbar, this.doc);
+    new SettingsBar(dom.settingsbar, this.doc, this.pushHistory);
     new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(

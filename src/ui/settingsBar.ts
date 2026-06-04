@@ -17,6 +17,7 @@ export class SettingsBar {
   constructor(
     private host: HTMLElement,
     private doc: CADDocument,
+    private pushHistory: () => void,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -106,21 +107,25 @@ export class SettingsBar {
     this.heightInput.addEventListener("change", () => this.commitSize());
     this.stockInput.addEventListener("change", () => {
       const v = parseLength(this.stockInput.value, this.doc.displayUnit);
-      if (v !== null && v > 0) { this.doc.stockThickness = v; this.doc.emitChange(); }
+      if (v !== null && v > 0) { this.pushHistory(); this.doc.stockThickness = v; this.doc.emitChange(); }
     });
     this.originXSelect.addEventListener("change", () => {
+      this.pushHistory();
       this.doc.origin.x = this.originXSelect.value as OriginX;
       this.doc.emitChange();
     });
     this.originYSelect.addEventListener("change", () => {
+      this.pushHistory();
       this.doc.origin.y = this.originYSelect.value as OriginY;
       this.doc.emitChange();
     });
     this.originZSelect.addEventListener("change", () => {
+      this.pushHistory();
       this.doc.origin.z = this.originZSelect.value as OriginZ;
       this.doc.emitChange();
     });
     this.toolChangerCheck.addEventListener("change", () => {
+      this.pushHistory();
       this.doc.hasToolChanger = this.toolChangerCheck.checked;
       this.doc.emitChange();
     });
@@ -210,6 +215,7 @@ export class SettingsBar {
     const u = this.doc.displayUnit;
     const w = parseLength(this.widthInput.value, u);
     const h = parseLength(this.heightInput.value, u);
+    if ((w !== null && w > 0) || (h !== null && h > 0)) this.pushHistory();
     if (w !== null && w > 0) this.doc.canvas.width = w;
     if (h !== null && h > 0) this.doc.canvas.height = h;
     this.doc.emitChange();
