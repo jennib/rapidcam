@@ -13,15 +13,16 @@ export type PreviewShape =
   | { kind: "point"; pos: Vec2 };
 
 export interface TransformHandle {
-  type: "scale" | "rotate";
+  type: "scale" | "rotate" | "scale-arrow";
   pos: Vec2; // world coords
-  id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot", "rot-nw", "rot-ne", "rot-sw", "rot-se"
+  id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot", "rot-nw", "rot-ne", "rot-sw", "rot-se", "scale-a", etc.
 }
 
 export interface TransformBox {
   bounds: Bounds;
   handles: TransformHandle[];
   hideBox?: boolean;
+  polygon?: Vec2[]; // optional oriented bounding box
 }
 
 export interface Overlay {

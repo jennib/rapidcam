@@ -1,17 +1,17 @@
 import { Vec2, dist } from "../core/vec2";
-import { applyRotate, selectionBounds } from "../core/transform";
+import { applyScale, selectionBounds } from "../core/transform";
 import { Entity } from "../model/entities";
 import { DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 
-export class RotateTool implements Tool {
-  readonly id = "rotate";
-  readonly label = "Rotate (R)";
-  readonly icon = ICONS.rotate;
+export class ScaleTool implements Tool {
+  readonly id = "scale";
+  readonly label = "Scale (S)";
+  readonly icon = ICONS.scale;
 
-  private mode: "idle" | "maybeSelect" | "dragRotate" | "marquee" = "idle";
+  private mode: "idle" | "maybeSelect" | "dragScale" | "marquee" = "idle";
   private downScreen: Vec2 = { x: 0, y: 0 };
   private dragStartWorld: Vec2 = { x: 0, y: 0 };
   private dragSnapshot: DocSnapshot | null = null;
@@ -36,8 +36,8 @@ export class RotateTool implements Tool {
         bounds: b,
         hideBox: true,
         handles: [
-          { type: "rotate", id: "rot-a", pos: line.a },
-          { type: "rotate", id: "rot-b", pos: line.b }
+          { type: "scale-arrow", id: "scale-a", pos: line.a },
+          { type: "scale-arrow", id: "scale-b", pos: line.b }
         ]
       };
       return;
@@ -52,10 +52,10 @@ export class RotateTool implements Tool {
         hideBox: true,
         polygon: rectPoly,
         handles: [
-          { type: "rotate", id: "rot-0", pos: rectPoly[0] },
-          { type: "rotate", id: "rot-1", pos: rectPoly[1] },
-          { type: "rotate", id: "rot-2", pos: rectPoly[2] },
-          { type: "rotate", id: "rot-3", pos: rectPoly[3] },
+          { type: "scale-arrow", id: "scale-0", pos: rectPoly[0] },
+          { type: "scale-arrow", id: "scale-1", pos: rectPoly[1] },
+          { type: "scale-arrow", id: "scale-2", pos: rectPoly[2] },
+          { type: "scale-arrow", id: "scale-3", pos: rectPoly[3] },
         ]
       };
       return;
@@ -71,10 +71,10 @@ export class RotateTool implements Tool {
     b.max.x += pad; b.max.y += pad;
 
     const handles: TransformHandle[] = [
-      { type: "rotate", id: "rot-nw", pos: { x: b.min.x, y: b.max.y } },
-      { type: "rotate", id: "rot-ne", pos: { x: b.max.x, y: b.max.y } },
-      { type: "rotate", id: "rot-sw", pos: { x: b.min.x, y: b.min.y } },
-      { type: "rotate", id: "rot-se", pos: { x: b.max.x, y: b.min.y } },
+      { type: "scale-arrow", id: "scale-nw", pos: { x: b.min.x, y: b.max.y } },
+      { type: "scale-arrow", id: "scale-ne", pos: { x: b.max.x, y: b.max.y } },
+      { type: "scale-arrow", id: "scale-sw", pos: { x: b.min.x, y: b.min.y } },
+      { type: "scale-arrow", id: "scale-se", pos: { x: b.max.x, y: b.min.y } },
     ];
     this.currentTransformBox = { bounds: b, handles };
   }
@@ -99,7 +99,7 @@ export class RotateTool implements Tool {
           }
         }
         if (hit) {
-          this.mode = "dragRotate";
+          this.mode = "dragScale";
           ctx.pushHistory();
           this.dragSnapshot = ctx.doc.snapshot();
           this.originalBounds = tb.bounds;
@@ -160,27 +160,24 @@ export class RotateTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "maybeSelect" && dist(e.screen, this.downScreen) > 4) {
-      // Rotate tool doesn't drag entities, it just selects them. If you drag, it does nothing or maybe marquees.
       this.mode = "idle";
     }
 
     if (this.mode === "marquee") {
       this.marqueeEnd = e.worldRaw;
       ctx.requestRender();
-    } else if (this.mode === "dragRotate" && this.dragSnapshot && this.originalBounds) {
+    } else if (this.mode === "dragScale" && this.dragSnapshot && this.originalBounds) {
       ctx.doc.restore(this.dragSnapshot);
       const ob = this.originalBounds;
       const cx = (ob.min.x + ob.max.x) / 2;
       const cy = (ob.min.y + ob.max.y) / 2;
       
-      const startAngle = Math.atan2(this.dragStartWorld.y - cy, this.dragStartWorld.x - cx);
-      const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
-      const angle = currentAngle - startAngle;
+      const startDist = dist(this.dragStartWorld, { x: cx, y: cy });
+      const currentDist = dist(e.worldRaw, { x: cx, y: cy });
       
-      applyRotate(ctx.doc.selected, cx, cy, angle, (oldE, newE) => {
-        const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
-        if (idx >= 0) ctx.doc.entities[idx] = newE;
-      });
+      const scale = startDist > 1e-4 ? currentDist / startDist : 1;
+      
+      applyScale(ctx.doc.selected, cx, cy, scale, scale);
       ctx.solve();
       ctx.requestRender();
     }
@@ -189,7 +186,6 @@ export class RotateTool implements Tool {
 
   onPointerUp(_e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "marquee") {
-      // Simple marquee
       const x0 = Math.min(this.marqueeStart.x, this.marqueeEnd.x);
       const y0 = Math.min(this.marqueeStart.y, this.marqueeEnd.y);
       const x1 = Math.max(this.marqueeStart.x, this.marqueeEnd.x);
@@ -210,7 +206,7 @@ export class RotateTool implements Tool {
           }
         }
       }
-    } else if (this.mode === "dragRotate") {
+    } else if (this.mode === "dragScale") {
       ctx.doc.emitChange();
     }
     
@@ -233,14 +229,12 @@ export class RotateTool implements Tool {
     const lines = sel.filter(e => e.type === "line") as any[];
     if (lines.length !== 4) return null;
 
-    // Extract all endpoints
     const pts: Vec2[] = [];
     for (const l of lines) {
       pts.push(l.a);
       pts.push(l.b);
     }
 
-    // Find unique points (with small tolerance)
     const unique: Vec2[] = [];
     for (const p of pts) {
       if (!unique.find(u => dist(u, p) < 1e-4)) {
@@ -248,10 +242,8 @@ export class RotateTool implements Tool {
       }
     }
     
-    // A closed quadrilateral should have exactly 4 unique points
     if (unique.length !== 4) return null;
 
-    // Sort points in geometric order around their centroid to form a convex polygon
     const cx = unique.reduce((sum, p) => sum + p.x, 0) / 4;
     const cy = unique.reduce((sum, p) => sum + p.y, 0) / 4;
     
@@ -261,17 +253,10 @@ export class RotateTool implements Tool {
       return angleA - angleB;
     });
 
-    // We can assume it's roughly a rectangle if they were drawn with RectTool and have 4 unique corners.
-    // To make the handles a bit larger than the exact corners (like padding), we scale them out by 10px.
-    // Wait, the user wants to get rid of the square around the rotating rectangle.
-    // If we pad it, it looks like a tight bounding box. If we don't pad it, the handles are ON the corners.
-    // Let's add the standard 10px visual padding outwards from the centroid!
     const padded = unique.map(p => {
       const dir = { x: p.x - cx, y: p.y - cy };
       const len = Math.hypot(dir.x, dir.y);
       if (len < 1e-4) return p;
-      // Add 10 world-units of padding (should ideally be screen pixels, but we don't have ctx.view.scale here easily without passing it)
-      // Actually we can just return exact corners and let them sit on the vertices!
       return p;
     });
 

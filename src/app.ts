@@ -27,6 +27,7 @@ import { ArcTool } from "./tools/arcTool";
 import { OffsetTool } from "./tools/offsetTool";
 import { BezierTool } from "./tools/bezierTool";
 import { RotateTool } from "./tools/rotateTool";
+import { ScaleTool } from "./tools/scaleTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -50,6 +51,7 @@ const SHORTCUTS: Record<string, string> = {
   o: "offset",
   b: "bezier",
   q: "rotate",
+  s: "scale",
 };
 
 export class App {
@@ -123,6 +125,7 @@ export class App {
         new OffsetTool(),
         new BezierTool(),
         new RotateTool(),
+        new ScaleTool(),
       ],
       "select",
     );

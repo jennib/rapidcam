@@ -657,7 +657,18 @@ export class Renderer {
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 5]);
     if (!overlay.transformBox.hideBox) {
-      ctx.strokeRect(x, y, w, h);
+      if (overlay.transformBox.polygon) {
+        ctx.beginPath();
+        for (let i = 0; i < overlay.transformBox.polygon.length; i++) {
+          const p = view.worldToScreen(overlay.transformBox.polygon[i]);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(x, y, w, h);
+      }
     }
 
     // Draw rotation stem line only for the top-center rotate handle (from SelectTool)
@@ -688,6 +699,22 @@ export class Renderer {
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(s.x, s.y, hw + 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (hnd.type === "scale-arrow") {
+        // Draw an outward/inward arrow at the corner
+        ctx.fillStyle = "#ffb020";
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        
+        // Let's just draw a slightly larger diamond to represent scale arrow for now, or a double arrow!
+        // We'll draw a diamond
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y - hw - 2);
+        ctx.lineTo(s.x + hw + 2, s.y);
+        ctx.lineTo(s.x, s.y + hw + 2);
+        ctx.lineTo(s.x - hw - 2, s.y);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
       }
