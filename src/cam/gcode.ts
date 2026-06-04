@@ -35,10 +35,10 @@ function profilePolygon(
   if (paths.length === 0) return [];
 
   const lines: string[] = [];
-  for (const z of depthPasses(op)) {
-    for (const path of paths) {
-      if (path.length < 2) continue;
-      const s = path[0];
+  for (const path of paths) {
+    if (path.length < 2) continue;
+    const s = path[0];
+    for (const z of depthPasses(op)) {
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
       lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
