@@ -502,6 +502,34 @@ export class App {
       ev.preventDefault();
       return;
     }
+    
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "g") {
+      ev.preventDefault();
+      if (ev.shiftKey) {
+        // Ungroup
+        const selectedIds = new Set(this.doc.selected.map(e => e.id));
+        const groupsToKeep = this.doc.groups.filter(g => !g.entityIds.some(id => selectedIds.has(id)));
+        if (groupsToKeep.length !== this.doc.groups.length) {
+          this.project.pushHistory();
+          this.doc.groups = groupsToKeep;
+          this.doc.emitChange();
+        }
+      } else {
+        // Group
+        if (this.doc.selected.length >= 2) {
+          this.project.pushHistory();
+          import("./model/ids").then(({ nextId }) => {
+            const group = {
+              id: nextId("grp"),
+              entityIds: this.doc.selected.map(e => e.id)
+            };
+            this.doc.groups.push(group);
+            this.doc.emitChange();
+          });
+        }
+      }
+      return;
+    }
 
     // Let the active tool consume the key first (Enter, Backspace, Escape…).
     this.tools.keyDown(ev);

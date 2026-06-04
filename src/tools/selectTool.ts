@@ -81,13 +81,17 @@ export class SelectTool implements Tool {
     // 2) Entity body.
     const hit = ctx.doc.hitTest(e.worldRaw, ctx.view.toWorldLen(PICK_TOLERANCE_PX));
     if (hit) {
+      const group = ctx.doc.groupOf(hit.id);
+      const targets = group ? ctx.doc.entities.filter(ent => group.entityIds.includes(ent.id)) : [hit];
+
       if (e.shiftKey) {
-        hit.selected = !hit.selected;
+        const newState = !hit.selected;
+        for (const t of targets) t.selected = newState;
         this.mode = "idle";
       } else {
         if (!hit.selected) {
           ctx.doc.clearSelection();
-          hit.selected = true;
+          for (const t of targets) t.selected = true;
         }
         this.mode = "maybeDragEntity";
       }
@@ -158,10 +162,23 @@ export class SelectTool implements Tool {
       min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) },
       max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) },
     };
+    
+    const toSelect = new Set<string>();
     for (const ent of ctx.doc.entities) {
       const eb = ent.bounds();
       const inside = crossing ? boundsIntersect(eb, rect) : boundsContainsBounds(rect, eb);
-      if (inside) ent.selected = true;
+      if (inside) {
+        const group = ctx.doc.groupOf(ent.id);
+        if (group) {
+          for (const id of group.entityIds) toSelect.add(id);
+        } else {
+          toSelect.add(ent.id);
+        }
+      }
+    }
+    
+    for (const ent of ctx.doc.entities) {
+      if (toSelect.has(ent.id)) ent.selected = true;
     }
     ctx.doc.emitChange();
   }

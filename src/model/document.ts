@@ -39,6 +39,11 @@ import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEnti
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
 
+export interface GroupDef {
+  id: string;
+  entityIds: EntityId[];
+}
+
 type EntitySnapshot =
   | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean }
   | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean }
@@ -62,6 +67,7 @@ export interface DocSnapshot {
   hasToolChanger?: boolean;
   origin?: OriginDef;
   postProcessor?: string;
+  groups?: GroupDef[];
 }
 
 export interface CanvasSize {
@@ -90,6 +96,7 @@ export class CADDocument {
   postProcessor = "linuxcnc";
 
   entities: Entity[] = [];
+  groups: GroupDef[] = [];
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
   isConstructionMode = false;
@@ -315,6 +322,10 @@ export class CADDocument {
     return { min, max };
   }
 
+  groupOf(entityId: EntityId): GroupDef | null {
+    return this.groups.find(g => g.entityIds.includes(entityId)) ?? null;
+  }
+
   // --- undo/redo snapshots --------------------------------------------------
   snapshot(): DocSnapshot {
     return {
@@ -351,6 +362,7 @@ export class CADDocument {
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
+      groups: this.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })),
     };
   }
 
@@ -402,6 +414,7 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
+    if (s.groups)       this.groups         = s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] }));
     this.emitChange();
   }
 }

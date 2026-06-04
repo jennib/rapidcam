@@ -10,6 +10,7 @@ export interface RcamFile {
   hasToolChanger?: boolean;
   origin?: { x: string; y: string; z: string };
   postProcessor?: string;
+  groups?: unknown[];
   entities: unknown[];
   constraints: unknown[];
   dimensions: unknown[];
@@ -51,6 +52,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     hasToolChanger: doc.hasToolChanger,
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
     postProcessor: doc.postProcessor,
+    groups: snap.groups as unknown[],
     entities: snap.entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],

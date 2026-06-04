@@ -4,6 +4,7 @@ import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./filei
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
+import { nextId } from "../model/ids";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 
 export interface ProjectManagerCallbacks {
@@ -227,6 +228,14 @@ export class ProjectManager {
     for (const e of entities) {
       e.selected = true;
       this.doc.entities.push(e);
+    }
+    
+    if (entities.length >= 2) {
+      const group = {
+        id: nextId("grp"),
+        entityIds: entities.map(e => e.id)
+      };
+      this.doc.groups.push(group);
     }
     this.doc.emitChange();
   }
