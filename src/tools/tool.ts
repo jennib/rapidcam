@@ -19,6 +19,10 @@ export interface ToolContext {
   pushHistory(): void;
   /** Open the inline dimension value editor for the given dimension. */
   openDimEditor(dim: Dimension): void;
+  /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`; Escape calls `onCancel`. */
+  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => void, onCancel: () => void): void;
+  /** Close any open floating value editor without committing. */
+  closeValueEditor(): void;
 }
 
 export interface ToolPointerEvent {

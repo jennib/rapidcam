@@ -25,6 +25,31 @@ export function distToCircle(p: Vec2, c: Vec2, r: number): number {
 }
 
 /**
+ * Distance from point p to an arc (CCW from startAngle to endAngle, world Y-up).
+ * Returns distance to the arc curve itself; falls back to distance to the nearer endpoint.
+ */
+export function distToArc(p: Vec2, center: Vec2, radius: number, startAngle: number, endAngle: number): number {
+  const theta = Math.atan2(p.y - center.y, p.x - center.x);
+  // How far (CCW) from startAngle to theta, normalized to [0, 2π)
+  const span = ((endAngle - startAngle) % TAU + TAU) % TAU;
+  const t = ((theta - startAngle) % TAU + TAU) % TAU;
+  if (t <= span) {
+    return Math.abs(dist(p, center) - radius);
+  }
+  // Outside the arc span — distance to the nearer endpoint.
+  const arcStart: Vec2 = { x: center.x + radius * Math.cos(startAngle), y: center.y + radius * Math.sin(startAngle) };
+  const arcEnd: Vec2 = { x: center.x + radius * Math.cos(endAngle), y: center.y + radius * Math.sin(endAngle) };
+  return Math.min(dist(p, arcStart), dist(p, arcEnd));
+}
+
+/** True when angle θ lies within the CCW arc from startAngle to endAngle. */
+export function angleInArc(theta: number, startAngle: number, endAngle: number): boolean {
+  const span = ((endAngle - startAngle) % TAU + TAU) % TAU;
+  const t = ((theta - startAngle) % TAU + TAU) % TAU;
+  return t <= span;
+}
+
+/**
  * Pick a "nice" rounded step (1, 2, 5 × 10ⁿ) that is >= the raw step.
  * Used to choose grid spacing so labels land on sensible values.
  */

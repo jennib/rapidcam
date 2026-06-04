@@ -91,6 +91,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // is why dragging one end of a length-dimensioned line leaves the other end fixed.)
   const dragging = pinEntries.length > 0;
   const pinnedComponents = new Set<string>();
+  const pinnedScalars = new Set<string>();
   if (pins) {
     const coincidentGroups = new Map<string, string[]>();
     for (const c of doc.constraints) {
@@ -129,6 +130,9 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       for (const affected of ent.dofsAffectedBy(k)) {
         pinnedComponents.add(`${ent.id}:${affected.key}:${affected.axis}`);
       }
+      for (const sk of ent.scalarsAffectedBy(k)) {
+        pinnedScalars.add(scalarKey(ent.id, sk));
+      }
     }
   }
 
@@ -149,7 +153,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;
       const vs = scalarComponent(ent, s.key);
       vars.push(vs);
-      if (dragging) anchorVars.push(vs);
+      if (dragging && !pinnedScalars.has(scalarKey(ent.id, s.key))) anchorVars.push(vs);
     }
   }
   const anchorStart = anchorVars.map((v) => v.get());

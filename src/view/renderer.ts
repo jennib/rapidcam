@@ -9,6 +9,7 @@ import {
   CircleEntity,
   RectEntity,
   PolylineEntity,
+  ArcEntity,
 } from "../model/entities";
 import { constraintAnchor, CONSTRAINT_GLYPH, Geo } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
@@ -285,6 +286,14 @@ export class Renderer {
           for (let i = 1; i < pl.points.length; i++) this.lineTo(pl.points[i], view);
           if (pl.closed) ctx.closePath();
         }
+        break;
+      }
+      case "arc": {
+        const arc = e as ArcEntity;
+        const sc = view.worldToScreen(arc.center);
+        const sr = view.toScreenLen(arc.radius);
+        // World CCW arc → canvas anticlockwise=true, angles negated (Y-flip).
+        ctx.arc(sc.x, sc.y, sr, -arc.startAngle, -arc.endAngle, true);
         break;
       }
     }

@@ -23,6 +23,7 @@ import { RectTool } from "./tools/rectTool";
 import { CircleTool } from "./tools/circleTool";
 import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
+import { ArcTool } from "./tools/arcTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -43,6 +44,7 @@ const SHORTCUTS: Record<string, string> = {
   l: "line",
   r: "rect",
   c: "circle",
+  a: "arc",
   p: "polyline",
   d: "dimension",
 };
@@ -73,6 +75,8 @@ export class App {
 
   // inline dimension value editor
   private dimEditor: HTMLInputElement | null = null;
+  // generic floating value editor (e.g. arc length)
+  private valueEditor: HTMLInputElement | null = null;
 
   constructor(private canvas: HTMLCanvasElement, dom: {
     palette: HTMLElement;
@@ -94,12 +98,16 @@ export class App {
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
+        openValueEditor: (worldPos, placeholder, onCommit, onCancel) =>
+          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0),
+        closeValueEditor: () => this.closeValueEditor(),
       },
       [
         new SelectTool(),
         new LineTool(),
         new RectTool(),
         new CircleTool(),
+        new ArcTool(),
         new PolylineTool(),
         new DimensionTool(),
       ],
@@ -532,6 +540,48 @@ export class App {
     if (this.dimEditor) {
       const el = this.dimEditor;
       this.dimEditor = null;
+      el.remove();
+    }
+  }
+
+  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => void, onCancel: () => void): void {
+    this.closeValueEditor();
+    const pos = this.view.worldToScreen(worldPos);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "dim-edit";
+    input.placeholder = placeholder;
+    input.style.left = `${pos.x - 36}px`;
+    input.style.top = `${pos.y + 14}px`;
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const raw = input.value;
+        this.closeValueEditor();
+        onCommit(raw);
+      } else if (e.key === "Escape") {
+        this.closeValueEditor();
+        onCancel();
+      }
+      e.stopPropagation();
+    });
+    // Blur just closes silently — canvas click commits via pointer event.
+    input.addEventListener("blur", () => {
+      if (this.valueEditor === input) {
+        this.valueEditor = null;
+        input.remove();
+      }
+    });
+
+    this.canvas.parentElement!.appendChild(input);
+    this.valueEditor = input;
+    input.focus();
+  }
+
+  private closeValueEditor(): void {
+    if (this.valueEditor) {
+      const el = this.valueEditor;
+      this.valueEditor = null;
       el.remove();
     }
   }

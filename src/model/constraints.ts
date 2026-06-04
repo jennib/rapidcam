@@ -13,7 +13,7 @@
  */
 
 import { Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
-import { Entity, EntityId, LineEntity, CircleEntity } from "./entities";
+import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity } from "./entities";
 import { nextId } from "./ids";
 
 export type ConstraintType =
@@ -25,7 +25,11 @@ export type ConstraintType =
   | "equal" //      entities[2] (lines→length, or circles→radius)
   | "concentric" //  entities[2] (circles) → centres coincide
   | "pointOnLine" //  points[1] + entities[1] (line)
-  | "tangent" //     entities[2] (line + circle)
+  | "tangent" //     entities[2] (line + circle, or line + arc, or arc + arc)
+  | "pointOnArc" //  points[1] + entities[1] (arc)
+  | "symmetric" //   points[2] + entities[1] (line) → symmetric about the line
+  | "collinear" //   entities[2] (lines)   → both on same infinite line
+  | "midpoint" //    points[1] + entities[1] (line) → point at midpoint of line
   | "fixed"; //      entities[1+]         → lock all its DOFs (no equation)
 
 /** A reference to one specific point DOF inside an entity. */
@@ -69,6 +73,10 @@ function asLine(geo: Geo, id: EntityId): LineEntity | null {
 function asCircle(geo: Geo, id: EntityId): CircleEntity | null {
   const e = geo(id);
   return e instanceof CircleEntity ? e : null;
+}
+function asArc(geo: Geo, id: EntityId): ArcEntity | null {
+  const e = geo(id);
+  return e instanceof ArcEntity ? e : null;
 }
 function readPoint(geo: Geo, ref: PointRef | undefined): Vec2 | null {
   if (!ref) return null;
@@ -123,16 +131,16 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       const l1 = asLine(geo, c.entities[0]);
       const l2 = asLine(geo, c.entities[1]);
       if (l1 && l2) return [l1.length - l2.length];
-      const c1 = asCircle(geo, c.entities[0]);
-      const c2 = asCircle(geo, c.entities[1]);
-      if (c1 && c2) return [c1.radius - c2.radius];
+      const r1 = (asCircle(geo, c.entities[0]) ?? asArc(geo, c.entities[0]))?.radius;
+      const r2 = (asCircle(geo, c.entities[1]) ?? asArc(geo, c.entities[1]))?.radius;
+      if (r1 !== undefined && r2 !== undefined) return [r1 - r2];
       return [];
     }
     case "concentric": {
-      const c1 = asCircle(geo, c.entities[0]);
-      const c2 = asCircle(geo, c.entities[1]);
-      if (!c1 || !c2) return [];
-      return [c1.center.x - c2.center.x, c1.center.y - c2.center.y];
+      const cen1 = (asCircle(geo, c.entities[0]) ?? asArc(geo, c.entities[0]))?.center;
+      const cen2 = (asCircle(geo, c.entities[1]) ?? asArc(geo, c.entities[1]))?.center;
+      if (!cen1 || !cen2) return [];
+      return [cen1.x - cen2.x, cen1.y - cen2.y];
     }
     case "pointOnLine": {
       const p = readPoint(geo, c.points[0]);
@@ -143,8 +151,63 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
     case "tangent": {
       const l = asLine(geo, c.entities[0]) ?? asLine(geo, c.entities[1]);
       const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
-      if (!l || !circ) return [];
-      return [Math.abs(signedLineDistance(l, circ.center)) - circ.radius];
+      const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
+      if (l && circ) return [Math.abs(signedLineDistance(l, circ.center)) - circ.radius];
+      if (l && arc) return [Math.abs(signedLineDistance(l, arc.center)) - arc.radius];
+      if (!l && arc) {
+        // arc–arc tangency: centres same distance apart as sum/diff of radii
+        const arc2 = asArc(geo, c.entities[1]) ?? asArc(geo, c.entities[0]);
+        const circ2 = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
+        const other = arc2 === arc ? null : arc2;
+        const otherCirc = circ2;
+        if (other) {
+          const d = len(sub(arc.center, other.center));
+          return [Math.min(Math.abs(d - arc.radius - other.radius), Math.abs(d - Math.abs(arc.radius - other.radius)))];
+        }
+        if (otherCirc) {
+          const d = len(sub(arc.center, otherCirc.center));
+          return [Math.min(Math.abs(d - arc.radius - otherCirc.radius), Math.abs(d - Math.abs(arc.radius - otherCirc.radius)))];
+        }
+      }
+      return [];
+    }
+    case "pointOnArc": {
+      const p = readPoint(geo, c.points[0]);
+      const arc = asArc(geo, c.entities[0]);
+      if (!p || !arc) return [];
+      return [len(sub(p, arc.center)) - arc.radius];
+    }
+    case "symmetric": {
+      // points[0] and points[1] are symmetric about the infinite line of entities[0].
+      const p = readPoint(geo, c.points[0]);
+      const q = readPoint(geo, c.points[1]);
+      const l = asLine(geo, c.entities[0]);
+      if (!p || !q || !l) return [];
+      // The midpoint of p and q must lie on the line, and p-q must be perpendicular to the line.
+      const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      const pq = sub(q, p);
+      const ld = sub(l.b, l.a);
+      const lLen = len(ld);
+      if (lLen < 1e-9) return [];
+      const lu = { x: ld.x / lLen, y: ld.y / lLen };
+      return [
+        signedLineDistance(l, m),  // midpoint on the line
+        dot(pq, lu),               // p-q perpendicular to line
+      ];
+    }
+    case "collinear": {
+      const l1 = asLine(geo, c.entities[0]);
+      const l2 = asLine(geo, c.entities[1]);
+      if (!l1 || !l2) return [];
+      // Both endpoints of l2 lie on the infinite line of l1.
+      return [signedLineDistance(l1, l2.a), signedLineDistance(l1, l2.b)];
+    }
+    case "midpoint": {
+      const p = readPoint(geo, c.points[0]);
+      const l = asLine(geo, c.entities[0]);
+      if (!p || !l) return [];
+      const m = { x: (l.a.x + l.b.x) / 2, y: (l.a.y + l.b.y) / 2 };
+      return [p.x - m.x, p.y - m.y];
     }
     case "fixed":
       return []; // enforced by removing DOFs, not by an equation
@@ -178,6 +241,10 @@ export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
   concentric: "◎",
   pointOnLine: "—",
   tangent: "T",
+  pointOnArc: "⌒",
+  symmetric: "↔",
+  collinear: "◀▶",
+  midpoint: "M",
   fixed: "⚓",
 };
 
@@ -206,7 +273,21 @@ export function constraintAnchor(c: Constraint, geo: Geo): Vec2 | null {
     }
     case "tangent": {
       const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
-      return circ ? { ...circ.center } : null;
+      if (circ) return { ...circ.center };
+      const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
+      return arc ? { ...arc.center } : null;
+    }
+    case "pointOnArc":
+    case "midpoint":
+      return c.points[0] ? readPoint(geo, c.points[0]) : null;
+    case "symmetric": {
+      const p = readPoint(geo, c.points[0]);
+      const q = readPoint(geo, c.points[1]);
+      return p && q ? { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 } : null;
+    }
+    case "collinear": {
+      const l = asLine(geo, c.entities[0]);
+      return l ? mid(l.a, l.b) : null;
     }
     case "fixed": {
       const e = geo(c.entities[0]);

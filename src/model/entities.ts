@@ -10,11 +10,11 @@
  */
 
 import { Vec2, clone, add, mid, dist } from "../core/vec2";
-import { distToSegment, distToCircle, clamp } from "../core/geom";
+import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU } from "../core/geom";
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline";
+export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc";
 
 export interface Bounds {
   min: Vec2;
@@ -82,6 +82,11 @@ export abstract class Entity {
       { key, axis: "x" },
       { key, axis: "y" },
     ];
+  }
+  /** Returns which scalar DOF keys are controlled by dragging the given point key.
+   *  Used by the solver to un-anchor those scalars during drags of derived points. */
+  scalarsAffectedBy(_key: string): string[] {
+    return [];
   }
   /** Read a point DOF by key. */
   getPoint(key: string): Vec2 {
@@ -414,6 +419,120 @@ export class PolylineEntity extends Entity {
   override setPoint(key: string, v: Vec2): void {
     const i = Number(key.slice(1));
     if (this.points[i]) this.points[i] = clone(v);
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/** Circular arc: CCW from startAngle to endAngle (world Y-up, radians). */
+export class ArcEntity extends Entity {
+  readonly type = "arc" as const;
+  center: Vec2;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+
+  constructor(center: Vec2, radius: number, startAngle: number, endAngle: number, id?: EntityId) {
+    super(id);
+    this.center = clone(center);
+    this.radius = Math.abs(radius);
+    this.startAngle = startAngle;
+    this.endAngle = endAngle;
+  }
+
+  get startPoint(): Vec2 {
+    return { x: this.center.x + this.radius * Math.cos(this.startAngle), y: this.center.y + this.radius * Math.sin(this.startAngle) };
+  }
+  get endPoint(): Vec2 {
+    return { x: this.center.x + this.radius * Math.cos(this.endAngle), y: this.center.y + this.radius * Math.sin(this.endAngle) };
+  }
+
+  override bounds(): Bounds {
+    const pts: Vec2[] = [this.startPoint, this.endPoint];
+    // Include axis-crossing extremes that fall inside the arc span.
+    for (let k = 0; k < 4; k++) {
+      const a = k * (Math.PI / 2);
+      if (angleInArc(a, this.startAngle, this.endAngle)) {
+        pts.push({ x: this.center.x + this.radius * Math.cos(a), y: this.center.y + this.radius * Math.sin(a) });
+      }
+    }
+    const min = { x: Math.min(...pts.map(p => p.x)), y: Math.min(...pts.map(p => p.y)) };
+    const max = { x: Math.max(...pts.map(p => p.x)), y: Math.max(...pts.map(p => p.y)) };
+    return { min, max };
+  }
+
+  override distanceTo(p: Vec2): number {
+    return distToArc(p, this.center, this.radius, this.startAngle, this.endAngle);
+  }
+
+  override snapPoints(): SnapPoint[] {
+    const pts: SnapPoint[] = [
+      { pos: clone(this.center), kind: "center", entityId: this.id, key: "c" },
+      { pos: this.startPoint, kind: "endpoint", entityId: this.id, key: "start" },
+      { pos: this.endPoint, kind: "endpoint", entityId: this.id, key: "end" },
+    ];
+    // Midpoint of the arc (angle midway between start and end).
+    const span = ((this.endAngle - this.startAngle) % TAU + TAU) % TAU;
+    const midAngle = this.startAngle + span / 2;
+    pts.push({ pos: { x: this.center.x + this.radius * Math.cos(midAngle), y: this.center.y + this.radius * Math.sin(midAngle) }, kind: "midpoint", entityId: this.id });
+    return pts;
+  }
+
+  override translate(d: Vec2): void {
+    this.center = add(this.center, d);
+  }
+
+  override duplicate(): ArcEntity {
+    const e = new ArcEntity(this.center, this.radius, this.startAngle, this.endAngle);
+    e.isConstruction = this.isConstruction;
+    return e;
+  }
+
+  // Center is the only true DOF point; start/end are derived but pickable.
+  override dofPoints(): DofPoint[] {
+    return [{ key: "c", pos: clone(this.center) }];
+  }
+
+  override pickablePoints(): DofPoint[] {
+    return [
+      { key: "c", pos: clone(this.center) },
+      { key: "start", pos: this.startPoint },
+      { key: "end", pos: this.endPoint },
+    ];
+  }
+
+  override getPoint(key: string): Vec2 {
+    if (key === "c") return clone(this.center);
+    if (key === "start") return this.startPoint;
+    if (key === "end") return this.endPoint;
+    return super.getPoint(key);
+  }
+
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "c") { this.center = clone(v); return; }
+    if (key === "start") { this.startAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x); return; }
+    if (key === "end") { this.endAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x); return; }
+  }
+
+  override dofScalars(): DofScalar[] {
+    return [
+      { key: "r", value: this.radius },
+      { key: "sa", value: this.startAngle },
+      { key: "ea", value: this.endAngle },
+    ];
+  }
+
+  override setScalar(key: string, v: number): void {
+    if (key === "r") this.radius = Math.max(0.001, v);
+    else if (key === "sa") this.startAngle = v;
+    else if (key === "ea") this.endAngle = v;
+  }
+
+  // When dragging start/end, free the corresponding angle scalar from anchoring.
+  override scalarsAffectedBy(key: string): string[] {
+    if (key === "start") return ["sa"];
+    if (key === "end") return ["ea"];
+    return [];
   }
 }
 

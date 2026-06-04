@@ -1,7 +1,12 @@
-/** Rectangle tool: click one corner, click the opposite corner. */
+/**
+ * Rectangle tool: click one corner, click the opposite.
+ * Emits 4 LineEntities with coincident + horizontal/vertical constraints so the
+ * resulting rectangle is fully parametric (width, height, position all free DOFs).
+ */
 
 import { Vec2 } from "../core/vec2";
-import { RectEntity } from "../model/entities";
+import { LineEntity } from "../model/entities";
+import { makeConstraint } from "../model/constraints";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
@@ -22,9 +27,7 @@ export class RectTool implements Tool {
       const h = Math.abs(e.world.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
-        const ent = new RectEntity(this.corner, e.world);
-        ent.isConstruction = ctx.doc.isConstructionMode;
-        ctx.doc.addSelected(ent);
+        this.commit(this.corner, e.world, ctx);
       }
       this.corner = null;
     }
@@ -53,5 +56,40 @@ export class RectTool implements Tool {
   cancel(ctx: ToolContext): void {
     this.corner = null;
     ctx.requestRender();
+  }
+
+  private commit(c0: Vec2, c1: Vec2, ctx: ToolContext): void {
+    const x0 = Math.min(c0.x, c1.x), y0 = Math.min(c0.y, c1.y);
+    const x1 = Math.max(c0.x, c1.x), y1 = Math.max(c0.y, c1.y);
+    const bl = { x: x0, y: y0 }, br = { x: x1, y: y0 };
+    const tr = { x: x1, y: y1 }, tl = { x: x0, y: y1 };
+    const isC = ctx.doc.isConstructionMode;
+
+    // 4 sides: bottom (bl→br), right (br→tr), top (tl→tr), left (bl→tl)
+    const bottom = Object.assign(new LineEntity(bl, br), { isConstruction: isC });
+    const right  = Object.assign(new LineEntity(br, tr), { isConstruction: isC });
+    const top    = Object.assign(new LineEntity(tl, tr), { isConstruction: isC });
+    const left   = Object.assign(new LineEntity(bl, tl), { isConstruction: isC });
+    const sides = [bottom, right, top, left];
+
+    // Add all 4, select all 4.
+    for (const s of sides) { ctx.doc.entities.push(s); s.selected = true; }
+
+    // Horizontal / vertical constraints.
+    ctx.doc.addConstraint(makeConstraint("horizontal", { entities: [bottom.id] }));
+    ctx.doc.addConstraint(makeConstraint("horizontal", { entities: [top.id] }));
+    ctx.doc.addConstraint(makeConstraint("vertical",   { entities: [right.id] }));
+    ctx.doc.addConstraint(makeConstraint("vertical",   { entities: [left.id] }));
+
+    // Coincident at the 4 corners.
+    const coin = (eid1: string, k1: string, eid2: string, k2: string) =>
+      ctx.doc.addConstraint(makeConstraint("coincident", { points: [{ entityId: eid1, key: k1 }, { entityId: eid2, key: k2 }] }));
+    coin(bottom.id, "a", left.id,   "a"); // bl
+    coin(bottom.id, "b", right.id,  "a"); // br
+    coin(right.id,  "b", top.id,    "b"); // tr
+    coin(top.id,    "a", left.id,   "b"); // tl
+
+    ctx.doc.emitChange();
+    ctx.solve();
   }
 }
