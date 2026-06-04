@@ -78,6 +78,13 @@ function asArc(geo: Geo, id: EntityId): ArcEntity | null {
   const e = geo(id);
   return e instanceof ArcEntity ? e : null;
 }
+function circularGeom(geo: Geo, id: EntityId): { center: Vec2; radius: number } | null {
+  const c = asCircle(geo, id);
+  if (c) return { center: c.center, radius: c.radius };
+  const a = asArc(geo, id);
+  if (a) return { center: a.center, radius: a.radius };
+  return null;
+}
 function readPoint(geo: Geo, ref: PointRef | undefined): Vec2 | null {
   if (!ref) return null;
   const e = geo(ref.entityId);
@@ -150,25 +157,18 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
     }
     case "tangent": {
       const l = asLine(geo, c.entities[0]) ?? asLine(geo, c.entities[1]);
-      const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
-      const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
-      if (l && circ) return [Math.abs(signedLineDistance(l, circ.center)) - circ.radius];
-      if (l && arc) return [Math.abs(signedLineDistance(l, arc.center)) - arc.radius];
-      if (!l && arc) {
-        // arc–arc tangency: centres same distance apart as sum/diff of radii
-        const arc2 = asArc(geo, c.entities[1]) ?? asArc(geo, c.entities[0]);
-        const circ2 = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
-        const other = arc2 === arc ? null : arc2;
-        const otherCirc = circ2;
-        if (other) {
-          const d = len(sub(arc.center, other.center));
-          return [Math.min(Math.abs(d - arc.radius - other.radius), Math.abs(d - Math.abs(arc.radius - other.radius)))];
-        }
-        if (otherCirc) {
-          const d = len(sub(arc.center, otherCirc.center));
-          return [Math.min(Math.abs(d - arc.radius - otherCirc.radius), Math.abs(d - Math.abs(arc.radius - otherCirc.radius)))];
-        }
+      if (l) {
+        const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
+        if (circ) return [Math.abs(signedLineDistance(l, circ.center)) - circ.radius];
+        const arc = asArc(geo, c.entities[1]) ?? asArc(geo, c.entities[0]);
+        if (arc) return [Math.abs(signedLineDistance(l, arc.center)) - arc.radius];
+        return [];
       }
+      // Circular–circular tangency: covers arc+arc, arc+circle, circle+circle.
+      // Returns a signed residual so the solver gradient is well-defined everywhere.
+      const g1 = circularGeom(geo, c.entities[0]);
+      const g2 = circularGeom(geo, c.entities[1]);
+      if (g1 && g2) return [circularTangencyResidual(g1, g2)];
       return [];
     }
     case "pointOnArc": {
@@ -227,6 +227,20 @@ function signedLineDistance(l: LineEntity, p: Vec2): number {
   if (L < 1e-9) return len(sub(p, l.a));
   return cross(d, sub(p, l.a)) / L;
 }
+/**
+ * Signed tangency residual for two circular entities (arc or circle).
+ * Picks external (d = r1+r2) or internal (d = |r1−r2|) based on which is closer
+ * to the current geometry, returning a smooth signed value the solver can zero.
+ */
+function circularTangencyResidual(
+  g1: { center: Vec2; radius: number },
+  g2: { center: Vec2; radius: number },
+): number {
+  const d = len(sub(g1.center, g2.center));
+  const ext = d - g1.radius - g2.radius;
+  const int_ = d - Math.abs(g1.radius - g2.radius);
+  return Math.abs(ext) <= Math.abs(int_) ? ext : int_;
+}
 
 // ---------------------------------------------------------------------------
 // Rendering helpers
@@ -265,7 +279,9 @@ export function constraintAnchor(c: Constraint, geo: Geo): Vec2 | null {
       const l = asLine(geo, c.entities[0]);
       if (l) return mid(l.a, l.b);
       const circ = asCircle(geo, c.entities[0]);
-      return circ ? { ...circ.center } : null;
+      if (circ) return { ...circ.center };
+      const arc = asArc(geo, c.entities[0]);
+      return arc ? { ...arc.center } : null;
     }
     case "concentric": {
       const circ = asCircle(geo, c.entities[0]);

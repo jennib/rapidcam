@@ -14,6 +14,7 @@ import {
   Geo,
 } from "../model/constraints";
 import { Entity } from "../model/entities";
+import { SolveResult } from "../solver/solver";
 
 interface ButtonSpec {
   type: ConstraintType;
@@ -52,9 +53,10 @@ export class ConstraintBar {
   constructor(
     private host: HTMLElement,
     private doc: CADDocument,
-    private onSolve: () => void,
+    private onSolve: () => SolveResult | null,
     private pushHistory: () => void,
     private getDof: () => number,
+    private undo: () => void,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -118,7 +120,14 @@ export class ConstraintBar {
     this.pushHistory();
     for (const c of res.constraints) this.doc.addConstraint(c);
     this.doc.clearSelection();
-    this.onSolve();
+    const solveRes = this.onSolve();
+    
+    if (solveRes && !solveRes.converged) {
+      this.undo();
+      this.message(`Constraint conflicts or over-constrains the sketch`, "error");
+      return;
+    }
+    
     this.message(`Added ${spec.name.toLowerCase()}`, "ok");
   }
 

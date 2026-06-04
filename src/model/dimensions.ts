@@ -243,7 +243,7 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   if (dim.type === "horizontal") return cursor.y - m.y;
   if (dim.type === "vertical") return cursor.x - m.x;
   // aligned
-  return dot2(sub(cursor, m), linearNormal("distance", p, q));
+  return dot(sub(cursor, m), linearNormal("distance", p, q));
 }
 
 export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout | null {
@@ -383,4 +383,3 @@ export function dimensionHitDistance(dim: Dimension, geo: Geo, pt: Vec2, unit: U
   return d;
 }
 
-const dot2 = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;

@@ -139,7 +139,14 @@ export class App {
     new SettingsBar(dom.settingsbar, this.doc);
     new PropertiesBar(dom.propertiesbar, this.doc);
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
-    new ConstraintBar(dom.constraintbar, this.doc, () => this.runSolve(), this.pushHistory, () => this.currentDof());
+    new ConstraintBar(
+      dom.constraintbar,
+      this.doc,
+      () => { this.runSolve(); return this.lastSolveResult; },
+      this.pushHistory,
+      () => this.currentDof(),
+      () => this.undoRedo("undo")
+    );
     new CamBar(dom.cambar, this.doc);
 
     this.doc.onChange(this.requestRender);
@@ -544,10 +551,26 @@ export class App {
             return;
           }
         }
-        this.pushHistory();
+        
+        const docSnap = this.doc.snapshot();
+        const oldVal = dim.value;
+        const oldDriving = dim.driving;
+        
         dim.value = v;
         dim.driving = true;
         this.runSolve();
+        
+        if (this.lastSolveResult && !this.lastSolveResult.converged) {
+          input.style.color = "#e05555";
+          setTimeout(() => { input.style.color = ""; }, 600);
+          
+          dim.value = oldVal;
+          dim.driving = oldDriving;
+          this.runSolve();
+          return;
+        }
+        
+        this.history.push(docSnap);
       }
       this.closeDimEditor();
     };
