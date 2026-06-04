@@ -5,7 +5,7 @@ import { SnapPoint } from "../model/entities";
 import { CADDocument } from "../model/document";
 import { Dimension } from "../model/dimensions";
 import { Viewport } from "../view/viewport";
-import { PreviewShape } from "../view/overlay";
+import { PreviewShape, TransformBox } from "../view/overlay";
 import { PinMap } from "../solver/solver";
 
 export interface ToolContext {
@@ -46,6 +46,7 @@ export interface ToolPointerEvent {
 export interface ToolOverlay {
   previews: PreviewShape[];
   selectionRect: { a: Vec2; b: Vec2 } | null;
+  transformBox?: TransformBox | null;
 }
 
 const EMPTY_OVERLAY: ToolOverlay = { previews: [], selectionRect: null };

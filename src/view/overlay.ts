@@ -1,7 +1,7 @@
 /** Transient visuals layered on top of the document: tool previews, snap marker, selection box. */
 
 import { Vec2 } from "../core/vec2";
-import { SnapPoint, EntityId } from "../model/entities";
+import { SnapPoint, EntityId, Bounds } from "../model/entities";
 
 export type PreviewShape =
   | { kind: "line"; a: Vec2; b: Vec2 }
@@ -12,6 +12,17 @@ export type PreviewShape =
   | { kind: "polyline"; points: Vec2[]; closed: boolean }
   | { kind: "point"; pos: Vec2 };
 
+export interface TransformHandle {
+  type: "scale" | "rotate";
+  pos: Vec2; // world coords
+  id: string; // "nw", "n", "ne", "e", "se", "s", "sw", "w", "rot"
+}
+
+export interface TransformBox {
+  bounds: Bounds;
+  handles: TransformHandle[];
+}
+
 export interface Overlay {
   /** In-progress geometry drawn in the preview style. */
   previews: PreviewShape[];
@@ -21,6 +32,8 @@ export interface Overlay {
   selectionRect: { a: Vec2; b: Vec2 } | null;
   /** Entity currently under the cursor. */
   hover: EntityId | null;
+  /** Interactive transform handles (drawn in fixed screen size) */
+  transformBox?: TransformBox | null;
 }
 
 export function emptyOverlay(): Overlay {

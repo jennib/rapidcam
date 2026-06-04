@@ -58,6 +58,7 @@ export class Renderer {
     this.drawSelectionRect(view, overlay);
     this.drawPreviews(view, overlay.previews);
     this.drawSnap(view, overlay);
+    this.drawTransformBox(view, overlay);
   }
 
   // --- grid ----------------------------------------------------------------
@@ -611,6 +612,62 @@ export class Renderer {
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.restore();
+  }
+
+  private drawTransformBox(view: Viewport, overlay: Overlay): void {
+    if (!overlay.transformBox) return;
+    const ctx = this.ctx;
+    const { bounds, handles } = overlay.transformBox;
+
+    const min = view.worldToScreen(bounds.min);
+    const max = view.worldToScreen(bounds.max);
+
+    // In world coords, Y is up. In screen coords, Y is down.
+    // So min is bottom-left (max Y in screen), max is top-right (min Y in screen).
+    const x = min.x;
+    const y = max.y;
+    const w = max.x - min.x;
+    const h = min.y - max.y;
+
+    ctx.save();
+    ctx.strokeStyle = COLORS.selectionRectBorder;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(x, y, w, h);
+
+    // Draw rotation stem line if rotate handle exists
+    const rotHandle = handles.find(h => h.type === "rotate");
+    if (rotHandle) {
+      const topCenterX = x + w / 2;
+      const topCenterY = y;
+      const rotS = view.worldToScreen(rotHandle.pos);
+      ctx.beginPath();
+      ctx.moveTo(topCenterX, topCenterY);
+      ctx.lineTo(rotS.x, rotS.y);
+      ctx.stroke();
+    }
+
+    ctx.setLineDash([]);
+    const hw = 4;
+    for (const hnd of handles) {
+      const s = view.worldToScreen(hnd.pos);
+      if (hnd.type === "scale") {
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = COLORS.selectionRectBorder;
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(s.x - hw, s.y - hw, hw * 2, hw * 2);
+        ctx.strokeRect(s.x - hw, s.y - hw, hw * 2, hw * 2);
+      } else if (hnd.type === "rotate") {
+        ctx.fillStyle = "#4fc87a";
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, hw + 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
