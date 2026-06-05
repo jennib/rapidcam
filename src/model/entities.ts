@@ -14,7 +14,7 @@ import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flatten
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier";
+export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point";
 
 export interface Bounds {
   min: Vec2;
@@ -701,3 +701,33 @@ export function boundsContains(b: Bounds, p: Vec2): boolean {
 }
 
 export { clamp };
+
+// ---------------------------------------------------------------------------
+
+/** Single constrained point — used for the WCS origin and similar reference geometry. */
+export class PointEntity extends Entity {
+  readonly type = "point" as const;
+  pos: Vec2;
+
+  constructor(pos: Vec2, id?: EntityId) {
+    super(id);
+    this.pos = clone(pos);
+  }
+
+  bounds(): Bounds {
+    return { min: { x: this.pos.x - 0.5, y: this.pos.y - 0.5 }, max: { x: this.pos.x + 0.5, y: this.pos.y + 0.5 } };
+  }
+  distanceTo(p: Vec2): number { return dist(p, this.pos); }
+  snapPoints(): SnapPoint[] {
+    return [{ pos: { ...this.pos }, kind: "endpoint", entityId: this.id }];
+  }
+  translate(d: Vec2): void { this.pos = add(this.pos, d); }
+  duplicate(): Entity { return new PointEntity({ ...this.pos }); }
+
+  override dofPoints(): DofPoint[] { return [{ key: "p", pos: { ...this.pos } }]; }
+  override getPoint(key: string): Vec2 {
+    if (key === "p") return { ...this.pos };
+    throw new Error(`PointEntity has no point '${key}'`);
+  }
+  override setPoint(key: string, v: Vec2): void { if (key === "p") this.pos = { ...v }; }
+}

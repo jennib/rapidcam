@@ -35,7 +35,9 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 
   return { ox, oy, zOffset };
 }
-import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "./entities";
+import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity } from "./entities";
+
+export const ORIGIN_ENTITY_ID = "__origin__";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
 import { Variable } from "./variables";
@@ -129,6 +131,7 @@ export class CADDocument {
   constructor(canvas: CanvasSize, displayUnit: Unit = "mm") {
     this.canvas = canvas;
     this.displayUnit = displayUnit;
+    this.entities.push(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));
   }
 
   // --- change notification -------------------------------------------------
@@ -163,6 +166,7 @@ export class CADDocument {
   }
   remove(e: Entity | EntityId): void {
     const id = typeof e === "string" ? e : e.id;
+    if (id === ORIGIN_ENTITY_ID) return;
     const i = this.entities.findIndex((x) => x.id === id);
     if (i >= 0) {
       this.entities.splice(i, 1);
@@ -172,14 +176,14 @@ export class CADDocument {
   }
   removeSelected(): void {
     const before = this.entities.length;
-    this.entities = this.entities.filter((e) => !e.selected);
+    this.entities = this.entities.filter((e) => !e.selected || e.id === ORIGIN_ENTITY_ID);
     if (this.entities.length !== before) {
       this.pruneReferences();
       this.emitChange();
     }
   }
   clear(): void {
-    this.entities = [];
+    this.entities = [new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID)];
     this.constraints = [];
     this.dimensions = [];
     this.selectedPoints = [];
@@ -359,10 +363,11 @@ export class CADDocument {
 
   /** Combined bounds of all geometry, or null when empty. */
   bounds(): Bounds | null {
-    if (this.entities.length === 0) return null;
+    const drawable = this.entities.filter(e => e.id !== ORIGIN_ENTITY_ID);
+    if (drawable.length === 0) return null;
     const min: Vec2 = { x: Infinity, y: Infinity };
     const max: Vec2 = { x: -Infinity, y: -Infinity };
-    for (const e of this.entities) {
+    for (const e of drawable) {
       const b = e.bounds();
       min.x = Math.min(min.x, b.min.x);
       min.y = Math.min(min.y, b.min.y);
@@ -379,7 +384,7 @@ export class CADDocument {
   // --- undo/redo snapshots --------------------------------------------------
   snapshot(): DocSnapshot {
     return {
-      entities: this.entities.map((e): EntitySnapshot => {
+      entities: this.entities.filter(e => e.id !== ORIGIN_ENTITY_ID).map((e): EntitySnapshot => {
         if (e instanceof LineEntity)
           return { type: "line", id: e.id, a: { ...e.a }, b: { ...e.b }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof CircleEntity)
@@ -488,6 +493,9 @@ export class CADDocument {
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
+    // Always ensure the WCS origin entity is present after loading.
+    if (!this.entities.find(e => e.id === ORIGIN_ENTITY_ID))
+      this.entities.unshift(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));
     this.emitChange();
   }
 }

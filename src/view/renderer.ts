@@ -2,7 +2,7 @@
 
 import { Vec2 } from "../core/vec2";
 import { Unit, fromMM } from "../core/units";
-import { CADDocument, resolveOrigin } from "../model/document";
+import { CADDocument, resolveOrigin, ORIGIN_ENTITY_ID } from "../model/document";
 import {
   Entity,
   LineEntity,
@@ -179,6 +179,7 @@ export class Renderer {
     const ctx = this.ctx;
     const { ox, oy } = resolveOrigin(doc);
     const o = view.worldToScreen({ x: ox, y: oy });
+    const originSelected = doc.selectedPoints.some(p => p.entityId === ORIGIN_ENTITY_ID);
     const arm = 22; // screen px
 
     ctx.save();
@@ -212,12 +213,22 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Centre dot
-    ctx.strokeStyle = "#ffffff";
+    // Centre dot — highlighted when selected for constraint wiring
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(o.x, o.y, 2.5, 0, Math.PI * 2);
-    ctx.stroke();
+    if (originSelected) {
+      ctx.fillStyle = COLORS.selectedPoint;
+      ctx.strokeStyle = COLORS.selectedPointRing;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(o.x - 4, o.y - 4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // Axis labels
     ctx.font = "10px ui-monospace, monospace";
@@ -237,6 +248,7 @@ export class Renderer {
   private drawEntities(doc: CADDocument, view: Viewport, overlay: Overlay): void {
     const vb = view.visibleWorldBounds();
     for (const e of doc.entities) {
+      if (e.id === ORIGIN_ENTITY_ID) continue; // rendered by drawOrigin
       const b = e.bounds();
       if (b.max.x < vb.min.x || b.min.x > vb.max.x ||
           b.max.y < vb.min.y || b.min.y > vb.max.y) continue;

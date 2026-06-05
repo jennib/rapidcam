@@ -14,7 +14,7 @@
  */
 
 import { Vec2 } from "../core/vec2";
-import { CADDocument } from "../model/document";
+import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import { Entity, ArcEntity } from "../model/entities";
 import { Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
@@ -67,6 +67,11 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       for (const p of ent.dofPoints()) fixed.add(`${id}:${p.key}`);
       for (const s of ent.dofScalars()) fixed.add(scalarKey(id, s.key));
     }
+  }
+  // WCS origin is always fixed regardless of constraints.
+  const originEnt = byId.get(ORIGIN_ENTITY_ID);
+  if (originEnt) {
+    for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
