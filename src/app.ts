@@ -425,9 +425,6 @@ export class App {
   }
 
   private commitDimValue(dim: Dimension, v: number, expr?: string): boolean {
-    // Adding a driving equation to a fully-constrained sketch is rejected.
-    if (!dim.driving && this.currentDof() < 1) return false;
-
     // Arc-length cannot exceed full circumference.
     if (dim.type === "arclength") {
       const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
