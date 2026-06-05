@@ -63,7 +63,7 @@ export class SelectTool implements Tool {
       let bestD = Infinity;
       for (const ent of ctx.doc.entities) {
         if (ctx.doc.groupOf(ent.id)) continue;
-        for (const p of ent.dofPoints()) {
+        for (const p of ent.pickablePoints()) {
           const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
           if (d < 14 && d < bestD) { bestRef = { entityId: ent.id, key: p.key }; bestD = d; }
         }
