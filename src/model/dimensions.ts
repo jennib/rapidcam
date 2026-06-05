@@ -193,18 +193,6 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
 /** Residual for a driving dimension: measured − target. Empty if non-driving/unresolved. */
 export function dimensionResiduals(dim: Dimension, geo: Geo): number[] {
   if (!dim.driving) return [];
-  if (dim.type === "line-distance") {
-    const l1 = readLine(geo, dim.entities[0]);
-    const l2 = readLine(geo, dim.entities[1]);
-    if (!l1 || !l2) return [];
-    const dir1 = normalize(sub(l1.b, l1.a));
-    const dir2 = normalize(sub(l2.b, l2.a));
-    const crossP = cross(dir1, dir2);
-    const normal2 = { x: -dir2.y, y: dir2.x };
-    const m1 = mid(l1.a, l1.b);
-    const dist = Math.abs(dot(sub(m1, l2.a), normal2));
-    return [crossP * 10, dist - dim.value];
-  }
   const m = dimensionMeasure(dim, geo);
   return m === null ? [] : [m - dim.value];
 }

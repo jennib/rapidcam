@@ -331,26 +331,15 @@ export class DimensionTool implements Tool {
       const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
       
-      let isLineToLine = false;
-      let isAngle = false;
+      this.curType = chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);
         if (edge1 && edge2) {
           const dir1 = normalize(sub(edge1.b, edge1.a));
           const dir2 = normalize(sub(edge2.b, edge2.a));
-          if (Math.abs(cross(dir1, dir2)) < 0.05) isLineToLine = true;
-          else isAngle = true;
+          if (Math.abs(cross(dir1, dir2)) < 0.05) this.curType = "line-distance";
         }
-      }
-      
-      if (isAngle) {
-        // Just let it be the default distance dimension preview until they click and it switches to placeAngle
-        this.curType = chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
-      } else if (isLineToLine) {
-        this.curType = "line-distance";
-      } else {
-        this.curType = chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       }
       
       const dim = this.linearDim(ctx, 0, activeP1, activeP2);
