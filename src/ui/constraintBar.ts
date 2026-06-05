@@ -14,7 +14,8 @@ import {
   measureAngleBetweenLines,
   Geo,
 } from "../model/constraints";
-import { Entity, LineEntity } from "../model/entities";
+import { Entity, LineEntity, CircleEntity } from "../model/entities";
+import { dist } from "../core/vec2";
 import { SolveResult } from "../solver/solver";
 
 interface ButtonSpec {
@@ -24,7 +25,7 @@ interface ButtonSpec {
 }
 
 const BUTTONS: (ButtonSpec | "sep")[] = [
-  { type: "coincident", name: "Coincident", hint: "Select 2 points" },
+  { type: "coincident", name: "Coincident", hint: "Select 2 points, or 1 circle + 1 line" },
   "sep",
   { type: "horizontal", name: "Horizontal", hint: "Select 1 line or 2 points" },
   { type: "vertical", name: "Vertical", hint: "Select 1 line or 2 points" },
@@ -94,13 +95,6 @@ export class ConstraintBar {
     sep.className = "cb-sep";
     this.host.appendChild(sep);
 
-    const solveBtn = document.createElement("button");
-    solveBtn.className = "cbtn solve";
-    solveBtn.textContent = "Solve";
-    solveBtn.title = "Re-run the constraint solver";
-    solveBtn.addEventListener("click", () => this.onSolve());
-    this.host.appendChild(solveBtn);
-
     this.msgEl = document.createElement("span");
     this.msgEl.className = "cb-msg";
     this.host.appendChild(this.msgEl);
@@ -162,9 +156,18 @@ export class ConstraintBar {
 
     switch (type) {
       case "coincident":
-        return pts.length === 2
-          ? ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })])
-          : err("Select 2 points");
+        if (pts.length === 2)
+          return ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })]);
+        if (circles.length === 1 && lines.length === 1) {
+          const circ = circles[0] as CircleEntity;
+          const line = lines[0] as LineEntity;
+          const key = dist(circ.center, line.a) <= dist(circ.center, line.b) ? "a" : "b";
+          return ok([makeConstraint("coincident", { points: [
+            { entityId: circ.id, key: "c" },
+            { entityId: line.id, key },
+          ]})]);
+        }
+        return err("Select 2 points, or 1 circle + 1 line");
 
       case "horizontal":
       case "vertical":

@@ -38,7 +38,30 @@ export class SelectTool implements Tool {
     this.downScreen = e.screen;
     this.dragStartWorld = e.worldRaw;
 
-    // 0) Hit test transform handles first
+    // 0) Ctrl+click: point selection for constraint application.
+    //    Works on any entity (selected or not) — adds the entity to selection
+    //    and toggles the point in doc.selectedPoints.
+    //    Always returns early so a miss never falls through to entity-body
+    //    selection, which would wipe selectedPoints via clearSelection().
+    if (e.ctrlKey) {
+      let bestRef: PointRef | null = null;
+      let bestD = Infinity;
+      for (const ent of ctx.doc.entities) {
+        if (ctx.doc.groupOf(ent.id)) continue;
+        for (const p of ent.dofPoints()) {
+          const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
+          if (d < 14 && d < bestD) { bestRef = { entityId: ent.id, key: p.key }; bestD = d; }
+        }
+      }
+      if (bestRef) {
+        const ent = ctx.doc.entities.find(x => x.id === bestRef!.entityId)!;
+        if (!ent.selected) ent.selected = true;
+        ctx.doc.togglePoint(bestRef);
+      }
+      return;
+    }
+
+    // 1) Hit test transform handles first
     if (ctx.doc.selected.length > 0) {
       const box = this.getTransformBox(ctx);
       if (box) {
@@ -403,6 +426,9 @@ export class SelectTool implements Tool {
   onPointerUp(_e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "marquee") {
       this.applyMarquee(ctx);
+    } else if (this.mode === "maybeDragPoint" && this.dragPoint) {
+      // Tap on a DOF point (no drag) — toggle it in selectedPoints for constraint wiring.
+      ctx.doc.togglePoint(this.dragPoint);
     } else if (this.mode === "dragScale" || this.mode === "dragRotate") {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
