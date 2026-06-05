@@ -4,14 +4,14 @@ import { PointRef, pointRefKey, Constraint, constraintAnchors } from "../model/c
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { Viewport } from "../view/viewport";
-import { dimensionHitDistance, Dimension, dimensionLayout } from "../model/dimensions";
+import { dimensionHitDistance, dimensionOffsetFromCursor, Dimension, dimensionLayout } from "../model/dimensions";
 import { Geo } from "../model/constraints";
 import { PinMap } from "../solver/solver";
 import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 
-type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee" | "dragScale" | "dragRotate";
+type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee" | "dragScale" | "dragRotate" | "maybeDragDimLabel" | "dragDimLabel";
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -30,6 +30,7 @@ export class SelectTool implements Tool {
   private dragSnapshot: DocSnapshot | null = null;
   private originalBounds: Bounds | null = null;
   private activeHandleId: string | null = null;
+  private dragDimLabelId: string | null = null;
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return; // Left click only
@@ -93,19 +94,28 @@ export class SelectTool implements Tool {
       return;
     }
 
-    let hitDim: Dimension | null = null;
-    let dimDist = Infinity;
     const byId = new Map(ctx.doc.entities.map((e) => [e.id, e]));
     const geo: Geo = (id: string) => byId.get(id);
+    let hitLabelDim: Dimension | null = null;
+    let hitDim: Dimension | null = null;
+    let dimDist = Infinity;
 
     for (const dim of ctx.doc.dimensions) {
       const layout = dimensionLayout(dim, geo, ctx.doc.displayUnit);
       if (!layout) continue;
-      const hitDist = dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit) * ctx.view.scale;
-      if (hitDist < 15 && hitDist < dimDist) {
-        hitDim = dim;
-        dimDist = hitDist;
-      }
+      const labelScreenDist = dist(e.screen, ctx.view.worldToScreen(layout.textPos));
+      if (labelScreenDist < 12 && !hitLabelDim) hitLabelDim = dim;
+      const d = dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit) * ctx.view.scale;
+      if (d < 15 && d < dimDist) { hitDim = dim; dimDist = d; }
+    }
+
+    if (hitLabelDim) {
+      ctx.doc.selectedDimensionId = hitLabelDim.id;
+      ctx.doc.emitChange();
+      ctx.pushHistory();
+      this.dragDimLabelId = hitLabelDim.id;
+      this.mode = "maybeDragDimLabel";
+      return;
     }
     if (hitDim) {
       ctx.doc.selectedDimensionId = hitDim.id;
@@ -175,6 +185,19 @@ export class SelectTool implements Tool {
       this.mode = "dragEntity";
       this.dragSnapshot = ctx.doc.snapshot();
       this.originalBounds = selectionBounds(ctx.doc.selected);
+    } else if (this.mode === "maybeDragDimLabel" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
+      this.mode = "dragDimLabel";
+    }
+
+    if (this.mode === "dragDimLabel" && this.dragDimLabelId) {
+      const dim = ctx.doc.dimensions.find(d => d.id === this.dragDimLabelId);
+      if (dim) {
+        const byId = new Map(ctx.doc.entities.map(en => [en.id, en]));
+        const geo: Geo = id => byId.get(id);
+        dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
+        ctx.requestRender();
+      }
+      return;
     }
 
     if (this.mode === "dragPoint" && this.dragPoint && this.dragSnapshot) {
@@ -387,6 +410,7 @@ export class SelectTool implements Tool {
     this.dragSnapshot = null;
     this.originalBounds = null;
     this.activeHandleId = null;
+    this.dragDimLabelId = null;
     ctx.requestRender();
   }
 
@@ -406,6 +430,7 @@ export class SelectTool implements Tool {
     this.dragSnapshot = null;
     this.originalBounds = null;
     this.activeHandleId = null;
+    this.dragDimLabelId = null;
     ctx.requestRender();
   }
 
