@@ -10,13 +10,11 @@ import {
   ConstraintType,
   CONSTRAINT_GLYPH,
   makeConstraint,
-  constraintResiduals,
   measureAngleBetweenLines,
-  Geo,
 } from "../model/constraints";
 import { Entity, LineEntity, CircleEntity } from "../model/entities";
 import { dist } from "../core/vec2";
-import { SolveResult } from "../solver/solver";
+import { SolveResult, constraintJacobianRankChange } from "../solver/solver";
 
 interface ButtonSpec {
   type: ConstraintType;
@@ -176,7 +174,6 @@ export class ConstraintBar {
     private doc: CADDocument,
     private onSolve: () => SolveResult | null,
     private pushHistory: () => void,
-    private getDof: () => number,
     private undo: () => void,
   ) {
     this.build();
@@ -221,27 +218,34 @@ export class ConstraintBar {
       this.message(res.error, "error");
       return;
     }
-    // Pre-check: count how many equations the new constraints would add, and
-    // reject if it would take the sketch below 0 free DOFs.
-    const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id) => byId.get(id);
-    const newEqs = res.constraints.reduce((n, c) => n + constraintResiduals(c, geo).length, 0);
-    const dof = this.getDof();
-    if (dof > 0 && newEqs > dof) {
-      this.message(`Would over-constrain (${dof} DOF free, needs ${newEqs})`, "error");
+
+    // Rank-based check: compute how much the Jacobian rank actually increases.
+    // This correctly handles redundant constraints (rank stays the same even
+    // though the equation count grows) and over-constraining ones.
+    const { variables, rankWithout, rankWith } = constraintJacobianRankChange(this.doc, res.constraints);
+    const rankIncrease = rankWith - rankWithout;
+    const effectiveDof = variables - rankWithout;
+
+    if (rankIncrease === 0) {
+      this.message("Constraint already implied by existing constraints", "error");
       return;
     }
+    if (rankIncrease > effectiveDof) {
+      this.message(`Would over-constrain (${effectiveDof} DOF free, constraint adds ${rankIncrease})`, "error");
+      return;
+    }
+
     this.pushHistory();
     for (const c of res.constraints) this.doc.addConstraint(c);
     this.doc.clearSelection();
     const solveRes = this.onSolve();
-    
+
     if (solveRes && !solveRes.converged) {
       this.undo();
-      this.message(`Constraint conflicts or over-constrains the sketch`, "error");
+      this.message("Constraint conflicts or over-constrains the sketch", "error");
       return;
     }
-    
+
     this.message(`Added ${spec.name.toLowerCase()}`, "ok");
   }
 

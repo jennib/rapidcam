@@ -16,9 +16,9 @@
 import { Vec2 } from "../core/vec2";
 import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import { Entity, ArcEntity } from "../model/entities";
-import { Geo, constraintResiduals } from "../model/constraints";
+import { Constraint, Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { solveLinearSystem } from "./linalg";
+import { solveLinearSystem, matrixRank } from "./linalg";
 
 export interface SolveResult {
   hasConstraints: boolean;
@@ -341,4 +341,84 @@ function clampAngleToArc(angle: number, startAngle: number, endAngle: number): n
   const dStart = Math.abs(arcAngleDiff(angle, startAngle));
   const dEnd   = Math.abs(arcAngleDiff(angle, endAngle));
   return dStart <= dEnd ? startAngle : endAngle;
+}
+
+// ---------------------------------------------------------------------------
+// Rank-based redundancy / over-constraint check (used by the constraint bar)
+
+/**
+ * Compute the rank of the constraint Jacobian for doc's current constraints +
+ * driving dimensions, optionally including extra proposed constraints.
+ * Returns { variables, rankWithout, rankWith } so the caller can determine
+ * whether the extras genuinely add information.
+ */
+export function constraintJacobianRankChange(
+  doc: CADDocument,
+  extras: Constraint[] = [],
+): { variables: number; rankWithout: number; rankWith: number } {
+  const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
+  const geo: Geo = (id) => byId.get(id);
+
+  // Build fixed set (same logic as solve())
+  const fixed = new Set<string>();
+  for (const c of doc.constraints) {
+    if (c.type !== "fixed") continue;
+    for (const id of c.entities) {
+      const ent = byId.get(id);
+      if (!ent) continue;
+      for (const p of ent.dofPoints()) fixed.add(`${id}:${p.key}`);
+      for (const s of ent.dofScalars()) fixed.add(scalarKey(id, s.key));
+    }
+  }
+  const originEnt = byId.get(ORIGIN_ENTITY_ID);
+  if (originEnt) {
+    for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
+  }
+
+  // Build variable list
+  const vars: Variable[] = [];
+  for (const ent of doc.entities) {
+    for (const p of ent.dofPoints()) {
+      if (fixed.has(`${ent.id}:${p.key}`)) continue;
+      vars.push(pointComponent(ent, p.key, "x"));
+      vars.push(pointComponent(ent, p.key, "y"));
+    }
+    for (const s of ent.dofScalars()) {
+      if (fixed.has(scalarKey(ent.id, s.key))) continue;
+      vars.push(scalarComponent(ent, s.key));
+    }
+  }
+  const n = vars.length;
+  if (n === 0) return { variables: 0, rankWithout: 0, rankWith: 0 };
+
+  const active = doc.constraints.filter((c) => c.type !== "fixed");
+  const drivingDims = doc.dimensions.filter((d) => d.driving);
+  const extraActive = extras.filter((c) => c.type !== "fixed");
+
+  const buildEvalR = (includeExtras: boolean) => (x: number[]): number[] => {
+    vars.forEach((v, i) => v.set(x[i]));
+    const out: number[] = [];
+    for (const c of active) for (const v of constraintResiduals(c, geo)) out.push(v);
+    for (const d of drivingDims) for (const v of dimensionResiduals(d, geo)) out.push(v);
+    if (includeExtras) for (const c of extraActive) for (const v of constraintResiduals(c, geo)) out.push(v);
+    return out;
+  };
+
+  const x = vars.map((v) => v.get());
+
+  const evalWithout = buildEvalR(false);
+  const fxWithout = evalWithout(x);
+  const Jwithout = fxWithout.length > 0 ? jacobian(evalWithout, x, fxWithout) : [];
+  evalWithout(x); // restore
+
+  const evalWith = buildEvalR(true);
+  const fxWith = evalWith(x);
+  const Jwith = fxWith.length > 0 ? jacobian(evalWith, x, fxWith) : [];
+  evalWith(x); // restore
+
+  return {
+    variables: n,
+    rankWithout: matrixRank(Jwithout),
+    rankWith: matrixRank(Jwith),
+  };
 }

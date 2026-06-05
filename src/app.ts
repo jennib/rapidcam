@@ -194,7 +194,6 @@ export class App {
       this.doc,
       () => { this.runSolve(); return this.lastSolveResult; },
       this.project.pushHistory,
-      () => this.currentDof(),
       () => this.project.undoRedo("undo")
     );
     new CamBar(dom.cambar, this.doc);
