@@ -5,7 +5,7 @@
  */
 
 import { Vec2 } from "../core/vec2";
-import { LineEntity } from "../model/entities";
+import { LineEntity, SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -16,20 +16,23 @@ export class RectTool implements Tool {
   readonly icon = ICONS.rect;
 
   private corner: Vec2 | null = null;
+  private cornerSnap: SnapPoint | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
     if (!this.corner) {
       this.corner = e.world;
+      this.cornerSnap = e.snap?.key ? e.snap : null;
     } else {
       const w = Math.abs(e.world.x - this.corner.x);
       const h = Math.abs(e.world.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
-        this.commit(this.corner, e.world, ctx);
+        this.commit(this.corner, e.world, this.cornerSnap, e.snap?.key ? e.snap : null, ctx);
       }
       this.corner = null;
+      this.cornerSnap = null;
     }
   }
 
@@ -58,7 +61,7 @@ export class RectTool implements Tool {
     ctx.requestRender();
   }
 
-  private commit(c0: Vec2, c1: Vec2, ctx: ToolContext): void {
+  private commit(c0: Vec2, c1: Vec2, snap0: SnapPoint | null, snap1: SnapPoint | null, ctx: ToolContext): void {
     const x0 = Math.min(c0.x, c1.x), y0 = Math.min(c0.y, c1.y);
     const x1 = Math.max(c0.x, c1.x), y1 = Math.max(c0.y, c1.y);
     const bl = { x: x0, y: y0 }, br = { x: x1, y: y0 };
@@ -88,6 +91,28 @@ export class RectTool implements Tool {
     coin(bottom.id, "b", right.id,  "a"); // br
     coin(right.id,  "b", top.id,    "b"); // tr
     coin(top.id,    "a", left.id,   "b"); // tl
+
+    // If a corner was snapped to existing geometry, pin it with a coincident constraint.
+    const EPS = 1e-6;
+    const cornerMap = [
+      { pos: bl, entityId: bottom.id, key: "a" },
+      { pos: br, entityId: right.id,  key: "a" },
+      { pos: tr, entityId: right.id,  key: "b" },
+      { pos: tl, entityId: left.id,   key: "b" },
+    ];
+    const autoJoinCorner = (snap: SnapPoint | null, clicked: Vec2) => {
+      if (!snap) return;
+      for (const c of cornerMap) {
+        if (Math.abs(c.pos.x - clicked.x) < EPS && Math.abs(c.pos.y - clicked.y) < EPS) {
+          ctx.doc.addConstraint(makeConstraint("coincident", {
+            points: [{ entityId: c.entityId, key: c.key }, { entityId: snap.entityId, key: snap.key! }],
+          }));
+          return;
+        }
+      }
+    };
+    autoJoinCorner(snap0, c0);
+    autoJoinCorner(snap1, c1);
 
     ctx.doc.emitChange();
     ctx.solve();
