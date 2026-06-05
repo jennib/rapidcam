@@ -7,7 +7,7 @@
  * New dimensions are driving; double-click one (any tool) to edit its value.
  */
 
-import { Vec2, dist } from "../core/vec2";
+import { Vec2, dist, mid } from "../core/vec2";
 import { distToSegment } from "../core/geom";
 import { Unit } from "../core/units";
 import { Entity, LineEntity, RectEntity } from "../model/entities";
@@ -45,6 +45,8 @@ export class DimensionTool implements Tool {
   private circleKind: DimensionType = "radius";
   private line1Id: string | null = null;
   private line2Id: string | null = null;
+  private firstMid: Pick | null = null;
+  private hoverP1: Pick | null = null;
   private hoverP2: Pick | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private dragDim: Dimension | null = null;
@@ -86,6 +88,7 @@ export class DimensionTool implements Tool {
           // Clicking an edge directly sets both endpoints and skips the second pick.
           const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
           if (edge) {
+            this.firstMid = edge.mid;
             this.p1 = edge.p1;
             this.p2 = edge.p2;
             this.phase = "placeLinear";
@@ -94,6 +97,7 @@ export class DimensionTool implements Tool {
           if (hit.type === "line") {
             // Line body click: dimension the line length directly.
             const line = hit as LineEntity;
+            this.firstMid = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
             this.p1 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
             this.p2 = { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } };
             this.phase = "placeLinear";
@@ -147,25 +151,31 @@ export class DimensionTool implements Tool {
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit) {
+          let newP1: Pick | null = null;
           let newP2: Pick | null = null;
           if (hit.type === "rectangle") {
             const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
-            if (edge && !samePos(edge.p1.pos, this.p1!.pos) && !samePos(edge.p1.pos, this.p2!.pos)) {
-              newP2 = edge.p1;
+            if (edge && hit.id !== this.p1!.ref.entityId) {
+              newP2 = edge.mid;
+              if (this.firstMid) newP1 = this.firstMid;
             }
           } else if (hit.type === "line") {
             const line = hit as LineEntity;
             if (hit.id !== this.p1!.ref.entityId) {
-              newP2 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
+              newP2 = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
+              if (this.firstMid) newP1 = this.firstMid;
             }
           } else {
             const pt = pickNearestEntityPoint(hit, e.worldRaw);
             if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
               newP2 = pt;
+              if (this.firstMid) newP1 = this.firstMid;
             }
           }
           if (newP2) {
+            if (newP1) this.p1 = newP1;
             this.p2 = newP2;
+            this.hoverP1 = null;
             this.hoverP2 = null;
             break;
           }
@@ -194,6 +204,7 @@ export class DimensionTool implements Tool {
     }
     
     if (this.phase === "placeLinear") {
+      this.hoverP1 = null;
       this.hoverP2 = null;
       const tol = ctx.view.toWorldLen(POINT_PICK_PX);
       const pick =
@@ -204,24 +215,31 @@ export class DimensionTool implements Tool {
       } else {
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit) {
+          let newP1: Pick | null = null;
           let newP2: Pick | null = null;
           if (hit.type === "rectangle") {
             const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
-            if (edge && !samePos(edge.p1.pos, this.p1!.pos) && !samePos(edge.p1.pos, this.p2!.pos)) {
-              newP2 = edge.p1;
+            if (edge && hit.id !== this.p1!.ref.entityId) {
+              newP2 = edge.mid;
+              if (this.firstMid) newP1 = this.firstMid;
             }
           } else if (hit.type === "line") {
             const line = hit as LineEntity;
             if (hit.id !== this.p1!.ref.entityId) {
-              newP2 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
+              newP2 = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
+              if (this.firstMid) newP1 = this.firstMid;
             }
           } else {
             const pt = pickNearestEntityPoint(hit, e.worldRaw);
             if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
               newP2 = pt;
+              if (this.firstMid) newP1 = this.firstMid;
             }
           }
-          if (newP2) this.hoverP2 = newP2;
+          if (newP2) {
+            this.hoverP1 = newP1;
+            this.hoverP2 = newP2;
+          }
         }
       }
     }
@@ -260,6 +278,8 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
+    this.firstMid = null;
+    this.hoverP1 = null;
     this.hoverP2 = null;
     this.circleId = null;
     this.line1Id = null;
@@ -280,9 +300,10 @@ export class DimensionTool implements Tool {
         { kind: "point", pos: this.p1.pos },
       ];
     } else if (this.phase === "placeLinear" && this.p1 && this.p2) {
+      const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
-      this.curType = chooseLinearType(this.p1.pos, activeP2.pos, this.cursor);
-      const dim = this.linearDim(0, activeP2);
+      this.curType = chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
+      const dim = this.linearDim(0, activeP1, activeP2);
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
@@ -347,9 +368,9 @@ export class DimensionTool implements Tool {
     if (dim.driving) ctx.openDimEditor(dim);
   }
 
-  private linearDim(offset: number, activeP2?: Pick): Dimension {
+  private linearDim(offset: number, activeP1?: Pick, activeP2?: Pick): Dimension {
     return makeDimension(this.curType, {
-      points: [this.p1!.ref, (activeP2 ?? this.p2!).ref],
+      points: [(activeP1 ?? this.p1!).ref, (activeP2 ?? this.p2!).ref],
       value: 0,
       offset,
     });
@@ -370,6 +391,9 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
+    this.firstMid = null;
+    this.hoverP1 = null;
+    this.hoverP2 = null;
     this.finaliseDim(dim, ctx);
   }
   private commitCircle(ctx: ToolContext): void {
@@ -438,19 +462,19 @@ function pickVirtualRectCorner(entities: Entity[], p: Vec2, tol: number): Pick |
   return best;
 }
 
-/** Find the closest edge of a rectangle and return its two corner PointRefs. */
-function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick } | null {
+/** Find the closest edge of a rectangle and return its two corner PointRefs and its midpoint. */
+function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick; mid: Pick } | null {
   const bl = rect.getPoint("bl");
   const br = rect.getPoint("br");
   const tr = rect.getPoint("tr");
   const tl = rect.getPoint("tl");
-  const edges: [string, Vec2, string, Vec2][] = [
-    ["bl", bl, "br", br],
-    ["br", br, "tr", tr],
-    ["tr", tr, "tl", tl],
-    ["tl", tl, "bl", bl],
+  const edges: [string, Vec2, string, Vec2, string, Vec2][] = [
+    ["bl", bl, "br", br, "mid_b", mid(bl, br)],
+    ["br", br, "tr", tr, "mid_r", mid(br, tr)],
+    ["tr", tr, "tl", tl, "mid_t", mid(tr, tl)],
+    ["tl", tl, "bl", bl, "mid_l", mid(tl, bl)],
   ];
-  let best: [string, Vec2, string, Vec2] | null = null;
+  let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
   let bestD = Infinity;
   for (const edge of edges) {
     const d = distToSegment(p, edge[1], edge[3]);
@@ -463,5 +487,6 @@ function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick } | null 
   return {
     p1: { ref: { entityId: rect.id, key: best[0] }, pos: best[1] },
     p2: { ref: { entityId: rect.id, key: best[2] }, pos: best[3] },
+    mid: { ref: { entityId: rect.id, key: best[4] }, pos: best[5] },
   };
 }

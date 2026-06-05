@@ -9,7 +9,7 @@
  * All coordinates are in document millimetres, in a Y-up world frame.
  */
 
-import { Vec2, clone, add, mid, dist } from "../core/vec2";
+import { Vec2, clone, add, mid, dist, sub } from "../core/vec2";
 import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flattenBezier, bezierBounds } from "../core/geom";
 import { nextId } from "./ids";
 
@@ -150,14 +150,36 @@ export class LineEntity extends Entity {
       { key: "b", pos: clone(this.b) },
     ];
   }
+  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    if (key === "mid") return [
+      { key: "a", axis: "x" }, { key: "a", axis: "y" },
+      { key: "b", axis: "x" }, { key: "b", axis: "y" }
+    ];
+    return [
+      { key, axis: "x" },
+      { key, axis: "y" }
+    ];
+  }
+  override pickablePoints(): DofPoint[] {
+    return [
+      { key: "a", pos: clone(this.a) },
+      { key: "b", pos: clone(this.b) },
+      { key: "mid", pos: mid(this.a, this.b) },
+    ];
+  }
   override getPoint(key: string): Vec2 {
     if (key === "a") return clone(this.a);
     if (key === "b") return clone(this.b);
+    if (key === "mid") return mid(this.a, this.b);
     return super.getPoint(key);
   }
   override setPoint(key: string, v: Vec2): void {
     if (key === "a") this.a = clone(v);
     else if (key === "b") this.b = clone(v);
+    else if (key === "mid") {
+      const d = sub(v, mid(this.a, this.b));
+      this.translate(d);
+    }
   }
 }
 
@@ -304,6 +326,11 @@ export class RectEntity extends Entity {
     if (key === "tr") return clone(this.p1);
     if (key === "br") return { x: this.p1.x, y: this.p0.y };
     if (key === "tl") return { x: this.p0.x, y: this.p1.y };
+    if (key === "mid_b") return mid(this.p0, this.getPoint("br"));
+    if (key === "mid_r") return mid(this.getPoint("br"), this.p1);
+    if (key === "mid_t") return mid(this.p1, this.getPoint("tl"));
+    if (key === "mid_l") return mid(this.getPoint("tl"), this.p0);
+    if (key === "center") return mid(this.p0, this.p1);
     return super.getPoint(key);
   }
   override pickablePoints(): DofPoint[] {
@@ -312,22 +339,18 @@ export class RectEntity extends Entity {
       { key: "br", pos: this.getPoint("br") },
       { key: "tr", pos: clone(this.p1) },
       { key: "tl", pos: this.getPoint("tl") },
+      { key: "mid_b", pos: this.getPoint("mid_b") },
+      { key: "mid_r", pos: this.getPoint("mid_r") },
+      { key: "mid_t", pos: this.getPoint("mid_t") },
+      { key: "mid_l", pos: this.getPoint("mid_l") },
+      { key: "center", pos: this.getPoint("center") },
     ];
   }
-  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
-    if (key === "bl") {
-      return [{ key: "bl", axis: "x" }, { key: "bl", axis: "y" }];
-    }
-    if (key === "tr") {
-      return [{ key: "tr", axis: "x" }, { key: "tr", axis: "y" }];
-    }
-    if (key === "br") {
-      return [{ key: "tr", axis: "x" }, { key: "bl", axis: "y" }];
-    }
-    if (key === "tl") {
-      return [{ key: "bl", axis: "x" }, { key: "tr", axis: "y" }];
-    }
-    return [];
+  override dofsAffectedBy(_key: string): { key: string; axis: "x" | "y" }[] {
+    return [
+      { key: "bl", axis: "x" }, { key: "bl", axis: "y" },
+      { key: "tr", axis: "x" }, { key: "tr", axis: "y" },
+    ];
   }
   override setPoint(key: string, v: Vec2): void {
     if (key === "bl") this.p0 = clone(v);
@@ -338,6 +361,10 @@ export class RectEntity extends Entity {
     } else if (key === "tl") {
       this.p0.x = v.x;
       this.p1.y = v.y;
+    } else {
+      const orig = this.getPoint(key);
+      const d = sub(v, orig);
+      this.translate(d);
     }
   }
 }
@@ -411,13 +438,49 @@ export class PolylineEntity extends Entity {
   override dofPoints(): DofPoint[] {
     return this.points.map((p, i) => ({ key: `v${i}`, pos: clone(p) }));
   }
+  override pickablePoints(): DofPoint[] {
+    const pts = this.dofPoints();
+    const segs = this.segmentCount();
+    for (let i = 0; i < segs; i++) {
+      const [s0, s1] = this.segment(i);
+      pts.push({ key: `mid_${i}`, pos: mid(s0, s1) });
+    }
+    return pts;
+  }
+  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    if (key.startsWith("mid_")) {
+      const i = Number(key.slice(4));
+      const next = (i + 1) % this.points.length;
+      return [
+        { key: `v${i}`, axis: "x" }, { key: `v${i}`, axis: "y" },
+        { key: `v${next}`, axis: "x" }, { key: `v${next}`, axis: "y" },
+      ];
+    }
+    return [
+      { key, axis: "x" },
+      { key, axis: "y" },
+    ];
+  }
   override getPoint(key: string): Vec2 {
+    if (key.startsWith("mid_")) {
+      const i = Number(key.slice(4));
+      const [s0, s1] = this.segment(i);
+      return mid(s0, s1);
+    }
     const i = Number(key.slice(1));
     const p = this.points[i];
     if (!p) return super.getPoint(key);
     return clone(p);
   }
   override setPoint(key: string, v: Vec2): void {
+    if (key.startsWith("mid_")) {
+      const i = Number(key.slice(4));
+      const [s0, s1] = this.segment(i);
+      const d = sub(v, mid(s0, s1));
+      this.points[i] = add(this.points[i], d);
+      this.points[(i + 1) % this.points.length] = add(this.points[(i + 1) % this.points.length], d);
+      return;
+    }
     const i = Number(key.slice(1));
     if (this.points[i]) this.points[i] = clone(v);
   }
