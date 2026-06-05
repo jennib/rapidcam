@@ -620,19 +620,30 @@ export class Renderer {
 
   private drawSelectionRect(view: Viewport, overlay: Overlay): void {
     if (!overlay.selectionRect) return;
+    const { a: wa, b: wb, crossing } = overlay.selectionRect;
     const ctx = this.ctx;
-    const a = view.worldToScreen(overlay.selectionRect.a);
-    const b = view.worldToScreen(overlay.selectionRect.b);
+    const a = view.worldToScreen(wa);
+    const b = view.worldToScreen(wb);
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
     const w = Math.abs(b.x - a.x);
     const h = Math.abs(b.y - a.y);
     ctx.save();
-    ctx.fillStyle = COLORS.selectionRect;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = COLORS.selectionRectBorder;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
+    if (crossing) {
+      // Right-to-left: crossing select — green dashed border
+      ctx.fillStyle = "rgba(74,255,140,0.08)";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = "#3ddc6e";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+    } else {
+      // Left-to-right: window select — blue solid border
+      ctx.fillStyle = COLORS.selectionRect;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = COLORS.selectionRectBorder;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+    }
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
     ctx.restore();
   }

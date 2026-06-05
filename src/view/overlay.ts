@@ -32,7 +32,7 @@ export interface Overlay {
   /** Active snap point to highlight, if any. */
   snap: SnapPoint | null;
   /** Rubber-band selection rectangle, in world coords. */
-  selectionRect: { a: Vec2; b: Vec2 } | null;
+  selectionRect: { a: Vec2; b: Vec2; crossing: boolean } | null;
   /** Entity currently under the cursor. */
   hover: EntityId | null;
   /** Constraint currently under the cursor. */

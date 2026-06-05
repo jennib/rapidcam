@@ -73,6 +73,31 @@ export function normalizeAngle(a: number): number {
   return a;
 }
 
+/**
+ * Intersect segment a1→a2 with segment b1→b2.
+ * Returns the intersection point and params ta (along a), tb (along b) both in [0,1],
+ * or null if parallel or no intersection within both segments.
+ */
+export function segSegIntersect(
+  a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2,
+): { point: Vec2; ta: number; tb: number } | null {
+  const rx = a2.x - a1.x, ry = a2.y - a1.y;
+  const sx = b2.x - b1.x, sy = b2.y - b1.y;
+  const denom = rx * sy - ry * sx;
+  if (Math.abs(denom) < 1e-10) return null;
+  const dx = b1.x - a1.x, dy = b1.y - a1.y;
+  const ta = (dx * sy - dy * sx) / denom;
+  const tb = (dx * ry - dy * rx) / denom;
+  const EPS = 1e-9;
+  if (ta < -EPS || ta > 1 + EPS || tb < -EPS || tb > 1 + EPS) return null;
+  const tc = Math.max(0, Math.min(1, ta));
+  return {
+    point: { x: a1.x + tc * rx, y: a1.y + tc * ry },
+    ta: tc,
+    tb: Math.max(0, Math.min(1, tb)),
+  };
+}
+
 export const TAU = Math.PI * 2;
 export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;

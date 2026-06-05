@@ -45,7 +45,7 @@ export interface ToolPointerEvent {
 
 export interface ToolOverlay {
   previews: PreviewShape[];
-  selectionRect: { a: Vec2; b: Vec2 } | null;
+  selectionRect: { a: Vec2; b: Vec2; crossing: boolean } | null;
   transformBox?: TransformBox | null;
 }
 

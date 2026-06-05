@@ -28,6 +28,8 @@ import { OffsetTool } from "./tools/offsetTool";
 import { BezierTool } from "./tools/bezierTool";
 import { RotateTool } from "./tools/rotateTool";
 import { ScaleTool } from "./tools/scaleTool";
+import { FilletTool } from "./tools/filletTool";
+import { TrimTool } from "./tools/trimTool";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -52,6 +54,8 @@ const SHORTCUTS: Record<string, string> = {
   b: "bezier",
   q: "rotate",
   s: "scale",
+  f: "fillet",
+  t: "trim",
 };
 
 export class App {
@@ -126,6 +130,8 @@ export class App {
         new BezierTool(),
         new RotateTool(),
         new ScaleTool(),
+        new FilletTool(),
+        new TrimTool(),
       ],
       "select",
     );

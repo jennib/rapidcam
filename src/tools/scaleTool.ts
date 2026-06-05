@@ -218,7 +218,7 @@ export class ScaleTool implements Tool {
   getOverlay(): ToolOverlay {
     return {
       previews: [],
-      selectionRect: this.mode === "marquee" ? { a: this.marqueeStart, b: this.marqueeEnd } : null,
+      selectionRect: this.mode === "marquee" ? { a: this.marqueeStart, b: this.marqueeEnd, crossing: false } : null,
       transformBox: this.currentTransformBox,
     };
   }

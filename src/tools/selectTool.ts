@@ -444,7 +444,8 @@ export class SelectTool implements Tool {
 
   getOverlay(ctx?: ToolContext): ToolOverlay {
     if (this.mode === "marquee") {
-      return { previews: [], selectionRect: { a: this.marqueeStart, b: this.marqueeEnd } };
+      const crossing = this.marqueeEnd.x < this.marqueeStart.x;
+      return { previews: [], selectionRect: { a: this.marqueeStart, b: this.marqueeEnd, crossing } };
     }
     if (ctx && ctx.doc.selected.length > 0 && this.mode !== "dragPoint" && this.mode !== "maybeDragPoint") {
       return { previews: [], selectionRect: null, transformBox: this.getTransformBox(ctx) };
