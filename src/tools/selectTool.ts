@@ -11,6 +11,10 @@ import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 
+function isEntityFixed(doc: CADDocument, id: string): boolean {
+  return doc.constraints.some(c => c.type === "fixed" && c.entities.includes(id));
+}
+
 type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee" | "dragScale" | "dragRotate" | "maybeDragDimLabel" | "dragDimLabel";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -234,7 +238,9 @@ export class SelectTool implements Tool {
         if (ent) {
           const origPos = ent.getPoint(this.dragPoint!.key);
           const d = sub(e.world, origPos);
-          for (const se of ctx.doc.selected) se.translate(d);
+          for (const se of ctx.doc.selected) {
+            if (!isEntityFixed(ctx.doc, se.id)) se.translate(d);
+          }
 
           if (e.snap && e.snap.entityId !== ent.id) {
             const targetEnt = ctx.doc.entities.find(x => x.id === e.snap!.entityId);
@@ -251,7 +257,8 @@ export class SelectTool implements Tool {
                 const startAngle = Math.atan2(dragDir.y, dragDir.x);
                 const targetAngle = Math.atan2(targetDir.y, targetDir.x) + Math.PI; // point away
                 
-                applyRotate(ctx.doc.selected, e.world.x, e.world.y, targetAngle - startAngle, (oldE, newE) => {
+                const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+                applyRotate(unfixedSelected, e.world.x, e.world.y, targetAngle - startAngle, (oldE, newE) => {
                   const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
                   if (idx >= 0) ctx.doc.entities[idx] = newE;
                 });
@@ -275,7 +282,8 @@ export class SelectTool implements Tool {
         const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
         const angle = currentAngle - startAngle;
         
-        applyRotate(ctx.doc.selected, cx, cy, angle, (oldE, newE) => {
+        const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+        applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
           const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
           if (idx >= 0) ctx.doc.entities[idx] = newE;
         });
@@ -283,7 +291,9 @@ export class SelectTool implements Tool {
       } else {
         const d = sub(e.worldRaw, this.dragStartWorld);
         if (d.x !== 0 || d.y !== 0) {
-          for (const ent of ctx.doc.selected) ent.translate(d);
+          for (const ent of ctx.doc.selected) {
+            if (!isEntityFixed(ctx.doc, ent.id)) ent.translate(d);
+          }
           ctx.solve(pinsForSelected(ctx.doc));
         }
       }
@@ -335,7 +345,8 @@ export class SelectTool implements Tool {
       }
       
       if (Math.abs(sx) > 0.001 || Math.abs(sy) > 0.001) {
-        applyScale(ctx.doc.selected, cx, cy, sx, sy);
+        const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+        applyScale(unfixedSelected, cx, cy, sx, sy);
       }
       
       ctx.solve();
@@ -349,7 +360,8 @@ export class SelectTool implements Tool {
       const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
       const angle = currentAngle - startAngle;
       
-      applyRotate(ctx.doc.selected, cx, cy, angle, (oldE, newE) => {
+      const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+      applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
         const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
         if (idx >= 0) ctx.doc.entities[idx] = newE;
       });

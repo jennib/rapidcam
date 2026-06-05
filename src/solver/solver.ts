@@ -75,6 +75,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   const pinEntries: { ent: Entity; key: string; target: Vec2 }[] = [];
   if (pins) {
     for (const [key, target] of pins) {
+      if (fixed.has(key)) continue;
       const i = key.indexOf(":");
       const ent = byId.get(key.slice(0, i));
       if (!ent) continue;
