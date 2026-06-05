@@ -52,6 +52,121 @@ const BUTTONS: (ButtonSpec | "sep")[] = [
 
 type BuildResult = { ok: true; constraints: Constraint[] } | { ok: false; error: string };
 
+/** Validate the current selection for `type` and, if valid, produce constraints. */
+export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): BuildResult {
+  const ents = doc.selected;
+  const lines = ents.filter((e) => e.type === "line");
+  const circles = ents.filter((e) => e.type === "circle");
+  const arcs = ents.filter((e) => e.type === "arc");
+  const circular = [...circles, ...arcs];
+  const pts = doc.selectedPoints;
+  const ids = (es: Entity[]) => es.map((e) => e.id);
+
+  const ok = (constraints: Constraint[]): BuildResult => ({ ok: true, constraints });
+  const err = (error: string): BuildResult => ({ ok: false, error });
+
+  switch (type) {
+    case "coincident":
+      if (pts.length === 2)
+        return ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })]);
+      if (circles.length === 1 && lines.length === 1) {
+        const circ = circles[0] as CircleEntity;
+        const line = lines[0] as LineEntity;
+        const key = dist(circ.center, line.a) <= dist(circ.center, line.b) ? "a" : "b";
+        return ok([makeConstraint("coincident", { points: [
+          { entityId: circ.id, key: "c" },
+          { entityId: line.id, key },
+        ]})]);
+      }
+      return err("Select 2 points, or 1 circle + 1 line");
+
+    case "horizontal":
+    case "vertical":
+      if (lines.length === 1) return ok([makeConstraint(type, { entities: [lines[0].id] })]);
+      if (pts.length === 2) return ok([makeConstraint(type, { points: [pts[0], pts[1]] })]);
+      return err("Select 1 line or 2 points");
+
+    case "parallel":
+    case "perpendicular":
+      return lines.length === 2
+        ? ok([makeConstraint(type, { entities: ids(lines) })])
+        : err("Select 2 lines");
+
+    case "equal":
+      if (lines.length === 2) return ok([makeConstraint("equal", { entities: ids(lines) })]);
+      if (circular.length === 2) return ok([makeConstraint("equal", { entities: ids(circular) })]);
+      return err("Select 2 lines or 2 circles/arcs");
+
+    case "concentric":
+      return circular.length === 2
+        ? ok([makeConstraint("concentric", { entities: ids(circular) })])
+        : err("Select 2 circles/arcs");
+
+    case "tangent": {
+      if (lines.length === 1 && circular.length === 1)
+        return ok([makeConstraint("tangent", { entities: [lines[0].id, circular[0].id] })]);
+      if (circular.length === 2)
+        return ok([makeConstraint("tangent", { entities: ids(circular) })]);
+      return err("Select 1 line and 1 circle/arc, or 2 arcs/circles");
+    }
+
+    case "pointOnLine":
+      return pts.length === 1 && lines.length === 1
+        ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [lines[0].id] })])
+        : err("Select 1 point and 1 line");
+
+    case "pointOnArc":
+      return pts.length === 1 && arcs.length === 1
+        ? ok([makeConstraint("pointOnArc", { points: [pts[0]], entities: [arcs[0].id] })])
+        : err("Select 1 point and 1 arc");
+
+    case "midpoint":
+      return pts.length === 1 && lines.length === 1
+        ? ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lines[0].id] })])
+        : err("Select 1 point and 1 line");
+
+    case "symmetric":
+      return pts.length === 2 && lines.length === 1
+        ? ok([makeConstraint("symmetric", { points: [pts[0], pts[1]], entities: [lines[0].id] })])
+        : err("Select 2 points and 1 line (symmetry axis)");
+
+    case "collinear":
+      return lines.length === 2
+        ? ok([makeConstraint("collinear", { entities: ids(lines) })])
+        : err("Select 2 lines");
+
+    case "pointOnCircle":
+      return pts.length === 1 && circles.length === 1
+        ? ok([makeConstraint("pointOnCircle", { points: [pts[0]], entities: [circles[0].id] })])
+        : err("Select 1 point and 1 circle");
+
+    case "angle": {
+      if (lines.length !== 2) return err("Select 2 lines");
+      const angle = measureAngleBetweenLines(lines[0] as LineEntity, lines[1] as LineEntity);
+      return ok([makeConstraint("angle", { entities: ids(lines), params: [angle] })]);
+    }
+
+    case "fixedPoint": {
+      if (pts.length < 1) return err("Select 1+ points");
+      const constraints: Constraint[] = [];
+      for (const pt of pts) {
+        const ent = doc.entities.find(e => e.id === pt.entityId);
+        if (!ent) continue;
+        try {
+          const pos = ent.getPoint(pt.key);
+          constraints.push(makeConstraint("fixedPoint", { points: [pt], params: [pos.x, pos.y] }));
+        } catch { /* skip invalid point refs */ }
+      }
+      return constraints.length > 0 ? ok(constraints) : err("Select 1+ points");
+    }
+
+    case "fixed":
+      return ents.length >= 1
+        ? ok(ents.map((e) => makeConstraint("fixed", { entities: [e.id] })))
+        : err("Select 1+ entities");
+  }
+}
+
 export class ConstraintBar {
   private typeButtons: { spec: ButtonSpec; el: HTMLButtonElement }[] = [];
   private msgEl!: HTMLElement;
@@ -101,7 +216,7 @@ export class ConstraintBar {
   }
 
   private apply(spec: ButtonSpec): void {
-    const res = this.buildFor(spec.type);
+    const res = buildConstraintsFor(spec.type, this.doc);
     if (!res.ok) {
       this.message(res.error, "error");
       return;
@@ -131,8 +246,16 @@ export class ConstraintBar {
   }
 
   private refresh(): void {
+    const hasSelection = this.doc.selected.length > 0 || this.doc.selectedPoints.length > 0;
     for (const { spec, el } of this.typeButtons) {
-      el.disabled = !this.buildFor(spec.type).ok;
+      el.disabled = !buildConstraintsFor(spec.type, this.doc).ok;
+    }
+    if (!hasSelection) {
+      this.msgEl.textContent = "Select geometry to add a constraint";
+      this.msgEl.className = "cb-msg";
+    } else if (this.msgEl.textContent === "Select geometry to add a constraint") {
+      this.msgEl.textContent = "";
+      this.msgEl.className = "cb-msg";
     }
   }
 
@@ -141,118 +264,4 @@ export class ConstraintBar {
     this.msgEl.className = `cb-msg ${kind}`;
   }
 
-  /** Validate the current selection for `type` and, if valid, produce constraints. */
-  private buildFor(type: ConstraintType): BuildResult {
-    const ents = this.doc.selected;
-    const lines = ents.filter((e) => e.type === "line");
-    const circles = ents.filter((e) => e.type === "circle");
-    const arcs = ents.filter((e) => e.type === "arc");
-    const circular = [...circles, ...arcs]; // circles and arcs share radius-based constraints
-    const pts = this.doc.selectedPoints;
-    const ids = (es: Entity[]) => es.map((e) => e.id);
-
-    const ok = (constraints: Constraint[]): BuildResult => ({ ok: true, constraints });
-    const err = (error: string): BuildResult => ({ ok: false, error });
-
-    switch (type) {
-      case "coincident":
-        if (pts.length === 2)
-          return ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })]);
-        if (circles.length === 1 && lines.length === 1) {
-          const circ = circles[0] as CircleEntity;
-          const line = lines[0] as LineEntity;
-          const key = dist(circ.center, line.a) <= dist(circ.center, line.b) ? "a" : "b";
-          return ok([makeConstraint("coincident", { points: [
-            { entityId: circ.id, key: "c" },
-            { entityId: line.id, key },
-          ]})]);
-        }
-        return err("Select 2 points, or 1 circle + 1 line");
-
-      case "horizontal":
-      case "vertical":
-        if (lines.length === 1) return ok([makeConstraint(type, { entities: [lines[0].id] })]);
-        if (pts.length === 2) return ok([makeConstraint(type, { points: [pts[0], pts[1]] })]);
-        return err("Select 1 line or 2 points");
-
-      case "parallel":
-      case "perpendicular":
-        return lines.length === 2
-          ? ok([makeConstraint(type, { entities: ids(lines) })])
-          : err("Select 2 lines");
-
-      case "equal":
-        if (lines.length === 2) return ok([makeConstraint("equal", { entities: ids(lines) })]);
-        if (circular.length === 2) return ok([makeConstraint("equal", { entities: ids(circular) })]);
-        return err("Select 2 lines or 2 circles/arcs");
-
-      case "concentric":
-        return circular.length === 2
-          ? ok([makeConstraint("concentric", { entities: ids(circular) })])
-          : err("Select 2 circles/arcs");
-
-      case "tangent": {
-        if (lines.length === 1 && circular.length === 1)
-          return ok([makeConstraint("tangent", { entities: [lines[0].id, circular[0].id] })]);
-        if (circular.length === 2)
-          return ok([makeConstraint("tangent", { entities: ids(circular) })]);
-        return err("Select 1 line and 1 circle/arc, or 2 arcs/circles");
-      }
-
-      case "pointOnLine":
-        return pts.length === 1 && lines.length === 1
-          ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [lines[0].id] })])
-          : err("Select 1 point and 1 line");
-
-      case "pointOnArc":
-        return pts.length === 1 && arcs.length === 1
-          ? ok([makeConstraint("pointOnArc", { points: [pts[0]], entities: [arcs[0].id] })])
-          : err("Select 1 point and 1 arc");
-
-      case "midpoint":
-        return pts.length === 1 && lines.length === 1
-          ? ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lines[0].id] })])
-          : err("Select 1 point and 1 line");
-
-      case "symmetric":
-        return pts.length === 2 && lines.length === 1
-          ? ok([makeConstraint("symmetric", { points: [pts[0], pts[1]], entities: [lines[0].id] })])
-          : err("Select 2 points and 1 line (symmetry axis)");
-
-      case "collinear":
-        return lines.length === 2
-          ? ok([makeConstraint("collinear", { entities: ids(lines) })])
-          : err("Select 2 lines");
-
-      case "pointOnCircle":
-        return pts.length === 1 && circles.length === 1
-          ? ok([makeConstraint("pointOnCircle", { points: [pts[0]], entities: [circles[0].id] })])
-          : err("Select 1 point and 1 circle");
-
-      case "angle": {
-        if (lines.length !== 2) return err("Select 2 lines");
-        const angle = measureAngleBetweenLines(lines[0] as LineEntity, lines[1] as LineEntity);
-        return ok([makeConstraint("angle", { entities: ids(lines), params: [angle] })]);
-      }
-
-      case "fixedPoint": {
-        if (pts.length < 1) return err("Select 1+ points");
-        const constraints: Constraint[] = [];
-        for (const pt of pts) {
-          const ent = this.doc.entities.find(e => e.id === pt.entityId);
-          if (!ent) continue;
-          try {
-            const pos = ent.getPoint(pt.key);
-            constraints.push(makeConstraint("fixedPoint", { points: [pt], params: [pos.x, pos.y] }));
-          } catch { /* skip invalid point refs */ }
-        }
-        return constraints.length > 0 ? ok(constraints) : err("Select 1+ points");
-      }
-
-      case "fixed":
-        return ents.length >= 1
-          ? ok(ents.map((e) => makeConstraint("fixed", { entities: [e.id] })))
-          : err("Select 1+ entities");
-    }
-  }
 }

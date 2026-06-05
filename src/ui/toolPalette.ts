@@ -2,12 +2,15 @@
 
 import { ToolManager } from "../tools/tool";
 
+// Tool IDs after which a visual separator is inserted.
+const SEP_AFTER = new Set(["select", "text", "dimension"]);
+
 export class ToolPalette {
   private buttons = new Map<string, HTMLButtonElement>();
 
   constructor(host: HTMLElement, private manager: ToolManager) {
     const tools = manager.list();
-    tools.forEach((tool, i) => {
+    tools.forEach((tool) => {
       const btn = document.createElement("button");
       btn.className = "tool-btn";
       btn.dataset.tip = tool.label;
@@ -15,8 +18,7 @@ export class ToolPalette {
       btn.addEventListener("click", () => manager.activate(tool.id));
       host.appendChild(btn);
       this.buttons.set(tool.id, btn);
-      // Separate the Select tool from the drawing tools.
-      if (i === 0 && tools.length > 1) {
+      if (SEP_AFTER.has(tool.id)) {
         const sep = document.createElement("div");
         sep.className = "tool-sep";
         host.appendChild(sep);

@@ -1,6 +1,6 @@
 import { Vec2, dist, sub } from "../core/vec2";
 import { Bounds, LineEntity } from "../model/entities";
-import { PointRef, pointRefKey, Constraint, constraintAnchors } from "../model/constraints";
+import { PointRef, pointRefKey, Constraint, constraintAnchors, ConstraintType } from "../model/constraints";
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { Viewport } from "../view/viewport";
@@ -10,6 +10,16 @@ import { PinMap } from "../solver/solver";
 import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
+import { buildConstraintsFor } from "../ui/constraintBar";
+
+const CONSTRAINT_KEYS: Record<string, ConstraintType> = {
+  h: "horizontal",
+  v: "vertical",
+  e: "equal",
+  p: "parallel",
+  k: "perpendicular",
+  c: "coincident",
+};
 
 function isEntityFixed(doc: CADDocument, id: string): boolean {
   return doc.constraints.some(c => c.type === "fixed" && c.entities.includes(id));
@@ -492,6 +502,21 @@ export class SelectTool implements Tool {
     this.activeHandleId = null;
     this.dragDimLabelId = null;
     ctx.requestRender();
+  }
+
+  onKeyDown(e: KeyboardEvent, ctx: ToolContext): void {
+    const hasSelection = ctx.doc.selected.length > 0 || ctx.doc.selectedPoints.length > 0;
+    if (!hasSelection) return;
+    const type = CONSTRAINT_KEYS[e.key.toLowerCase()];
+    if (!type) return;
+    // Consume the key so app.ts doesn't switch tools (e.g. v→select, p→polyline, c→circle).
+    e.preventDefault();
+    const result = buildConstraintsFor(type, ctx.doc);
+    if (!result.ok) return;
+    ctx.pushHistory();
+    for (const c of result.constraints) ctx.doc.addConstraint(c);
+    ctx.doc.clearSelection();
+    ctx.solve();
   }
 
   private applyMarquee(ctx: ToolContext): void {

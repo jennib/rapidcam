@@ -271,12 +271,53 @@ button.cbtn.solve {
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow-y: auto;
+  overflow: hidden;
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 #right-panel.resizing {
   transition: none;
+}
+
+#right-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.rtab {
+  flex: 1;
+  padding: 7px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font);
+}
+
+.rtab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.rtab:hover:not(.active) {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
+.rtab-content {
+  display: none;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.rtab-content.active {
+  display: flex;
 }
 
 /* ---------- Settings bar ---------- */

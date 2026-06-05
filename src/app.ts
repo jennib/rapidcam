@@ -130,20 +130,23 @@ export class App {
       },
       [
         new SelectTool(),
+        // drawing
         new LineTool(),
         new RectTool(),
         new CircleTool(),
         new ArcTool(),
         new PolylineTool(),
-        new DimensionTool(),
-        new OffsetTool(),
         new BezierTool(),
-        new RotateTool(),
-        new ScaleTool(),
+        new TextTool(),
+        // dimension
+        new DimensionTool(),
+        // modify
+        new OffsetTool(),
         new FilletTool(),
         new TrimTool(),
         new MirrorTool(),
-        new TextTool(),
+        new RotateTool(),
+        new ScaleTool(),
       ],
       "select",
     );
@@ -201,7 +204,7 @@ export class App {
 
     this.bindEvents();
     this.handleResize();
-    this.fitView();
+    this.initialFit();
 
     // Show welcome screen on startup for a fresh empty project
     showWelcomeScreen(
@@ -273,6 +276,22 @@ export class App {
     const gb = this.doc.bounds();
     const b = gb ? unionBounds(wa, gb) : wa;
     this.view.fit(b, 48);
+    this.requestRender();
+  }
+
+  /** Initial view for a new empty document: origin near lower-left with work area visible above. */
+  private initialFit(): void {
+    const w = this.view.width;
+    const h = this.view.height;
+    if (w === 0 || h === 0) { this.fitView(); return; }
+    const workW = this.doc.canvas.width;
+    const workH = this.doc.canvas.height;
+    // Scale so the work area fills ~65% of the viewport in the tighter dimension.
+    const scale = Math.min((w * 0.65) / workW, (h * 0.60) / workH);
+    this.view.scale = Math.max(0.02, Math.min(400, scale));
+    // Place origin at 28% from left, 68% from top — comfortable lower-left anchor.
+    this.view.tx = w * 0.28;
+    this.view.ty = h * 0.68;
     this.requestRender();
   }
 
@@ -596,7 +615,7 @@ export class App {
     }
 
     const toolId = SHORTCUTS[ev.key.toLowerCase()];
-    if (toolId && !ev.ctrlKey && !ev.metaKey) {
+    if (toolId && !ev.ctrlKey && !ev.metaKey && !ev.defaultPrevented) {
       this.tools.activate(toolId);
     }
   };

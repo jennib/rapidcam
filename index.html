@@ -15,11 +15,19 @@
           <canvas id="scene"></canvas>
         </main>
         <div id="right-panel">
-          <aside id="variablesbar"></aside>
-          <aside id="layersbar"></aside>
-          <aside id="settingsbar"></aside>
-          <aside id="propertiesbar"></aside>
-          <aside id="cambar"></aside>
+          <div id="right-tabs">
+            <button class="rtab active" data-tab="draw">Draw</button>
+            <button class="rtab" data-tab="cam">CAM</button>
+          </div>
+          <div class="rtab-content active" data-panel="draw">
+            <aside id="propertiesbar"></aside>
+            <aside id="variablesbar"></aside>
+            <aside id="layersbar"></aside>
+          </div>
+          <div class="rtab-content" data-panel="cam">
+            <aside id="settingsbar"></aside>
+            <aside id="cambar"></aside>
+          </div>
         </div>
       </div>
       <footer id="statusbar"></footer>
