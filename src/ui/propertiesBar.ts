@@ -45,7 +45,7 @@ export class PropertiesBar {
 
     this.constructionBtn = document.createElement("button");
     this.constructionBtn.className = "btn props-construction-btn";
-    this.constructionBtn.textContent = "Construction Mode";
+    this.constructionBtn.textContent = "Construction Mode: OFF";
     this.constructionBtn.title = "Toggle construction geometry mode";
     this.constructionBtn.addEventListener("click", () => this.onConstructionToggle());
     this.content.appendChild(this.constructionBtn);
@@ -68,7 +68,9 @@ export class PropertiesBar {
   private refresh(): void {
     this.content.innerHTML = "";
     this.content.appendChild(this.constructionBtn);
-    this.constructionBtn.classList.toggle("active", this.doc.isConstructionMode);
+    const cm = this.doc.isConstructionMode;
+    this.constructionBtn.classList.toggle("active", cm);
+    this.constructionBtn.textContent = cm ? "Construction Mode: ON" : "Construction Mode: OFF";
 
     const selected = this.doc.selected;
 

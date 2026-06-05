@@ -702,8 +702,17 @@ button.cbtn.solve {
   border-color: var(--accent);
 }
 
-.props-construction-btn {
+/* Construction Mode is a toggle, not an action — neutral when off, accent when on */
+.props-content .props-construction-btn {
   width: 100%;
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.props-content .props-construction-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
 }
 .props-content .btn:hover:not(:disabled) {
   background: var(--accent);
