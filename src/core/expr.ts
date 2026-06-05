@@ -33,11 +33,6 @@ export function validateExpr(expr: string, vars: VarMap): string | null {
   }
 }
 
-/** Returns true if the expression string references any variable names. */
-export function exprUsesVars(expr: string): boolean {
-  return /[a-zA-Z_]/.test(expr);
-}
-
 // ---------------------------------------------------------------------------
 // Parser implementation
 // ---------------------------------------------------------------------------

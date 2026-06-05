@@ -12,7 +12,7 @@
 
 import { Unit, parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
 import { Dimension } from "../model/dimensions";
-import { evalExpr, exprUsesVars, VarMap } from "../core/expr";
+import { evalExpr, VarMap } from "../core/expr";
 
 /** Return true to close the editor; false to flash red and keep it open. */
 export type CommitFn = (value: number, expr?: string) => boolean;
@@ -84,7 +84,9 @@ export class DimEditor {
       // Try expression evaluator first (handles variable references + arithmetic)
       const exprVal = evalExpr(raw, vars);
       if (exprVal !== null && exprVal > 0) {
-        const expr = exprUsesVars(raw) ? raw : undefined;
+        // Save the formula string unless it's something parseLength already handles
+        // (plain numbers like "50" or "50mm"). This preserves math like "50 * 2".
+        const expr = parseLength(raw, displayUnit) === null ? raw : undefined;
         const ok = onCommit(exprVal, expr);
         if (!ok) { this.flash(input); return; }
         this.close();
