@@ -139,6 +139,7 @@ export class LineEntity extends Entity {
   override duplicate(): LineEntity {
     const e = new LineEntity(this.a, this.b);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
   get length(): number {
@@ -222,6 +223,7 @@ export class CircleEntity extends Entity {
   override duplicate(): CircleEntity {
     const e = new CircleEntity(this.center, this.radius);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
   override dofPoints(): DofPoint[] {
@@ -313,6 +315,7 @@ export class RectEntity extends Entity {
   override duplicate(): RectEntity {
     const e = new RectEntity(this.p0, this.p1);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
   override dofPoints(): DofPoint[] {
@@ -433,6 +436,7 @@ export class PolylineEntity extends Entity {
   override duplicate(): PolylineEntity {
     const e = new PolylineEntity(this.points, this.closed);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
   override dofPoints(): DofPoint[] {
@@ -556,6 +560,7 @@ export class ArcEntity extends Entity {
   override duplicate(): ArcEntity {
     const e = new ArcEntity(this.center, this.radius, this.startAngle, this.endAngle);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
 
@@ -658,6 +663,7 @@ export class BezierEntity extends Entity {
   override duplicate(): BezierEntity {
     const e = new BezierEntity(this.p0, this.p1, this.p2, this.p3);
     e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
     return e;
   }
 
@@ -683,10 +689,17 @@ export class BezierEntity extends Entity {
   }
 
   override setPoint(key: string, v: Vec2): void {
-    if (key === "p0") this.p0 = clone(v);
-    else if (key === "p1") this.p1 = clone(v);
-    else if (key === "p2") this.p2 = clone(v);
-    else if (key === "p3") this.p3 = clone(v);
+    if (key === "p0") {
+      const d = sub(v, this.p0);
+      this.p0 = clone(v);
+      this.p1 = add(this.p1, d);
+    } else if (key === "p1") { this.p1 = clone(v); }
+    else if (key === "p2") { this.p2 = clone(v); }
+    else if (key === "p3") {
+      const d = sub(v, this.p3);
+      this.p3 = clone(v);
+      this.p2 = add(this.p2, d);
+    }
   }
 }
 

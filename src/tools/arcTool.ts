@@ -3,6 +3,7 @@
 import { Vec2, dist } from "../core/vec2";
 import { ArcEntity, SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
+import { makeDimension } from "../model/dimensions";
 import { parseLength } from "../core/units";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -108,6 +109,7 @@ export class ArcTool implements Tool {
     arc.isConstruction = ctx.doc.isConstructionMode;
     ctx.doc.addSelected(arc);
     this.addSnappedConstraints(arc, null, ctx);
+    ctx.doc.addDimension(makeDimension("arclength", { entities: [arc.id], value: len, offset: 8, driving: true }));
     ctx.solve();
     this.phase = "center";
     this.center = null;
