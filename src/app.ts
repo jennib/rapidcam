@@ -30,6 +30,8 @@ import { RotateTool } from "./tools/rotateTool";
 import { ScaleTool } from "./tools/scaleTool";
 import { FilletTool } from "./tools/filletTool";
 import { TrimTool } from "./tools/trimTool";
+import { MirrorTool } from "./tools/mirrorTool";
+import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -56,6 +58,7 @@ const SHORTCUTS: Record<string, string> = {
   s: "scale",
   f: "fillet",
   t: "trim",
+  m: "mirror",
 };
 
 export class App {
@@ -132,6 +135,7 @@ export class App {
         new ScaleTool(),
         new FilletTool(),
         new TrimTool(),
+        new MirrorTool(),
       ],
       "select",
     );
@@ -157,6 +161,8 @@ export class App {
       },
       edit: {
         onDelete: () => this.deleteSelected(),
+        onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
+        onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
       },
       view: {
         onFit: () => this.fitView(),

@@ -16,6 +16,12 @@ export const ICONS = {
   bezier: wrap('<path d="M4 18 C6 4 18 20 20 6"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/><line x1="4" y1="18" x2="6" y2="4" opacity="0.5"/><line x1="20" y1="6" x2="18" y2="20" opacity="0.5"/>'),
   rotate: wrap('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
   scale: wrap('<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'),
+  // Two chevrons facing each other across a dashed axis — classic mirror symbol.
+  mirror: wrap(
+    '<line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2 2"/>' +
+    '<polyline points="9,7 5,12 9,17"/>' +
+    '<polyline points="15,7 19,12 15,17"/>',
+  ),
   // Two lines meeting at a corner, with a rounded arc replacing the sharp vertex.
   fillet: wrap(
     '<line x1="4" y1="4" x2="4" y2="12"/>' +

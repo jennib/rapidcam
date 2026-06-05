@@ -1,5 +1,7 @@
 export interface EditMenuCallbacks {
   onDelete: () => void;
+  onRectArray: () => void;
+  onCircArray: () => void;
 }
 
 export class EditMenu {
@@ -51,6 +53,15 @@ export class EditMenu {
   private buildItems(): void {
     this.dropdown.innerHTML = "";
     this.item("Delete Selected", "Del", () => { this.close(); this.cb.onDelete(); });
+    this.sep();
+    this.item("Rectangular Array…", "", () => { this.close(); this.cb.onRectArray(); });
+    this.item("Circular Array…",    "", () => { this.close(); this.cb.onCircArray(); });
+  }
+
+  private sep(): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-sep";
+    this.dropdown.appendChild(div);
   }
 
   private item(text: string, shortcut: string, onClick: () => void): void {
