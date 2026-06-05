@@ -33,8 +33,8 @@ import { EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
 import { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
-export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength";
-export type LinearDimType = "distance" | "horizontal" | "vertical";
+export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength" | "line-distance";
+export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
   id: string;
@@ -49,11 +49,13 @@ export interface Dimension {
    *  - radius/diameter → leader direction angle (radians) from the circle centre
    */
   offset: number;
+  /** Parametric anchors [t1, t2] for drawing visual extension lines on line-distance dims. */
+  anchors?: [number, number];
 }
 
 export function makeDimension(
   type: DimensionType,
-  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean },
+  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number] },
 ): Dimension {
   return {
     id: nextId("dim"),
@@ -63,6 +65,7 @@ export function makeDimension(
     value: opts.value,
     driving: opts.driving ?? true,
     offset: opts.offset,
+    anchors: opts.anchors,
   };
 }
 
@@ -175,12 +178,33 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       if (!ag) return null;
       return Math.acos(Math.max(-1, Math.min(1, dot(ag.d1, ag.d2))));
     }
+    case "line-distance": {
+      const l1 = readLine(geo, dim.entities[0]);
+      const l2 = readLine(geo, dim.entities[1]);
+      if (!l1 || !l2) return null;
+      const dir2 = normalize(sub(l2.b, l2.a));
+      const normal2 = { x: -dir2.y, y: dir2.x };
+      const m1 = mid(l1.a, l1.b);
+      return Math.abs(dot(sub(m1, l2.a), normal2));
+    }
   }
 }
 
 /** Residual for a driving dimension: measured − target. Empty if non-driving/unresolved. */
 export function dimensionResiduals(dim: Dimension, geo: Geo): number[] {
   if (!dim.driving) return [];
+  if (dim.type === "line-distance") {
+    const l1 = readLine(geo, dim.entities[0]);
+    const l2 = readLine(geo, dim.entities[1]);
+    if (!l1 || !l2) return [];
+    const dir1 = normalize(sub(l1.b, l1.a));
+    const dir2 = normalize(sub(l2.b, l2.a));
+    const crossP = cross(dir1, dir2);
+    const normal2 = { x: -dir2.y, y: dir2.x };
+    const m1 = mid(l1.a, l1.b);
+    const dist = Math.abs(dot(sub(m1, l2.a), normal2));
+    return [crossP * 10, dist - dim.value];
+  }
   const m = dimensionMeasure(dim, geo);
   return m === null ? [] : [m - dim.value];
 }
@@ -235,6 +259,17 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     const ag = linesAngleGeometry(l1, l2);
     if (!ag) return dim.offset;
     return Math.max(5, dist(cursor, ag.vertex));
+  }
+  if (dim.type === "line-distance") {
+    const l1 = readLine(geo, dim.entities[0]);
+    const l2 = readLine(geo, dim.entities[1]);
+    if (!l1 || !l2) return dim.offset;
+    const p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
+    const q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
+    const m = mid(p, q);
+    let n = perp(normalize(sub(l1.b, l1.a)));
+    if (dot(sub(q, p), n) < 0) n = scale(n, -1);
+    return dot(sub(cursor, m), n);
   }
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
@@ -336,8 +371,20 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   }
 
   // linear
-  const p = readPoint(geo, dim.points[0]);
-  const q = readPoint(geo, dim.points[1]);
+  let p: Vec2 | null = null;
+  let q: Vec2 | null = null;
+  
+  if (dim.type === "line-distance") {
+    const l1 = readLine(geo, dim.entities[0]);
+    const l2 = readLine(geo, dim.entities[1]);
+    if (!l1 || !l2) return null;
+    p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
+    q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
+  } else {
+    p = readPoint(geo, dim.points[0]);
+    q = readPoint(geo, dim.points[1]);
+  }
+  
   if (!p || !q) return null;
   const type = dim.type as LinearDimType;
 
@@ -351,6 +398,13 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const x = (p.x + q.x) / 2 + dim.offset;
     p2 = { x, y: p.y };
     q2 = { x, y: q.y };
+  } else if (type === "line-distance") {
+    const l1 = readLine(geo, dim.entities[0])!;
+    let n = perp(normalize(sub(l1.b, l1.a)));
+    if (dot(sub(q, p), n) < 0) n = scale(n, -1);
+    p2 = add(p, scale(n, dim.offset));
+    const d = dot(sub(q, p), n);
+    q2 = add(q, scale(n, dim.offset - d));
   } else {
     const n = linearNormal("distance", p, q);
     p2 = add(p, scale(n, dim.offset));
