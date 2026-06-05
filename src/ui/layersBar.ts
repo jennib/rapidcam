@@ -2,31 +2,50 @@ import { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
 
 export class LayersBar {
-  private el: HTMLElement;
-  private listEl: HTMLElement;
+  private content!: HTMLElement;
+  private listEl!: HTMLElement;
+  private isCollapsed = false;
 
   constructor(
-    container: HTMLElement,
+    private host: HTMLElement,
     private doc: CADDocument,
     private pushHistory: () => void,
   ) {
-    this.el = document.createElement("div");
-    this.el.className = "panel";
+    this.build();
+    this.doc.onChange(() => this.render());
+    this.render();
+  }
+
+  private build(): void {
+    this.host.innerHTML = "";
 
     const header = document.createElement("div");
-    header.className = "panel-header";
-    header.textContent = "Layers";
-    this.el.appendChild(header);
+    header.className = "layers-header";
+
+    const title = document.createElement("div");
+    title.className = "layers-title";
+    title.textContent = "Layers";
+    header.appendChild(title);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "layers-toggle";
+    toggleBtn.textContent = "›";
+    toggleBtn.title = "Collapse/Expand";
+    toggleBtn.addEventListener("click", () => this.toggleCollapse());
+    header.appendChild(toggleBtn);
+
+    this.host.appendChild(header);
+
+    this.content = document.createElement("div");
+    this.content.className = "layers-content";
 
     this.listEl = document.createElement("div");
     this.listEl.style.display = "flex";
     this.listEl.style.flexDirection = "column";
     this.listEl.style.gap = "4px";
-    this.listEl.style.padding = "8px";
-    this.el.appendChild(this.listEl);
+    this.listEl.style.marginBottom = "8px";
+    this.content.appendChild(this.listEl);
 
-    const footer = document.createElement("div");
-    footer.style.padding = "0 8px 8px 8px";
     const addBtn = document.createElement("button");
     addBtn.className = "btn";
     addBtn.textContent = "+ New Layer";
@@ -44,13 +63,17 @@ export class LayersBar {
       this.doc.activeLayerId = newLayer.id;
       this.doc.emitChange();
     };
-    footer.appendChild(addBtn);
-    this.el.appendChild(footer);
+    this.content.appendChild(addBtn);
 
-    container.appendChild(this.el);
+    this.host.appendChild(this.content);
+  }
 
-    this.doc.onChange(() => this.render());
-    this.render();
+  private toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    this.host.classList.toggle("collapsed", this.isCollapsed);
+    this.host.addEventListener("transitionend", () => {
+      window.dispatchEvent(new Event("resize"));
+    }, { once: true });
   }
 
   private render(): void {

@@ -2,40 +2,64 @@ import { CADDocument } from "../model/document";
 import { makeVariable, isValidName, isDuplicateName } from "../model/variables";
 
 export class VariablesBar {
-  private listEl: HTMLElement;
+  private content!: HTMLElement;
+  private listEl!: HTMLElement;
+  private isCollapsed = false;
 
   constructor(
-    container: HTMLElement,
+    private host: HTMLElement,
     private doc: CADDocument,
     private runSolve: () => void,
     private pushHistory: () => void,
   ) {
-    const panel = document.createElement("div");
-    panel.className = "panel";
+    this.build();
+    this.doc.onChange(() => this.render());
+    this.render();
+  }
+
+  private build(): void {
+    this.host.innerHTML = "";
 
     const header = document.createElement("div");
-    header.className = "panel-header";
-    header.textContent = "Variables";
-    panel.appendChild(header);
+    header.className = "vars-header";
+
+    const title = document.createElement("div");
+    title.className = "vars-title";
+    title.textContent = "Variables";
+    header.appendChild(title);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "vars-toggle";
+    toggleBtn.textContent = "›";
+    toggleBtn.title = "Collapse/Expand";
+    toggleBtn.addEventListener("click", () => this.toggleCollapse());
+    header.appendChild(toggleBtn);
+
+    this.host.appendChild(header);
+
+    this.content = document.createElement("div");
+    this.content.className = "vars-content";
 
     this.listEl = document.createElement("div");
-    this.listEl.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:8px;";
-    panel.appendChild(this.listEl);
+    this.listEl.style.cssText = "display:flex;flex-direction:column;gap:4px;margin-bottom:8px;";
+    this.content.appendChild(this.listEl);
 
-    const footer = document.createElement("div");
-    footer.style.padding = "0 8px 8px";
     const addBtn = document.createElement("button");
     addBtn.className = "btn";
     addBtn.textContent = "+ Add variable";
     addBtn.style.width = "100%";
     addBtn.onclick = () => this.addVariable();
-    footer.appendChild(addBtn);
-    panel.appendChild(footer);
+    this.content.appendChild(addBtn);
 
-    container.appendChild(panel);
+    this.host.appendChild(this.content);
+  }
 
-    this.doc.onChange(() => this.render());
-    this.render();
+  private toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    this.host.classList.toggle("collapsed", this.isCollapsed);
+    this.host.addEventListener("transitionend", () => {
+      window.dispatchEvent(new Event("resize"));
+    }, { once: true });
   }
 
   private render(): void {
@@ -47,9 +71,9 @@ export class VariablesBar {
 
       // Name input
       const nameInput = document.createElement("input");
-      nameInput.className = "panel-input";
+      nameInput.className = "dim";
       nameInput.value = v.name;
-      nameInput.style.cssText = "width:72px;flex:0 0 72px;font-family:monospace;";
+      nameInput.style.cssText = "width:72px;flex:0 0 72px;font-family:var(--mono);";
       nameInput.title = "Variable name";
 
       const eq = document.createElement("span");
@@ -58,14 +82,14 @@ export class VariablesBar {
 
       // Value/expression input
       const valInput = document.createElement("input");
-      valInput.className = "panel-input";
+      valInput.className = "dim";
       valInput.value = v.expr;
-      valInput.style.cssText = "flex:1;min-width:0;";
+      valInput.style.cssText = "flex:1;min-width:0;font-family:var(--mono);";
       valInput.title = "Value (number with optional unit, e.g. 50mm)";
 
       // Error label
       const errEl = document.createElement("span");
-      errEl.style.cssText = "color:#e05555;font-size:10px;display:none;";
+      errEl.style.cssText = "color:var(--danger);font-size:10px;display:none;";
 
       const showErr = (msg: string) => {
         errEl.textContent = msg;

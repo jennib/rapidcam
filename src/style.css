@@ -399,6 +399,134 @@ button.cbtn.solve {
   accent-color: var(--accent);
 }
 
+/* ---------- Variables bar ---------- */
+#variablesbar {
+  flex: 0 0 auto;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+#variablesbar.collapsed .vars-content {
+  display: none;
+}
+
+#variablesbar.collapsed .vars-header {
+  border-bottom: none;
+}
+
+#variablesbar.collapsed .vars-toggle {
+  transform: rotate(-90deg);
+}
+
+.vars-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  background: var(--panel-2);
+  border-bottom: 2px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.vars-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.vars-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0 0 2px 0;
+  transform: rotate(90deg);
+}
+
+.vars-toggle:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.vars-content {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+/* ---------- Layers bar ---------- */
+#layersbar {
+  flex: 0 0 auto;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+#layersbar.collapsed .layers-content {
+  display: none;
+}
+
+#layersbar.collapsed .layers-header {
+  border-bottom: none;
+}
+
+#layersbar.collapsed .layers-toggle {
+  transform: rotate(-90deg);
+}
+
+.layers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  background: var(--panel-2);
+  border-bottom: 2px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.layers-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.layers-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0 0 2px 0;
+  transform: rotate(90deg);
+}
+
+.layers-toggle:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.layers-content {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
 /* ---------- Properties bar ---------- */
 #propertiesbar {
   flex: 0 0 auto;
