@@ -68,9 +68,11 @@ export class PropertiesBar {
   private refresh(): void {
     this.content.innerHTML = "";
     this.content.appendChild(this.constructionBtn);
-    this.constructionBtn.classList.toggle("active", this.doc.isConstructionMode);
-
     const selected = this.doc.selected;
+    const cmActive = selected.length > 0
+      ? selected.every(e => e.isConstruction)
+      : this.doc.isConstructionMode;
+    this.constructionBtn.classList.toggle("active", cmActive);
 
     if (selected.length === 0) {
       const empty = document.createElement("div");
