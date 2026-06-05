@@ -719,7 +719,7 @@ export class PointEntity extends Entity {
   }
   distanceTo(p: Vec2): number { return dist(p, this.pos); }
   snapPoints(): SnapPoint[] {
-    return [{ pos: { ...this.pos }, kind: "endpoint", entityId: this.id }];
+    return [{ pos: { ...this.pos }, kind: "endpoint", entityId: this.id, key: "p" }];
   }
   translate(d: Vec2): void { this.pos = add(this.pos, d); }
   duplicate(): Entity { return new PointEntity({ ...this.pos }); }
