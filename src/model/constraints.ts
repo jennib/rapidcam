@@ -311,9 +311,44 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       if (p && q) anchors.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
       break;
     }
-    case "pointOnLine":
-    case "pointOnArc":
-    case "pointOnCircle":
+    case "pointOnLine": {
+      const p = readPoint(geo, c.points[0]);
+      if (p) anchors.push({ ...p });
+      const l = asLine(geo, c.entities[0]);
+      if (l) anchors.push(mid(l.a, l.b));
+      break;
+    }
+    case "pointOnArc": {
+      const p = readPoint(geo, c.points[0]);
+      if (p) anchors.push({ ...p });
+      const arc = asArc(geo, c.entities[0]);
+      if (arc) {
+        let end = arc.endAngle;
+        if (end < arc.startAngle) end += 2 * Math.PI;
+        const midAngle = (arc.startAngle + end) / 2;
+        anchors.push({
+          x: arc.center.x + arc.radius * Math.cos(midAngle),
+          y: arc.center.y + arc.radius * Math.sin(midAngle),
+        });
+      }
+      break;
+    }
+    case "pointOnCircle": {
+      const p = readPoint(geo, c.points[0]);
+      if (p) anchors.push({ ...p });
+      const circ = asCircle(geo, c.entities[0]);
+      if (circ) {
+        // Anchor at the point on the circle nearest to the constrained point
+        if (p) {
+          const dx = p.x - circ.center.x, dy = p.y - circ.center.y;
+          const len = Math.hypot(dx, dy) || 1;
+          anchors.push({ x: circ.center.x + dx / len * circ.radius, y: circ.center.y + dy / len * circ.radius });
+        } else {
+          anchors.push({ x: circ.center.x, y: circ.center.y + circ.radius });
+        }
+      }
+      break;
+    }
     case "midpoint":
     case "fixedPoint": {
       const p = readPoint(geo, c.points[0]);
