@@ -60,11 +60,13 @@ export class SelectTool implements Tool {
       }
     }
 
-    // 1) Point / constraint handles
+    // 1) Point / constraint handles — only for already-selected entities so that
+    //    coincident points on unselected entities don't shadow body hit-tests.
     let hitPoint: PointRef | null = null;
     let hitDist = Infinity;
     for (const ent of ctx.doc.entities) {
-      if (ctx.doc.groupOf(ent.id)) continue; // ignore points for grouped entities
+      if (!ent.selected) continue;
+      if (ctx.doc.groupOf(ent.id)) continue;
       for (const p of ent.dofPoints()) {
         const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
         if (d < 10 && d < hitDist) {
