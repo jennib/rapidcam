@@ -28,6 +28,7 @@ import { OffsetTool } from "./tools/offsetTool";
 import { BezierTool } from "./tools/bezierTool";
 import { RotateTool } from "./tools/rotateTool";
 import { ScaleTool } from "./tools/scaleTool";
+import { TextTool } from "./tools/textTool";
 import { FilletTool } from "./tools/filletTool";
 import { TrimTool } from "./tools/trimTool";
 import { MirrorTool } from "./tools/mirrorTool";
@@ -56,6 +57,7 @@ const SHORTCUTS: Record<string, string> = {
   b: "bezier",
   q: "rotate",
   s: "scale",
+  x: "text",
   f: "fillet",
   t: "trim",
   m: "mirror",
@@ -136,6 +138,7 @@ export class App {
         new FilletTool(),
         new TrimTool(),
         new MirrorTool(),
+        new TextTool(),
       ],
       "select",
     );
