@@ -38,6 +38,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "./entities";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
+import { updateCounter } from "./ids";
 
 export interface GroupDef {
   id: string;
@@ -107,7 +108,7 @@ export class CADDocument {
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
-  layers: LayerDef[] = [{ id: "layer-0", name: "Default", color: "#3b82f6", visible: true, locked: false }];
+  layers: LayerDef[] = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
   activeLayerId: string = "layer-0";
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
@@ -398,7 +399,7 @@ export class CADDocument {
   }
 
   restore(s: DocSnapshot): void {
-    this.layers = s.layers ? s.layers.map(l => ({ ...l })) : [{ id: "layer-0", name: "Default", color: "#3b82f6", visible: true, locked: false }];
+    this.layers = s.layers ? s.layers.map(l => ({ ...l })) : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
     this.activeLayerId = s.activeLayerId ?? "layer-0";
 
     this.entities = s.entities.map((es): Entity => {
@@ -429,22 +430,31 @@ export class CADDocument {
           break;
         }
       }
-      e.selected = es.selected;
-      e.isConstruction = es.isConstruction;
-      e.layerId = es.layerId || "layer-0";
-      return e;
+      if (e) {
+        updateCounter(e.id);
+        e.selected = es.selected ?? false;
+        e.isConstruction = es.isConstruction ?? false;
+        e.layerId = es.layerId ?? "layer-0";
+      }
+      return e!;
     });
-    this.constraints = s.constraints.map((c) => ({
-      id: c.id, type: c.type,
-      points: c.points.map((p) => ({ ...p })),
-      entities: [...c.entities],
-      params: c.params ? [...c.params] : undefined,
-    }));
-    this.dimensions = s.dimensions.map((d) => ({
-      ...d,
-      points: d.points.map((p) => ({ ...p })),
-      entities: [...d.entities],
-    }));
+
+    for (const g of s.groups ?? []) {
+      updateCounter(g.id);
+    }
+
+    this.constraints = (s.constraints || []).map((cs) => {
+      const c = { id: cs.id, type: cs.type, points: cs.points.map((p) => ({ ...p })), entities: [...cs.entities], params: cs.params ? [...cs.params] : undefined } as Constraint;
+      updateCounter(c.id);
+      return c;
+    });
+
+    this.dimensions = (s.dimensions || []).map((ds) => {
+      const d = { ...ds, points: ds.points.map((p) => ({ ...p })), entities: [...ds.entities] } as Dimension;
+      updateCounter(d.id);
+      return d;
+    });
+
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
     this.selectedConstraintId = s.selectedConstraintId ?? null;
@@ -454,7 +464,7 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
-    if (s.groups)       this.groups         = s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] }));
+    this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
     this.emitChange();
   }
 }

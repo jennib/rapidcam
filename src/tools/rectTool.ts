@@ -73,6 +73,7 @@ export class RectTool implements Tool {
     const sides = [bottom, right, top, left];
 
     // Add all 4, select all 4.
+    ctx.doc.clearSelection();
     for (const s of sides) { ctx.doc.add(s); s.selected = true; }
 
     // Use parallel and perpendicular constraints so the rectangle can be rotated!

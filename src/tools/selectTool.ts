@@ -31,6 +31,7 @@ export class SelectTool implements Tool {
   private originalBounds: Bounds | null = null;
   private activeHandleId: string | null = null;
   private dragDimLabelId: string | null = null;
+  private pickedEntId: string | null = null;
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return; // Left click only
@@ -189,6 +190,7 @@ export class SelectTool implements Tool {
       }
       ctx.doc.emitChange();
       this.mode = "maybeDragEntity";
+      this.pickedEntId = hitEntId;
       return;
     }
 
@@ -423,12 +425,28 @@ export class SelectTool implements Tool {
     ctx.doc.emitChange();
   }
 
-  onPointerUp(_e: ToolPointerEvent, ctx: ToolContext): void {
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "marquee") {
       this.applyMarquee(ctx);
     } else if (this.mode === "maybeDragPoint" && this.dragPoint) {
       // Tap on a DOF point (no drag) — toggle it in selectedPoints for constraint wiring.
       ctx.doc.togglePoint(this.dragPoint);
+    } else if (this.mode === "maybeDragEntity" && this.pickedEntId) {
+      if (!e.shiftKey) {
+        ctx.doc.clearSelection();
+        const ent = ctx.doc.entities.find(x => x.id === this.pickedEntId);
+        if (ent) {
+          ent.selected = true;
+          const group = ctx.doc.groupOf(ent.id);
+          if (group) {
+            for (const id of group.entityIds) {
+              const ge = ctx.doc.entities.find(x => x.id === id);
+              if (ge) ge.selected = true;
+            }
+          }
+        }
+        ctx.doc.emitChange();
+      }
     } else if (this.mode === "dragScale" || this.mode === "dragRotate") {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
@@ -439,6 +457,7 @@ export class SelectTool implements Tool {
     this.originalBounds = null;
     this.activeHandleId = null;
     this.dragDimLabelId = null;
+    this.pickedEntId = null;
     ctx.requestRender();
   }
 

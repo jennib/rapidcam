@@ -51,7 +51,9 @@ export class TextTool implements Tool {
 
     const gId = nextId("grp");
     ctx.doc.groups.push({ id: gId, entityIds: entities.map(e => e.id) });
+    ctx.doc.clearSelection();
     for (const e of entities) {
+      e.selected = true;
       ctx.doc.add(e);
     }
 
