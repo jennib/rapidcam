@@ -9,14 +9,15 @@ function boot(): void {
   const settingsbar = document.getElementById("settingsbar");
   const propertiesbar = document.getElementById("propertiesbar");
   const cambar = document.getElementById("cambar");
+  const variablesbar = document.getElementById("variablesbar");
   const constraintbar = document.getElementById("constraintbar");
   const statusbar = document.getElementById("statusbar");
 
-  if (!canvas || !palette || !topbar || !layersbar || !settingsbar || !propertiesbar || !cambar || !constraintbar || !statusbar) {
+  if (!canvas || !palette || !topbar || !layersbar || !settingsbar || !propertiesbar || !cambar || !variablesbar || !constraintbar || !statusbar) {
     throw new Error("RapidCAM: required DOM elements are missing");
   }
 
-  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, constraintbar, statusbar });
+  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar });
 }
 
 boot();

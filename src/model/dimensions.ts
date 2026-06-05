@@ -51,11 +51,13 @@ export interface Dimension {
   offset: number;
   /** Parametric anchors [t1, t2] for drawing visual extension lines on line-distance dims. */
   anchors?: [number, number];
+  /** Formula string when the value is driven by an expression (e.g. "width * 2"). */
+  expr?: string;
 }
 
 export function makeDimension(
   type: DimensionType,
-  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number] },
+  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number]; expr?: string },
 ): Dimension {
   return {
     id: nextId("dim"),
@@ -66,6 +68,7 @@ export function makeDimension(
     driving: opts.driving ?? true,
     offset: opts.offset,
     anchors: opts.anchors,
+    expr: opts.expr,
   };
 }
 

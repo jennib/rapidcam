@@ -38,6 +38,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "./entities";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
+import { Variable } from "./variables";
 import { updateCounter } from "./ids";
 
 export interface GroupDef {
@@ -65,6 +66,7 @@ export interface DocSnapshot {
   entities: EntitySnapshot[];
   constraints: Constraint[];
   dimensions: Dimension[];
+  variables?: Variable[];
   isConstructionMode: boolean;
   selectedPoints: PointRef[];
   selectedConstraintId: string | null;
@@ -112,6 +114,7 @@ export class CADDocument {
   activeLayerId: string = "layer-0";
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
+  variables: Variable[] = [];
   isConstructionMode = false;
 
   /** Individually selected point DOFs (in addition to whole-entity selection). */
@@ -230,6 +233,24 @@ export class CADDocument {
       if (this.selectedDimensionId === id) this.selectedDimensionId = null;
       this.emitChange();
     }
+  }
+
+  // --- variables -----------------------------------------------------------
+  addVariable(v: Variable): Variable {
+    this.variables.push(v);
+    this.emitChange();
+    return v;
+  }
+  removeVariable(id: string): void {
+    const before = this.variables.length;
+    this.variables = this.variables.filter((v) => v.id !== id);
+    if (this.variables.length !== before) this.emitChange();
+  }
+  updateVariable(id: string, patch: Partial<Pick<Variable, "name" | "expr" | "value">>): void {
+    const v = this.variables.find((x) => x.id === id);
+    if (!v) return;
+    Object.assign(v, patch);
+    this.emitChange();
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -383,6 +404,7 @@ export class CADDocument {
         points: d.points.map((p) => ({ ...p })),
         entities: [...d.entities],
       })),
+      variables: this.variables.map((v) => ({ ...v })),
       isConstructionMode: this.isConstructionMode,
       selectedPoints: this.selectedPoints.map((p) => ({ ...p })),
       selectedConstraintId: this.selectedConstraintId,
@@ -454,6 +476,7 @@ export class CADDocument {
       updateCounter(d.id);
       return d;
     });
+    this.variables = (s.variables || []).map((v) => ({ ...v }));
 
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));

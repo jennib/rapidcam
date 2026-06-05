@@ -42,6 +42,8 @@ import { ConstraintBar } from "./ui/constraintBar";
 import { LayersBar } from "./ui/layersBar";
 import { CamBar } from "./ui/camBar";
 import { DimEditor } from "./ui/dimEditor";
+import { VariablesBar } from "./ui/variablesBar";
+import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 
 const HOVER_TOLERANCE_PX = 8;
@@ -97,6 +99,7 @@ export class App {
     constraintbar: HTMLElement;
     statusbar: HTMLElement;
     layersbar: HTMLElement;
+    variablesbar: HTMLElement;
   }) {
     this.doc = new CADDocument({ width: 200, height: 150 }, "mm");
     this.renderer = new Renderer(canvas);
@@ -192,6 +195,7 @@ export class App {
       () => this.project.undoRedo("undo")
     );
     new CamBar(dom.cambar, this.doc);
+    new VariablesBar(dom.variablesbar, this.doc, () => this.runSolve(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
 
@@ -242,6 +246,7 @@ export class App {
   }
 
   private runSolve(pins?: PinMap): void {
+    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
     const res = solve(this.doc, pins);
     if (!pins) this.lastSolveResult = res; // only store non-drag results for DOF checks
     this.statusBar.setSolveStatus(res.hasConstraints ? res : null);
@@ -395,11 +400,12 @@ export class App {
       container: this.canvas.parentElement!,
       screenPos: this.view.worldToScreen(layout.textPos),
       displayUnit: this.doc.displayUnit,
-      onCommit: (v) => this.commitDimValue(dim, v),
+      vars: varMap(this.doc.variables),
+      onCommit: (v, expr) => this.commitDimValue(dim, v, expr),
     });
   }
 
-  private commitDimValue(dim: Dimension, v: number): boolean {
+  private commitDimValue(dim: Dimension, v: number, expr?: string): boolean {
     // Adding a driving equation to a fully-constrained sketch is rejected.
     if (!dim.driving && this.currentDof() < 1) return false;
 
@@ -412,14 +418,17 @@ export class App {
 
     const docSnap = this.doc.snapshot();
     const oldVal = dim.value;
+    const oldExpr = dim.expr;
     const oldDriving = dim.driving;
 
     dim.value = v;
+    dim.expr = expr;
     dim.driving = true;
     this.runSolve();
 
     if (this.lastSolveResult && !this.lastSolveResult.converged) {
       dim.value = oldVal;
+      dim.expr = oldExpr;
       dim.driving = oldDriving;
       this.runSolve();
       return false;
