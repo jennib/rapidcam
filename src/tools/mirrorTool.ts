@@ -100,7 +100,7 @@ export class MirrorTool implements Tool {
         ctx.pushHistory();
         for (const ent of ctx.doc.selected) {
           const m = mirrorEntity(ent, A, B);
-          if (m) ctx.doc.entities.push(m);
+          if (m) ctx.doc.add(m);
         }
         ctx.doc.emitChange();
       }

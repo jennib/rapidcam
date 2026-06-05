@@ -44,13 +44,21 @@ export interface GroupDef {
   entityIds: EntityId[];
 }
 
+export interface LayerDef {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+  locked: boolean;
+}
+
 type EntitySnapshot =
-  | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean }
-  | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean }
-  | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean }
-  | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; selected: boolean; isConstruction: boolean }
-  | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean }
-  | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean };
+  | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string };
 
 export interface DocSnapshot {
   entities: EntitySnapshot[];
@@ -68,6 +76,8 @@ export interface DocSnapshot {
   origin?: OriginDef;
   postProcessor?: string;
   groups?: GroupDef[];
+  layers?: LayerDef[];
+  activeLayerId?: string;
 }
 
 export interface CanvasSize {
@@ -97,6 +107,8 @@ export class CADDocument {
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
+  layers: LayerDef[] = [{ id: "layer-0", name: "Default", color: "#3b82f6", visible: true, locked: false }];
+  activeLayerId: string = "layer-0";
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
   isConstructionMode = false;
@@ -126,6 +138,9 @@ export class CADDocument {
 
   // --- entity management ---------------------------------------------------
   add(e: Entity): Entity {
+    if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
+      e.layerId = this.activeLayerId;
+    }
     this.entities.push(e);
     this.emitChange();
     return e;
@@ -134,6 +149,9 @@ export class CADDocument {
   addSelected(e: Entity): Entity {
     for (const ent of this.entities) ent.selected = false;
     this.selectedPoints = [];
+    if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
+      e.layerId = this.activeLayerId;
+    }
     this.entities.push(e);
     e.selected = true;
     this.emitChange();
@@ -227,6 +245,7 @@ export class CADDocument {
     return null;
   }
 
+
   // --- selection -----------------------------------------------------------
   get selected(): Entity[] {
     return this.entities.filter((e) => e.selected);
@@ -277,6 +296,9 @@ export class CADDocument {
     let bestD = tol;
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
+      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      if (!layer.visible || layer.locked) continue;
+
       for (const dp of e.pickablePoints()) {
         const d = dist(dp.pos, p);
         if (d <= bestD) {
@@ -292,7 +314,11 @@ export class CADDocument {
   /** Topmost entity whose outline is within `tol` mm of `p`, or null. */
   hitTest(p: Vec2, tol: number): Entity | null {
     for (let i = this.entities.length - 1; i >= 0; i--) {
-      if (this.entities[i].distanceTo(p) <= tol) return this.entities[i];
+      const e = this.entities[i];
+      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      if (!layer.visible || layer.locked) continue;
+      
+      if (e.distanceTo(p) <= tol) return e;
     }
     return null;
   }
@@ -302,6 +328,8 @@ export class CADDocument {
     const out: SnapPoint[] = [];
     for (const e of this.entities) {
       if (exclude?.has(e.id)) continue;
+      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      if (!layer.visible) continue; // snapping still works on locked layers, but not invisible ones
       out.push(...e.snapPoints());
     }
     return out;
@@ -331,17 +359,17 @@ export class CADDocument {
     return {
       entities: this.entities.map((e): EntitySnapshot => {
         if (e instanceof LineEntity)
-          return { type: "line", id: e.id, a: { ...e.a }, b: { ...e.b }, selected: e.selected, isConstruction: e.isConstruction };
+          return { type: "line", id: e.id, a: { ...e.a }, b: { ...e.b }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof CircleEntity)
-          return { type: "circle", id: e.id, center: { ...e.center }, radius: e.radius, selected: e.selected, isConstruction: e.isConstruction };
+          return { type: "circle", id: e.id, center: { ...e.center }, radius: e.radius, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof RectEntity)
-          return { type: "rectangle", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, selected: e.selected, isConstruction: e.isConstruction };
+          return { type: "rectangle", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof ArcEntity)
-          return { type: "arc", id: e.id, center: { ...e.center }, radius: e.radius, startAngle: e.startAngle, endAngle: e.endAngle, selected: e.selected, isConstruction: e.isConstruction };
+          return { type: "arc", id: e.id, center: { ...e.center }, radius: e.radius, startAngle: e.startAngle, endAngle: e.endAngle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof BezierEntity)
-          return { type: "bezier", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, p2: { ...e.p2 }, p3: { ...e.p3 }, selected: e.selected, isConstruction: e.isConstruction };
+          return { type: "bezier", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, p2: { ...e.p2 }, p3: { ...e.p3 }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         const pe = e as PolylineEntity;
-        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed, selected: pe.selected, isConstruction: pe.isConstruction };
+        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed, selected: pe.selected, isConstruction: pe.isConstruction, layerId: pe.layerId };
       }),
       constraints: this.constraints.map((c) => ({
         id: c.id, type: c.type,
@@ -364,37 +392,47 @@ export class CADDocument {
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
       groups: this.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })),
+      layers: this.layers.map(l => ({ ...l })),
+      activeLayerId: this.activeLayerId,
     };
   }
 
   restore(s: DocSnapshot): void {
+    this.layers = s.layers ? s.layers.map(l => ({ ...l })) : [{ id: "layer-0", name: "Default", color: "#3b82f6", visible: true, locked: false }];
+    this.activeLayerId = s.activeLayerId ?? "layer-0";
+
     this.entities = s.entities.map((es): Entity => {
+      let e: Entity;
       switch (es.type) {
         case "line": {
-          const e = new LineEntity({ ...es.a }, { ...es.b }, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new LineEntity({ ...es.a }, { ...es.b }, es.id);
+          break;
         }
         case "circle": {
-          const e = new CircleEntity({ ...es.center }, es.radius, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new CircleEntity({ ...es.center }, es.radius, es.id);
+          break;
         }
         case "rectangle": {
-          const e = new RectEntity({ ...es.p0 }, { ...es.p1 }, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new RectEntity({ ...es.p0 }, { ...es.p1 }, es.id);
+          break;
         }
         case "polyline": {
-          const e = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id);
+          break;
         }
         case "arc": {
-          const e = new ArcEntity({ ...es.center }, es.radius, es.startAngle, es.endAngle, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new ArcEntity({ ...es.center }, es.radius, es.startAngle, es.endAngle, es.id);
+          break;
         }
         case "bezier": {
-          const e = new BezierEntity({ ...es.p0 }, { ...es.p1 }, { ...es.p2 }, { ...es.p3 }, es.id);
-          e.selected = es.selected; e.isConstruction = es.isConstruction; return e;
+          e = new BezierEntity({ ...es.p0 }, { ...es.p1 }, { ...es.p2 }, { ...es.p3 }, es.id);
+          break;
         }
       }
+      e.selected = es.selected;
+      e.isConstruction = es.isConstruction;
+      e.layerId = es.layerId || "layer-0";
+      return e;
     });
     this.constraints = s.constraints.map((c) => ({
       id: c.id, type: c.type,

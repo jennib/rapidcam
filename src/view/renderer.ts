@@ -240,6 +240,9 @@ export class Renderer {
       const b = e.bounds();
       if (b.max.x < vb.min.x || b.min.x > vb.max.x ||
           b.max.y < vb.min.y || b.min.y > vb.max.y) continue;
+      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      if (!layer.visible) continue;
+
       const isHover = overlay.hover === e.id;
       const color = e.selected
         ? COLORS.entitySelected
@@ -247,7 +250,7 @@ export class Renderer {
           ? COLORS.entityHover
           : e.isConstruction
             ? COLORS.entityConstruction
-            : COLORS.entity;
+            : layer.color;
       const width = e.selected ? 2 : 1.5;
       this.ctx.save();
       if (e.isConstruction) {

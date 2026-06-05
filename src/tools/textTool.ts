@@ -51,7 +51,9 @@ export class TextTool implements Tool {
 
     const gId = nextId("grp");
     ctx.doc.groups.push({ id: gId, entityIds: entities.map(e => e.id) });
-    ctx.doc.entities.push(...entities);
+    for (const e of entities) {
+      ctx.doc.add(e);
+    }
 
     ctx.doc.emitChange();
     this.pendingText = "";

@@ -105,7 +105,7 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
 
   // Insert the fillet arc.
   const arc = new ArcEntity(C, radius, startAngle, endAngle);
-  doc.entities.push(arc);
+  doc.add(arc);
 
   // Parametric links: keep the arc tangent-point-coincident with each line.
   doc.addConstraint({ id: `fillet-c1-${arc.id}`, type: "coincident", points: [

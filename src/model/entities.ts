@@ -48,6 +48,7 @@ export abstract class Entity {
   abstract readonly type: EntityType;
   selected = false;
   isConstruction = false;
+  layerId = "layer-0";
 
   constructor(id?: EntityId) {
     this.id = id ?? nextId("ent");

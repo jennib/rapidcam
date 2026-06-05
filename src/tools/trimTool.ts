@@ -85,7 +85,7 @@ function applyTrim(line: LineEntity, clickT: number, ixs: Intersection[], doc: C
     );
 
     line.b = { ...P1 };
-    doc.entities.push(line2);
+    doc.add(line2);
   }
 }
 

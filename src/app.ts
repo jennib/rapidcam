@@ -39,6 +39,7 @@ import { SettingsBar } from "./ui/settingsBar";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
 import { ConstraintBar } from "./ui/constraintBar";
+import { LayersBar } from "./ui/layersBar";
 import { CamBar } from "./ui/camBar";
 import { DimEditor } from "./ui/dimEditor";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
@@ -95,6 +96,7 @@ export class App {
     cambar: HTMLElement;
     constraintbar: HTMLElement;
     statusbar: HTMLElement;
+    layersbar: HTMLElement;
   }) {
     this.doc = new CADDocument({ width: 200, height: 150 }, "mm");
     this.renderer = new Renderer(canvas);
@@ -171,6 +173,7 @@ export class App {
         onFit: () => this.fitView(),
       },
     });
+    new LayersBar(dom.layersbar, this.doc, this.project.pushHistory);
     new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory);
     new PropertiesBar(
       dom.propertiesbar,

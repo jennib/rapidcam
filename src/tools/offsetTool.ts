@@ -227,7 +227,7 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
       const nx = -dy / len * d, ny = dx / len * d;
       const e = new LineEntity({ x: l.a.x + nx, y: l.a.y + ny }, { x: l.b.x + nx, y: l.b.y + ny });
       e.selected = true;
-      ctx.doc.entities.push(e);
+      ctx.doc.add(e);
       break;
     }
     case "circle": {
@@ -236,7 +236,7 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
       if (newR <= 0) return;
       const e = new CircleEntity({ ...c.center }, newR);
       e.selected = true;
-      ctx.doc.entities.push(e);
+      ctx.doc.add(e);
       break;
     }
     case "arc": {
@@ -245,7 +245,7 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
       if (newR <= 0) return;
       const e = new ArcEntity({ ...a.center }, newR, a.startAngle, a.endAngle);
       e.selected = true;
-      ctx.doc.entities.push(e);
+      ctx.doc.add(e);
       break;
     }
     case "polyline": {
@@ -254,13 +254,13 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
         for (const pts of offsetPolygon(pl.points, d)) {
           const e = new PolylineEntity(pts, true);
           e.selected = true;
-          ctx.doc.entities.push(e);
+          ctx.doc.add(e);
         }
       } else {
         const pts = offsetOpenPolyline(pl.points, d);
         const e = new PolylineEntity(pts, false);
         e.selected = true;
-        ctx.doc.entities.push(e);
+        ctx.doc.add(e);
       }
       break;
     }
@@ -271,7 +271,7 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
       if (newMax.x <= newMin.x || newMax.y <= newMin.y) return;
       const e = new RectEntity(newMin, newMax);
       e.selected = true;
-      ctx.doc.entities.push(e);
+      ctx.doc.add(e);
       break;
     }
   }

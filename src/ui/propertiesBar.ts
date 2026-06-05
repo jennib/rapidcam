@@ -110,6 +110,7 @@ export class PropertiesBar {
     }
     
     this.buildFitSection();
+    this.buildLayerSection(selected);
   }
 
   private buildGroupSection(group: GroupDef): void {
@@ -141,6 +142,52 @@ export class PropertiesBar {
       this.doc.emitChange();
     });
     sec.appendChild(btn);
+    this.content.appendChild(sec);
+  }
+
+  private buildLayerSection(selected: import("../model/entities").Entity[]): void {
+    const sec = this.createSection("Layer");
+    
+    // Check if all selected entities share the same layer
+    let commonLayer = selected[0].layerId;
+    for (const e of selected) {
+      if (e.layerId !== commonLayer) {
+        commonLayer = "mixed";
+        break;
+      }
+    }
+
+    const select = document.createElement("select");
+    select.className = "dim";
+    select.style.width = "100%";
+    
+    if (commonLayer === "mixed") {
+      const opt = document.createElement("option");
+      opt.value = "mixed";
+      opt.textContent = "Mixed Layers";
+      opt.disabled = true;
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+
+    for (const layer of this.doc.layers) {
+      const opt = document.createElement("option");
+      opt.value = layer.id;
+      opt.textContent = layer.name;
+      if (layer.id === commonLayer) opt.selected = true;
+      select.appendChild(opt);
+    }
+
+    select.addEventListener("change", () => {
+      if (select.value === "mixed") return;
+      this.pushHistory();
+      for (const e of selected) {
+        e.layerId = select.value;
+      }
+      this.doc.emitChange();
+    });
+
+    sec.appendChild(select);
     this.content.appendChild(sec);
   }
 

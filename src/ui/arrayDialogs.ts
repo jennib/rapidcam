@@ -43,7 +43,7 @@ export function openRectArrayDialog(
         for (const ent of selected) {
           const copy = ent.duplicate();
           copy.translate({ x: c * dx, y: r * dy });
-          doc.entities.push(copy);
+          doc.add(copy);
         }
       }
     }
@@ -97,7 +97,7 @@ export function openCircArrayDialog(
         let copy = ent.duplicate();
         // applyRotate mutates in place; capture any entity replacement (e.g. Rect→Poly).
         applyRotate([copy], centerX, centerY, k * step, (_old, newEnt) => { copy = newEnt; });
-        doc.entities.push(copy);
+        doc.add(copy);
       }
     }
     doc.emitChange();
