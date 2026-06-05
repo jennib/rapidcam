@@ -218,10 +218,12 @@ export class SelectTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "maybeDragPoint" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
+      if (ctx.currentDof() <= 0) { this.mode = "idle"; return; }
       ctx.pushHistory();
       this.dragSnapshot = ctx.doc.snapshot();
       this.mode = "dragPoint";
     } else if (this.mode === "maybeDragEntity" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
+      if (ctx.currentDof() <= 0) { this.mode = "idle"; return; }
       ctx.pushHistory();
       this.mode = "dragEntity";
       this.dragSnapshot = ctx.doc.snapshot();
