@@ -45,6 +45,7 @@ export class DimensionTool implements Tool {
   private circleKind: DimensionType = "radius";
   private line1Id: string | null = null;
   private line2Id: string | null = null;
+  private hoverP2: Pick | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private dragDim: Dimension | null = null;
 
@@ -141,6 +142,7 @@ export class DimensionTool implements Tool {
           pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
         if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
           this.p2 = pick;
+          this.hoverP2 = null;
           break;
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
@@ -164,6 +166,7 @@ export class DimensionTool implements Tool {
           }
           if (newP2) {
             this.p2 = newP2;
+            this.hoverP2 = null;
             break;
           }
         }
@@ -189,6 +192,40 @@ export class DimensionTool implements Tool {
       ctx.doc.emitChange();
       return;
     }
+    
+    if (this.phase === "placeLinear") {
+      this.hoverP2 = null;
+      const tol = ctx.view.toWorldLen(POINT_PICK_PX);
+      const pick =
+        ctx.doc.pickPoint(e.worldRaw, tol) ??
+        pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
+      if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
+        this.hoverP2 = pick;
+      } else {
+        const hit = ctx.doc.hitTest(e.worldRaw, tol);
+        if (hit) {
+          let newP2: Pick | null = null;
+          if (hit.type === "rectangle") {
+            const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+            if (edge && !samePos(edge.p1.pos, this.p1!.pos) && !samePos(edge.p1.pos, this.p2!.pos)) {
+              newP2 = edge.p1;
+            }
+          } else if (hit.type === "line") {
+            const line = hit as LineEntity;
+            if (hit.id !== this.p1!.ref.entityId) {
+              newP2 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
+            }
+          } else {
+            const pt = pickNearestEntityPoint(hit, e.worldRaw);
+            if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
+              newP2 = pt;
+            }
+          }
+          if (newP2) this.hoverP2 = newP2;
+        }
+      }
+    }
+
     this.recompute(ctx);
     if (this.phase !== "first") ctx.requestRender();
   }
@@ -223,6 +260,7 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
+    this.hoverP2 = null;
     this.circleId = null;
     this.line1Id = null;
     this.line2Id = null;
@@ -242,8 +280,9 @@ export class DimensionTool implements Tool {
         { kind: "point", pos: this.p1.pos },
       ];
     } else if (this.phase === "placeLinear" && this.p1 && this.p2) {
-      this.curType = chooseLinearType(this.p1.pos, this.p2.pos, this.cursor);
-      const dim = this.linearDim(0);
+      const activeP2 = this.hoverP2 ?? this.p2;
+      this.curType = chooseLinearType(this.p1.pos, activeP2.pos, this.cursor);
+      const dim = this.linearDim(0, activeP2);
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
@@ -308,9 +347,9 @@ export class DimensionTool implements Tool {
     if (dim.driving) ctx.openDimEditor(dim);
   }
 
-  private linearDim(offset: number): Dimension {
+  private linearDim(offset: number, activeP2?: Pick): Dimension {
     return makeDimension(this.curType, {
-      points: [this.p1!.ref, this.p2!.ref],
+      points: [this.p1!.ref, (activeP2 ?? this.p2!).ref],
       value: 0,
       offset,
     });
