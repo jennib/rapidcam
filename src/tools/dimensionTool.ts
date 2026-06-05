@@ -135,9 +135,41 @@ export class DimensionTool implements Tool {
         }
         break;
       }
-      case "placeLinear":
+      case "placeLinear": {
+        const pick =
+          ctx.doc.pickPoint(e.worldRaw, tol) ??
+          pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
+        if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
+          this.p2 = pick;
+          break;
+        }
+        const hit = ctx.doc.hitTest(e.worldRaw, tol);
+        if (hit) {
+          let newP2: Pick | null = null;
+          if (hit.type === "rectangle") {
+            const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+            if (edge && !samePos(edge.p1.pos, this.p1!.pos) && !samePos(edge.p1.pos, this.p2!.pos)) {
+              newP2 = edge.p1;
+            }
+          } else if (hit.type === "line") {
+            const line = hit as LineEntity;
+            if (hit.id !== this.p1!.ref.entityId) {
+              newP2 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
+            }
+          } else {
+            const pt = pickNearestEntityPoint(hit, e.worldRaw);
+            if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
+              newP2 = pt;
+            }
+          }
+          if (newP2) {
+            this.p2 = newP2;
+            break;
+          }
+        }
         this.commitLinear(ctx);
         break;
+      }
       case "placeCircle":
         this.commitCircle(ctx);
         break;
