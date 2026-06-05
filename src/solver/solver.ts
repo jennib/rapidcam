@@ -40,13 +40,13 @@ const MAX_ITER = 80;
 const LAMBDA_TRIES = 12;
 const RESIDUAL_TOL = 1e-6; // mm
 const COST_TOL = RESIDUAL_TOL * RESIDUAL_TOL;
-// Drag weights. Both ≪ 1 so hard constraints/dimensions always win; ANCHOR ≫ PIN so
-// non-dragged DOFs prefer to stay rather than help the dragged point reach the cursor.
-// The pin is a linear goal the solver still hits exactly when unconstrained, so a small
-// weight costs no precision but minimises how much the drag "leaks" into anchored geometry.
-/** Strong weight pulling the dragged point toward the cursor so it actually follows the mouse. */
-const PIN_WEIGHT = 1e-1;
-/** Weaker weight holding non-dragged DOFs at their start position (minimal-movement). */
+// Drag weights. Both ≪ 1 so hard constraints/dimensions always win.
+// The dragged point is SEEDED to the cursor before the solve, so free-DOF responsiveness
+// comes from seeding, not from PIN_WEIGHT. PIN_WEIGHT only governs how much constrained
+// directions can drift; lower = constraints win harder. ANCHOR holds non-dragged DOFs.
+/** Soft weight for the dragged point — kept equal to ANCHOR so constraints dominate. */
+const PIN_WEIGHT = 1e-3;
+/** Weight holding non-dragged DOFs at their start position (minimal-movement). */
 const ANCHOR_WEIGHT = 1e-3;
 
 /** Pins: point-ref-key (`${entityId}:${pointKey}`) → world target. */
