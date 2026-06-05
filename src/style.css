@@ -702,17 +702,34 @@ button.cbtn.solve {
   border-color: var(--accent);
 }
 
-/* Construction Mode is a toggle, not an action — neutral when off, accent when on */
+/* Construction Mode toggle button */
 .props-content .props-construction-btn {
   width: 100%;
   background: var(--panel-2);
   border-color: var(--border);
-  color: var(--text-dim);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .props-content .props-construction-btn.active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+/* LED indicator — grey when off, bright green when on */
+.cm-led {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #444;
+  box-shadow: none;
+}
+.props-construction-btn.active .cm-led {
+  background: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
 }
 .props-content .btn:hover:not(:disabled) {
   background: var(--accent);
