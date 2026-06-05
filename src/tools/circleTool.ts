@@ -31,7 +31,7 @@ export class CircleTool implements Tool {
           ctx.doc.addConstraint(
             makeConstraint("coincident", {
               points: [
-                { entityId: ent.id, key: "center" },
+                { entityId: ent.id, key: "c" },
                 { entityId: this.centerSnap.entityId, key: this.centerSnap.key },
               ],
             }),

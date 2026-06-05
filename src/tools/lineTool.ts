@@ -28,6 +28,7 @@ export class LineTool implements Tool {
         ctx.doc.addSelected(ent);
         autoJoin(ctx, ent.id, "a", this.startSnap);
         autoJoin(ctx, ent.id, "b", e.snap?.key ? e.snap : null);
+        ctx.solve();
       }
       this.start = null;
       this.startSnap = null;

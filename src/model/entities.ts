@@ -209,7 +209,7 @@ export class CircleEntity extends Entity {
     const c = this.center;
     const r = this.radius;
     return [
-      { pos: clone(c), kind: "center", entityId: this.id, key: "center" },
+      { pos: clone(c), kind: "center", entityId: this.id, key: "c" },
       { pos: { x: c.x + r, y: c.y }, kind: "quadrant", entityId: this.id },
       { pos: { x: c.x - r, y: c.y }, kind: "quadrant", entityId: this.id },
       { pos: { x: c.x, y: c.y + r }, kind: "quadrant", entityId: this.id },

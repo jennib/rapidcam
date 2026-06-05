@@ -6,7 +6,8 @@
  */
 
 import { Vec2 } from "../core/vec2";
-import { BezierEntity } from "../model/entities";
+import { BezierEntity, SnapPoint } from "../model/entities";
+import { makeConstraint } from "../model/constraints";
 import { PreviewShape } from "../view/overlay";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -20,7 +21,9 @@ export class BezierTool implements Tool {
 
   private phase: Phase = "p0";
   private p0: Vec2 = { x: 0, y: 0 };
+  private p0Snap: SnapPoint | null = null;
   private p3: Vec2 = { x: 0, y: 0 };
+  private p3Snap: SnapPoint | null = null;
   private p1: Vec2 = { x: 0, y: 0 };
   private cursor: Vec2 = { x: 0, y: 0 };
 
@@ -30,6 +33,8 @@ export class BezierTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     this.phase = "p0";
+    this.p0Snap = null;
+    this.p3Snap = null;
     ctx.requestRender();
   }
 
@@ -40,12 +45,14 @@ export class BezierTool implements Tool {
     switch (this.phase) {
       case "p0":
         this.p0 = p;
+        this.p0Snap = e.snap?.key ? e.snap : null;
         this.cursor = p;
         this.phase = "p3";
         break;
 
       case "p3":
         this.p3 = p;
+        this.p3Snap = e.snap?.key ? e.snap : null;
         this.cursor = p;
         this.phase = "p1";
         break;
@@ -62,8 +69,12 @@ export class BezierTool implements Tool {
         const ent = new BezierEntity(this.p0, this.p1, p2, this.p3);
         ent.isConstruction = ctx.doc.isConstructionMode;
         ctx.doc.addSelected(ent);
+        autoJoin(ctx, ent.id, "p0", this.p0Snap);
+        autoJoin(ctx, ent.id, "p3", this.p3Snap);
         ctx.solve();
         this.phase = "p0";
+        this.p0Snap = null;
+        this.p3Snap = null;
         break;
       }
     }
@@ -115,4 +126,16 @@ export class BezierTool implements Tool {
   onKeyDown(e: KeyboardEvent, ctx: ToolContext): void {
     if (e.key === "Escape") this.cancel(ctx);
   }
+}
+
+function autoJoin(ctx: ToolContext, newEntityId: string, newKey: string, snap: SnapPoint | null): void {
+  if (!snap?.key) return;
+  ctx.doc.addConstraint(
+    makeConstraint("coincident", {
+      points: [
+        { entityId: newEntityId, key: newKey },
+        { entityId: snap.entityId, key: snap.key },
+      ],
+    }),
+  );
 }

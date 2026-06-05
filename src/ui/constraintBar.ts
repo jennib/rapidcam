@@ -227,7 +227,7 @@ export class ConstraintBar {
     const geo: Geo = (id) => byId.get(id);
     const newEqs = res.constraints.reduce((n, c) => n + constraintResiduals(c, geo).length, 0);
     const dof = this.getDof();
-    if (newEqs > 0 && dof - newEqs < 0) {
+    if (dof > 0 && newEqs > dof) {
       this.message(`Would over-constrain (${dof} DOF free, needs ${newEqs})`, "error");
       return;
     }

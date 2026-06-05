@@ -95,6 +95,7 @@ export class PolylineTool implements Tool {
           }),
         );
       }
+      ctx.solve();
     }
     this.points = [];
     this.snaps = [];
