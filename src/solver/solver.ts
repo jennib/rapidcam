@@ -44,10 +44,10 @@ const COST_TOL = RESIDUAL_TOL * RESIDUAL_TOL;
 // non-dragged DOFs prefer to stay rather than help the dragged point reach the cursor.
 // The pin is a linear goal the solver still hits exactly when unconstrained, so a small
 // weight costs no precision but minimises how much the drag "leaks" into anchored geometry.
-/** Weak weight pulling the dragged point toward the cursor (still hit exactly when free). */
-const PIN_WEIGHT = 1e-3;
-/** Stronger weight holding non-dragged DOFs at their start position (minimal-movement). */
-const ANCHOR_WEIGHT = 1e-1;
+/** Strong weight pulling the dragged point toward the cursor so it actually follows the mouse. */
+const PIN_WEIGHT = 1e-1;
+/** Weaker weight holding non-dragged DOFs at their start position (minimal-movement). */
+const ANCHOR_WEIGHT = 1e-3;
 
 /** Pins: point-ref-key (`${entityId}:${pointKey}`) → world target. */
 export type PinMap = Map<string, Vec2>;
