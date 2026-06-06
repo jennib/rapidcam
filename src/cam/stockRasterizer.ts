@@ -2,9 +2,15 @@
  * Stock height-map rasterizer.
  *
  * Mirrors the same entity-walk logic as gcode.ts (profilePolygon, engravePoints,
- * etc.) but instead of emitting G-code it stamps filled discs into a Float32Array
+ * etc.) but instead of emitting G-code it stamps filled shapes into a Float32Array
  * height field.  Each cell stores the current surface height above the table (mm).
  * Uncut cells start at stockThickness; each depth pass drives cells down.
+ *
+ * Tool geometry is respected:
+ *   end-mill  — flat disc (original behaviour)
+ *   ball-nose — hemispherical stamp: h(d) = depth + R − √(R²−d²)
+ *   v-bit     — V-cone stamp: h(d) = depth + d / tan(halfAngle)
+ *   drill     — V-cone stamp using tip angle; natural cylindrical bore via acc. passes
  */
 
 import type { Vec2 } from "../core/vec2";
@@ -56,6 +62,8 @@ function rasterizeOp(
   gridH: number,
   stockT: number,
 ): void {
+  const stamp  = makeStampFn(op, data, gridW, gridH, stockT);
+  const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
 
   // Chain any selected line segments into a closed polygon for profile ops.
@@ -65,7 +73,7 @@ function rasterizeOp(
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length >= 3) {
       const polygon = chainLines(lineEnts);
-      if (polygon) rasProfilePolygon(polygon, op, data, gridW, gridH, stockT);
+      if (polygon) rasProfilePolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
       lineEnts.forEach(e => lineSegIds.add(e.id));
     }
   }
@@ -77,43 +85,83 @@ function rasterizeOp(
 
     if (op.type === "drill") {
       if (ent instanceof CircleEntity) {
+        const cx = ent.center.x * RES;
+        const cy = ent.center.y * RES;
         for (const z of depthPasses(op))
-          stampDisc(data, gridW, gridH,
-            ent.center.x * RES, ent.center.y * RES,
-            (op.diameter / 2) * RES, stockT + z);
+          stamp(cx, cy, stockT + z);
       }
     } else if (op.type === "engrave") {
       if (ent instanceof LineEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false);
+        sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
       else if (ent instanceof CircleEntity)
         sweepCircle(op, data, gridW, gridH, stockT,
-          ent.center.x, ent.center.y, ent.radius);
+          ent.center.x, ent.center.y, ent.radius, stamp, stepR);
       else if (ent instanceof RectEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, [...ent.corners()], true);
+        sweepPolyline(op, data, gridW, gridH, stockT, [...ent.corners()], true, stamp, stepR);
       else if (ent instanceof PolylineEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, ent.points, ent.closed);
+        sweepPolyline(op, data, gridW, gridH, stockT, ent.points, ent.closed, stamp, stepR);
       else if (ent instanceof ArcEntity)
         sweepArc(op, data, gridW, gridH, stockT,
-          ent.center.x, ent.center.y, ent.radius, ent.startAngle, ent.endAngle);
+          ent.center.x, ent.center.y, ent.radius, ent.startAngle, ent.endAngle, stamp, stepR);
       else if (ent instanceof BezierEntity)
         sweepPolyline(op, data, gridW, gridH, stockT,
-          flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false);
+          flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
     } else { // profile
       if (ent instanceof CircleEntity)
         rasProfileCircle(ent.center.x, ent.center.y, ent.radius,
-          op, data, gridW, gridH, stockT);
+          op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof RectEntity)
-        rasProfilePolygon([...ent.corners()], op, data, gridW, gridH, stockT);
+        rasProfilePolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
-        rasProfilePolygon(ent.points, op, data, gridW, gridH, stockT);
+        rasProfilePolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Primitive stamping
+// Stamp-function factory — returns a closure for the right tool geometry
 
-/** Set all cells within rCell of (cx, cy) to min(current, depth). */
+type StampFn = (cx: number, cy: number, depth: number) => void;
+
+function makeStampFn(
+  op: CAMOperation,
+  data: Float32Array, w: number, h: number, stockT: number,
+): StampFn {
+  const R     = op.diameter / 2;
+  const Rcell = R * RES;
+  const tt    = op.toolType ?? "end-mill";
+
+  if (tt === "ball-nose") {
+    return (cx, cy, d) => stampBallNose(data, w, h, cx, cy, R, d);
+  }
+  if (tt === "v-bit") {
+    const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
+    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, halfTan, d, stockT);
+  }
+  if (tt === "drill") {
+    const tipHalfTan = Math.tan(((op.tipAngle ?? 118) / 2) * (Math.PI / 180));
+    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, tipHalfTan, d, stockT);
+  }
+  // end-mill (and any unrecognised type): flat disc
+  return (cx, cy, d) => stampDisc(data, w, h, cx, cy, Rcell, d);
+}
+
+/** Step radius used for spacing stamps along a path sweep. */
+function effectiveToolR(op: CAMOperation): number {
+  if ((op.toolType ?? "end-mill") === "v-bit") {
+    // At max depth the V-bit footprint is this wide; use it for dense-enough stepping.
+    return Math.max(
+      0.05,
+      Math.abs(op.depth) * Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180)),
+    );
+  }
+  return op.diameter / 2;
+}
+
+// ---------------------------------------------------------------------------
+// Stamp primitives
+
+/** Flat-bottomed disc (end mill). */
 function stampDisc(
   data: Float32Array, w: number, h: number,
   cx: number, cy: number, rCell: number, depth: number,
@@ -134,78 +182,128 @@ function stampDisc(
   }
 }
 
-/** Stamp discs along a segment from p0 to p1, spaced at half the tool radius. */
-function walkSegment(
+/**
+ * Hemispherical stamp (ball-nose).
+ * At lateral distance d_mm from centre: h = depth + R − √(R²−d²)
+ * Produces a rounded trough cross-section.
+ */
+function stampBallNose(
   data: Float32Array, w: number, h: number,
-  p0: Vec2, p1: Vec2, toolRmm: number, depth: number,
+  cx: number, cy: number, R_mm: number, depth: number,
 ): void {
-  const dx = p1.x - p0.x, dy = p1.y - p0.y;
-  const lenMM = Math.sqrt(dx * dx + dy * dy);
-  const rCell = toolRmm * RES;
-  if (lenMM < 1e-9) { stampDisc(data, w, h, p0.x * RES, p0.y * RES, rCell, depth); return; }
-  const steps = Math.max(1, Math.ceil(lenMM / (toolRmm * 0.5)));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    stampDisc(data, w, h, (p0.x + t * dx) * RES, (p0.y + t * dy) * RES, rCell, depth);
+  const Rcell = R_mm * RES;
+  const R2    = R_mm * R_mm;
+  const x0 = Math.max(0, Math.floor(cx - Rcell));
+  const x1 = Math.min(w - 1, Math.ceil(cx + Rcell));
+  const y0 = Math.max(0, Math.floor(cy - Rcell));
+  const y1 = Math.min(h - 1, Math.ceil(cy + Rcell));
+  for (let y = y0; y <= y1; y++) {
+    const base = y * w;
+    for (let x = x0; x <= x1; x++) {
+      const dxMM = (x - cx) / RES;
+      const dyMM = (y - cy) / RES;
+      const d2 = dxMM * dxMM + dyMM * dyMM;
+      if (d2 > R2) continue;
+      const hAt = depth + R_mm - Math.sqrt(R2 - d2);
+      if (hAt < data[base + x]) data[base + x] = hAt;
+    }
+  }
+}
+
+/**
+ * V-cone stamp (V-bit engraving, drill tip).
+ * At lateral distance d_mm from centre: h = depth + d_mm / halfAngleTan
+ * Produces the characteristic V-groove cross-section; naturally capped at stockT.
+ * For a drill tool the cone also creates the vertical-wall illusion at the tool
+ * radius since the height field transitions sharply from h(R) to stockT outside R.
+ */
+function stampVCone(
+  data: Float32Array, w: number, h: number,
+  cx: number, cy: number, halfAngleTan: number, depth: number, stockT: number,
+): void {
+  // Maximum lateral reach in mm where the cone still removes material
+  const dMaxMM   = (stockT - depth) * halfAngleTan;
+  const dMaxCell = dMaxMM * RES;
+  const x0 = Math.max(0, Math.floor(cx - dMaxCell));
+  const x1 = Math.min(w - 1, Math.ceil(cx + dMaxCell));
+  const y0 = Math.max(0, Math.floor(cy - dMaxCell));
+  const y1 = Math.min(h - 1, Math.ceil(cy + dMaxCell));
+  for (let y = y0; y <= y1; y++) {
+    const base = y * w;
+    for (let x = x0; x <= x1; x++) {
+      const dxMM = (x - cx) / RES;
+      const dyMM = (y - cy) / RES;
+      const dMM  = Math.sqrt(dxMM * dxMM + dyMM * dyMM);
+      const hAt  = depth + dMM / halfAngleTan;
+      if (hAt < stockT && hAt < data[base + x]) data[base + x] = hAt;
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Sweep helpers — these handle depth passes internally, mirroring gcode.ts
+// Walk / sweep helpers
+
+/** Stamp along a segment p0→p1, spaced at half the effective tool radius. */
+function walkSegment(
+  p0: Vec2, p1: Vec2,
+  stepR_mm: number, depth: number,
+  stamp: StampFn,
+): void {
+  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const lenMM = Math.sqrt(dx * dx + dy * dy);
+  if (lenMM < 1e-9) { stamp(p0.x * RES, p0.y * RES, depth); return; }
+  const steps = Math.max(1, Math.ceil(lenMM / (stepR_mm * 0.5)));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    stamp((p0.x + t * dx) * RES, (p0.y + t * dy) * RES, depth);
+  }
+}
 
 function sweepPolyline(
-  op: CAMOperation, data: Float32Array, gridW: number, gridH: number, stockT: number,
+  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
   pts: Vec2[], closed: boolean,
+  stamp: StampFn, stepR: number,
 ): void {
   if (pts.length < 2) return;
-  const r = op.diameter / 2;
-  const n = pts.length;
+  const n    = pts.length;
   const segs = closed ? n : n - 1;
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
     for (let i = 0; i < segs; i++)
-      walkSegment(data, gridW, gridH, pts[i], pts[(i + 1) % n], r, depth);
+      walkSegment(pts[i], pts[(i + 1) % n], stepR, depth, stamp);
   }
 }
 
 function sweepCircle(
-  op: CAMOperation, data: Float32Array, gridW: number, gridH: number, stockT: number,
+  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
   cx: number, cy: number, radius: number,
+  stamp: StampFn, stepR: number,
 ): void {
   if (radius <= 0) return;
-  const r = op.diameter / 2;
-  const steps = Math.max(32, Math.ceil(2 * Math.PI * radius / (r * 0.5)));
+  const steps = Math.max(32, Math.ceil(2 * Math.PI * radius / (stepR * 0.5)));
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
-    const rCell = r * RES;
     for (let i = 0; i <= steps; i++) {
       const a = (i / steps) * 2 * Math.PI;
-      stampDisc(data, gridW, gridH,
-        (cx + radius * Math.cos(a)) * RES,
-        (cy + radius * Math.sin(a)) * RES,
-        rCell, depth);
+      stamp((cx + radius * Math.cos(a)) * RES, (cy + radius * Math.sin(a)) * RES, depth);
     }
   }
 }
 
 function sweepArc(
-  op: CAMOperation, data: Float32Array, gridW: number, gridH: number, stockT: number,
+  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
   cx: number, cy: number, radius: number, startAngle: number, endAngle: number,
+  stamp: StampFn, stepR: number,
 ): void {
   if (radius <= 0) return;
-  const r = op.diameter / 2;
   let span = ((endAngle - startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
   if (span < 1e-9) span = 2 * Math.PI;
-  const steps = Math.max(4, Math.ceil(radius * span / (r * 0.5)));
+  const steps = Math.max(4, Math.ceil(radius * span / (stepR * 0.5)));
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
-    const rCell = r * RES;
     for (let i = 0; i <= steps; i++) {
       const a = startAngle + (i / steps) * span;
-      stampDisc(data, gridW, gridH,
-        (cx + radius * Math.cos(a)) * RES,
-        (cy + radius * Math.sin(a)) * RES,
-        rCell, depth);
+      stamp((cx + radius * Math.cos(a)) * RES, (cy + radius * Math.sin(a)) * RES, depth);
     }
   }
 }
@@ -216,22 +314,24 @@ function sweepArc(
 function rasProfilePolygon(
   verts: Vec2[], op: CAMOperation,
   data: Float32Array, gridW: number, gridH: number, stockT: number,
+  stamp: StampFn, stepR: number,
 ): void {
   const toolR = op.diameter / 2;
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
   for (const path of paths) {
-    if (path.length >= 2) sweepPolyline(op, data, gridW, gridH, stockT, path, true);
+    if (path.length >= 2) sweepPolyline(op, data, gridW, gridH, stockT, path, true, stamp, stepR);
   }
 }
 
 function rasProfileCircle(
   cx: number, cy: number, r: number, op: CAMOperation,
   data: Float32Array, gridW: number, gridH: number, stockT: number,
+  stamp: StampFn, stepR: number,
 ): void {
   const toolR = op.diameter / 2;
-  const cutR = op.side === "outside" ? r + toolR : r - toolR;
+  const cutR  = op.side === "outside" ? r + toolR : r - toolR;
   if (cutR <= 0) return;
-  sweepCircle(op, data, gridW, gridH, stockT, cx, cy, cutR);
+  sweepCircle(op, data, gridW, gridH, stockT, cx, cy, cutR, stamp, stepR);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +339,7 @@ function rasProfileCircle(
 
 function chainLines(segs: LineEntity[]): Vec2[] | null {
   if (segs.length < 3) return null;
-  const EPS = 1e-4;
+  const EPS  = 1e-4;
   const used = new Set<string>();
   const chain: Vec2[] = [{ ...segs[0].a }, { ...segs[0].b }];
   used.add(segs[0].id);
