@@ -178,8 +178,13 @@ export class WebGLPreview {
   private pitch = DEFAULT_PITCH;
   private zoom  = DEFAULT_ZOOM;
   private dragging = false;
+  private panning  = false;
   private lastMx = 0;
   private lastMy = 0;
+  // Pan offset applied to the camera target (world-space)
+  private panX = 0;
+  private panY = 0;
+  private panZ = 0;
 
   constructor(private host: HTMLElement) {
     this.canvas = document.createElement("canvas");
@@ -248,6 +253,9 @@ export class WebGLPreview {
     this.yaw   = DEFAULT_YAW;
     this.pitch = DEFAULT_PITCH;
     this.zoom  = DEFAULT_ZOOM;
+    this.panX  = 0;
+    this.panY  = 0;
+    this.panZ  = 0;
     this.draw();
   }
 
@@ -344,7 +352,7 @@ export class WebGLPreview {
     const diag = Math.sqrt(this.stockW**2 + this.stockH**2 + this.stockT**2);
     const baseDist = diag * 1.4;
     const dist = baseDist / this.zoom;
-    const target = [0, this.stockT * 0.5, 0];
+    const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
     const eye = [
       target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
       target[1] + dist * Math.sin(this.pitch),
@@ -381,28 +389,57 @@ export class WebGLPreview {
     const c = this.canvas;
 
     c.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      this.dragging = true;
-      this.lastMx = e.clientX;
-      this.lastMy = e.clientY;
-      c.style.cursor = "grabbing";
+      if (e.button === 0) {
+        this.dragging = true;
+        this.lastMx = e.clientX;
+        this.lastMy = e.clientY;
+        c.style.cursor = "grabbing";
+      } else if (e.button === 1) {
+        e.preventDefault(); // stop browser auto-scroll mode
+        this.panning = true;
+        this.lastMx = e.clientX;
+        this.lastMy = e.clientY;
+        c.style.cursor = "move";
+      }
     });
 
     window.addEventListener("mousemove", (e) => {
-      if (!this.dragging) return;
+      if (!this.dragging && !this.panning) return;
       const dx = e.clientX - this.lastMx;
       const dy = e.clientY - this.lastMy;
       this.lastMx = e.clientX;
       this.lastMy = e.clientY;
-      this.yaw   -= dx * 0.006;
-      this.pitch  = Math.max(0.08, Math.min(Math.PI / 2 - 0.05, this.pitch + dy * 0.006));
+
+      if (this.dragging) {
+        this.yaw   -= dx * 0.006;
+        this.pitch  = Math.max(0.08, Math.min(Math.PI / 2 - 0.05, this.pitch + dy * 0.006));
+      } else {
+        // Pan: translate target in camera right/up directions.
+        // right = (cos(yaw), 0, -sin(yaw))
+        // up    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch))
+        const diag     = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+        const dist     = diag * 1.4 / this.zoom;
+        const speed    = dist / (this.canvas.height || 1);
+        const ry = this.yaw, rp = this.pitch;
+        const rightX =  Math.cos(ry),                         rightZ = -Math.sin(ry);
+        const upX    = -Math.sin(ry) * Math.sin(rp), upY = Math.cos(rp), upZ = -Math.cos(ry) * Math.sin(rp);
+        this.panX -= dx * speed * rightX;
+        this.panZ -= dx * speed * rightZ;
+        this.panX += dy * speed * upX;
+        this.panY += dy * speed * upY;
+        this.panZ += dy * speed * upZ;
+      }
       this.draw();
     });
 
-    window.addEventListener("mouseup", () => {
-      if (!this.dragging) return;
-      this.dragging = false;
-      c.style.cursor = "grab";
+    window.addEventListener("mouseup", (e) => {
+      if (e.button === 0 && this.dragging) {
+        this.dragging = false;
+        c.style.cursor = "grab";
+      } else if (e.button === 1 && this.panning) {
+        this.panning = false;
+        c.style.cursor = "grab";
+      }
     });
 
     c.style.cursor = "grab";
