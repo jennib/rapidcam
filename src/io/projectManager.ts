@@ -76,7 +76,6 @@ export class ProjectManager {
     openNewProjectDialog(
       {
         name: this.currentFileName === "Untitled" ? "Untitled" : this.currentFileName,
-        postProcessor: this.doc.postProcessor,
       },
       (cfg) => {
         this.isDocumentLoading = true;
