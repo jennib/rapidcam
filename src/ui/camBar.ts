@@ -104,7 +104,6 @@ function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCo
 // ---- ToolpathsBar -----------------------------------------------------------
 
 export class CamBar {
-  private ops: CAMOperation[] = [];
   private content!: HTMLElement;
   private opsList!: HTMLElement;
   private isCollapsed = false;
@@ -115,6 +114,8 @@ export class CamBar {
     private doc: CADDocument,
   ) {
     this.build();
+    // Re-render the ops list whenever the document is replaced (file open, undo/redo).
+    doc.onChange(() => this.renderOps());
   }
 
   private build(): void {
@@ -162,14 +163,14 @@ export class CamBar {
 
   private renderOps(): void {
     this.opsList.innerHTML = "";
-    if (this.ops.length === 0) {
+    if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
       empty.className = "cam-ops-empty";
       empty.textContent = "No toolpaths yet";
       this.opsList.appendChild(empty);
       return;
     }
-    for (const op of this.ops) {
+    for (const op of this.doc.operations) {
       const item = this.buildOpItem(op);
       if (op.id === this.highlightedOpId) item.classList.add("tp-op-active");
       this.opsList.appendChild(item);
@@ -178,7 +179,7 @@ export class CamBar {
 
   private highlightOp(id: string | null): void {
     this.highlightedOpId = id;
-    const op = id ? this.ops.find(o => o.id === id) : null;
+    const op = id ? this.doc.operations.find(o => o.id === id) : null;
     this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
     this.doc.emitChange();
     this.renderOps();
@@ -247,7 +248,8 @@ export class CamBar {
       `</svg>`;
     delBtn.addEventListener("click", () => {
       if (this.highlightedOpId === op.id) this.highlightOp(null);
-      this.ops = this.ops.filter((o) => o.id !== op.id);
+      this.doc.operations = this.doc.operations.filter((o) => o.id !== op.id);
+      this.doc.emitChange();
       this.renderOps();
     });
     item.appendChild(delBtn);
@@ -683,11 +685,12 @@ export class CamBar {
       };
 
       if (existing) {
-        const idx = this.ops.findIndex((o) => o.id === existing.id);
-        if (idx >= 0) this.ops[idx] = op;
+        const idx = this.doc.operations.findIndex((o) => o.id === existing.id);
+        if (idx >= 0) this.doc.operations[idx] = op;
       } else {
-        this.ops.push(op);
+        this.doc.operations.push(op);
       }
+      this.doc.emitChange();
       this.renderOps();
       closeDialog();
     });
@@ -702,8 +705,8 @@ export class CamBar {
   // --- G-code generation -----------------------------------------------------
 
   private generate(): void {
-    if (this.ops.length === 0) { alert("Add at least one toolpath first."); return; }
-    this.download(generateGCode(this.ops, this.doc), "toolpaths");
+    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
   }
 
   private download(code: string, name: string): void {
@@ -725,7 +728,7 @@ export class CamBar {
       : combo === "profile-inside" ? "Profile (inside)"
       : combo === "engrave" ? "Engrave"
       : "Drill";
-    const n = this.ops.filter((o) => comboOf(o) === combo).length + 1;
+    const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
     return `${prefix} ${n}`;
   }
 

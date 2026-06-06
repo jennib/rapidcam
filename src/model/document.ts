@@ -36,6 +36,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
   return { ox, oy, zOffset };
 }
 import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity } from "./entities";
+import type { CAMOperation } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
@@ -69,6 +70,7 @@ export interface DocSnapshot {
   constraints: Constraint[];
   dimensions: Dimension[];
   variables?: Variable[];
+  operations?: CAMOperation[];
   isConstructionMode: boolean;
   selectedPoints: PointRef[];
   selectedConstraintId: string | null;
@@ -125,6 +127,8 @@ export class CADDocument {
   selectedConstraintId: string | null = null;
   /** Selected dimension ID, or null. */
   selectedDimensionId: string | null = null;
+
+  operations: CAMOperation[] = [];
 
   /** Entity IDs to highlight in the toolpath colour while a toolpath dialog is open. Null = no dialog open. */
   toolpathHighlightIds: Set<string> | null = null;
@@ -425,6 +429,7 @@ export class CADDocument {
       groups: this.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })),
       layers: this.layers.map(l => ({ ...l })),
       activeLayerId: this.activeLayerId,
+      operations: this.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })),
     };
   }
 
@@ -496,6 +501,7 @@ export class CADDocument {
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
+    this.operations = s.operations ? s.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })) : [];
     // Always ensure the WCS origin entity is present after loading.
     if (!this.entities.find(e => e.id === ORIGIN_ENTITY_ID))
       this.entities.unshift(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));
