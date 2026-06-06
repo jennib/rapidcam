@@ -44,7 +44,7 @@ export class ArcTool implements Tool {
         `arc length (${unit})`,
         (raw) => this.commitByLength(raw, ctx),
         () => this.cancel(ctx),
-        () => { this.clockwise = !this.clockwise; ctx.requestRender(); },
+        () => { ctx.closeValueEditor(); this.clockwise = !this.clockwise; ctx.requestRender(); },
       );
     } else {
       ctx.closeValueEditor();
@@ -79,11 +79,14 @@ export class ArcTool implements Tool {
     const endAngle = Math.atan2(this.cursor.y - center.y, this.cursor.x - center.x);
     const startPt = ptOnCircle(center, r, this.startAngle);
     const hintText = this.clockwise ? "CW  (Tab: CCW)" : "CCW  (Tab: CW)";
+    // For CW, swap angles: "arc" kind renders CCW from a to b, so CCW(end→start) = CW(start→end).
+    const arcA = this.clockwise ? endAngle : this.startAngle;
+    const arcB = this.clockwise ? this.startAngle : endAngle;
     const previews = [
       { kind: "point" as const, pos: center },
       { kind: "point" as const, pos: startPt },
       { kind: "line" as const, a: center, b: startPt },
-      ...arcPolyline(center, r, this.startAngle, endAngle, this.clockwise),
+      { kind: "arc" as const, center, radius: r, startAngle: arcA, endAngle: arcB },
       { kind: "text" as const, pos: this.cursor, text: hintText },
     ];
     return { previews, selectionRect: null };
@@ -200,14 +203,3 @@ function ptOnCircle(center: Vec2, r: number, angle: number): Vec2 {
   return { x: center.x + r * Math.cos(angle), y: center.y + r * Math.sin(angle) };
 }
 
-function arcPolyline(center: Vec2, r: number, startAngle: number, endAngle: number, clockwise = false) {
-  const span = clockwise
-    ? -(((startAngle - endAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI))
-    : ((endAngle - startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-  const N = Math.max(8, Math.ceil(Math.abs(span) * 12));
-  const pts: Vec2[] = [];
-  for (let i = 0; i <= N; i++) {
-    pts.push(ptOnCircle(center, r, startAngle + span * (i / N)));
-  }
-  return [{ kind: "polyline" as const, points: pts, closed: false }];
-}
