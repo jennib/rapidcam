@@ -455,7 +455,7 @@ export class App {
 
 
 
-  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void {
+  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void, onTab?: () => void): void {
     this.closeValueEditor();
     const pos = this.view.worldToScreen(worldPos);
     const input = document.createElement("input");
@@ -478,6 +478,9 @@ export class App {
       } else if (e.key === "Escape") {
         this.closeValueEditor();
         onCancel();
+      } else if (e.key === "Tab" && onTab) {
+        e.preventDefault();
+        onTab();
       }
       e.stopPropagation();
     });

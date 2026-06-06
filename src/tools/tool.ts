@@ -22,8 +22,9 @@ export interface ToolContext {
   /** Returns variables − equations from the last non-drag solve (≥ 0 means free DOFs remain; 0 = fully constrained). */
   currentDof(): number;
   /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
-   *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it. */
-  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void): void;
+   *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
+   *  If `onTab` is provided, Tab calls it instead of moving browser focus. */
+  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void, onTab?: () => void): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;
 }

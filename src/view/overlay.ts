@@ -10,7 +10,9 @@ export type PreviewShape =
   | { kind: "bezier"; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2 }
   | { kind: "rect"; p0: Vec2; p1: Vec2 }
   | { kind: "polyline"; points: Vec2[]; closed: boolean }
-  | { kind: "point"; pos: Vec2 };
+  | { kind: "point"; pos: Vec2 }
+  /** Screen-space hint label anchored to a world position (px offset applied after projection). */
+  | { kind: "text"; pos: Vec2; text: string; dx?: number; dy?: number };
 
 export interface TransformHandle {
   type: "scale" | "rotate" | "scale-arrow";

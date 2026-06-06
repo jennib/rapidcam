@@ -601,6 +601,23 @@ export class Renderer {
           ctx.setLineDash([5, 4]);
           break;
         }
+        case "text": {
+          const s = view.worldToScreen(p.pos);
+          const sx = s.x + (p.dx ?? 14);
+          const sy = s.y + (p.dy ?? -10);
+          ctx.save();
+          ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+          ctx.fillStyle = COLORS.gridLabel;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          const w = ctx.measureText(p.text).width;
+          ctx.fillStyle = "rgba(30,31,36,0.75)";
+          ctx.fillRect(sx - 4, sy - 8, w + 8, 16);
+          ctx.fillStyle = COLORS.gridLabel;
+          ctx.fillText(p.text, sx, sy);
+          ctx.restore();
+          break;
+        }
       }
     }
     ctx.restore();
