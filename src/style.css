@@ -913,6 +913,13 @@ button.cbtn.solve {
   border: 1px solid var(--text-dim);
   border-radius: 4px;
   padding: 6px 8px;
+  cursor: pointer;
+}
+.tp-op-item:hover { border-color: var(--accent-dim); }
+.tp-op-item.tp-op-active {
+  border-color: #f59e42;
+  box-shadow: inset 2px 0 0 #f59e42;
+  background: rgba(245, 158, 66, 0.06);
 }
 
 .tp-badge {

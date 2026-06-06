@@ -108,6 +108,7 @@ export class CamBar {
   private content!: HTMLElement;
   private opsList!: HTMLElement;
   private isCollapsed = false;
+  private highlightedOpId: string | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -169,13 +170,27 @@ export class CamBar {
       return;
     }
     for (const op of this.ops) {
-      this.opsList.appendChild(this.buildOpItem(op));
+      const item = this.buildOpItem(op);
+      if (op.id === this.highlightedOpId) item.classList.add("tp-op-active");
+      this.opsList.appendChild(item);
     }
+  }
+
+  private highlightOp(id: string | null): void {
+    this.highlightedOpId = id;
+    const op = id ? this.ops.find(o => o.id === id) : null;
+    this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
+    this.doc.emitChange();
+    this.renderOps();
   }
 
   private buildOpItem(op: CAMOperation): HTMLElement {
     const item = document.createElement("div");
     item.className = "tp-op-item";
+    item.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".tp-icon-btn")) return;
+      this.highlightOp(this.highlightedOpId === op.id ? null : op.id);
+    });
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
@@ -231,6 +246,7 @@ export class CamBar {
       `<path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>` +
       `</svg>`;
     delBtn.addEventListener("click", () => {
+      if (this.highlightedOpId === op.id) this.highlightOp(null);
       this.ops = this.ops.filter((o) => o.id !== op.id);
       this.renderOps();
     });
@@ -243,6 +259,7 @@ export class CamBar {
 
   private openDialog(existing: CAMOperation | null): void {
     document.getElementById("tp-dialog-backdrop")?.remove();
+    this.highlightOp(null); // dialog manages toolpathHighlightIds from here
 
     const isNew = existing === null;
     const preSelected = new Set(
