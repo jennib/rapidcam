@@ -788,6 +788,22 @@ button.cbtn.solve {
   display: none;
 }
 
+.webgl-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background: rgba(30, 31, 36, 0.85);
+  color: #f0a040;
+  border: 1px solid #6b4a18;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  pointer-events: none;
+  text-align: center;
+}
+
 .webgl-reset-btn {
   position: absolute;
   bottom: 10px;

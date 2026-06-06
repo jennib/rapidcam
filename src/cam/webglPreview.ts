@@ -46,43 +46,51 @@ void main() {
   float hD = texture(uHeightMap, vUV + vec2(0.0, -uTexelSize.y)).r;
   float hU = texture(uHeightMap, vUV + vec2(0.0,  uTexelSize.y)).r;
 
-  vec3 normal = normalize(vec3(
-    (hL - hR) / (2.0 * uCellMM.x),
-    1.0,
-    (hD - hU) / (2.0 * uCellMM.y)
-  ));
+  float gradX = (hL - hR) / (2.0 * uCellMM.x);
+  float gradZ = (hD - hU) / (2.0 * uCellMM.y);
+  vec3 normal = normalize(vec3(gradX, 1.0, gradZ));
 
   // Wood color: uncut surface vs freshly cut vs through-cut shadow
+  // All values in linear (pre-gamma) space.
   float t = clamp(vHeight / uStockT, 0.0, 1.0);
-  vec3 deep     = vec3(0.14, 0.09, 0.04);   // near-black shadow in deep cuts
-  vec3 machined = vec3(0.88, 0.73, 0.48);   // fresh cut wood, lighter
-  vec3 uncut    = vec3(0.60, 0.40, 0.18);   // top surface, darker/more worn
+  vec3 deep     = vec3(0.06, 0.03, 0.01);   // shadow at base of deep cuts
+  vec3 machined = vec3(0.76, 0.58, 0.30);   // fresh-cut pine, warm and bright
+  vec3 uncut    = vec3(0.52, 0.34, 0.12);   // top surface, slightly darker/more worn
 
   vec3 baseColor;
   if (t < 0.08) {
     baseColor = mix(deep, machined, t / 0.08);
   } else {
-    baseColor = mix(machined, uncut, smoothstep(0.0, 0.30, t - 0.08));
+    baseColor = mix(machined, uncut, smoothstep(0.0, 0.35, t - 0.08));
   }
 
-  // Three-light rig so cuts read clearly from any orbit angle:
-  //   L1 = warm key from top-right-front
-  //   L2 = cool fill from top-left-back
-  //   L3 = soft top bounce
-  vec3 L1 = normalize(vec3( 0.8,  1.6,  0.6));
-  vec3 L2 = normalize(vec3(-0.6,  0.9, -0.8));
-  vec3 L3 = normalize(vec3( 0.0,  1.0,  0.0));
+  // Three-light rig — key from upper-right-front, fill from upper-left-back, top bounce.
+  // Lights are in the same Y-up world space as the mesh normal.
+  vec3 L1 = normalize(vec3( 0.6,  1.4,  0.8));
+  vec3 L2 = normalize(vec3(-0.8,  1.0, -0.5));
+  vec3 L3 = normalize(vec3( 0.1,  1.0,  0.3));
 
   float d1 = max(dot(normal, L1), 0.0);
   float d2 = max(dot(normal, L2), 0.0);
   float d3 = max(dot(normal, L3), 0.0);
 
-  float light = 0.22               // ambient
-              + d1 * 0.68          // key
-              + d2 * 0.28          // fill
-              + d3 * 0.12;         // bounce
+  float light = 0.38               // ambient — raise floor so nothing goes black
+              + d1 * 0.72          // key
+              + d2 * 0.30          // fill
+              + d3 * 0.18;         // bounce
 
-  fragColor = vec4(baseColor * light, 1.0);
+  vec3 col = baseColor * light;
+
+  // Gamma correction: linear → sRGB so the display looks correct.
+  col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
+
+  // Edge highlight: cut walls have large height gradients — add a bright rim
+  // so cuts read clearly from any orbit angle.
+  float gradMag = length(vec2(gradX, gradZ));
+  float edge = smoothstep(1.5, 6.0, gradMag) * 0.45;
+  col = clamp(col + vec3(edge * 0.90, edge * 0.78, edge * 0.55), 0.0, 1.0);
+
+  fragColor = vec4(col, 1.0);
 }`;
 
 // ---------------------------------------------------------------------------
@@ -148,6 +156,7 @@ const DEFAULT_ZOOM  = 1.0;
 export class WebGLPreview {
   private canvas: HTMLCanvasElement;
   private resetBtn: HTMLButtonElement;
+  private statusEl: HTMLElement;
   private gl!: WebGL2RenderingContext;
   private program!: WebGLProgram;
   private vao!: WebGLVertexArrayObject;
@@ -178,8 +187,13 @@ export class WebGLPreview {
     this.resetBtn.textContent = "⟳ Reset View";
     this.resetBtn.addEventListener("click", () => this.resetView());
 
+    this.statusEl = document.createElement("div");
+    this.statusEl.className = "webgl-status";
+    this.statusEl.style.display = "none";
+
     host.appendChild(this.canvas);
     host.appendChild(this.resetBtn);
+    host.appendChild(this.statusEl);
 
     const gl = this.canvas.getContext("webgl2");
     if (!gl) { this.showError("WebGL 2 not supported in this browser."); return; }
@@ -214,6 +228,15 @@ export class WebGLPreview {
       hm.gridW, hm.gridH, 0,
       gl.RED, gl.FLOAT, hm.data,
     );
+
+    // Scan for any material removal so we can warn when cuts are absent.
+    let minH = hm.stockT;
+    for (let i = 0; i < hm.data.length; i++) {
+      if (hm.data[i] < minH) minH = hm.data[i];
+    }
+    const hasCuts = minH < hm.stockT - 0.5;
+    this.statusEl.textContent = "No material removed — check geometry selection";
+    this.statusEl.style.display = hasCuts ? "none" : "block";
 
     this.draw();
   }
@@ -295,8 +318,10 @@ export class WebGLPreview {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     // 1×1 placeholder
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1, 1, 0, gl.RED, gl.FLOAT, new Float32Array([0]));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // NEAREST avoids the OES_texture_float_linear extension requirement for R32F.
+    // One texel = one height cell, so NEAREST is exact anyway.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;
