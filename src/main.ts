@@ -24,12 +24,15 @@ function boot(): void {
   const variablesbar = document.getElementById("variablesbar");
   const constraintbar = document.getElementById("constraintbar");
   const statusbar = document.getElementById("statusbar");
+  const canvasHost = document.getElementById("canvas-host");
+  const webglHost = document.getElementById("webgl-host");
+  const splitDivider = document.getElementById("split-divider");
 
-  if (!canvas || !palette || !topbar || !layersbar || !settingsbar || !propertiesbar || !cambar || !variablesbar || !constraintbar || !statusbar) {
+  if (!canvas || !palette || !topbar || !layersbar || !settingsbar || !propertiesbar || !cambar || !variablesbar || !constraintbar || !statusbar || !canvasHost || !webglHost || !splitDivider) {
     throw new Error("RapidCAM: required DOM elements are missing");
   }
 
-  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar });
+  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
   wireRightPanelTabs();
 }
 

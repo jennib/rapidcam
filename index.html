@@ -11,9 +11,13 @@
       <div id="constraintbar"></div>
       <div id="workspace">
         <aside id="toolpalette"></aside>
-        <main id="canvas-host">
-          <canvas id="scene"></canvas>
-        </main>
+        <div id="main-area">
+          <main id="canvas-host">
+            <canvas id="scene"></canvas>
+          </main>
+          <div id="split-divider" class="hidden"></div>
+          <div id="webgl-host" class="hidden"></div>
+        </div>
         <div id="right-panel">
           <div id="right-tabs">
             <button class="rtab active" data-tab="draw">Draw</button>

@@ -45,6 +45,8 @@ import { DimEditor } from "./ui/dimEditor";
 import { VariablesBar } from "./ui/variablesBar";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
+import { WebGLPreview } from "./cam/webglPreview";
+import { rasterizeStock } from "./cam/stockRasterizer";
 
 const HOVER_TOLERANCE_PX = 8;
 
@@ -90,6 +92,10 @@ export class App {
   // generic floating value editor (e.g. arc length)
   private valueEditor: HTMLInputElement | null = null;
 
+  private webglPreview: WebGLPreview | null = null;
+  private preview3DVisible = false;
+  private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(private canvas: HTMLCanvasElement, dom: {
     palette: HTMLElement;
     topbar: HTMLElement;
@@ -100,6 +106,9 @@ export class App {
     statusbar: HTMLElement;
     layersbar: HTMLElement;
     variablesbar: HTMLElement;
+    canvasHost: HTMLElement;
+    webglHost: HTMLElement;
+    splitDivider: HTMLElement;
   }) {
     this.doc = new CADDocument({ width: 200, height: 150 }, "mm");
     this.renderer = new Renderer(canvas);
@@ -177,6 +186,8 @@ export class App {
       },
       view: {
         onFit: () => this.fitView(),
+        onToggle3D: () => this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider),
+        is3DVisible: () => this.preview3DVisible,
       },
     });
     new LayersBar(dom.layersbar, this.doc, this.project.pushHistory);
@@ -200,7 +211,9 @@ export class App {
     new VariablesBar(dom.variablesbar, this.doc, () => this.runSolve(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
+    this.doc.onChange(() => this.schedulePreviewUpdate());
 
+    this.bindSplitDivider(dom.canvasHost, dom.splitDivider);
     this.bindEvents();
     this.handleResize();
     this.initialFit();
@@ -212,6 +225,71 @@ export class App {
       (entry) => this.project.fileOpenRecent(entry),
       () => this.project.restoreDraft()
     );
+  }
+
+  private toggle3DPreview(
+    canvasHost: HTMLElement,
+    webglHost: HTMLElement,
+    divider: HTMLElement,
+  ): void {
+    this.preview3DVisible = !this.preview3DVisible;
+
+    if (this.preview3DVisible) {
+      webglHost.classList.remove("hidden");
+      divider.classList.remove("hidden");
+      // Default 55/45 split — set canvas-host to a fixed pixel width
+      const totalW = canvasHost.parentElement!.clientWidth;
+      canvasHost.style.flex = "none";
+      canvasHost.style.width = Math.round(totalW * 0.55) + "px";
+
+      if (!this.webglPreview) {
+        this.webglPreview = new WebGLPreview(webglHost);
+      }
+      this.schedulePreviewUpdate();
+    } else {
+      webglHost.classList.add("hidden");
+      divider.classList.add("hidden");
+      canvasHost.style.flex = "";
+      canvasHost.style.width = "";
+    }
+  }
+
+  private schedulePreviewUpdate(): void {
+    if (!this.preview3DVisible || !this.webglPreview) return;
+    if (this.doc.operations.length === 0) return;
+    if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);
+    this.previewDebounceTimer = setTimeout(() => {
+      this.previewDebounceTimer = null;
+      if (this.webglPreview && this.preview3DVisible) {
+        this.webglPreview.render(rasterizeStock(this.doc.operations, this.doc));
+      }
+    }, 250);
+  }
+
+  private bindSplitDivider(canvasHost: HTMLElement, divider: HTMLElement): void {
+    let dragging = false;
+    let startX = 0;
+    let startW = 0;
+
+    divider.addEventListener("mousedown", (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = canvasHost.offsetWidth;
+      divider.classList.add("dragging");
+      e.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const newW = Math.max(200, startW + (e.clientX - startX));
+      canvasHost.style.width = newW + "px";
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      divider.classList.remove("dragging");
+    });
   }
 
   private toggleConstruction(): void {

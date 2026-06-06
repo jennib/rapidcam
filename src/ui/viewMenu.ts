@@ -1,5 +1,7 @@
 export interface ViewMenuCallbacks {
   onFit: () => void;
+  onToggle3D: () => void;
+  is3DVisible: () => boolean;
 }
 
 export class ViewMenu {
@@ -51,6 +53,15 @@ export class ViewMenu {
   private buildItems(): void {
     this.dropdown.innerHTML = "";
     this.item("Fit View", "F", () => { this.close(); this.cb.onFit(); });
+    this.separator();
+    const checked = this.cb.is3DVisible();
+    this.item((checked ? "✓ " : "   ") + "3D Preview", "", () => { this.close(); this.cb.onToggle3D(); });
+  }
+
+  private separator(): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-sep";
+    this.dropdown.appendChild(div);
   }
 
   private item(text: string, shortcut: string, onClick: () => void): void {
