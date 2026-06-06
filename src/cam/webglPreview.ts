@@ -22,7 +22,9 @@ void main() {
   vUV = aUV;
   vHeight = h;
   float wx = (aUV.x - 0.5) * uStockXZ.x;
-  float wz = (aUV.y - 0.5) * uStockXZ.y;
+  // UV.y=0 = world Y=0 (canvas bottom) → near side; flip so canvas top = far side,
+  // matching the Y-up 2D canvas orientation when viewed from the default camera.
+  float wz = (0.5 - aUV.y) * uStockXZ.y;
   gl_Position = uMVP * vec4(wx, h, wz, 1.0);
 }`;
 
@@ -47,7 +49,8 @@ void main() {
   float hU = texture(uHeightMap, vUV + vec2(0.0,  uTexelSize.y)).r;
 
   float gradX = (hL - hR) / (2.0 * uCellMM.x);
-  float gradZ = (hD - hU) / (2.0 * uCellMM.y);
+  // Z axis is flipped (wz = (0.5-UV.y)*H), so the Z gradient direction is negated.
+  float gradZ = (hU - hD) / (2.0 * uCellMM.y);
   vec3 normal = normalize(vec3(gradX, 1.0, gradZ));
 
   // Wood color: uncut surface vs freshly cut vs through-cut shadow
