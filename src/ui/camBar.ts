@@ -227,8 +227,49 @@ export class CamBar {
     // header
     const dheader = document.createElement("div");
     dheader.className = "tp-dialog-header";
+    dheader.style.cursor = "move";
+    
+    // Drag logic
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    dheader.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = dialog.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+      
+      // Detach from flex centering
+      dialog.style.position = "absolute";
+      dialog.style.margin = "0";
+      dialog.style.left = startLeft + "px";
+      dialog.style.top = startTop + "px";
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      dialog.style.left = startLeft + (e.clientX - startX) + "px";
+      dialog.style.top = startTop + (e.clientY - startY) + "px";
+    };
+
+    const onMouseUp = () => {
+      isDragging = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
     const dtitle = document.createElement("h3");
     dtitle.textContent = isNew ? "Add Toolpath" : "Edit Toolpath";
+    dtitle.style.userSelect = "none";
     dheader.appendChild(dtitle);
     const closeBtn = document.createElement("button");
     closeBtn.className = "tp-dialog-close";
