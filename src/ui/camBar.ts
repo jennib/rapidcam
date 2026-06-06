@@ -11,7 +11,8 @@ import {
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
 import { dist } from "../core/vec2";
-import { DEFAULTS, type CAMOperation, type CAMOpType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type ToolDef, type ToolType } from "../cam/types";
+import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { generateGCode } from "../cam/gcode";
 import { nextId } from "../model/ids";
 
@@ -208,7 +209,11 @@ export class CamBar {
     nameEl.textContent = op.name;
     const params = document.createElement("div");
     params.className = "tp-op-params";
-    params.textContent = `T${op.toolNumber} ⌀${op.diameter}mm  ${op.depth}mm`;
+    const toolLabel = op.toolType === "v-bit" ? `V-Bit(${op.vAngle ?? 60}°)`
+      : op.toolType === "drill" ? "Drill"
+      : op.toolType === "ball-nose" ? "Ball Nose"
+      : "End Mill";
+    params.textContent = `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
     info.appendChild(nameEl);
     info.appendChild(params);
     item.appendChild(info);
@@ -272,8 +277,11 @@ export class CamBar {
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
+      toolType: (existing?.toolType ?? DEFAULTS.toolType) as ToolType,
       toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
       diameter: existing?.diameter ?? DEFAULTS.diameter,
+      vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
+      tipAngle: existing?.tipAngle ?? DEFAULTS.tipAngle,
       feedrate: existing?.feedrate ?? DEFAULTS.feedrate,
       plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,
       spindleSpeed: existing?.spindleSpeed ?? DEFAULTS.spindleSpeed,
@@ -395,20 +403,193 @@ export class CamBar {
 
     // tool section
     const toolSec = this.dSection("Tool");
+
+    // --- library row ---
+    const libRow = document.createElement("div");
+    libRow.style.cssText = "display:flex;gap:6px;margin-bottom:8px;";
+    const loadLibBtn = document.createElement("button");
+    loadLibBtn.className = "btn";
+    loadLibBtn.style.flex = "1";
+    loadLibBtn.textContent = "Load from Library";
+    const saveLibBtn = document.createElement("button");
+    saveLibBtn.className = "btn";
+    saveLibBtn.style.flex = "1";
+    saveLibBtn.textContent = "Save to Library";
+    libRow.appendChild(loadLibBtn);
+    libRow.appendChild(saveLibBtn);
+    toolSec.appendChild(libRow);
+
+    // library picker (shown inline below the buttons)
+    const libPicker = document.createElement("div");
+    libPicker.style.cssText = "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
+      "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
+    toolSec.appendChild(libPicker);
+
+    const refreshPicker = () => {
+      libPicker.innerHTML = "";
+      const tools = loadLibrary();
+      if (tools.length === 0) {
+        const mt = document.createElement("div");
+        mt.style.cssText = "padding:8px;font-size:11px;color:var(--text-dim)";
+        mt.textContent = "Library is empty";
+        libPicker.appendChild(mt);
+        return;
+      }
+      for (const t of tools) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;" +
+          "border-bottom:1px solid var(--border);font-size:11px;";
+        row.addEventListener("mouseover", () => { row.style.background = "var(--panel-2)"; });
+        row.addEventListener("mouseout",  () => { row.style.background = ""; });
+        const nameSpan = document.createElement("span");
+        nameSpan.style.flex = "1";
+        nameSpan.textContent = t.name;
+        const detailSpan = document.createElement("span");
+        detailSpan.style.color = "var(--text-dim)";
+        detailSpan.textContent = `⌀${t.diameter}mm`;
+        row.appendChild(nameSpan);
+        row.appendChild(detailSpan);
+        row.addEventListener("click", () => {
+          applyToolDef(t);
+          libPicker.style.display = "none";
+          loadLibBtn.textContent = "Load from Library";
+        });
+        libPicker.appendChild(row);
+      }
+    };
+
+    let pickerOpen = false;
+    loadLibBtn.addEventListener("click", () => {
+      pickerOpen = !pickerOpen;
+      if (pickerOpen) {
+        refreshPicker();
+        libPicker.style.display = "block";
+        loadLibBtn.textContent = "▲ Close Library";
+      } else {
+        libPicker.style.display = "none";
+        loadLibBtn.textContent = "Load from Library";
+      }
+    });
+
+    saveLibBtn.addEventListener("click", () => {
+      const name = window.prompt("Save tool as:", state.toolType === "v-bit"
+        ? `${state.vAngle}° V-Bit ⌀${state.diameter}mm`
+        : `⌀${state.diameter}mm ${TOOL_TYPE_LABELS[state.toolType]}`);
+      if (!name) return;
+      const def: ToolDef = {
+        id: `tool-${Date.now()}`,
+        name,
+        toolType: state.toolType,
+        diameter: state.diameter,
+        vAngle: state.vAngle,
+        tipAngle: state.tipAngle,
+        feedrate: state.feedrate,
+        plungeRate: state.plungeRate,
+        spindleSpeed: state.spindleSpeed,
+        safeZ: state.safeZ,
+      };
+      addTool(def);
+      if (pickerOpen) refreshPicker();
+    });
+
+    // --- tool type ---
+    const toolTypeSelect = document.createElement("select");
+    toolTypeSelect.className = "unit";
+    for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      toolTypeSelect.appendChild(o);
+    }
+    toolTypeSelect.value = state.toolType;
+    toolSec.appendChild(this.dField("Tool Type", toolTypeSelect));
+
+    // --- shared number row helper ---
     const numRow = (lbl: string, get: () => number, set: (v: number) => void) => {
       const inp = document.createElement("input");
       inp.type = "number"; inp.className = "dim"; inp.step = "any";
       inp.value = String(get());
       inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
-      return this.dField(lbl, inp);
+      return { el: this.dField(lbl, inp), inp };
     };
-    toolSec.appendChild(numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); }));
-    toolSec.appendChild(numRow("Diameter (mm)", () => state.diameter, (v) => { state.diameter = v; }));
-    toolSec.appendChild(numRow("Spindle (rpm)", () => state.spindleSpeed, (v) => { state.spindleSpeed = Math.round(v); }));
-    toolSec.appendChild(numRow("Feed (mm/min)", () => state.feedrate, (v) => { state.feedrate = v; }));
-    toolSec.appendChild(numRow("Plunge (mm/min)", () => state.plungeRate, (v) => { state.plungeRate = v; }));
-    toolSec.appendChild(numRow("Safe Z (mm)", () => state.safeZ, (v) => { state.safeZ = v; }));
+
+    // helper to create an input that a ToolDef can repopulate
+    const syncableInput = (lbl: string, get: () => number, set: (v: number, inp: HTMLInputElement) => void) => {
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.className = "dim"; inp.step = "any";
+      inp.value = String(get());
+      inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v, inp); });
+      return { el: this.dField(lbl, inp), inp };
+    };
+
+    const toolNumRow  = numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
+    const diamRow     = syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { state.diameter = v; i.value = String(v); updateVBitHint(); });
+    const spindleRow  = syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
+    const feedRow     = syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { state.feedrate = v; i.value = String(v); });
+    const plungeRow   = syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { state.plungeRate = v; i.value = String(v); });
+    const safeZRow    = syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { state.safeZ = v; i.value = String(v); });
+
+    // --- conditional V-bit fields ---
+    const vAngleInp = document.createElement("input");
+    vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";
+    vAngleInp.value = String(state.vAngle);
+    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { state.vAngle = v; updateVBitHint(); } });
+    const vAngleRow = this.dField("V Angle (°)", vAngleInp);
+
+    // --- conditional drill tip angle ---
+    const tipAngleInp = document.createElement("input");
+    tipAngleInp.type = "number"; tipAngleInp.className = "dim"; tipAngleInp.step = "any";
+    tipAngleInp.value = String(state.tipAngle);
+    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (isFinite(v)) state.tipAngle = v; });
+    const tipAngleRow = this.dField("Tip Angle (°)", tipAngleInp);
+
+    toolSec.appendChild(toolNumRow.el);
+    toolSec.appendChild(diamRow.el);
+    toolSec.appendChild(vAngleRow);
+    toolSec.appendChild(tipAngleRow);
+    toolSec.appendChild(spindleRow.el);
+    toolSec.appendChild(feedRow.el);
+    toolSec.appendChild(plungeRow.el);
+    toolSec.appendChild(safeZRow.el);
     body.appendChild(toolSec);
+
+    // apply a ToolDef from the library into state + all inputs
+    const applyToolDef = (t: ToolDef) => {
+      state.toolType   = t.toolType;
+      state.diameter   = t.diameter;
+      state.vAngle     = t.vAngle ?? DEFAULTS.vAngle;
+      state.tipAngle   = t.tipAngle ?? DEFAULTS.tipAngle;
+      state.feedrate   = t.feedrate;
+      state.plungeRate = t.plungeRate;
+      state.spindleSpeed = t.spindleSpeed;
+      state.safeZ      = t.safeZ;
+      toolTypeSelect.value   = t.toolType;
+      diamRow.inp.value      = String(t.diameter);
+      vAngleInp.value        = String(state.vAngle);
+      tipAngleInp.value      = String(state.tipAngle);
+      spindleRow.inp.value   = String(t.spindleSpeed);
+      feedRow.inp.value      = String(t.feedrate);
+      plungeRow.inp.value    = String(t.plungeRate);
+      safeZRow.inp.value     = String(t.safeZ);
+      updateToolTypeVisibility();
+      updateVBitHint();
+    };
+
+    // show/hide conditional rows + keep drill-only type in sync with op type
+    const updateToolTypeVisibility = () => {
+      const tt = state.toolType;
+      vAngleRow.style.display   = tt === "v-bit" ? "" : "none";
+      tipAngleRow.style.display = tt === "drill"  ? "" : "none";
+    };
+    updateToolTypeVisibility();
+
+    toolTypeSelect.addEventListener("change", () => {
+      state.toolType = toolTypeSelect.value as ToolType;
+      updateToolTypeVisibility();
+      updateVBitHint();
+    });
+
+    // forward declaration — defined after the vbit hint element is created below
+    let updateVBitHint: () => void = () => {};
 
     // cut section
     const cutSec = this.dSection("Cut");
@@ -418,7 +599,7 @@ export class CamBar {
     depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
     depthInp.value = String(state.depth);
     depthInp.addEventListener("change", () => {
-      const v = parseFloat(depthInp.value); if (isFinite(v)) state.depth = v;
+      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; updateVBitHint(); }
     });
     const throughBtn = document.createElement("button");
     throughBtn.className = "cbtn";
@@ -431,6 +612,23 @@ export class CamBar {
     depthRow.appendChild(depthInp);
     depthRow.appendChild(throughBtn);
     cutSec.appendChild(this.dField("Depth (mm)", depthRow));
+
+    // V-bit effective width hint
+    const vbitHint = document.createElement("div");
+    vbitHint.style.cssText = "font-size:11px;color:var(--accent);padding:3px 0 4px 0;display:none;";
+    cutSec.appendChild(vbitHint);
+
+    updateVBitHint = () => {
+      if (state.toolType !== "v-bit" || state.combo !== "engrave") {
+        vbitHint.style.display = "none";
+        return;
+      }
+      const halfAngle = (state.vAngle / 2) * (Math.PI / 180);
+      const width = 2 * Math.abs(state.depth) * Math.tan(halfAngle);
+      vbitHint.textContent = `→ effective cut width: ${width.toFixed(3)} mm`;
+      vbitHint.style.display = "block";
+    };
+    updateVBitHint();
 
     const stepInp = document.createElement("input");
     stepInp.type = "number"; stepInp.className = "dim"; stepInp.step = "any";
@@ -651,6 +849,7 @@ export class CamBar {
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
       stepRow.style.display = state.combo === "drill" ? "none" : "";
+      updateVBitHint();
       renderEntities();
     });
     stepRow.style.display = state.combo === "drill" ? "none" : "";
@@ -678,8 +877,12 @@ export class CamBar {
         id: existing?.id ?? nextId("cam"),
         name: state.name || this.autoName(state.combo),
         type, side, entityIds: ids,
+        toolType: state.toolType,
         toolNumber: state.toolNumber,
-        diameter: state.diameter, feedrate: state.feedrate,
+        diameter: state.diameter,
+        vAngle: state.toolType === "v-bit" ? state.vAngle : undefined,
+        tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
+        feedrate: state.feedrate,
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
       };

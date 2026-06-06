@@ -235,7 +235,13 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
   }
   const toolSummary = [...toolsSeen.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([t, op]) => `T${t} ⌀${op.diameter}mm ${op.spindleSpeed}rpm`)
+    .map(([t, op]) => {
+      const tl = op.toolType === "v-bit"    ? `V-Bit(${op.vAngle ?? 60}°)`
+               : op.toolType === "ball-nose" ? "BallNose"
+               : op.toolType === "drill"     ? "Drill"
+               : "EndMill";
+      return `T${t} ⌀${op.diameter}mm ${tl} ${op.spindleSpeed}rpm`;
+    })
     .join(", ");
 
   const lines: string[] = [
@@ -285,7 +291,16 @@ export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
       op.type === "profile" ? `Profile (${op.side})`
       : op.type === "engrave" ? "Engrave"
       : "Drill";
-    lines.push(`; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm  depth:${op.depth}mm ---`);
+    const toolLabel = op.toolType === "v-bit"     ? `V-Bit(${op.vAngle ?? 60}°)`
+                    : op.toolType === "ball-nose"  ? "Ball Nose"
+                    : op.toolType === "drill"      ? `Drill(tip ${op.tipAngle ?? 118}°)`
+                    : "End Mill";
+    lines.push(`; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  depth:${op.depth}mm ---`);
+    if (op.toolType === "v-bit" && op.type === "engrave") {
+      const halfAngle = ((op.vAngle ?? 60) / 2) * (Math.PI / 180);
+      const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);
+      lines.push(`; V-Bit effective cut width at ${op.depth}mm: ${width}mm`);
+    }
     lines.push(...toolpathBody(op, doc, ox, oy, zOffset, pp));
     lines.push("");
   }

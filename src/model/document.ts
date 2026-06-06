@@ -501,7 +501,7 @@ export class CADDocument {
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
-    this.operations = s.operations ? s.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })) : [];
+    this.operations = s.operations ? s.operations.map(op => ({ ...op, toolType: op.toolType ?? "end-mill", entityIds: [...op.entityIds] })) : [];
     // Always ensure the WCS origin entity is present after loading.
     if (!this.entities.find(e => e.id === ORIGIN_ENTITY_ID))
       this.entities.unshift(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));
