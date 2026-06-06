@@ -126,6 +126,9 @@ export class CADDocument {
   /** Selected dimension ID, or null. */
   selectedDimensionId: string | null = null;
 
+  /** Entity IDs to highlight in the toolpath colour while a toolpath dialog is open. Null = no dialog open. */
+  toolpathHighlightIds: Set<string> | null = null;
+
   private listeners = new Set<ChangeListener>();
 
   constructor(canvas: CanvasSize, displayUnit: Unit = "mm") {

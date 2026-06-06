@@ -5,7 +5,10 @@ import {
   LineEntity,
   PolylineEntity,
   RectEntity,
+  ArcEntity,
+  BezierEntity,
 } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
 import { dist } from "../core/vec2";
 import { DEFAULTS, type CAMOperation, type CAMOpType } from "../cam/types";
@@ -48,6 +51,54 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
     case "drill":
       return e instanceof CircleEntity;
   }
+}
+
+function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
+  const chain = new Set<string>();
+  const front: Vec2[] = [];
+  
+  const startEnt = doc.entities.find(e => e.id === startId);
+  if (!startEnt || startEnt.isConstruction) return [];
+  
+  const getEnds = (e: Entity): Vec2[] => {
+    if (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity) {
+      const p = e.pickablePoints();
+      if (p.length >= 2) return [p[0].pos, p[p.length - 1].pos];
+    } else if (e instanceof PolylineEntity && e.points.length > 0) {
+      return [e.points[0], e.points[e.points.length - 1]];
+    }
+    return [];
+  };
+
+  front.push(...getEnds(startEnt));
+  chain.add(startId);
+  
+  let added = true;
+  while (added) {
+    added = false;
+    for (const e of doc.entities) {
+      if (chain.has(e.id) || e.isConstruction || !isValidFor(e, validCombo)) continue;
+      
+      const ePts = getEnds(e);
+      if (ePts.length === 2) {
+        for (let i = 0; i < front.length; i++) {
+          const f = front[i];
+          if (dist(f, ePts[0]) < 1e-5) {
+            chain.add(e.id);
+            front[i] = ePts[1];
+            added = true;
+            break;
+          } else if (dist(f, ePts[1]) < 1e-5) {
+            chain.add(e.id);
+            front[i] = ePts[0];
+            added = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return [...chain];
 }
 
 // ---- ToolpathsBar -----------------------------------------------------------
@@ -213,14 +264,29 @@ export class CamBar {
       entityIds: new Set<string>(existing?.entityIds ?? [...preSelected]),
     };
 
+    let renderEntities: () => void;
+
+    // Pick mode: additive-only canvas sync, active only when the user enables it.
+    let pickModeActive = false;
+    let unsubPickMode: (() => void) | null = null;
+
+    const closeDialog = () => {
+      if (unsubPickMode) unsubPickMode();
+      this.doc.toolpathHighlightIds = null;
+      this.doc.emitChange();
+      document.getElementById("tp-dialog-backdrop")?.remove();
+    };
+
     // --- backdrop + dialog shell ---
     const backdrop = document.createElement("div");
     backdrop.id = "tp-dialog-backdrop";
     backdrop.className = "tp-backdrop";
-    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+    backdrop.style.pointerEvents = "none";
+    backdrop.style.background = "none";
 
     const dialog = document.createElement("div");
     dialog.className = "tp-dialog";
+    dialog.style.pointerEvents = "auto";
     dialog.addEventListener("click", (e) => e.stopPropagation());
     backdrop.appendChild(dialog);
 
@@ -274,7 +340,7 @@ export class CamBar {
     const closeBtn = document.createElement("button");
     closeBtn.className = "tp-dialog-close";
     closeBtn.innerHTML = "&#x2715;";
-    closeBtn.addEventListener("click", () => backdrop.remove());
+    closeBtn.addEventListener("click", () => closeDialog());
     dheader.appendChild(closeBtn);
     dialog.appendChild(dheader);
 
@@ -359,12 +425,95 @@ export class CamBar {
 
     // geometry section
     const geoSec = this.dSection("Geometry");
+
+    // Geometry toolbar
+    const geoBar = document.createElement("div");
+    geoBar.style.cssText = "display:flex;gap:6px;margin-bottom:6px;";
+
+    const pickBtn = document.createElement("button");
+    pickBtn.className = "btn";
+    pickBtn.title = "Click entities on the canvas to add them to this toolpath";
+    pickBtn.textContent = "Pick";
+
+    const fromSelBtn = document.createElement("button");
+    fromSelBtn.className = "btn";
+    fromSelBtn.style.flex = "1";
+    fromSelBtn.title = "Add whatever is currently selected on the canvas";
+    fromSelBtn.textContent = "+ From Selection";
+    fromSelBtn.addEventListener("click", () => {
+      let added = 0;
+      for (const e of this.doc.entities) {
+        if (e.selected && !e.isConstruction && isValidFor(e, state.combo)) {
+          state.entityIds.add(e.id);
+          added++;
+        }
+      }
+      if (added > 0) renderEntities();
+    });
+
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "btn";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", () => {
+      for (const id of state.entityIds) {
+        const ent = this.doc.entities.find(x => x.id === id);
+        if (ent) ent.selected = false;
+      }
+      state.entityIds.clear();
+      renderEntities();
+    });
+
+    geoBar.appendChild(pickBtn);
+    geoBar.appendChild(fromSelBtn);
+    geoBar.appendChild(clearBtn);
+    geoSec.appendChild(geoBar);
+
+    // Pick mode hint — visible only while pick mode is active
+    const pickHint = document.createElement("div");
+    pickHint.style.cssText =
+      "display:none;font-size:11px;color:var(--accent);margin-bottom:6px;padding:4px 6px;" +
+      "background:var(--panel-2);border-radius:4px;border:1px solid var(--accent-dim);";
+    pickHint.textContent = "Click entities on the canvas to add them";
+    geoSec.appendChild(pickHint);
+
+    const togglePickMode = () => {
+      pickModeActive = !pickModeActive;
+      pickBtn.classList.toggle("active", pickModeActive);
+      pickHint.style.display = pickModeActive ? "block" : "none";
+      if (pickModeActive) {
+        // Absorb whatever is currently selected so the listener only reacts to NEW picks.
+        for (const e of this.doc.entities) {
+          if (!e.isConstruction && isValidFor(e, state.combo) && e.selected)
+            state.entityIds.add(e.id);
+        }
+        renderEntities();
+        unsubPickMode = this.doc.onChange(() => {
+          let changed = false;
+          for (const e of this.doc.entities) {
+            if (!e.isConstruction && isValidFor(e, state.combo) && e.selected) {
+              if (!state.entityIds.has(e.id)) {
+                state.entityIds.add(e.id);
+                changed = true;
+              }
+            }
+          }
+          if (changed) renderEntities();
+        });
+      } else {
+        if (unsubPickMode) unsubPickMode();
+        unsubPickMode = null;
+      }
+    };
+    pickBtn.addEventListener("click", togglePickMode);
+
     const entityList = document.createElement("div");
     entityList.className = "tp-entity-list";
     geoSec.appendChild(entityList);
     body.appendChild(geoSec);
 
-    const renderEntities = () => {
+    renderEntities = () => {
+      this.doc.toolpathHighlightIds = new Set(state.entityIds);
+      this.doc.emitChange();
       entityList.innerHTML = "";
       const ents = this.doc.entities.filter((e) => !e.isConstruction);
       if (ents.length === 0) {
@@ -374,25 +523,109 @@ export class CamBar {
         entityList.appendChild(mt);
         return;
       }
-      for (const e of ents) {
-        const valid = isValidFor(e, state.combo);
-        if (!valid) state.entityIds.delete(e.id);
 
-        const row = document.createElement("label");
-        row.className = "tp-entity-row" + (valid ? "" : " tp-entity-disabled");
-        const cb = document.createElement("input");
-        cb.type = "checkbox"; cb.className = "tp-entity-cb";
-        cb.checked = valid && state.entityIds.has(e.id);
-        cb.disabled = !valid;
-        cb.addEventListener("change", () => {
-          if (cb.checked) state.entityIds.add(e.id);
-          else state.entityIds.delete(e.id);
+      // Group entities by layer
+      const byLayer = new Map<string, Entity[]>();
+      for (const e of ents) {
+        const arr = byLayer.get(e.layerId) || [];
+        arr.push(e);
+        byLayer.set(e.layerId, arr);
+      }
+
+      for (const layer of this.doc.layers) {
+        const layerEnts = byLayer.get(layer.id) || [];
+        if (layerEnts.length === 0) continue;
+        
+        // Layer Header
+        const lh = document.createElement("div");
+        lh.style.display = "flex";
+        lh.style.justifyContent = "space-between";
+        lh.style.alignItems = "center";
+        lh.style.padding = "4px 8px";
+        lh.style.background = "var(--panel)";
+        lh.style.borderRadius = "4px";
+        lh.style.marginTop = "8px";
+        lh.style.marginBottom = "4px";
+        
+        const lhTitle = document.createElement("span");
+        lhTitle.style.fontSize = "11px";
+        lhTitle.style.fontWeight = "700";
+        lhTitle.style.color = "var(--text)";
+        lhTitle.textContent = layer.name;
+        lh.appendChild(lhTitle);
+        
+        const lToggle = document.createElement("button");
+        lToggle.className = "btn";
+        lToggle.style.padding = "2px 6px";
+        lToggle.style.fontSize = "10px";
+        lToggle.textContent = "Toggle";
+        lToggle.addEventListener("click", () => {
+          const valid = layerEnts.filter(e => isValidFor(e, state.combo));
+          const allChecked = valid.every(e => state.entityIds.has(e.id));
+          for (const e of valid) {
+            if (allChecked) { state.entityIds.delete(e.id); e.selected = false; }
+            else state.entityIds.add(e.id);
+          }
+          renderEntities();
         });
-        const desc = document.createElement("span");
-        desc.textContent = describeEntity(e, this.doc);
-        row.appendChild(cb);
-        row.appendChild(desc);
-        entityList.appendChild(row);
+        lh.appendChild(lToggle);
+        entityList.appendChild(lh);
+        
+        // Layer Entities
+        for (const e of layerEnts) {
+          const valid = isValidFor(e, state.combo);
+          if (!valid) state.entityIds.delete(e.id);
+
+          const row = document.createElement("div");
+          row.className = "tp-entity-row" + (valid ? "" : " tp-entity-disabled");
+          row.style.display = "flex";
+          row.style.alignItems = "center";
+          
+          const lbl = document.createElement("label");
+          lbl.style.display = "flex";
+          lbl.style.alignItems = "center";
+          lbl.style.gap = "8px";
+          lbl.style.flex = "1";
+          lbl.style.cursor = valid ? "pointer" : "default";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox"; cb.className = "tp-entity-cb";
+          cb.checked = valid && state.entityIds.has(e.id);
+          cb.disabled = !valid;
+          cb.addEventListener("change", () => {
+            if (cb.checked) {
+              state.entityIds.add(e.id);
+            } else {
+              state.entityIds.delete(e.id);
+              e.selected = false; // keep canvas deselected so pick-mode doesn't re-add it
+            }
+            renderEntities();
+          });
+          const desc = document.createElement("span");
+          desc.textContent = describeEntity(e, this.doc);
+          
+          lbl.appendChild(cb);
+          lbl.appendChild(desc);
+          row.appendChild(lbl);
+          
+          if (valid && (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
+            const chainBtn = document.createElement("button");
+            chainBtn.className = "btn";
+            chainBtn.style.padding = "2px 6px";
+            chainBtn.style.fontSize = "10px";
+            chainBtn.textContent = "Chain";
+            chainBtn.title = "Select connected chain";
+            chainBtn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const chainIds = findContiguousChain(e.id, this.doc, state.combo);
+              for (const id of chainIds) state.entityIds.add(id);
+              renderEntities();
+            });
+            row.appendChild(chainBtn);
+          }
+          
+          entityList.appendChild(row);
+        }
       }
     };
 
@@ -409,7 +642,7 @@ export class CamBar {
     footer.className = "tp-dialog-footer";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "btn"; cancelBtn.textContent = "Cancel";
-    cancelBtn.addEventListener("click", () => backdrop.remove());
+    cancelBtn.addEventListener("click", () => closeDialog());
     const applyBtn = document.createElement("button");
     applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
     applyBtn.addEventListener("click", () => {
@@ -439,7 +672,7 @@ export class CamBar {
         this.ops.push(op);
       }
       this.renderOps();
-      backdrop.remove();
+      closeDialog();
     });
     footer.appendChild(cancelBtn);
     footer.appendChild(applyBtn);

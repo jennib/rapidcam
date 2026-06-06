@@ -256,14 +256,17 @@ export class Renderer {
       if (!layer.visible) continue;
 
       const isHover = overlay.hover === e.id;
+      const isToolpathHighlight = doc.toolpathHighlightIds?.has(e.id) ?? false;
       const color = e.selected
         ? COLORS.entitySelected
         : isHover
           ? COLORS.entityHover
-          : e.isConstruction
-            ? COLORS.entityConstruction
-            : layer.color;
-      const width = e.selected ? 2 : 1.5;
+          : isToolpathHighlight
+            ? COLORS.toolpathHighlight
+            : e.isConstruction
+              ? COLORS.entityConstruction
+              : layer.color;
+      const width = e.selected || isToolpathHighlight ? 2 : 1.5;
       this.ctx.save();
       if (e.isConstruction) {
         this.ctx.setLineDash([5, 5]);

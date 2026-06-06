@@ -33,4 +33,6 @@ export const COLORS = {
   dimension: "#4ccdc9",
   dimensionText: "#d6f7f5",
   dimensionTextRef: "#9fb6b5",
+
+  toolpathHighlight: "#f59e42",
 } as const;
