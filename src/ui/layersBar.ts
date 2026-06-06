@@ -167,6 +167,13 @@ export class LayersBar {
       delBtn.style.opacity = delBtn.disabled ? "0.3" : "1";
       delBtn.onclick = () => {
         if (this.doc.layers.length <= 1) return;
+        
+        const entsOnLayer = this.doc.entities.filter(e => e.layerId === layer.id);
+        if (entsOnLayer.length > 0) {
+          const confirm = window.confirm(`Layer "${layer.name}" contains ${entsOnLayer.length} object(s). Are you sure you want to delete it and all its objects?`);
+          if (!confirm) return;
+        }
+
         this.pushHistory();
         
         // Remove entities on this layer
