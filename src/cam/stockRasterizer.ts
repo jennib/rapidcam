@@ -22,6 +22,7 @@ import {
 import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon } from "./offset";
+import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -313,13 +314,37 @@ function sweepArc(
 
 function rasProfilePolygon(
   verts: Vec2[], op: CAMOperation,
-  data: Float32Array, gridW: number, gridH: number, stockT: number,
+  _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
   stamp: StampFn, stepR: number,
 ): void {
   const toolR = op.diameter / 2;
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
+
+  const tabs    = op.tabs;
+  const hasTabs = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
+  const tabZOff = hasTabs ? op.depth + tabs!.height : 0;
+
   for (const path of paths) {
-    if (path.length >= 2) sweepPolyline(op, data, gridW, gridH, stockT, path, true, stamp, stepR);
+    if (path.length < 2) continue;
+
+    for (const z of depthPasses(op)) {
+      const depth              = stockT + z;
+      const useTabsThisPass    = hasTabs && z < tabZOff;
+
+      if (!useTabsThisPass) {
+        const np = path.length;
+        for (let i = 0; i < np; i++)
+          walkSegment(path[i], path[(i + 1) % np], stepR, depth, stamp);
+      } else {
+        const tabDepth = stockT + tabZOff;
+        const cumLens  = pathLengths(path);
+        const totalLen = cumLens[path.length];
+        const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
+        const segs     = splitPathForTabs(path, cumLens, regions);
+        for (const seg of segs)
+          walkSegment(seg.p0, seg.p1, stepR, seg.isTab ? tabDepth : depth, stamp);
+      }
+    }
   }
 }
 

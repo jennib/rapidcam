@@ -113,6 +113,7 @@ export class CamBar {
   constructor(
     private host: HTMLElement,
     private doc: CADDocument,
+    private pushHistory?: () => void,
   ) {
     this.build();
     // Re-render the ops list whenever the document is replaced (file open, undo/redo).
@@ -252,6 +253,7 @@ export class CamBar {
       `<path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>` +
       `</svg>`;
     delBtn.addEventListener("click", () => {
+      this.pushHistory?.();
       if (this.highlightedOpId === op.id) this.highlightOp(null);
       this.doc.operations = this.doc.operations.filter((o) => o.id !== op.id);
       this.doc.emitChange();
@@ -288,7 +290,11 @@ export class CamBar {
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
-      entityIds: new Set<string>(existing?.entityIds ?? [...preSelected]),
+      entityIds:   new Set<string>(existing?.entityIds ?? [...preSelected]),
+      tabsEnabled: existing?.tabs?.enabled ?? false,
+      tabCount:    existing?.tabs?.count   ?? 4,
+      tabWidth:    existing?.tabs?.width   ?? 4,
+      tabHeight:   existing?.tabs?.height  ?? 2,
     };
 
     let renderEntities: () => void;
@@ -640,6 +646,47 @@ export class CamBar {
     cutSec.appendChild(stepRow);
     body.appendChild(cutSec);
 
+    // tabs section — profile ops only
+    let updateTabsVisibility: () => void = () => {};
+
+    const tabsSec = this.dSection("Tabs / Bridges");
+
+    const tabEnabledWrap = document.createElement("div");
+    tabEnabledWrap.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px;";
+    const tabEnabledCb = document.createElement("input");
+    tabEnabledCb.type = "checkbox";
+    tabEnabledCb.checked = state.tabsEnabled;
+    const tabEnabledLbl = document.createElement("label");
+    tabEnabledLbl.textContent = "Enable tabs";
+    tabEnabledLbl.style.cssText = "font-size:12px;cursor:pointer;";
+    tabEnabledLbl.addEventListener("click", () => { tabEnabledCb.click(); });
+    tabEnabledWrap.appendChild(tabEnabledCb);
+    tabEnabledWrap.appendChild(tabEnabledLbl);
+    tabsSec.appendChild(tabEnabledWrap);
+
+    const tabCountRow  = numRow("Tab count",       () => state.tabCount,  (v) => { state.tabCount  = Math.max(1, Math.round(v)); });
+    const tabWidthRow  = numRow("Tab width (mm)",  () => state.tabWidth,  (v) => { state.tabWidth  = Math.max(0.1, v); });
+    const tabHeightRow = numRow("Tab height (mm)", () => state.tabHeight, (v) => { state.tabHeight = Math.max(0.1, v); });
+    tabsSec.appendChild(tabCountRow.el);
+    tabsSec.appendChild(tabWidthRow.el);
+    tabsSec.appendChild(tabHeightRow.el);
+    body.appendChild(tabsSec);
+
+    updateTabsVisibility = () => {
+      const isProfile    = state.combo.startsWith("profile");
+      tabsSec.style.display = isProfile ? "" : "none";
+      const fieldsOn = isProfile && state.tabsEnabled;
+      tabCountRow.el.style.display  = fieldsOn ? "" : "none";
+      tabWidthRow.el.style.display  = fieldsOn ? "" : "none";
+      tabHeightRow.el.style.display = fieldsOn ? "" : "none";
+    };
+    updateTabsVisibility();
+
+    tabEnabledCb.addEventListener("change", () => {
+      state.tabsEnabled = tabEnabledCb.checked;
+      updateTabsVisibility();
+    });
+
     // geometry section
     const geoSec = this.dSection("Geometry");
 
@@ -850,9 +897,11 @@ export class CamBar {
       state.combo = typeSelect.value as OpCombo;
       stepRow.style.display = state.combo === "drill" ? "none" : "";
       updateVBitHint();
+      updateTabsVisibility();
       renderEntities();
     });
     stepRow.style.display = state.combo === "drill" ? "none" : "";
+    updateTabsVisibility();
     renderEntities();
 
     // footer
@@ -866,6 +915,8 @@ export class CamBar {
     applyBtn.addEventListener("click", () => {
       const ids = [...state.entityIds];
       if (ids.length === 0) { alert("Select at least one geometry item."); return; }
+
+      this.pushHistory?.();
 
       let type: CAMOpType, side: "outside" | "inside";
       if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
@@ -885,6 +936,12 @@ export class CamBar {
         feedrate: state.feedrate,
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
+        tabs: type === "profile" ? {
+          enabled: state.tabsEnabled,
+          count:   state.tabCount,
+          width:   state.tabWidth,
+          height:  state.tabHeight,
+        } : undefined,
       };
 
       if (existing) {

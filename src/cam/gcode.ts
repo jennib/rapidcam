@@ -4,6 +4,7 @@ import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity } fr
 import type { CAMOperation } from "./types";
 import { offsetPolygon } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
+import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -24,19 +25,50 @@ function profilePolygon(
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
   if (paths.length === 0) return [];
 
+  const tabs      = op.tabs;
+  const hasTabs   = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
+  const tabZOff   = hasTabs ? op.depth + tabs!.height : 0; // Z offset of tab surface (e.g. -10+3 = -7)
+
   const lines: string[] = [];
   for (const path of paths) {
     if (path.length < 2) continue;
     const s = path[0];
+
     for (const z of depthPasses(op)) {
+      // Tabs only apply to passes that cut below the tab floor.
+      const useTabsThisPass = hasTabs && z < tabZOff;
+
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
       lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      for (let i = 1; i < path.length; i++) {
-        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-        lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+
+      if (!useTabsThisPass) {
+        for (let i = 1; i < path.length; i++) {
+          const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+          lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+        }
+        lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+      } else {
+        const cumLens  = pathLengths(path);
+        const totalLen = cumLens[path.length];
+        const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
+        const segs     = splitPathForTabs(path, cumLens, regions);
+
+        let currentZ = z;
+        let first    = true;
+        for (const seg of segs) {
+          const targetZ = seg.isTab ? tabZOff : z;
+          if (targetZ !== currentZ) {
+            lines.push(`G1 Z${Z(targetZ, zOff)} F${n(op.plungeRate)}`);
+            currentZ = targetZ;
+          }
+          const feedStr = first ? ` F${n(op.feedrate)}` : "";
+          lines.push(`G1 X${X(seg.p1.x, ox)} Y${Y(seg.p1.y, oy)}${feedStr}`);
+          first = false;
+        }
+        // Ensure we return to full cut depth (if last segment was a tab).
+        if (currentZ !== z) lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
       }
-      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
     }
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);

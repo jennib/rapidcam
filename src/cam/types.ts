@@ -18,6 +18,13 @@ export interface ToolDef {
   safeZ: number;          // mm
 }
 
+export interface TabDef {
+  enabled: boolean;
+  count: number;    // tabs distributed evenly around the path
+  width: number;    // mm — arc-length of each tab
+  height: number;   // mm — material left standing above the cut floor
+}
+
 export interface CAMOperation {
   id: string;
   name: string;
@@ -38,6 +45,7 @@ export interface CAMOperation {
   // cut
   depth: number;              // mm below surface (negative)
   stepdown: number;           // mm per depth pass (ignored for drill)
+  tabs?: TabDef;              // profile only
 }
 
 export const DEFAULTS = {

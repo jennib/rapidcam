@@ -207,7 +207,7 @@ export class App {
       this.project.pushHistory,
       () => this.project.undoRedo("undo")
     );
-    new CamBar(dom.cambar, this.doc);
+    new CamBar(dom.cambar, this.doc, this.project.pushHistory);
     new VariablesBar(dom.variablesbar, this.doc, () => this.runSolve(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
