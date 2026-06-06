@@ -11,14 +11,14 @@ import {
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
 import { dist } from "../core/vec2";
-import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type ToolDef, type ToolType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { generateGCode } from "../cam/gcode";
 import { nextId } from "../model/ids";
 
 // ---- helpers ----------------------------------------------------------------
 
-type OpCombo = "profile-outside" | "profile-inside" | "engrave" | "drill";
+type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill";
 
 function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -41,6 +41,7 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
   switch (combo) {
     case "profile-outside":
     case "profile-inside":
+    case "pocket":
       return (
         e instanceof CircleEntity ||
         e instanceof RectEntity ||
@@ -199,6 +200,7 @@ export class CamBar {
     badge.className = `tp-badge tp-badge-${op.type}`;
     badge.textContent =
       op.type === "profile" ? (op.side === "outside" ? "OUT" : "IN")
+      : op.type === "pocket"  ? "PKT"
       : op.type === "engrave" ? "ENG"
       : "DRL";
     item.appendChild(badge);
@@ -290,11 +292,16 @@ export class CamBar {
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
-      entityIds:   new Set<string>(existing?.entityIds ?? [...preSelected]),
-      tabsEnabled: existing?.tabs?.enabled ?? false,
-      tabCount:    existing?.tabs?.count   ?? 4,
-      tabWidth:    existing?.tabs?.width   ?? 4,
-      tabHeight:   existing?.tabs?.height  ?? 2,
+      entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
+      tabsEnabled:  existing?.tabs?.enabled ?? false,
+      tabCount:     existing?.tabs?.count   ?? 4,
+      tabWidth:     existing?.tabs?.width   ?? 4,
+      tabHeight:    existing?.tabs?.height  ?? 2,
+      stepover:     existing?.stepover ?? DEFAULTS.stepover,
+      leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
+      leadInLen:    existing?.leadIn?.length  ?? 2,
+      leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
+      leadOutLen:   existing?.leadOut?.length ?? 2,
     };
 
     let renderEntities: () => void;
@@ -395,9 +402,10 @@ export class CamBar {
     typeSelect.className = "unit";
     const combos: [OpCombo, string][] = [
       ["profile-outside", "Profile (outside)"],
-      ["profile-inside", "Profile (inside)"],
-      ["engrave", "Engrave"],
-      ["drill", "Drill"],
+      ["profile-inside",  "Profile (inside)"],
+      ["pocket",          "Pocket (interior clear)"],
+      ["engrave",         "Engrave"],
+      ["drill",           "Drill"],
     ];
     for (const [v, l] of combos) {
       const o = document.createElement("option");
@@ -644,6 +652,17 @@ export class CamBar {
     });
     const stepRow = this.dField("Stepdown (mm)", stepInp);
     cutSec.appendChild(stepRow);
+
+    const stepoverInp = document.createElement("input");
+    stepoverInp.type = "number"; stepoverInp.className = "dim"; stepoverInp.step = "any";
+    stepoverInp.min = "0.01"; stepoverInp.max = "1";
+    stepoverInp.value = String(state.stepover);
+    stepoverInp.addEventListener("change", () => {
+      const v = parseFloat(stepoverInp.value); if (isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
+    });
+    const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
+    cutSec.appendChild(stepoverRow);
+
     body.appendChild(cutSec);
 
     // tabs section — profile ops only
@@ -673,7 +692,7 @@ export class CamBar {
     body.appendChild(tabsSec);
 
     updateTabsVisibility = () => {
-      const isProfile    = state.combo.startsWith("profile");
+      const isProfile = state.combo === "profile-outside" || state.combo === "profile-inside";
       tabsSec.style.display = isProfile ? "" : "none";
       const fieldsOn = isProfile && state.tabsEnabled;
       tabCountRow.el.style.display  = fieldsOn ? "" : "none";
@@ -686,6 +705,44 @@ export class CamBar {
       state.tabsEnabled = tabEnabledCb.checked;
       updateTabsVisibility();
     });
+
+    // lead-in / lead-out section (profile ops only)
+    let updateLeadVisibility: () => void = () => {};
+
+    const leadSec = this.dSection("Lead-in / Lead-out");
+    body.appendChild(leadSec);
+
+    const leadTypes: [LeadType, string][] = [["none", "None"], ["linear", "Linear"], ["arc", "Arc (90°)"]];
+
+    const makeLeadSelect = (get: () => string, set: (v: LeadType) => void) => {
+      const sel = document.createElement("select");
+      sel.className = "unit";
+      for (const [v, l] of leadTypes) {
+        const o = document.createElement("option"); o.value = v; o.textContent = l;
+        sel.appendChild(o);
+      }
+      sel.value = get();
+      sel.addEventListener("change", () => { set(sel.value as LeadType); updateLeadVisibility(); });
+      return sel;
+    };
+
+    const liSel = makeLeadSelect(() => state.leadInType, (v) => { state.leadInType = v; });
+    leadSec.appendChild(this.dField("Lead-in", liSel));
+    const liLenRow = numRow("Lead-in length (mm)", () => state.leadInLen,  (v) => { state.leadInLen  = Math.max(0.1, v); });
+    leadSec.appendChild(liLenRow.el);
+
+    const loSel = makeLeadSelect(() => state.leadOutType, (v) => { state.leadOutType = v; });
+    leadSec.appendChild(this.dField("Lead-out", loSel));
+    const loLenRow = numRow("Lead-out length (mm)", () => state.leadOutLen, (v) => { state.leadOutLen = Math.max(0.1, v); });
+    leadSec.appendChild(loLenRow.el);
+
+    updateLeadVisibility = () => {
+      const isProfile = state.combo.startsWith("profile");
+      leadSec.style.display        = isProfile ? "" : "none";
+      liLenRow.el.style.display    = (isProfile && state.leadInType  !== "none") ? "" : "none";
+      loLenRow.el.style.display    = (isProfile && state.leadOutType !== "none") ? "" : "none";
+    };
+    updateLeadVisibility();
 
     // geometry section
     const geoSec = this.dSection("Geometry");
@@ -895,13 +952,17 @@ export class CamBar {
 
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
-      stepRow.style.display = state.combo === "drill" ? "none" : "";
+      stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+      stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       updateVBitHint();
       updateTabsVisibility();
+      updateLeadVisibility();
       renderEntities();
     });
-    stepRow.style.display = state.combo === "drill" ? "none" : "";
+    stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+    stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     updateTabsVisibility();
+    updateLeadVisibility();
     renderEntities();
 
     // footer
@@ -921,8 +982,11 @@ export class CamBar {
       let type: CAMOpType, side: "outside" | "inside";
       if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
       else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
+      else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
+
+      const isProfile = type === "profile";
 
       const op: CAMOperation = {
         id: existing?.id ?? nextId("cam"),
@@ -936,12 +1000,15 @@ export class CamBar {
         feedrate: state.feedrate,
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
-        tabs: type === "profile" ? {
+        stepover: state.stepover,
+        tabs: isProfile ? {
           enabled: state.tabsEnabled,
           count:   state.tabCount,
           width:   state.tabWidth,
           height:  state.tabHeight,
         } : undefined,
+        leadIn:  isProfile && state.leadInType  !== "none" ? { type: state.leadInType,  length: state.leadInLen  } : undefined,
+        leadOut: isProfile && state.leadOutType !== "none" ? { type: state.leadOutType, length: state.leadOutLen } : undefined,
       };
 
       if (existing) {
@@ -986,6 +1053,7 @@ export class CamBar {
     const prefix =
       combo === "profile-outside" ? "Profile (outside)"
       : combo === "profile-inside" ? "Profile (inside)"
+      : combo === "pocket"  ? "Pocket"
       : combo === "engrave" ? "Engrave"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;

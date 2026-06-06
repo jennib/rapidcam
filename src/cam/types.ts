@@ -1,6 +1,6 @@
 import type { EntityId } from "../model/entities";
 
-export type CAMOpType = "profile" | "engrave" | "drill";
+export type CAMOpType = "profile" | "engrave" | "drill" | "pocket";
 
 export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill";
 
@@ -16,6 +16,13 @@ export interface ToolDef {
   plungeRate: number;     // mm/min
   spindleSpeed: number;   // rpm
   safeZ: number;          // mm
+}
+
+export type LeadType = "none" | "linear" | "arc";
+
+export interface LeadDef {
+  type: LeadType;
+  length: number; // mm
 }
 
 export interface TabDef {
@@ -46,6 +53,11 @@ export interface CAMOperation {
   depth: number;              // mm below surface (negative)
   stepdown: number;           // mm per depth pass (ignored for drill)
   tabs?: TabDef;              // profile only
+  // pocket
+  stepover: number;           // fraction of tool diameter (default 0.4)
+  // lead-in / lead-out (profile only)
+  leadIn?: LeadDef;
+  leadOut?: LeadDef;
 }
 
 export const DEFAULTS = {
@@ -60,6 +72,7 @@ export const DEFAULTS = {
   safeZ: 5,
   depth: -3,
   stepdown: 1.5,
+  stepover: 0.4,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

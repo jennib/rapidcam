@@ -23,6 +23,7 @@ import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
+import { rasterRows } from "./pocket";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -67,14 +68,17 @@ function rasterizeOp(
   const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
 
-  // Chain any selected line segments into a closed polygon for profile ops.
-  if (op.type === "profile") {
+  // Chain any selected line segments into a closed polygon for profile/pocket ops.
+  if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length >= 3) {
       const polygon = chainLines(lineEnts);
-      if (polygon) rasProfilePolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
+      if (polygon) {
+        if (op.type === "pocket") rasPocketPolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
+        else rasProfilePolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
+      }
       lineEnts.forEach(e => lineSegIds.add(e.id));
     }
   }
@@ -107,6 +111,14 @@ function rasterizeOp(
       else if (ent instanceof BezierEntity)
         sweepPolyline(op, data, gridW, gridH, stockT,
           flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
+    } else if (op.type === "pocket") {
+      if (ent instanceof CircleEntity)
+        rasPocketCircle(ent.center.x, ent.center.y, ent.radius,
+          op, data, gridW, gridH, stockT, stamp, stepR);
+      else if (ent instanceof RectEntity)
+        rasPocketPolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
+      else if (ent instanceof PolylineEntity && ent.closed)
+        rasPocketPolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
     } else { // profile
       if (ent instanceof CircleEntity)
         rasProfileCircle(ent.center.x, ent.center.y, ent.radius,
@@ -357,6 +369,46 @@ function rasProfileCircle(
   const cutR  = op.side === "outside" ? r + toolR : r - toolR;
   if (cutR <= 0) return;
   sweepCircle(op, data, gridW, gridH, stockT, cx, cy, cutR, stamp, stepR);
+}
+
+function rasPocketPolygon(
+  verts: Vec2[], op: CAMOperation,
+  _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
+  stamp: StampFn, stepR: number,
+): void {
+  const toolR    = op.diameter / 2;
+  const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const insets   = offsetPolygon(verts, -toolR);
+  for (const inset of insets) {
+    if (inset.length < 2) continue;
+    const rows = rasterRows(inset, stepover);
+    for (const z of depthPasses(op)) {
+      const depth = stockT + z;
+      for (const row of rows)
+        for (let i = 0; i + 1 < row.length; i += 2)
+          walkSegment(row[i], row[i + 1], stepR, depth, stamp);
+      // Sweep inset boundary (finish pass)
+      const np = inset.length;
+      for (let i = 0; i < np; i++)
+        walkSegment(inset[i], inset[(i + 1) % np], stepR, depth, stamp);
+    }
+  }
+}
+
+function rasPocketCircle(
+  cx: number, cy: number, r: number, op: CAMOperation,
+  data: Float32Array, gridW: number, gridH: number, stockT: number,
+  stamp: StampFn, stepR: number,
+): void {
+  const toolR = op.diameter / 2;
+  const cutR  = r - toolR;
+  if (cutR <= 0) return;
+  const nSegs = Math.max(64, Math.ceil(2 * Math.PI * cutR / 0.5));
+  const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
+    const a = (i / nSegs) * 2 * Math.PI;
+    return { x: cx + cutR * Math.cos(a), y: cy + cutR * Math.sin(a) };
+  });
+  rasPocketPolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
 }
 
 // ---------------------------------------------------------------------------
