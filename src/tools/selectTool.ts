@@ -1,5 +1,5 @@
 import { Vec2, dist, sub } from "../core/vec2";
-import { Bounds, LineEntity } from "../model/entities";
+import { Bounds, LineEntity, TextEntity } from "../model/entities";
 import { PointRef, pointRefKey, Constraint, constraintAnchors, ConstraintType } from "../model/constraints";
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
@@ -11,6 +11,7 @@ import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 import { buildConstraintsFor } from "../ui/constraintBar";
+import { openTextDialog } from "../ui/textEditDialog";
 
 const CONSTRAINT_KEYS: Record<string, ConstraintType> = {
   h: "horizontal",
@@ -394,6 +395,24 @@ export class SelectTool implements Tool {
     }
 
     if (!hitEntId) return;
+
+    // Double-click on TextEntity → open inline editor
+    const hitEnt = ctx.doc.entities.find(x => x.id === hitEntId);
+    if (hitEnt instanceof TextEntity) {
+      openTextDialog(
+        { text: hitEnt.text, fontId: hitEnt.fontId, sizeMM: hitEnt.sizeMM, angle: hitEnt.angle },
+        "Apply",
+        p => {
+          ctx.pushHistory();
+          hitEnt.text   = p.text;
+          hitEnt.fontId = p.fontId;
+          hitEnt.sizeMM = p.sizeMM;
+          hitEnt.angle  = p.angle;
+          ctx.doc.emitChange();
+        },
+      );
+      return;
+    }
 
     // Chain select: find all connected entities
     const toSelect = new Set<string>();
