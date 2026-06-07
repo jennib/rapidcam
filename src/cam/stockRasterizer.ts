@@ -17,8 +17,9 @@ import type { Vec2 } from "../core/vec2";
 import type { CADDocument } from "../model/document";
 import {
   LineEntity, CircleEntity, RectEntity,
-  PolylineEntity, ArcEntity, BezierEntity,
+  PolylineEntity, ArcEntity, BezierEntity, TextEntity,
 } from "../model/entities";
+import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon } from "./offset";
@@ -87,6 +88,20 @@ function rasterizeOp(
     if (lineSegIds.has(id)) continue;
     const ent = entityMap.get(id) as any;
     if (!ent || ent.isConstruction) continue;
+
+    // Expand TextEntity to glyph contours and re-dispatch
+    if (ent instanceof TextEntity) {
+      const contours = textToContours(ent);
+      for (const c of contours) {
+        if (op.type === "engrave")
+          sweepPolyline(op, data, gridW, gridH, stockT, c.points, c.closed, stamp, stepR);
+        else if (op.type === "pocket" && c.closed)
+          rasPocketPolygon(c.points, op, data, gridW, gridH, stockT, stamp, stepR);
+        else if (op.type === "profile" && c.closed)
+          rasProfilePolygon(c.points, op, data, gridW, gridH, stockT, stamp, stepR);
+      }
+      continue;
+    }
 
     if (op.type === "drill") {
       if (ent instanceof CircleEntity) {

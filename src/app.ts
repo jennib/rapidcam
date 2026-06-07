@@ -47,6 +47,7 @@ import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
+import { initBundledFonts } from "./core/fontManager";
 
 const HOVER_TOLERANCE_PX = 8;
 
@@ -217,6 +218,9 @@ export class App {
     this.bindEvents();
     this.handleResize();
     this.initialFit();
+
+    // Load bundled fonts in the background; re-render when they arrive
+    void initBundledFonts(() => this.requestRender());
 
     // Show welcome screen on startup for a fresh empty project
     showWelcomeScreen(

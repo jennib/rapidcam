@@ -11,8 +11,10 @@ import {
   PolylineEntity,
   ArcEntity,
   BezierEntity,
+  TextEntity,
 } from "../model/entities";
-import { constraintAnchors, CONSTRAINT_GLYPH, Geo } from "../model/constraints";
+import { getFont } from "../core/fontManager";
+import { constraintAnchors, CONSTRAINT_GLYPH, Geo, constraintEntityIds } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
 import { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
@@ -330,6 +332,34 @@ export class Renderer {
         ctx.bezierCurveTo(s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
         break;
       }
+      case "text": {
+        const te = e as TextEntity;
+        const font = getFont(te.fontId);
+        if (!font) {
+          // Placeholder bounding box
+          const sp = view.worldToScreen(te.position);
+          const w = view.toScreenLen(te.sizeMM * 0.6 * Math.max(te.text.length, 1));
+          const h = view.toScreenLen(te.sizeMM * 1.2);
+          ctx.rect(sp.x, sp.y - h, w, h);
+          break;
+        }
+        ctx.stroke(); // flush any pending path
+        ctx.beginPath();
+        const sp = view.worldToScreen(te.position);
+        const sizePx = view.toScreenLen(te.sizeMM);
+        ctx.save();
+        ctx.translate(sp.x, sp.y);
+        ctx.rotate(-te.angle);
+        // opentype path is Y-down; canvas is also Y-down (after worldToScreen) ✓
+        const otPath = font.getPath(te.text, 0, 0, sizePx);
+        const pathData = otPath.toPathData(2);
+        if (pathData) {
+          const p2d = new Path2D(pathData);
+          ctx.stroke(p2d);
+        }
+        ctx.restore();
+        return; // already stroked, skip the outer stroke() call
+      }
     }
     ctx.stroke();
   }
@@ -384,7 +414,18 @@ export class Renderer {
     const geo: Geo = (id) => byId.get(id);
     const unit = doc.displayUnit;
 
+    const isVisible = (id: string) => {
+      if (id === ORIGIN_ENTITY_ID) return true;
+      const e = byId.get(id);
+      if (!e) return false;
+      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      return layer.visible;
+    };
+
     for (const dim of doc.dimensions) {
+      if (dim.entities.some(id => !isVisible(id))) continue;
+      if (dim.points.some(p => !isVisible(p.entityId))) continue;
+
       const layout = dimensionLayout(dim, geo, unit);
       if (!layout) continue;
 
@@ -466,11 +507,42 @@ export class Renderer {
     const geo: Geo = (id) => byId.get(id);
     const stack = new Map<string, number>(); // spread multiple badges at one anchor
 
+    const isVisible = (id: string) => {
+      if (id === ORIGIN_ENTITY_ID) return true;
+      const e = byId.get(id);
+      if (!e) return false;
+      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      return layer.visible;
+    };
+
     ctx.font = "10px ui-monospace, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
     for (const c of doc.constraints) {
+      if (c.entities.some(id => !isVisible(id))) continue;
+      if (c.points.some(p => !isVisible(p.entityId))) continue;
+
+      let shouldShow = c.id === doc.selectedConstraintId || overlay.hoverConstraint === c.id;
+      if (!shouldShow) {
+        for (const eid of constraintEntityIds(c)) {
+          if (eid === overlay.hover) {
+            shouldShow = true;
+            break;
+          }
+          const e = byId.get(eid);
+          if (e && e.selected) {
+            shouldShow = true;
+            break;
+          }
+          if (eid === ORIGIN_ENTITY_ID && doc.selectedPoints.some(p => p.entityId === ORIGIN_ENTITY_ID)) {
+            shouldShow = true;
+            break;
+          }
+        }
+      }
+      if (!shouldShow) continue;
+
       const anchors = constraintAnchors(c, geo);
       for (const anchor of anchors) {
         const s = view.worldToScreen(anchor);
@@ -524,6 +596,10 @@ export class Renderer {
     for (const ref of doc.selectedPoints) {
       const ent = byId.get(ref.entityId);
       if (!ent) continue;
+      
+      const layer = doc.layers.find(l => l.id === ent.layerId) || doc.layers[0];
+      if (!layer.visible && ent.id !== ORIGIN_ENTITY_ID) continue;
+
       let pos: Vec2;
       try {
         pos = ent.getPoint(ref.key);

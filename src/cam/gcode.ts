@@ -1,6 +1,7 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity } from "../model/entities";
+import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity } from "../model/entities";
+import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { offsetPolygon } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -367,6 +368,24 @@ function toolpathBody(
     if (op.type === "drill") {
       if (ent instanceof CircleEntity)
         lines.push(...drillPoint(ent.center.x, ent.center.y, op, ox, oy, zOff));
+      continue;
+    }
+
+    // Expand TextEntity to glyph contours and re-dispatch
+    if (ent instanceof TextEntity) {
+      const contours = textToContours(ent);
+      if (contours.length === 0) {
+        lines.push(`; NOTE: text "${ent.text}" — font not loaded or no glyphs`);
+        continue;
+      }
+      for (const c of contours) {
+        if (op.type === "engrave")
+          lines.push(...engravePoints(c.points, c.closed, op, ox, oy, zOff));
+        else if (op.type === "pocket" && c.closed)
+          lines.push(...pocketPolygon(c.points, op, ox, oy, zOff));
+        else if (op.type === "profile" && c.closed)
+          lines.push(...profilePolygon(c.points, op, ox, oy, zOff));
+      }
       continue;
     }
 

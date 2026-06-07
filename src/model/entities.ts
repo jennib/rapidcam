@@ -14,7 +14,7 @@ import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flatten
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point";
+export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point" | "text";
 
 export interface Bounds {
   min: Vec2;
@@ -94,13 +94,13 @@ export abstract class Entity {
     throw new Error(`${this.type} has no point '${key}'`);
   }
   /** Write a point DOF by key. */
-  setPoint(_key: string, _v: Vec2): void {}
+  setPoint(_key: string, _v: Vec2): void { }
   /** Scalar DOFs (e.g. radius). */
   dofScalars(): DofScalar[] {
     return [];
   }
   /** Write a scalar DOF by key. */
-  setScalar(_key: string, _v: number): void {}
+  setScalar(_key: string, _v: number): void { }
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +702,91 @@ export class BezierEntity extends Entity {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Text entity — stores editable text with font metadata.
+ * Remains editable until CAM export, where it is expanded to glyph contours.
+ * `position` is the baseline-left anchor in world mm (Y-up).
+ * `angle` is CCW rotation in radians (world Y-up convention).
+ */
+export class TextEntity extends Entity {
+  readonly type = "text" as const;
+  text: string;
+  fontId: string;
+  sizeMM: number;
+  position: Vec2;
+  angle: number;
+
+  constructor(text: string, fontId: string, sizeMM: number, position: Vec2, angle = 0, id?: EntityId) {
+    super(id);
+    this.text = text;
+    this.fontId = fontId;
+    this.sizeMM = sizeMM;
+    this.position = clone(position);
+    this.angle = angle;
+  }
+
+  override bounds(): Bounds {
+    const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
+    const h = this.sizeMM * 1.2;
+    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    const corners = [
+      { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h },
+    ].map(p => ({
+      x: this.position.x + p.x * c - p.y * s,
+      y: this.position.y + p.x * s + p.y * c,
+    }));
+    return {
+      min: { x: Math.min(...corners.map(p => p.x)), y: Math.min(...corners.map(p => p.y)) },
+      max: { x: Math.max(...corners.map(p => p.x)), y: Math.max(...corners.map(p => p.y)) },
+    };
+  }
+
+  override distanceTo(p: Vec2): number {
+    const dx = p.x - this.position.x;
+    const dy = p.y - this.position.y;
+    const c = Math.cos(-this.angle), s = Math.sin(-this.angle);
+    const lx = dx * c - dy * s;
+    const ly = dx * s + dy * c;
+    const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
+    const h = this.sizeMM * 1.2;
+    const ddx = lx < 0 ? -lx : lx > w ? lx - w : 0;
+    const ddy = ly < 0 ? -ly : ly > h ? ly - h : 0;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+
+  override snapPoints(): SnapPoint[] {
+    return [{ pos: clone(this.position), kind: "endpoint", entityId: this.id, key: "pos" }];
+  }
+
+  override translate(d: Vec2): void {
+    this.position = add(this.position, d);
+  }
+
+  override duplicate(): TextEntity {
+    const e = new TextEntity(this.text, this.fontId, this.sizeMM, this.position, this.angle);
+    e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
+    return e;
+  }
+
+  override dofPoints(): DofPoint[] {
+    return [{ key: "pos", pos: clone(this.position) }];
+  }
+
+  override getPoint(key: string): Vec2 {
+    if (key === "pos") return clone(this.position);
+    return super.getPoint(key);
+  }
+
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "pos") this.position = clone(v);
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 /** Expand a bounds by `m` mm on all sides (handy for hit-test margins). */
 export function inflate(b: Bounds, m: number): Bounds {

@@ -7,12 +7,14 @@ import {
   RectEntity,
   ArcEntity,
   BezierEntity,
+  TextEntity,
 } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
 import { dist } from "../core/vec2";
 import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
+import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
 import { nextId } from "../model/ids";
 
@@ -33,6 +35,8 @@ function describeEntity(e: Entity, doc: CADDocument): string {
     return `Rectangle — ${formatLength(e.width, u)} × ${formatLength(e.height, u)}`;
   if (e instanceof PolylineEntity)
     return `Polyline — ${e.points.length} pts${e.closed ? " (closed)" : " (open)"}`;
+  if (e instanceof TextEntity)
+    return `Text — "${e.text.length > 20 ? e.text.slice(0, 20) + "…" : e.text}"`;
   return "Entity";
 }
 
@@ -43,6 +47,7 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
     case "profile-inside":
     case "pocket":
       return (
+        e instanceof TextEntity ||
         e instanceof CircleEntity ||
         e instanceof RectEntity ||
         e instanceof LineEntity ||
@@ -145,11 +150,24 @@ export class CamBar {
     this.content.appendChild(this.opsList);
     this.renderOps();
 
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:6px;";
+
     const addBtn = document.createElement("button");
     addBtn.className = "cam-add-btn";
+    addBtn.style.flex = "1";
     addBtn.textContent = "+ Add Toolpath";
     addBtn.addEventListener("click", () => this.openDialog(null));
-    this.content.appendChild(addBtn);
+    btnRow.appendChild(addBtn);
+
+    const libBtn = document.createElement("button");
+    libBtn.className = "cam-add-btn";
+    libBtn.style.flex = "1";
+    libBtn.textContent = "Manage Tools";
+    libBtn.addEventListener("click", () => openToolLibraryDialog());
+    btnRow.appendChild(libBtn);
+
+    this.content.appendChild(btnRow);
 
     const sep = document.createElement("div");
     sep.className = "cam-sep";

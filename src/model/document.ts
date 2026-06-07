@@ -35,7 +35,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 
   return { ox, oy, zOffset };
 }
-import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity } from "./entities";
+import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity, TextEntity } from "./entities";
 import type { CAMOperation } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
@@ -63,7 +63,8 @@ type EntitySnapshot =
   | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string };
+  | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "text"; id: string; text: string; fontId: string; sizeMM: number; position: Vec2; angle: number; selected: boolean; isConstruction: boolean; layerId?: string };
 
 export interface DocSnapshot {
   entities: EntitySnapshot[];
@@ -402,6 +403,8 @@ export class CADDocument {
           return { type: "arc", id: e.id, center: { ...e.center }, radius: e.radius, startAngle: e.startAngle, endAngle: e.endAngle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof BezierEntity)
           return { type: "bezier", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, p2: { ...e.p2 }, p3: { ...e.p3 }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
+        if (e instanceof TextEntity)
+          return { type: "text", id: e.id, text: e.text, fontId: e.fontId, sizeMM: e.sizeMM, position: { ...e.position }, angle: e.angle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         const pe = e as PolylineEntity;
         return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed, selected: pe.selected, isConstruction: pe.isConstruction, layerId: pe.layerId };
       }),
@@ -462,6 +465,10 @@ export class CADDocument {
         }
         case "bezier": {
           e = new BezierEntity({ ...es.p0 }, { ...es.p1 }, { ...es.p2 }, { ...es.p3 }, es.id);
+          break;
+        }
+        case "text": {
+          e = new TextEntity(es.text, es.fontId, es.sizeMM, { ...es.position }, es.angle, es.id);
           break;
         }
       }
