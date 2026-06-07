@@ -29,6 +29,12 @@ export const ICONS = {
     '<path d="M4,12 A8,8 0 0,1 12,20"/>' +
     '<line x1="12" y1="20" x2="20" y2="20"/>',
   ),
+  // Two lines meeting at a corner, with a straight bevel cutting across.
+  chamfer: wrap(
+    '<line x1="4" y1="4" x2="4" y2="14"/>' +
+    '<line x1="4" y1="14" x2="14" y2="20"/>' +
+    '<line x1="14" y1="20" x2="20" y2="20"/>',
+  ),
   // A line split at a crossing edge, with the middle dashed to indicate removal.
   trim: wrap(
     '<line x1="3" y1="12" x2="10" y2="12"/>' +

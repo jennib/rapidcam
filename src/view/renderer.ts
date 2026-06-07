@@ -20,10 +20,12 @@ import { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
 import { Overlay, PreviewShape } from "./overlay";
+import { EntityStatusMap } from "../solver/solver";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private dpr = 1;
+  entityStatus: EntityStatusMap = new Map();
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -259,6 +261,7 @@ export class Renderer {
 
       const isHover = overlay.hover === e.id;
       const isToolpathHighlight = doc.toolpathHighlightIds?.has(e.id) ?? false;
+      const dofStatus = this.entityStatus.get(e.id);
       const color = e.selected
         ? COLORS.entitySelected
         : isHover
@@ -267,7 +270,11 @@ export class Renderer {
             ? COLORS.toolpathHighlight
             : e.isConstruction
               ? COLORS.entityConstruction
-              : layer.color;
+              : dofStatus === "conflict"
+                ? COLORS.entityConflict
+                : dofStatus === "under-defined"
+                  ? COLORS.entityUnderDefined
+                  : layer.color;
       const width = e.selected || isToolpathHighlight ? 2 : 1.5;
       this.ctx.save();
       if (e.isConstruction) {
@@ -496,7 +503,7 @@ export class Renderer {
       : driving
         ? COLORS.dimensionText
         : COLORS.dimensionTextRef;
-    ctx.fillText(label, pos.x, pos.y + 0.5);
+    ctx.fillText(driving ? label : `(${label})`, pos.x, pos.y + 0.5);
   }
 
   // --- constraints ---------------------------------------------------------

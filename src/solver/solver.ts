@@ -18,7 +18,8 @@ import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import { Entity, ArcEntity } from "../model/entities";
 import { Constraint, Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { solveLinearSystem, matrixRank } from "./linalg";
+import { solveLinearSystem, matrixRank, determinedVariables } from "./linalg";
+import { EntityId } from "../model/entities";
 
 export interface SolveResult {
   hasConstraints: boolean;
@@ -341,6 +342,118 @@ function clampAngleToArc(angle: number, startAngle: number, endAngle: number): n
   const dStart = Math.abs(arcAngleDiff(angle, startAngle));
   const dEnd   = Math.abs(arcAngleDiff(angle, endAngle));
   return dStart <= dEnd ? startAngle : endAngle;
+}
+
+// ---------------------------------------------------------------------------
+// Per-entity DOF status for sketch coloring
+
+export type EntityStatus = "defined" | "under-defined" | "conflict";
+export type EntityStatusMap = Map<EntityId, EntityStatus>;
+
+/**
+ * Compute per-entity constraint status for sketch coloring.
+ *   "defined"      – all DOF variables of this entity are uniquely constrained
+ *   "under-defined"– some DOF variables remain free
+ *   "conflict"     – solver did not converge (over/conflicting constraints)
+ *
+ * Uses RREF null-space analysis: a variable is "determined" iff it has zero
+ * component in every null vector of the constraint Jacobian.
+ */
+export function computeEntityDofStatus(
+  doc: CADDocument,
+  lastResult: SolveResult | null,
+): EntityStatusMap {
+  const statusMap: EntityStatusMap = new Map();
+  const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
+  const geo: Geo = (id) => byId.get(id);
+
+  // Solver didn't converge → everything is in conflict
+  if (lastResult && lastResult.hasConstraints && !lastResult.converged) {
+    for (const e of doc.entities) statusMap.set(e.id, "conflict");
+    return statusMap;
+  }
+
+  // Build fixed set (identical logic to solve())
+  const fixed = new Set<string>();
+  for (const c of doc.constraints) {
+    if (c.type !== "fixed") continue;
+    for (const id of c.entities) {
+      const ent = byId.get(id);
+      if (!ent) continue;
+      for (const p of ent.dofPoints()) fixed.add(`${id}:${p.key}`);
+      for (const s of ent.dofScalars()) fixed.add(scalarKey(id, s.key));
+    }
+  }
+  const originEnt = byId.get(ORIGIN_ENTITY_ID);
+  if (originEnt) {
+    for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
+  }
+
+  // Build variable list with per-variable entity tracking
+  const vars: Variable[] = [];
+  const varEntIds: string[] = [];
+  for (const ent of doc.entities) {
+    for (const p of ent.dofPoints()) {
+      if (fixed.has(`${ent.id}:${p.key}`)) continue;
+      vars.push(pointComponent(ent, p.key, "x"), pointComponent(ent, p.key, "y"));
+      varEntIds.push(ent.id, ent.id);
+    }
+    for (const s of ent.dofScalars()) {
+      if (fixed.has(scalarKey(ent.id, s.key))) continue;
+      vars.push(scalarComponent(ent, s.key));
+      varEntIds.push(ent.id);
+    }
+  }
+
+  // Map entity → column indices in the variable vector
+  const entColsMap = new Map<string, number[]>();
+  for (let i = 0; i < vars.length; i++) {
+    const eid = varEntIds[i];
+    if (!entColsMap.has(eid)) entColsMap.set(eid, []);
+    entColsMap.get(eid)!.push(i);
+  }
+  // Entities with no solver variables (fixed or zero DOF) are always "defined"
+  for (const e of doc.entities) {
+    if (!entColsMap.has(e.id)) statusMap.set(e.id, "defined");
+  }
+
+  if (vars.length === 0) return statusMap;
+
+  // Build constraint Jacobian (no anchors/pins — pure constraint equations)
+  const active = doc.constraints.filter((c) => c.type !== "fixed");
+  const drivingDims = doc.dimensions.filter((d) => d.driving);
+
+  const evalR = (x: number[]): number[] => {
+    vars.forEach((v, i) => v.set(x[i]));
+    const out: number[] = [];
+    for (const c of active) for (const r of constraintResiduals(c, geo)) out.push(r);
+    for (const d of drivingDims) for (const r of dimensionResiduals(d, geo)) out.push(r);
+    return out;
+  };
+
+  const x = vars.map((v) => v.get());
+  const fx = evalR(x);
+
+  if (fx.length === 0) {
+    // No effective constraints → all under-defined
+    for (const [eid] of entColsMap) statusMap.set(eid, "under-defined");
+    evalR(x); // restore entity state
+    return statusMap;
+  }
+
+  const J = jacobian(evalR, x, fx);
+  evalR(x); // restore entity state
+
+  // Find which variable indices are uniquely determined by the constraints
+  const determined = determinedVariables(J);
+
+  // An entity is "defined" iff ALL its variables are determined
+  for (const [eid, cols] of entColsMap) {
+    const allDetermined = cols.every((ci) => determined.has(ci));
+    statusMap.set(eid, allDetermined ? "defined" : "under-defined");
+  }
+
+  return statusMap;
 }
 
 // ---------------------------------------------------------------------------

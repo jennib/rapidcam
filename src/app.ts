@@ -15,7 +15,7 @@ import { Viewport } from "./view/viewport";
 import { Renderer } from "./view/renderer";
 import { Overlay } from "./view/overlay";
 import { SnapEngine, SnapResult } from "./input/snapping";
-import { solve, PinMap } from "./solver/solver";
+import { solve, PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, ToolPointerEvent } from "./tools/tool";
 import { SelectTool, pickConstraintAt } from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
@@ -32,6 +32,7 @@ import { RotateTool } from "./tools/rotateTool";
 import { ScaleTool } from "./tools/scaleTool";
 import { TextTool } from "./tools/textTool";
 import { FilletTool } from "./tools/filletTool";
+import { ChamferTool } from "./tools/chamferTool";
 import { TrimTool } from "./tools/trimTool";
 import { MirrorTool } from "./tools/mirrorTool";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
@@ -160,6 +161,7 @@ export class App {
         // modify
         new OffsetTool(),
         new FilletTool(),
+        new ChamferTool(),
         new TrimTool(),
         new MirrorTool(),
         new RotateTool(),
@@ -341,7 +343,10 @@ export class App {
   private runSolve(pins?: PinMap): void {
     evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
     const res = solve(this.doc, pins);
-    if (!pins) this.lastSolveResult = res; // only store non-drag results for DOF checks
+    if (!pins) {
+      this.lastSolveResult = res; // only store non-drag results for DOF checks
+      this.renderer.entityStatus = computeEntityDofStatus(this.doc, res);
+    }
     this.statusBar.setSolveStatus(res.hasConstraints ? res : null);
     this.requestRender();
   }
