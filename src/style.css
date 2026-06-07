@@ -121,6 +121,30 @@ button.btn.danger:hover:not(:disabled) {
   color: #fff;
 }
 
+button.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+button.icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+button.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+button.icon-btn.danger:hover:not(:disabled) {
+  color: #ffcccc;
+  background: var(--danger);
+}
+
 /* ---------- Constraint bar ---------- */
 #constraintbar {
   display: flex;
@@ -265,7 +289,7 @@ button.cbtn.solve {
 
 /* ---------- Right panel ---------- */
 #right-panel {
-  width: 200px;
+  width: 250px;
   flex: 0 0 auto;
   border-left: 1px solid var(--border);
   display: flex;

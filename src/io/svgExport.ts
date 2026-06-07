@@ -15,6 +15,7 @@ import type { CADDocument } from "../model/document";
 import {
   LineEntity, CircleEntity, RectEntity,
   PolylineEntity, ArcEntity, BezierEntity,
+  TextEntity, Entity
 } from "../model/entities";
 
 const TAU = Math.PI * 2;
@@ -71,60 +72,87 @@ export function exportSvg(doc: CADDocument): string {
   const H = doc.canvas.height;
 
   const lines: string[] = [
-    `<svg xmlns="http://www.w3.org/2000/svg"`,
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"`,
     `     width="${sv(W)}mm" height="${sv(H)}mm"`,
     `     viewBox="0 0 ${sv(W)} ${sv(H)}">`,
-    `  <g stroke="black" stroke-width="0.5" fill="none">`,
   ];
 
+  // Group entities by layer
+  const byLayer = new Map<string, Entity[]>();
   for (const e of doc.entities) {
     if (e.isConstruction) continue;
-
-    if (e instanceof LineEntity) {
-      lines.push(
-        `    <line x1="${sv(e.a.x)}" y1="${sv(fy(e.a.y, H))}"` +
-        ` x2="${sv(e.b.x)}" y2="${sv(fy(e.b.y, H))}" />`,
-      );
-
-    } else if (e instanceof CircleEntity) {
-      lines.push(
-        `    <circle cx="${sv(e.center.x)}" cy="${sv(fy(e.center.y, H))}"` +
-        ` r="${sv(e.radius)}" />`,
-      );
-
-    } else if (e instanceof RectEntity) {
-      // In Y-up, minPt is bottom-left and maxPt is top-right.
-      // In SVG (Y-down), the rect's top edge corresponds to maxPt.y in Y-up.
-      lines.push(
-        `    <rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}"` +
-        ` width="${sv(e.width)}" height="${sv(e.height)}" />`,
-      );
-
-    } else if (e instanceof PolylineEntity) {
-      if (e.points.length < 2) continue;
-      const pts = ptList(e.points, H);
-      if (e.closed) {
-        lines.push(`    <polygon points="${pts}" />`);
-      } else {
-        lines.push(`    <polyline points="${pts}" />`);
-      }
-
-    } else if (e instanceof ArcEntity) {
-      lines.push(
-        `    <path d="${arcPath(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, H)}" />`,
-      );
-
-    } else if (e instanceof BezierEntity) {
-      const x0 = sv(e.p0.x), y0 = sv(fy(e.p0.y, H));
-      const x1 = sv(e.p1.x), y1 = sv(fy(e.p1.y, H));
-      const x2 = sv(e.p2.x), y2 = sv(fy(e.p2.y, H));
-      const x3 = sv(e.p3.x), y3 = sv(fy(e.p3.y, H));
-      lines.push(`    <path d="M ${x0} ${y0} C ${x1} ${y1} ${x2} ${y2} ${x3} ${y3}" />`);
-    }
+    const layerId = e.layerId || "layer-0";
+    if (!byLayer.has(layerId)) byLayer.set(layerId, []);
+    byLayer.get(layerId)!.push(e);
   }
 
-  lines.push("  </g>");
-  lines.push("</svg>");
+  for (const layer of doc.layers) {
+    if (!layer.visible) continue;
+    const ents = byLayer.get(layer.id) || [];
+    if (ents.length === 0) continue;
 
+    lines.push(`  <g id="${layer.name}" inkscape:groupmode="layer" inkscape:label="${layer.name}" stroke="${layer.color}" stroke-width="0.5" fill="none">`);
+
+    const groupMap = new Map<string, Entity[]>();
+    const ungrouped: Entity[] = [];
+
+    for (const e of ents) {
+      const g = doc.groupOf(e.id);
+      if (g) {
+        if (!groupMap.has(g.id)) groupMap.set(g.id, []);
+        groupMap.get(g.id)!.push(e);
+      } else {
+        ungrouped.push(e);
+      }
+    }
+
+    const renderEnt = (e: Entity, indent: string) => {
+      if (e instanceof LineEntity) {
+        lines.push(`${indent}<line x1="${sv(e.a.x)}" y1="${sv(fy(e.a.y, H))}" x2="${sv(e.b.x)}" y2="${sv(fy(e.b.y, H))}" />`);
+      } else if (e instanceof CircleEntity) {
+        lines.push(`${indent}<circle cx="${sv(e.center.x)}" cy="${sv(fy(e.center.y, H))}" r="${sv(e.radius)}" />`);
+      } else if (e instanceof RectEntity) {
+        // In Y-up, minPt is bottom-left and maxPt is top-right.
+        // In SVG (Y-down), the rect's top edge corresponds to maxPt.y in Y-up.
+        lines.push(`${indent}<rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}" width="${sv(e.width)}" height="${sv(e.height)}" />`);
+      } else if (e instanceof PolylineEntity) {
+        if (e.points.length < 2) return;
+        const pts = ptList(e.points, H);
+        if (e.closed) {
+          lines.push(`${indent}<polygon points="${pts}" />`);
+        } else {
+          lines.push(`${indent}<polyline points="${pts}" />`);
+        }
+      } else if (e instanceof ArcEntity) {
+        lines.push(`${indent}<path d="${arcPath(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, H)}" />`);
+      } else if (e instanceof BezierEntity) {
+        const x0 = sv(e.p0.x), y0 = sv(fy(e.p0.y, H));
+        const x1 = sv(e.p1.x), y1 = sv(fy(e.p1.y, H));
+        const x2 = sv(e.p2.x), y2 = sv(fy(e.p2.y, H));
+        const x3 = sv(e.p3.x), y3 = sv(fy(e.p3.y, H));
+        lines.push(`${indent}<path d="M ${x0} ${y0} C ${x1} ${y1} ${x2} ${y2} ${x3} ${y3}" />`);
+      } else if (e instanceof TextEntity) {
+        const x = sv(e.position.x);
+        const y = sv(fy(e.position.y, H));
+        const deg = sv(-e.angle * 180 / Math.PI);
+        const tf = deg !== "0" ? ` transform="rotate(${deg}, ${x}, ${y})"` : "";
+        const escaped = e.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        // Stroke is disabled and fill is enabled so the text looks solid.
+        lines.push(`${indent}<text x="${x}" y="${y}" font-family="${e.fontId}, sans-serif" font-size="${sv(e.sizeMM)}" stroke="none" fill="${layer.color}"${tf}>${escaped}</text>`);
+      }
+    };
+
+    for (const e of ungrouped) renderEnt(e, "    ");
+
+    for (const [gid, gents] of groupMap.entries()) {
+      lines.push(`    <g id="${gid}">`);
+      for (const e of gents) renderEnt(e, "      ");
+      lines.push(`    </g>`);
+    }
+
+    lines.push("  </g>");
+  }
+
+  lines.push("</svg>");
   return lines.join("\n");
 }

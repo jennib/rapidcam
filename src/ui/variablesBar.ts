@@ -63,6 +63,13 @@ export class VariablesBar {
   }
 
   private render(): void {
+    let focusVid: string | null = null;
+    let focusField: string | null = null;
+    if (document.activeElement instanceof HTMLElement) {
+      focusVid = document.activeElement.dataset.vid || null;
+      focusField = document.activeElement.dataset.field || null;
+    }
+
     this.listEl.innerHTML = "";
 
     for (const v of this.doc.variables) {
@@ -73,6 +80,8 @@ export class VariablesBar {
       const nameInput = document.createElement("input");
       nameInput.className = "dim";
       nameInput.value = v.name;
+      nameInput.dataset.vid = v.id;
+      nameInput.dataset.field = "name";
       nameInput.style.cssText = "width:72px;flex:0 0 72px;font-family:var(--mono);";
       nameInput.title = "Variable name";
 
@@ -84,6 +93,8 @@ export class VariablesBar {
       const valInput = document.createElement("input");
       valInput.className = "dim";
       valInput.value = v.expr;
+      valInput.dataset.vid = v.id;
+      valInput.dataset.field = "val";
       valInput.style.cssText = "flex:1;min-width:0;font-family:var(--mono);";
       valInput.title = "Value (number with optional unit, e.g. 50mm)";
 
@@ -103,13 +114,16 @@ export class VariablesBar {
         if (newName === v.name) return;
         if (!isValidName(newName)) { showErr("Invalid name"); nameInput.value = v.name; return; }
         if (isDuplicateName(newName, this.doc.variables, v.id)) { showErr("Duplicate"); nameInput.value = v.name; return; }
-        this.pushHistory();
-        this.doc.updateVariable(v.id, { name: newName });
-        // Update any dimension expressions that reference the old name
-        for (const d of this.doc.dimensions) {
-          if (d.expr) d.expr = d.expr.replace(new RegExp(`\\b${v.name}\\b`, "g"), newName);
-        }
-        this.runSolve();
+        
+        setTimeout(() => {
+          this.pushHistory();
+          this.doc.updateVariable(v.id, { name: newName });
+          // Update any dimension expressions that reference the old name
+          for (const d of this.doc.dimensions) {
+            if (d.expr) d.expr = d.expr.replace(new RegExp(`\\b${v.name}\\b`, "g"), newName);
+          }
+          this.runSolve();
+        }, 0);
       });
       nameInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
@@ -120,9 +134,11 @@ export class VariablesBar {
       const commitVal = () => {
         const newExpr = valInput.value.trim();
         if (newExpr === v.expr) return;
-        this.pushHistory();
-        this.doc.updateVariable(v.id, { expr: newExpr });
-        this.runSolve();
+        setTimeout(() => {
+          this.pushHistory();
+          this.doc.updateVariable(v.id, { expr: newExpr });
+          this.runSolve();
+        }, 0);
       };
       valInput.addEventListener("blur", commitVal);
       valInput.addEventListener("keydown", (e) => {
@@ -134,6 +150,8 @@ export class VariablesBar {
       const delBtn = document.createElement("button");
       delBtn.className = "btn";
       delBtn.textContent = "×";
+      delBtn.dataset.vid = v.id;
+      delBtn.dataset.field = "del";
       delBtn.title = "Delete variable";
       delBtn.style.cssText = "padding:0 6px;flex:0 0 auto;";
       delBtn.onclick = () => {
@@ -148,6 +166,13 @@ export class VariablesBar {
       row.appendChild(delBtn);
       row.appendChild(errEl);
       this.listEl.appendChild(row);
+    }
+
+    if (focusVid && focusField) {
+      setTimeout(() => {
+        const toFocus = this.listEl.querySelector(`[data-vid="${focusVid}"][data-field="${focusField}"]`) as HTMLElement;
+        if (toFocus) toFocus.focus();
+      }, 0);
     }
   }
 

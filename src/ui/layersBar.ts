@@ -115,13 +115,13 @@ export class LayersBar {
       };
       row.appendChild(colorInp);
 
-      // Name input
       const nameInp = document.createElement("input");
       nameInp.type = "text";
       nameInp.value = layer.name;
       nameInp.className = "dim";
       nameInp.style.flex = "1";
-      nameInp.style.width = "10px"; // let flex grow
+      nameInp.style.minWidth = "60px"; // let flex grow but stay readable
+      nameInp.title = layer.name;
       nameInp.onchange = () => {
         this.pushHistory();
         layer.name = nameInp.value || "Layer";
@@ -159,7 +159,7 @@ export class LayersBar {
 
       // Delete button
       const delBtn = document.createElement("button");
-      delBtn.className = "icon-btn";
+      delBtn.className = "icon-btn danger";
       delBtn.style.padding = "2px";
       delBtn.innerHTML = "🗑";
       delBtn.title = "Delete Layer";

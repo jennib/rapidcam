@@ -66,13 +66,6 @@ export class DimensionTool implements Tool {
 
     switch (this.phase) {
       case "first": {
-        // Grab an existing dimension to reposition it (offset only — no re-solve).
-        const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8));
-        if (existing) {
-          ctx.pushHistory();
-          this.dragDim = existing;
-          return;
-        }
         // Pick a DOF point (line endpoints, circle center, rect bl/tr corners),
         // falling back to the two virtual rect corners (br, tl) not in dofPoints.
         const pick =
@@ -82,6 +75,14 @@ export class DimensionTool implements Tool {
           this.p1 = pick;
           this.phase = "second";
           break;
+        }
+
+        // Grab an existing dimension to reposition it (offset only — no re-solve).
+        const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8));
+        if (existing) {
+          ctx.pushHistory();
+          this.dragDim = existing;
+          return;
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit && (hit.type === "circle" || hit.type === "arc")) {
