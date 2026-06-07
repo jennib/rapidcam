@@ -45,10 +45,17 @@ const COST_TOL = RESIDUAL_TOL * RESIDUAL_TOL;
 // The dragged point is SEEDED to the cursor before the solve, so free-DOF responsiveness
 // comes from seeding, not from PIN_WEIGHT. PIN_WEIGHT only governs how much constrained
 // directions can drift; lower = constraints win harder. ANCHOR holds non-dragged DOFs.
-/** Soft weight for the dragged point — kept equal to ANCHOR so constraints dominate. */
+/** Soft weight for the dragged point — kept equal to ANCHOR_DRAG so constraints dominate. */
 const PIN_WEIGHT = 1e-3;
-/** Weight holding non-dragged DOFs at their start position (minimal-movement). */
-const ANCHOR_WEIGHT = 1e-3;
+/**
+ * Anchor weight for drag operations: strong enough to hold non-dragged DOFs in place.
+ * For dimension edits (no drag), a much weaker anchor is used (ANCHOR_DIM) so the solver
+ * can move geometry freely to satisfy constraints — a 1e-3 anchor on a 12mm displacement
+ * produces a gradient 5× larger than the constraint gradient at near-convergence (crn≈1e-4),
+ * causing the LM solver to get stuck before converging.
+ */
+const ANCHOR_DRAG = 1e-3;
+const ANCHOR_DIM  = 1e-6; // ≪ ANCHOR_DRAG: lets constraints fully converge, still picks minimum-norm solution
 
 /** Pins: point-ref-key (`${entityId}:${pointKey}`) → world target. */
 export type PinMap = Map<string, Vec2>;
@@ -163,6 +170,11 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     }
   }
   const anchorStart = anchorVars.map((v) => v.get());
+  // Use a weaker anchor for dimension/constraint solves (no drag pins) so that the solver
+  // can move geometry freely to satisfy constraints.  During drag, ANCHOR_DRAG holds
+  // non-pinned DOFs firmly in place; ANCHOR_DIM is weak enough that the constraint
+  // gradient always dominates even after large displacements (see constant comments above).
+  const anchorW = pins ? ANCHOR_DRAG : ANCHOR_DIM;
 
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
@@ -185,7 +197,6 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // Anchors are always active (not just during drag) so editing a dimension value
   // in an under-constrained sketch prefers minimal movement over an arbitrary
   // null-space solution (e.g. rotation instead of stretching).
-  // PIN_WEIGHT = ANCHOR_WEIGHT ≪ 1 so hard constraints always win.
   const residuals = (): number[] => {
     const out = constraintVec();
     for (const p of pinEntries) {
@@ -194,7 +205,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       out.push(PIN_WEIGHT * (pos.y - p.target.y));
     }
     for (let j = 0; j < anchorVars.length; j++) {
-      out.push(ANCHOR_WEIGHT * (anchorVars[j].get() - anchorStart[j]));
+      out.push(anchorW * (anchorVars[j].get() - anchorStart[j]));
     }
     return out;
   };
@@ -260,6 +271,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       lambda *= 10;
     }
     if (!improved) break; // stuck — likely over-constrained / conflicting
+    // For dimension/constraint solves (no drag pins), exit as soon as the hard
+    // constraints converge — no need to keep grinding toward COST_TOL, which
+    // may never be reached when anchorW is tiny and displacement is large.
+    if (!pins && norm(fx.slice(0, equations)) < 1e-4) break;
   }
 
   setX(x); // make sure the solution is the final state

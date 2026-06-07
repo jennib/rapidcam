@@ -81,22 +81,21 @@ export class DimEditor {
         return;
       }
 
-      // Try expression evaluator first (handles variable references + arithmetic)
-      const exprVal = evalExpr(raw, vars);
-      if (exprVal !== null && exprVal > 0) {
-        // Save the formula string unless it's something parseLength already handles
-        // (plain numbers like "50" or "50mm"). This preserves math like "50 * 2".
-        const expr = parseLength(raw, displayUnit) === null ? raw : undefined;
-        const ok = onCommit(exprVal, expr);
+      // Try parseLength first — converts display-unit numbers correctly
+      // (e.g. "24" in an inches project → 609.6 mm, not 24 mm).
+      const lenVal = parseLength(raw, displayUnit);
+      if (lenVal !== null && lenVal > 0) {
+        const ok = onCommit(lenVal, undefined);
         if (!ok) { this.flash(input); return; }
         this.close();
         return;
       }
 
-      // Fallback: plain number with optional unit suffix (e.g. "25mm", "1in")
-      const lenVal = parseLength(raw, displayUnit);
-      if (lenVal !== null && lenVal > 0) {
-        const ok = onCommit(lenVal, undefined);
+      // Fall back to expression evaluator for variable references / arithmetic
+      // (e.g. "width * 2"). Variable values are already in internal mm units.
+      const exprVal = evalExpr(raw, vars);
+      if (exprVal !== null && exprVal > 0) {
+        const ok = onCommit(exprVal, raw);
         if (!ok) { this.flash(input); return; }
         this.close();
         return;
