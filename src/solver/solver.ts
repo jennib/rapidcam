@@ -95,7 +95,6 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // makes the MINIMAL change in any situation (drag or dimension edit). This
   // prevents under-constrained geometry from rotating instead of stretching when
   // a driving dimension value is changed.
-  const dragging = pinEntries.length > 0;
   const pinnedComponents = new Set<string>();
   const pinnedScalars = new Set<string>();
   if (pins) {

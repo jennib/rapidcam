@@ -35,4 +35,8 @@ export const ICONS = {
     '<line x1="14" y1="12" x2="21" y2="12"/>' +
     '<line x1="12" y1="5" x2="12" y2="19"/>',
   ),
+  // Stadium / oblong: two semicircles joined by parallel lines.
+  slot: wrap('<path d="M9 7 A5 5 0 0 0 9 17 H15 A5 5 0 0 0 15 7 Z"/>'),
+  // Regular hexagon (flat-top orientation).
+  polygon: wrap('<polygon points="12,4 18.9,8 18.9,16 12,20 5.1,16 5.1,8"/>'),
 } as const;

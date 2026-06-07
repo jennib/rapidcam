@@ -24,6 +24,8 @@ import { CircleTool } from "./tools/circleTool";
 import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
 import { ArcTool } from "./tools/arcTool";
+import { SlotTool } from "./tools/slotTool";
+import { PolygonTool } from "./tools/polygonTool";
 import { OffsetTool } from "./tools/offsetTool";
 import { BezierTool } from "./tools/bezierTool";
 import { RotateTool } from "./tools/rotateTool";
@@ -67,6 +69,8 @@ const SHORTCUTS: Record<string, string> = {
   f: "fillet",
   t: "trim",
   m: "mirror",
+  u: "slot",
+  n: "polygon",
 };
 
 export class App {
@@ -145,7 +149,9 @@ export class App {
         new RectTool(),
         new CircleTool(),
         new ArcTool(),
+        new SlotTool(),
         new PolylineTool(),
+        new PolygonTool(),
         new BezierTool(),
         new TextTool(),
         // dimension
