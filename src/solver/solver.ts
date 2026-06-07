@@ -91,10 +91,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   }
 
   // Build variables from all non-fixed DOFs (pinned points stay variable).
-  // During a drag, every NON-dragged DOF is anchored to its current position so
-  // the solver makes the MINIMAL change: geometry that a hard constraint doesn't
-  // force to move stays put instead of sliding to absorb the dragged point. (This
-  // is why dragging one end of a length-dimensioned line leaves the other end fixed.)
+  // Non-pinned DOFs are always anchored to their current position so the solver
+  // makes the MINIMAL change in any situation (drag or dimension edit). This
+  // prevents under-constrained geometry from rotating instead of stretching when
+  // a driving dimension value is changed.
   const dragging = pinEntries.length > 0;
   const pinnedComponents = new Set<string>();
   const pinnedScalars = new Set<string>();
@@ -150,16 +150,16 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       const vx = pointComponent(ent, p.key, "x");
       const vy = pointComponent(ent, p.key, "y");
       vars.push(vx, vy);
-      if (dragging) {
-        if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) anchorVars.push(vx);
-        if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) anchorVars.push(vy);
-      }
+      // Always anchor non-pinned DOFs to prefer minimal-change solutions in
+      // under-constrained systems (e.g. editing a dimension without dragging).
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) anchorVars.push(vx);
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) anchorVars.push(vy);
     }
     for (const s of ent.dofScalars()) {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;
       const vs = scalarComponent(ent, s.key);
       vars.push(vs);
-      if (dragging && !pinnedScalars.has(scalarKey(ent.id, s.key))) anchorVars.push(vs);
+      if (!pinnedScalars.has(scalarKey(ent.id, s.key))) anchorVars.push(vs);
     }
   }
   const anchorStart = anchorVars.map((v) => v.get());
@@ -182,9 +182,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     return out;
   };
   // Full residual the optimiser minimises: constraints + soft pin goals + anchors.
-  // ANCHOR_WEIGHT > PIN_WEIGHT, so an un-forced point prefers to stay (anchor) over
-  // helping the dragged point reach the cursor (pin); both are ≪ 1 so hard
-  // constraints always win.
+  // Anchors are always active (not just during drag) so editing a dimension value
+  // in an under-constrained sketch prefers minimal movement over an arbitrary
+  // null-space solution (e.g. rotation instead of stretching).
+  // PIN_WEIGHT = ANCHOR_WEIGHT ≪ 1 so hard constraints always win.
   const residuals = (): number[] => {
     const out = constraintVec();
     for (const p of pinEntries) {
