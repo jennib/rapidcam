@@ -1,5 +1,7 @@
 export interface EditMenuCallbacks {
   onDelete: () => void;
+  onLinearPattern: () => void;
+  onCircularPattern: () => void;
   onRectArray: () => void;
   onCircArray: () => void;
 }
@@ -53,6 +55,9 @@ export class EditMenu {
   private buildItems(): void {
     this.dropdown.innerHTML = "";
     this.item("Delete Selected", "Del", () => { this.close(); this.cb.onDelete(); });
+    this.sep();
+    this.item("Linear Pattern…",   "", () => { this.close(); this.cb.onLinearPattern(); });
+    this.item("Circular Pattern…", "", () => { this.close(); this.cb.onCircularPattern(); });
     this.sep();
     this.item("Rectangular Array…", "", () => { this.close(); this.cb.onRectArray(); });
     this.item("Circular Array…",    "", () => { this.close(); this.cb.onCircArray(); });

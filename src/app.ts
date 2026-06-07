@@ -35,6 +35,7 @@ import { FilletTool } from "./tools/filletTool";
 import { TrimTool } from "./tools/trimTool";
 import { MirrorTool } from "./tools/mirrorTool";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
+import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -188,6 +189,8 @@ export class App {
       },
       edit: {
         onDelete: () => this.deleteSelected(),
+        onLinearPattern:   () => openLinearPatternDialog(this.doc, this.project.pushHistory),
+        onCircularPattern: () => openCircularPatternDialog(this.doc, this.project.pushHistory),
         onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
       },

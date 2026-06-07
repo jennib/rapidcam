@@ -1,0 +1,341 @@
+/**
+ * Parametric Linear Pattern and Circular Pattern dialogs.
+ *
+ * Both dialogs record a PatternDef in the document so that re-opening the
+ * dialog (when a pattern entity is selected) shows the original parameters and
+ * lets you update them.  Re-applying deletes the previous copies and regenerates
+ * them from the current state of the source geometry.
+ *
+ * Spacing fields accept plain numbers (mm) OR expressions referencing
+ * document variables (e.g. "pitch", "pitch * 2").
+ */
+
+import { CADDocument } from "../model/document";
+import { Entity } from "../model/entities";
+import { PatternDef, LinearPatternParams, CircularPatternParams, makeLinearPattern, makeCircularPattern } from "../model/patterns";
+import { varMap } from "../model/variables";
+import { evalExpr } from "../core/expr";
+import { applyRotate } from "../core/transform";
+
+// ---------------------------------------------------------------------------
+// Public entry points
+
+export function openLinearPatternDialog(doc: CADDocument, pushHistory: () => void): void {
+  const existing = findPatternInSelection(doc, "linear");
+  if (existing) {
+    buildLinearDialog(doc, pushHistory, existing);
+  } else {
+    if (doc.selected.length === 0) { alert("Select entities to pattern first."); return; }
+    buildLinearDialog(doc, pushHistory, null);
+  }
+}
+
+export function openCircularPatternDialog(doc: CADDocument, pushHistory: () => void): void {
+  const existing = findPatternInSelection(doc, "circular");
+  if (existing) {
+    buildCircularDialog(doc, pushHistory, existing);
+  } else {
+    if (doc.selected.length === 0) { alert("Select entities to pattern first."); return; }
+    buildCircularDialog(doc, pushHistory, null);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Linear pattern dialog
+
+function buildLinearDialog(doc: CADDocument, pushHistory: () => void, existing: PatternDef | null): void {
+  const editing = existing !== null;
+  const p = existing?.params as LinearPatternParams | undefined;
+
+  const backdrop = makeBackdrop();
+  const dialog   = makeDialog(backdrop, editing ? "Edit Linear Pattern" : "Linear Pattern");
+  const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
+
+  const cxInp = addNumberField(body, "Count X",        String(p?.countX   ?? 3),   "1");
+  const sxInp = addTextField  (body, "Spacing X",      p?.spacingXExpr ?? String(p?.spacingX ?? 20), "(mm or variable)");
+  const cyInp = addNumberField(body, "Count Y",        String(p?.countY   ?? 1),   "1");
+  const syInp = addTextField  (body, "Spacing Y",      p?.spacingYExpr ?? String(p?.spacingY ?? 20), "(mm or variable)");
+
+  const infoEl = addInfo(body, "");
+  const updateInfo = () => {
+    const cx = Math.max(1, parseInt(cxInp.value) || 1);
+    const cy = Math.max(1, parseInt(cyInp.value) || 1);
+    infoEl.textContent = `${cx * cy} total instances (${cx} × ${cy} grid)`;
+  };
+  cxInp.addEventListener("input", updateInfo);
+  cyInp.addEventListener("input", updateInfo);
+  updateInfo();
+
+  addFooter(dialog, backdrop, editing ? "Re-apply" : "Create", () => {
+    const countX  = Math.max(1, parseInt(cxInp.value)  || 1);
+    const countY  = Math.max(1, parseInt(cyInp.value)  || 1);
+    const spacingX = resolveSpacing(sxInp.value, doc);
+    const spacingY = resolveSpacing(syInp.value, doc);
+    if (spacingX === null || spacingY === null) {
+      alert("Invalid spacing — enter a number or a variable name."); return;
+    }
+    if (countX === 1 && countY === 1) return;
+
+    const params: LinearPatternParams = {
+      countX, countY, spacingX, spacingY,
+      spacingXExpr: isPlainNumber(sxInp.value) ? undefined : sxInp.value.trim(),
+      spacingYExpr: isPlainNumber(syInp.value) ? undefined : syInp.value.trim(),
+    };
+
+    pushHistory();
+
+    if (editing) {
+      reapplyLinear(doc, existing!, params);
+    } else {
+      const sourceEnts = doc.selected;
+      const sourceIds  = sourceEnts.map((e) => e.id);
+      const instanceIds = spawnLinearInstances(doc, sourceEnts, params);
+      doc.addPattern(makeLinearPattern(sourceIds, instanceIds, params));
+    }
+  });
+
+  document.body.appendChild(backdrop);
+}
+
+function reapplyLinear(doc: CADDocument, pat: PatternDef, params: LinearPatternParams): void {
+  doc.batchRemove(pat.instanceIds.flat());
+  const sourceEnts = pat.sourceIds.map((id) => doc.entities.find((e) => e.id === id)).filter(Boolean) as Entity[];
+  if (sourceEnts.length === 0) return;
+  const instanceIds = spawnLinearInstances(doc, sourceEnts, params);
+  doc.updatePattern(pat.id, { instanceIds, params });
+}
+
+function spawnLinearInstances(doc: CADDocument, sources: Entity[], p: LinearPatternParams): string[][] {
+  const all: string[][] = [];
+  for (let row = 0; row < p.countY; row++) {
+    for (let col = 0; col < p.countX; col++) {
+      if (row === 0 && col === 0) continue;
+      const ids: string[] = [];
+      for (const src of sources) {
+        const copy = src.duplicate();
+        copy.translate({ x: col * p.spacingX, y: row * p.spacingY });
+        doc.add(copy);
+        ids.push(copy.id);
+      }
+      all.push(ids);
+    }
+  }
+  return all;
+}
+
+// ---------------------------------------------------------------------------
+// Circular pattern dialog
+
+function buildCircularDialog(doc: CADDocument, pushHistory: () => void, existing: PatternDef | null): void {
+  const editing = existing !== null;
+  const p = existing?.params as CircularPatternParams | undefined;
+
+  // Default centre: centroid of selected (or source) bounds.
+  let defCx = 0, defCy = 0;
+  const refEnts = existing
+    ? existing.sourceIds.map((id) => doc.entities.find((e) => e.id === id)).filter(Boolean) as Entity[]
+    : doc.selected;
+  if (refEnts.length > 0) {
+    for (const e of refEnts) {
+      const b = e.bounds();
+      defCx += (b.min.x + b.max.x) / 2;
+      defCy += (b.min.y + b.max.y) / 2;
+    }
+    defCx /= refEnts.length;
+    defCy /= refEnts.length;
+  }
+
+  const backdrop = makeBackdrop();
+  const dialog   = makeDialog(backdrop, editing ? "Edit Circular Pattern" : "Circular Pattern");
+  const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
+
+  const cntInp   = addNumberField(body, "Count",           String(p?.count ?? 6),              "1");
+  const cxInp2   = addTextField  (body, "Centre X (mm)",   String((p?.cx   ?? defCx).toFixed(3)), "");
+  const cyInp2   = addTextField  (body, "Centre Y (mm)",   String((p?.cy   ?? defCy).toFixed(3)), "");
+  const angInp   = addTextField  (body, "Total angle (°)", String(Math.round(((p?.totalAngle ?? Math.PI * 2) / Math.PI) * 180)), "");
+
+  const infoEl = addInfo(body, "");
+  const updateInfo = () => {
+    const n = Math.max(2, parseInt(cntInp.value) || 2);
+    const deg = parseFloat(angInp.value);
+    const full = Math.abs(deg - 360) < 0.1;
+    infoEl.textContent = `${n} instances${full ? ", full circle" : `, ${deg}° arc`}`;
+  };
+  cntInp.addEventListener("input", updateInfo);
+  angInp.addEventListener("input", updateInfo);
+  updateInfo();
+
+  addFooter(dialog, backdrop, editing ? "Re-apply" : "Create", () => {
+    const count      = Math.max(2, parseInt(cntInp.value) || 2);
+    const cx         = parseFloat(cxInp2.value);
+    const cy         = parseFloat(cyInp2.value);
+    const totalAngle = (parseFloat(angInp.value) || 360) * (Math.PI / 180);
+    if (!isFinite(cx) || !isFinite(cy) || !isFinite(totalAngle)) {
+      alert("Invalid values."); return;
+    }
+
+    const params: CircularPatternParams = { count, cx, cy, totalAngle };
+
+    pushHistory();
+
+    if (editing) {
+      reapplyCircular(doc, existing!, params);
+    } else {
+      const sourceEnts = doc.selected;
+      const sourceIds  = sourceEnts.map((e) => e.id);
+      const instanceIds = spawnCircularInstances(doc, sourceEnts, params);
+      doc.addPattern(makeCircularPattern(sourceIds, instanceIds, params));
+    }
+  });
+
+  document.body.appendChild(backdrop);
+}
+
+function reapplyCircular(doc: CADDocument, pat: PatternDef, params: CircularPatternParams): void {
+  doc.batchRemove(pat.instanceIds.flat());
+  const sourceEnts = pat.sourceIds.map((id) => doc.entities.find((e) => e.id === id)).filter(Boolean) as Entity[];
+  if (sourceEnts.length === 0) return;
+  const instanceIds = spawnCircularInstances(doc, sourceEnts, params);
+  doc.updatePattern(pat.id, { instanceIds, params });
+}
+
+function spawnCircularInstances(doc: CADDocument, sources: Entity[], p: CircularPatternParams): string[][] {
+  const step = p.totalAngle / p.count;
+  const all: string[][] = [];
+  for (let k = 1; k < p.count; k++) {
+    const copies: Entity[] = sources.map((src) => src.duplicate());
+    applyRotate(copies, p.cx, p.cy, k * step);
+    const ids: string[] = [];
+    for (const copy of copies) {
+      doc.add(copy);
+      ids.push(copy.id);
+    }
+    all.push(ids);
+  }
+  return all;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+
+function findPatternInSelection(doc: CADDocument, kind: "linear" | "circular"): PatternDef | null {
+  const selIds = new Set(doc.selected.map((e) => e.id));
+  for (const pat of doc.patterns) {
+    if (pat.kind !== kind) continue;
+    const allIds = new Set([...pat.sourceIds, ...pat.instanceIds.flat()]);
+    if ([...selIds].some((id) => allIds.has(id))) return pat;
+  }
+  return null;
+}
+
+/** Resolve a spacing field value: try variable expression first, then plain float. */
+function resolveSpacing(raw: string, doc: CADDocument): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const vm = varMap(doc.variables);
+  const exprVal = evalExpr(trimmed, vm);
+  if (exprVal !== null && isFinite(exprVal)) return exprVal;
+  const num = parseFloat(trimmed);
+  return isFinite(num) ? num : null;
+}
+
+function isPlainNumber(s: string): boolean {
+  return isFinite(parseFloat(s.trim())) && isNaN(Number(s.trim())) === false;
+}
+
+// ---------------------------------------------------------------------------
+// DOM helpers
+
+function makeBackdrop(): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "tp-backdrop";
+  el.addEventListener("click", (e) => { if (e.target === el) el.remove(); });
+  return el;
+}
+
+function makeDialog(backdrop: HTMLElement, title: string): HTMLElement {
+  const dialog = document.createElement("div");
+  dialog.className = "tp-dialog";
+  dialog.style.width = "320px";
+  dialog.addEventListener("click", (e) => e.stopPropagation());
+
+  const hdr = document.createElement("div");
+  hdr.className = "tp-dialog-header";
+  const h3 = document.createElement("h3");
+  h3.textContent = title;
+  hdr.appendChild(h3);
+  dialog.appendChild(hdr);
+
+  const body = document.createElement("div");
+  body.className = "tp-dialog-body";
+  dialog.appendChild(body);
+
+  backdrop.appendChild(dialog);
+  return dialog;
+}
+
+function addNumberField(body: HTMLElement, label: string, value: string, step: string): HTMLInputElement {
+  const g = document.createElement("div");
+  g.className = "tp-field";
+  const l = document.createElement("label");
+  l.textContent = label;
+  const inp = document.createElement("input");
+  inp.type = "number";
+  inp.className = "dim";
+  inp.value = value;
+  inp.step = step;
+  inp.min = step; // enforce min=1 for counts
+  inp.style.width = "90px";
+  g.appendChild(l);
+  g.appendChild(inp);
+  body.appendChild(g);
+  return inp;
+}
+
+function addTextField(body: HTMLElement, label: string, value: string, placeholder: string): HTMLInputElement {
+  const g = document.createElement("div");
+  g.className = "tp-field";
+  const l = document.createElement("label");
+  l.textContent = label;
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "dim";
+  inp.value = value;
+  inp.placeholder = placeholder;
+  inp.style.width = "120px";
+  g.appendChild(l);
+  g.appendChild(inp);
+  body.appendChild(g);
+  return inp;
+}
+
+function addInfo(body: HTMLElement, text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "tp-field-info";
+  el.style.cssText = "font-size:11px;color:var(--text-muted,#888);padding:2px 0 6px";
+  el.textContent = text;
+  body.appendChild(el);
+  return el;
+}
+
+function addFooter(dialog: HTMLElement, backdrop: HTMLElement, applyLabel: string, onApply: () => void): void {
+  const ftr = document.createElement("div");
+  ftr.className = "tp-dialog-footer";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("click", () => backdrop.remove());
+
+  const applyBtn = document.createElement("button");
+  applyBtn.className = "btn tp-apply-btn";
+  applyBtn.textContent = applyLabel;
+  applyBtn.addEventListener("click", () => {
+    onApply();
+    backdrop.remove();
+  });
+
+  ftr.appendChild(cancelBtn);
+  ftr.appendChild(applyBtn);
+  dialog.appendChild(ftr);
+}

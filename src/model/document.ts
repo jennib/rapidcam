@@ -42,6 +42,7 @@ export const ORIGIN_ENTITY_ID = "__origin__";
 import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
 import { Variable } from "./variables";
+import { PatternDef, clonePatternDef } from "./patterns";
 import { updateCounter } from "./ids";
 
 export interface GroupDef {
@@ -72,6 +73,7 @@ export interface DocSnapshot {
   dimensions: Dimension[];
   variables?: Variable[];
   operations?: CAMOperation[];
+  patterns?: PatternDef[];
   isConstructionMode: boolean;
   selectedPoints: PointRef[];
   selectedConstraintId: string | null;
@@ -115,6 +117,7 @@ export class CADDocument {
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
+  patterns: PatternDef[] = [];
   layers: LayerDef[] = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
   activeLayerId: string = "layer-0";
   constraints: Constraint[] = [];
@@ -194,13 +197,14 @@ export class CADDocument {
     this.entities = [new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID)];
     this.constraints = [];
     this.dimensions = [];
+    this.patterns = [];
     this.selectedPoints = [];
     this.selectedConstraintId = null;
     this.selectedDimensionId = null;
     this.emitChange();
   }
 
-  /** Drop constraints/dimensions/point-selections that reference removed entities. */
+  /** Drop constraints/dimensions/point-selections/patterns that reference removed entities. */
   private pruneReferences(): void {
     const ids = new Set(this.entities.map((e) => e.id));
     this.constraints = this.constraints.filter((c) =>
@@ -215,6 +219,54 @@ export class CADDocument {
       this.selectedConstraintId = null;
     if (this.selectedDimensionId && !this.dimensions.find((d) => d.id === this.selectedDimensionId))
       this.selectedDimensionId = null;
+    // Remove patterns whose source entities were deleted. Trim instance IDs that
+    // were manually deleted so the definition stays consistent.
+    this.patterns = this.patterns
+      .filter((p) => p.sourceIds.every((id) => ids.has(id)))
+      .map((p) => ({
+        ...p,
+        instanceIds: p.instanceIds
+          .map((inst) => inst.filter((id) => ids.has(id)))
+          .filter((inst) => inst.length > 0),
+      }));
+  }
+
+  // --- patterns ------------------------------------------------------------
+  addPattern(p: PatternDef): PatternDef {
+    this.patterns.push(p);
+    this.emitChange();
+    return p;
+  }
+  removePattern(id: string): void {
+    this.patterns = this.patterns.filter((p) => p.id !== id);
+    this.emitChange();
+  }
+  updatePattern(id: string, patch: Partial<Pick<PatternDef, "instanceIds" | "params">>): void {
+    const p = this.patterns.find((x) => x.id === id);
+    if (p) Object.assign(p, patch);
+    this.emitChange();
+  }
+  /** Return the pattern that contains this entity (as source or instance), or null. */
+  patternOf(entityId: EntityId): PatternDef | null {
+    for (const p of this.patterns) {
+      if (p.sourceIds.includes(entityId)) return p;
+      if (p.instanceIds.some((inst) => inst.includes(entityId))) return p;
+    }
+    return null;
+  }
+  /**
+   * Remove multiple entities in one pass, call pruneReferences once, then emit.
+   * Used by the pattern dialog when replacing old instances with new ones.
+   */
+  batchRemove(ids: Iterable<EntityId>): void {
+    const toRemove = new Set(ids);
+    toRemove.delete(ORIGIN_ENTITY_ID);
+    const before = this.entities.length;
+    this.entities = this.entities.filter((e) => !toRemove.has(e.id));
+    if (this.entities.length !== before) {
+      this.pruneReferences();
+      this.emitChange();
+    }
   }
 
   // --- constraints ---------------------------------------------------------
@@ -430,6 +482,7 @@ export class CADDocument {
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
       groups: this.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })),
+      patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map(l => ({ ...l })),
       activeLayerId: this.activeLayerId,
       operations: this.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })),
@@ -508,6 +561,8 @@ export class CADDocument {
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
+    this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
+    for (const p of this.patterns) updateCounter(p.id);
     this.operations = s.operations ? s.operations.map(op => ({
       ...op,
       toolType: op.toolType ?? "end-mill",
