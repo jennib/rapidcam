@@ -1,5 +1,22 @@
-node_modules/
+# Build output
 dist/
-*.local
-.DS_Store
 .vite/
+
+# Dependencies
+node_modules/
+
+# Environment / local config
+*.local
+.env
+.env.*
+!.env.example
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+
+# Test scratch files (local experiments, not part of the test suite)
+test_*.ts
