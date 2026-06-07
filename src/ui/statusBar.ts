@@ -10,6 +10,7 @@ export class StatusBar {
   private coordEl!: HTMLElement;
   private zoomEl!: HTMLElement;
   private solveEl!: HTMLElement;
+  private patternEl!: HTMLElement;
   private gridToggle!: HTMLElement;
   private osnapToggle!: HTMLElement;
 
@@ -34,6 +35,10 @@ export class StatusBar {
 
     this.solveEl = statusItem("");
     this.host.appendChild(this.solveEl);
+
+    this.patternEl = statusItem("");
+    this.patternEl.style.color = "var(--warn, #c8982a)";
+    this.host.appendChild(this.patternEl);
 
     const spacer = document.createElement("div");
     spacer.className = "status-spacer";
@@ -69,6 +74,15 @@ export class StatusBar {
   setZoom(scale: number): void {
     // scale is px/mm; report as a percentage relative to 1px ≈ 1 screen unit.
     this.zoomEl.innerHTML = `Zoom <b>${(scale * 10).toFixed(0)}%</b>`;
+  }
+
+  setPatternStatus(staleCount: number): void {
+    if (staleCount === 0) {
+      this.patternEl.textContent = "";
+    } else {
+      const n = staleCount === 1 ? "1 pattern" : `${staleCount} patterns`;
+      this.patternEl.textContent = `⟳ ${n} stale — Ctrl+Shift+P`;
+    }
   }
 
   setSolveStatus(res: SolveResult | null): void {

@@ -11,7 +11,7 @@
  * Spacing fields accept numeric expressions that can reference document variables.
  */
 
-import { EntityId } from "./entities";
+import { EntityId, Entity } from "./entities";
 import { nextId } from "./ids";
 
 export interface LinearPatternParams {
@@ -38,22 +38,30 @@ export interface PatternDef {
   /** One sub-array per generated instance (step), each listing that step's entity IDs. */
   instanceIds: EntityId[][];
   params: LinearPatternParams | CircularPatternParams;
+  /**
+   * Hash of the source geometry at the time the pattern was last applied.
+   * Undefined for patterns created before snapshotting was introduced.
+   * Used to detect when source entities have moved and instances are stale.
+   */
+  sourceSnapshot?: number;
 }
 
 export function makeLinearPattern(
   sourceIds: EntityId[],
   instanceIds: EntityId[][],
   params: LinearPatternParams,
+  sourceSnapshot?: number,
 ): PatternDef {
-  return { id: nextId("pat"), kind: "linear", sourceIds, instanceIds, params };
+  return { id: nextId("pat"), kind: "linear", sourceIds, instanceIds, params, sourceSnapshot };
 }
 
 export function makeCircularPattern(
   sourceIds: EntityId[],
   instanceIds: EntityId[][],
   params: CircularPatternParams,
+  sourceSnapshot?: number,
 ): PatternDef {
-  return { id: nextId("pat"), kind: "circular", sourceIds, instanceIds, params };
+  return { id: nextId("pat"), kind: "circular", sourceIds, instanceIds, params, sourceSnapshot };
 }
 
 export function clonePatternDef(p: PatternDef): PatternDef {
@@ -63,5 +71,27 @@ export function clonePatternDef(p: PatternDef): PatternDef {
     sourceIds: [...p.sourceIds],
     instanceIds: p.instanceIds.map((inst) => [...inst]),
     params: { ...p.params },
+    sourceSnapshot: p.sourceSnapshot,
   };
+}
+
+/**
+ * Compute a 32-bit fingerprint of the source entities' current DOF geometry.
+ * Used to detect when instances are stale after source entities have moved.
+ */
+export function computeSourceSnapshot(entities: Entity[], sourceIds: EntityId[]): number {
+  let h = 0x811c9dc5; // FNV-32 offset basis
+  for (const id of sourceIds) {
+    const ent = entities.find((e) => e.id === id);
+    if (!ent) continue;
+    for (const p of ent.dofPoints()) {
+      const pt = ent.getPoint(p.key);
+      h = (Math.imul(h, 0x01000193) ^ (Math.round(pt.x * 1e6) | 0)) | 0;
+      h = (Math.imul(h, 0x01000193) ^ (Math.round(pt.y * 1e6) | 0)) | 0;
+    }
+    for (const s of ent.dofScalars()) {
+      h = (Math.imul(h, 0x01000193) ^ (Math.round(s.value * 1e6) | 0)) | 0;
+    }
+  }
+  return h;
 }

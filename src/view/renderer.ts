@@ -26,6 +26,7 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private dpr = 1;
   entityStatus: EntityStatusMap = new Map();
+  stalePatternEntityIds: Set<string> = new Set();
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -262,6 +263,7 @@ export class Renderer {
       const isHover = overlay.hover === e.id;
       const isToolpathHighlight = doc.toolpathHighlightIds?.has(e.id) ?? false;
       const dofStatus = this.entityStatus.get(e.id);
+      const isStaleInstance = this.stalePatternEntityIds.has(e.id);
       const color = e.selected
         ? COLORS.entitySelected
         : isHover
@@ -270,11 +272,13 @@ export class Renderer {
             ? COLORS.toolpathHighlight
             : e.isConstruction
               ? COLORS.entityConstruction
-              : dofStatus === "conflict"
-                ? COLORS.entityConflict
-                : dofStatus === "under-defined"
-                  ? COLORS.entityUnderDefined
-                  : layer.color;
+              : isStaleInstance
+                ? COLORS.entityPatternStale
+                : dofStatus === "conflict"
+                  ? COLORS.entityConflict
+                  : dofStatus === "under-defined"
+                    ? COLORS.entityUnderDefined
+                    : layer.color;
       const width = e.selected || isToolpathHighlight ? 2 : 1.5;
       this.ctx.save();
       if (e.isConstruction) {

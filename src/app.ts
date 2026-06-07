@@ -36,7 +36,8 @@ import { ChamferTool } from "./tools/chamferTool";
 import { TrimTool } from "./tools/trimTool";
 import { MirrorTool } from "./tools/mirrorTool";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
-import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
+import { openLinearPatternDialog, openCircularPatternDialog, regenerateAllStalePatterns } from "./ui/patternDialogs";
+import { computeSourceSnapshot } from "./model/patterns";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { SettingsBar } from "./ui/settingsBar";
@@ -191,8 +192,9 @@ export class App {
       },
       edit: {
         onDelete: () => this.deleteSelected(),
-        onLinearPattern:   () => openLinearPatternDialog(this.doc, this.project.pushHistory),
-        onCircularPattern: () => openCircularPatternDialog(this.doc, this.project.pushHistory),
+        onLinearPattern:      () => openLinearPatternDialog(this.doc, this.project.pushHistory),
+        onCircularPattern:    () => openCircularPatternDialog(this.doc, this.project.pushHistory),
+        onRegeneratePatterns: () => this.doRegeneratePatterns(),
         onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
       },
@@ -334,6 +336,7 @@ export class App {
 
   // --- constraint solving --------------------------------------------------
   private lastSolveResult: import("./solver/solver").SolveResult | null = null;
+  private stalePatternIds: Set<string> = new Set();
 
   private currentDof(): number {
     if (!this.lastSolveResult) return Infinity;
@@ -344,11 +347,40 @@ export class App {
     evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
     const res = solve(this.doc, pins);
     if (!pins) {
-      this.lastSolveResult = res; // only store non-drag results for DOF checks
+      this.lastSolveResult = res;
       this.renderer.entityStatus = computeEntityDofStatus(this.doc, res);
+      this.updatePatternStaleness();
     }
     this.statusBar.setSolveStatus(res.hasConstraints ? res : null);
     this.requestRender();
+  }
+
+  private updatePatternStaleness(): void {
+    const stale = new Set<string>();
+    for (const pat of this.doc.patterns) {
+      if (pat.sourceSnapshot === undefined) continue;
+      if (computeSourceSnapshot(this.doc.entities, pat.sourceIds) !== pat.sourceSnapshot) {
+        stale.add(pat.id);
+      }
+    }
+    this.stalePatternIds = stale;
+
+    const staleInstanceIds = new Set<string>();
+    for (const pat of this.doc.patterns) {
+      if (stale.has(pat.id)) {
+        for (const inst of pat.instanceIds) for (const id of inst) staleInstanceIds.add(id);
+      }
+    }
+    this.renderer.stalePatternEntityIds = staleInstanceIds;
+    this.statusBar.setPatternStatus(stale.size);
+  }
+
+  private doRegeneratePatterns(): void {
+    if (this.stalePatternIds.size === 0) return;
+    this.project.pushHistory();
+    regenerateAllStalePatterns(this.doc, this.stalePatternIds);
+    this.runSolve();
+    this.doc.emitChange();
   }
 
   private render(): void {
@@ -706,6 +738,12 @@ export class App {
     if (ev.key === "Delete" || (ev.key === "Backspace" && isSelect)) {
       this.deleteSelected();
       ev.preventDefault();
+      return;
+    }
+
+    if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && ev.key === "P") {
+      ev.preventDefault();
+      this.doRegeneratePatterns();
       return;
     }
 

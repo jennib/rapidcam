@@ -12,7 +12,7 @@
 
 import { CADDocument } from "../model/document";
 import { Entity } from "../model/entities";
-import { PatternDef, LinearPatternParams, CircularPatternParams, makeLinearPattern, makeCircularPattern } from "../model/patterns";
+import { PatternDef, LinearPatternParams, CircularPatternParams, makeLinearPattern, makeCircularPattern, computeSourceSnapshot } from "../model/patterns";
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
 import { applyRotate } from "../core/transform";
@@ -90,7 +90,8 @@ function buildLinearDialog(doc: CADDocument, pushHistory: () => void, existing: 
       const sourceEnts = doc.selected;
       const sourceIds  = sourceEnts.map((e) => e.id);
       const instanceIds = spawnLinearInstances(doc, sourceEnts, params);
-      doc.addPattern(makeLinearPattern(sourceIds, instanceIds, params));
+      const snap = computeSourceSnapshot(doc.entities, sourceIds);
+      doc.addPattern(makeLinearPattern(sourceIds, instanceIds, params, snap));
     }
   });
 
@@ -102,7 +103,8 @@ function reapplyLinear(doc: CADDocument, pat: PatternDef, params: LinearPatternP
   const sourceEnts = pat.sourceIds.map((id) => doc.entities.find((e) => e.id === id)).filter(Boolean) as Entity[];
   if (sourceEnts.length === 0) return;
   const instanceIds = spawnLinearInstances(doc, sourceEnts, params);
-  doc.updatePattern(pat.id, { instanceIds, params });
+  const sourceSnapshot = computeSourceSnapshot(doc.entities, pat.sourceIds);
+  doc.updatePattern(pat.id, { instanceIds, params, sourceSnapshot });
 }
 
 function spawnLinearInstances(doc: CADDocument, sources: Entity[], p: LinearPatternParams): string[][] {
@@ -184,7 +186,8 @@ function buildCircularDialog(doc: CADDocument, pushHistory: () => void, existing
       const sourceEnts = doc.selected;
       const sourceIds  = sourceEnts.map((e) => e.id);
       const instanceIds = spawnCircularInstances(doc, sourceEnts, params);
-      doc.addPattern(makeCircularPattern(sourceIds, instanceIds, params));
+      const snap = computeSourceSnapshot(doc.entities, sourceIds);
+      doc.addPattern(makeCircularPattern(sourceIds, instanceIds, params, snap));
     }
   });
 
@@ -196,7 +199,8 @@ function reapplyCircular(doc: CADDocument, pat: PatternDef, params: CircularPatt
   const sourceEnts = pat.sourceIds.map((id) => doc.entities.find((e) => e.id === id)).filter(Boolean) as Entity[];
   if (sourceEnts.length === 0) return;
   const instanceIds = spawnCircularInstances(doc, sourceEnts, params);
-  doc.updatePattern(pat.id, { instanceIds, params });
+  const sourceSnapshot = computeSourceSnapshot(doc.entities, pat.sourceIds);
+  doc.updatePattern(pat.id, { instanceIds, params, sourceSnapshot });
 }
 
 function spawnCircularInstances(doc: CADDocument, sources: Entity[], p: CircularPatternParams): string[][] {
@@ -213,6 +217,25 @@ function spawnCircularInstances(doc: CADDocument, sources: Entity[], p: Circular
     all.push(ids);
   }
   return all;
+}
+
+// ---------------------------------------------------------------------------
+// Programmatic regeneration (called from app shortcut / Edit menu)
+
+/**
+ * Re-apply all patterns whose instance positions are stale relative to the
+ * current source geometry. Safe to call with an empty staleIds set (no-op).
+ * Caller is responsible for pushHistory() before and solve()/emitChange() after.
+ */
+export function regenerateAllStalePatterns(doc: CADDocument, staleIds: Set<string>): void {
+  for (const pat of [...doc.patterns]) { // copy — reapply mutates doc.patterns in place
+    if (!staleIds.has(pat.id)) continue;
+    if (pat.kind === "linear") {
+      reapplyLinear(doc, pat, pat.params as LinearPatternParams);
+    } else {
+      reapplyCircular(doc, pat, pat.params as CircularPatternParams);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

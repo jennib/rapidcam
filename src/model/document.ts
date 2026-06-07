@@ -241,7 +241,7 @@ export class CADDocument {
     this.patterns = this.patterns.filter((p) => p.id !== id);
     this.emitChange();
   }
-  updatePattern(id: string, patch: Partial<Pick<PatternDef, "instanceIds" | "params">>): void {
+  updatePattern(id: string, patch: Partial<Pick<PatternDef, "instanceIds" | "params" | "sourceSnapshot">>): void {
     const p = this.patterns.find((x) => x.id === id);
     if (p) Object.assign(p, patch);
     this.emitChange();
