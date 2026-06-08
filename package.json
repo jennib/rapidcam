@@ -20,6 +20,7 @@
   "dependencies": {
     "clipper2-ts": "^2.0.1-17",
     "hersheytext": "^2.0.0",
-    "opentype.js": "^2.0.0"
+    "opentype.js": "^2.0.0",
+    "posthog-js": "^1.382.0"
   }
 }

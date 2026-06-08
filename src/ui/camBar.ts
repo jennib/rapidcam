@@ -17,6 +17,7 @@ import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
 import { nextId } from "../model/ids";
+import { track } from "../analytics";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -1118,6 +1119,7 @@ export class CamBar {
 
   private generate(): void {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    track("gcode_generated", { operation_count: this.doc.operations.length });
     this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
   }
 

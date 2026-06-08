@@ -1,4 +1,5 @@
 import "./style.css";
+import "./analytics";
 import { App } from "./app";
 
 function wireRightPanelTabs(): void {

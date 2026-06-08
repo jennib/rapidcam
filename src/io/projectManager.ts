@@ -6,6 +6,7 @@ import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import { nextId } from "../model/ids";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
+import { track } from "../analytics";
 
 export interface ProjectManagerCallbacks {
   onDocumentChange: () => void;
@@ -94,6 +95,7 @@ export class ProjectManager {
         this.cb.onFitView();
         this.isDocumentLoading = false;
         this.markClean();
+        track("project_new", { width: cfg.width, height: cfg.height, unit: cfg.displayUnit });
       },
     );
   }
@@ -101,6 +103,7 @@ export class ProjectManager {
   async fileOpen(): Promise<void> {
     const result = await openFile();
     if (!result) return;
+    track("project_opened");
     this.loadDocument(result.file, result.name, result.handle ?? null);
   }
 
@@ -112,6 +115,7 @@ export class ProjectManager {
           pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
           localStorage.removeItem("rapidcam:autosave-draft");
           this.markClean();
+          track("project_saved");
           return;
         } catch (e) {
           console.error("Save to file handle failed, prompting for a new file:", e);
@@ -132,6 +136,7 @@ export class ProjectManager {
         pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
         localStorage.removeItem("rapidcam:autosave-draft");
         this.markClean();
+        track("project_saved");
         return;
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
@@ -145,10 +150,12 @@ export class ProjectManager {
     saveFile(this.doc, this.currentFileName);
     localStorage.removeItem("rapidcam:autosave-draft");
     this.markClean();
+    track("project_saved");
   }
 
   fileOpenRecent(entry: RecentEntry): void {
     if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
+    track("project_opened_recent");
     this.loadDocument(entry.data, entry.name);
   }
 
@@ -243,6 +250,7 @@ export class ProjectManager {
   }
 
   svgExport(): void {
+    track("svg_exported");
     const svg = exportSvg(this.doc);
     const blob = new Blob([svg], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);

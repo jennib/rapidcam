@@ -53,6 +53,7 @@ import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
 import { initBundledFonts } from "./core/fontManager";
+import { track } from "./analytics";
 
 const HOVER_TOLERANCE_PX = 8;
 
@@ -173,6 +174,7 @@ export class App {
 
     this.tools.onActiveChange(() => {
       canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
+      track("tool_activated", { tool: this.tools.active.id });
     });
     canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
 
