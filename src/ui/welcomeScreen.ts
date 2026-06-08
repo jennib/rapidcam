@@ -38,13 +38,10 @@ export function showWelcomeScreen(
   const container = document.createElement("div");
   container.className = "welcome-container";
 
-  const title = document.createElement("h1");
-  title.className = "welcome-title";
-  title.innerHTML = `Rapid<span>CAM</span>`;
-
-  const subtitle = document.createElement("p");
-  subtitle.textContent = "Parametric 2D Vector CAD/CAM Editor";
-  subtitle.className = "welcome-subtitle";
+  const logo = document.createElement("img");
+  logo.src = "/rapidcam-logo.svg";
+  logo.alt = "RapidCAM";
+  logo.className = "welcome-logo";
 
   const content = document.createElement("div");
   content.className = "welcome-content";
@@ -211,8 +208,7 @@ export function showWelcomeScreen(
   content.appendChild(leftCol);
   content.appendChild(rightCol);
 
-  container.appendChild(title);
-  container.appendChild(subtitle);
+  container.appendChild(logo);
   container.appendChild(content);
   backdrop.appendChild(container);
 
