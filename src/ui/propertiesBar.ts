@@ -430,6 +430,38 @@ export class PropertiesBar {
       makeBtn("↕", "centerV")
     );
     sec.appendChild(row);
+
+    // "Center in" — only shown when exactly two full groups are selected
+    const selectedIds = new Set(this.doc.selected.map(e => e.id));
+    const twoGroups = this.doc.groups.filter(g => g.entityIds.length > 0 && g.entityIds.every(id => selectedIds.has(id)));
+    if (twoGroups.length === 2) {
+      const entsOf = (g: GroupDef) => this.doc.entities.filter(e => g.entityIds.includes(e.id));
+      const b0 = selectionBounds(entsOf(twoGroups[0]));
+      const b1 = selectionBounds(entsOf(twoGroups[1]));
+      if (b0 && b1) {
+        const centerInBtn = document.createElement("button");
+        centerInBtn.className = "btn";
+        centerInBtn.style.marginTop = "4px";
+        centerInBtn.style.width = "100%";
+        centerInBtn.textContent = "⊙ Center inner in outer";
+        centerInBtn.title = "Move the smaller group so it is centred within the larger group";
+        centerInBtn.addEventListener("click", () => {
+          const area0 = (b0.max.x - b0.min.x) * (b0.max.y - b0.min.y);
+          const area1 = (b1.max.x - b1.min.x) * (b1.max.y - b1.min.y);
+          const [innerGroup, innerB, outerB] = area0 <= area1
+            ? [twoGroups[0], b0, b1] : [twoGroups[1], b1, b0];
+          const dx = (outerB.min.x + outerB.max.x) / 2 - (innerB.min.x + innerB.max.x) / 2;
+          const dy = (outerB.min.y + outerB.max.y) / 2 - (innerB.min.y + innerB.max.y) / 2;
+          if (dx === 0 && dy === 0) return;
+          this.pushHistory();
+          for (const e of entsOf(innerGroup)) e.translate({ x: dx, y: dy });
+          this.solve();
+          this.doc.emitChange();
+        });
+        sec.appendChild(centerInBtn);
+      }
+    }
+
     this.content.appendChild(sec);
   }
 
