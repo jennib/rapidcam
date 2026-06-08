@@ -220,18 +220,12 @@ export function showWelcomeScreen(
 
   const footer = document.createElement("div");
   footer.className = "welcome-footer";
-  const bmc = document.createElement("script");
-  bmc.type = "text/javascript";
-  bmc.src = "https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js";
-  bmc.dataset.name = "bmc-button";
-  bmc.dataset.slug = "jennibm";
-  bmc.dataset.color = "#FFDD00";
-  bmc.dataset.emoji = "☕";
-  bmc.dataset.font = "Cookie";
-  bmc.dataset.text = "Buy me a coffee";
-  bmc.dataset.outlineColor = "#000000";
-  bmc.dataset.fontColor = "#000000";
-  bmc.dataset.coffeeColor = "#ffffff";
+  const bmc = document.createElement("a");
+  bmc.href = "https://www.buymeacoffee.com/jennibm";
+  bmc.target = "_blank";
+  bmc.rel = "noopener noreferrer";
+  bmc.className = "bmc-button";
+  bmc.innerHTML = `<img src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" alt="☕"> Buy me a coffee`;
   footer.appendChild(bmc);
 
   container.appendChild(logo);

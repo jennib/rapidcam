@@ -1360,6 +1360,23 @@ button.cbtn.solve {
   margin-top: 16px;
 }
 
+.bmc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #FFDD00;
+  color: #000000;
+  font-family: "Cookie", cursive, sans-serif;
+  font-size: 20px;
+  padding: 7px 16px 7px 12px;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.bmc-button:hover { opacity: 0.85; }
+.bmc-button img { height: 28px; width: auto; }
+
 .welcome-intro {
   text-align: center;
   margin-bottom: 24px;
