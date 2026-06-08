@@ -43,6 +43,16 @@ export function showWelcomeScreen(
   logo.alt = "RapidCAM";
   logo.className = "welcome-logo";
 
+  const welcome = document.createElement("div");
+  welcome.className = "welcome-intro";
+  welcome.innerHTML = `
+    <p class="welcome-intro-heading">Welcome to RapidCAM</p>
+    <p class="welcome-intro-body">RapidCAM is a parametric 2D CAD/CAM editor built for CNC work.
+    Draw with fully constrained geometry — dimensions, parallel, perpendicular, and coincident
+    constraints keep your design exact as you iterate. When you're ready, generate G-code profiles,
+    pockets, and engrave paths directly from your drawing.</p>
+  `;
+
   const content = document.createElement("div");
   content.className = "welcome-content";
 
@@ -209,6 +219,7 @@ export function showWelcomeScreen(
   content.appendChild(rightCol);
 
   container.appendChild(logo);
+  container.appendChild(welcome);
   container.appendChild(content);
   backdrop.appendChild(container);
 
