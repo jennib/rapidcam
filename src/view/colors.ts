@@ -14,7 +14,7 @@ export const COLORS = {
   entity: "#cdd2da",
   entityConstruction: "#8b909c",
   entityHover: "#ffffff",
-  entitySelected: "#4aa3ff",
+  entitySelected: "#f97316",
   entityUnderDefined: "#4895e0",
   entityConflict: "#e05a5a",
   entityPatternStale: "#c8982a",
@@ -26,7 +26,7 @@ export const COLORS = {
   selectionRect: "rgba(74,163,255,0.12)",
   selectionRectBorder: "#4aa3ff",
 
-  selectedPoint: "#4aa3ff",
+  selectedPoint: "#f97316",
   selectedPointRing: "#ffffff",
 
   constraintBadgeBg: "#3a3320",
