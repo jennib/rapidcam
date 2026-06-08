@@ -213,6 +213,34 @@ function unprojectToY(
 // WebGLPreview
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Box shader — renders stock sides + bottom as a closed solid
+// ---------------------------------------------------------------------------
+
+const VERT_BOX = `#version 300 es
+precision highp float;
+uniform mat4 uMVP;
+in vec3 aPos;
+in vec3 aNorm;
+out vec3 vNorm;
+void main() {
+  vNorm = aNorm;
+  gl_Position = uMVP * vec4(aPos, 1.0);
+}`;
+
+const FRAG_BOX = `#version 300 es
+precision highp float;
+in vec3 vNorm;
+out vec4 fragColor;
+void main() {
+  vec3 base = vec3(0.82, 0.68, 0.38);
+  vec3 L1 = normalize(vec3(0.6, 1.0, 0.4));
+  vec3 L2 = normalize(vec3(-0.3, 0.8, -0.5));
+  vec3 n = normalize(vNorm);
+  float d = max(dot(n, L1), 0.0) * 0.65 + max(dot(n, L2), 0.0) * 0.25 + 0.25;
+  fragColor = vec4(pow(clamp(base * d, 0.0, 1.0), vec3(1.0/2.2)), 1.0);
+}`;
+
 const DEFAULT_YAW   = Math.PI / 4;
 const DEFAULT_PITCH = Math.atan(1 / Math.sqrt(2)); // ~35.26° isometric
 const DEFAULT_ZOOM  = 1.0;
@@ -226,6 +254,9 @@ export class WebGLPreview {
   private vao!: WebGLVertexArrayObject;
   private heightTex!: WebGLTexture;
   private indexCount = 0;
+  private boxProgram!: WebGLProgram;
+  private boxVAO: WebGLVertexArrayObject | null = null;
+  private boxIndexCount = 0;
 
   // Last rendered height map dimensions (for uniform upload)
   private gridW = 0;
@@ -268,8 +299,9 @@ export class WebGLPreview {
     if (!gl) { this.showError("WebGL 2 not supported in this browser."); return; }
     this.gl = gl;
 
-    this.program = this.buildProgram(VERT, FRAG);
-    this.heightTex = this.createHeightTexture();
+    this.program    = this.buildProgram(VERT, FRAG);
+    this.boxProgram = this.buildProgram(VERT_BOX, FRAG_BOX);
+    this.heightTex  = this.createHeightTexture();
     this.bindOrbitControls();
 
     new ResizeObserver(() => this.handleResize()).observe(host);
@@ -281,6 +313,7 @@ export class WebGLPreview {
     if (!gl) return;
 
     const needsMesh = this.indexCount === 0 || this.gridW !== hm.gridW || this.gridH !== hm.gridH;
+    const needsBox  = this.boxVAO === null || hm.stockW !== this.stockW || hm.stockH !== this.stockH || hm.stockT !== this.stockT;
 
     this.gridW  = hm.gridW;
     this.gridH  = hm.gridH;
@@ -289,6 +322,7 @@ export class WebGLPreview {
     this.stockT = hm.stockT;
 
     if (needsMesh) this.buildMesh(hm.gridW, hm.gridH);
+    if (needsBox)  this.buildBoxMesh();
 
     // Upload height data as R32F texture
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
@@ -384,6 +418,52 @@ export class WebGLPreview {
     gl.bindVertexArray(null);
   }
 
+  private buildBoxMesh(): void {
+    const gl = this.gl;
+    const hw = this.stockW / 2;
+    const hd = this.stockH / 2;
+    const t  = this.stockT;
+
+    // Interleaved: [x,y,z, nx,ny,nz] per vertex; 5 faces (no top — height map is the top)
+    const verts: number[] = [];
+    const idx: number[] = [];
+
+    const addFace = (corners: [number,number,number][], norm: [number,number,number]) => {
+      const base = verts.length / 6;
+      for (const [x, y, z] of corners) verts.push(x, y, z, ...norm);
+      idx.push(base, base+1, base+2, base, base+2, base+3);
+    };
+
+    addFace([[-hw,0,-hd],[hw,0,-hd],[hw,0,hd],[-hw,0,hd]],   [0,-1,0]); // bottom
+    addFace([[-hw,0,hd],[hw,0,hd],[hw,t,hd],[-hw,t,hd]],      [0,0,1]);  // front
+    addFace([[hw,0,-hd],[-hw,0,-hd],[-hw,t,-hd],[hw,t,-hd]],  [0,0,-1]); // back
+    addFace([[-hw,0,-hd],[-hw,0,hd],[-hw,t,hd],[-hw,t,-hd]], [-1,0,0]); // left
+    addFace([[hw,0,hd],[hw,0,-hd],[hw,t,-hd],[hw,t,hd]],       [1,0,0]); // right
+
+    if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
+    this.boxVAO = gl.createVertexArray()!;
+    gl.bindVertexArray(this.boxVAO);
+
+    const vbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+
+    const ebo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+
+    const stride = 6 * 4;
+    const aPos  = gl.getAttribLocation(this.boxProgram, "aPos");
+    const aNorm = gl.getAttribLocation(this.boxProgram, "aNorm");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos,  3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(aNorm);
+    gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, stride, 3 * 4);
+
+    gl.bindVertexArray(null);
+    this.boxIndexCount = idx.length;
+  }
+
   private createHeightTexture(): WebGLTexture {
     const gl = this.gl;
     const tex = gl.createTexture()!;
@@ -437,6 +517,22 @@ export class WebGLPreview {
     set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
     set("uCellMM",  this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
 
+    // Draw stock box (bottom + 4 sides) first so depth test closes the solid
+    if (this.boxVAO && this.boxIndexCount > 0) {
+      gl.useProgram(this.boxProgram);
+      gl.uniformMatrix4fv(gl.getUniformLocation(this.boxProgram, "uMVP"), false, MVP);
+      gl.bindVertexArray(this.boxVAO);
+      gl.drawElements(gl.TRIANGLES, this.boxIndexCount, gl.UNSIGNED_SHORT, 0);
+      gl.bindVertexArray(null);
+    }
+
+    // Draw height-map surface (top face with cuts)
+    gl.useProgram(this.program);
+    gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "uMVP"), false, MVP);
+    set("uStockXZ", this.stockW, this.stockH);
+    set("uStockT",  this.stockT);
+    set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
+    set("uCellMM",  this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
     gl.uniform1i(gl.getUniformLocation(this.program, "uHeightMap"), 0);
