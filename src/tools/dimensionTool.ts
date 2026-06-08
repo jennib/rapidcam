@@ -16,6 +16,7 @@ import { Geo, PointRef } from "../model/constraints";
 import {
   Dimension,
   DimensionType,
+  LinearDimType,
   makeDimension,
   dimensionLayout,
   dimensionMeasure,
@@ -57,6 +58,7 @@ export class DimensionTool implements Tool {
 
   // committed-on-move placement state
   private curType: DimensionType = "distance";
+  private forcedLinearType: LinearDimType | null = null;
   private curOffset = 0;
   private preview: ToolOverlay = { previews: [], selectionRect: null };
 
@@ -107,6 +109,11 @@ export class DimensionTool implements Tool {
             this.firstMid = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
             this.p1 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
             this.p2 = { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } };
+            // Lock to the line's actual orientation so the cursor position can't
+            // accidentally produce a "distance" type (rotationally invariant).
+            const dx = Math.abs(line.b.x - line.a.x);
+            const dy = Math.abs(line.b.y - line.a.y);
+            this.forcedLinearType = dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
             this.phase = "placeLinear";
           } else {
             // Polyline body click: snap to nearest vertex.
@@ -313,6 +320,7 @@ export class DimensionTool implements Tool {
     this.circleId = null;
     this.line1Id = null;
     this.line2Id = null;
+    this.forcedLinearType = null;
     this.preview = { previews: [], selectionRect: null };
     ctx.requestRender();
   }
@@ -332,7 +340,7 @@ export class DimensionTool implements Tool {
       const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
       
-      this.curType = chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
+      this.curType = this.forcedLinearType ?? chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);

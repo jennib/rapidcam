@@ -55,9 +55,9 @@ const PIN_WEIGHT = 1e-3;
  * causing the LM solver to get stuck before converging.
  */
 const ANCHOR_DRAG = 1e-3;
-// Phase-1 anchor for dimension/constraint solves: weak enough that the constraint gradient
-// always dominates (prevents !improved before crn < 1e-4 even for 50mm+ displacements).
-// After crn < 1e-4, Phase 2 switches to ANCHOR_DRAG to resolve null-space rotation/translation.
+// Anchor weight for dimension/constraint solves: weak enough that the constraint gradient
+// always dominates (prevents !improved before crn < 1e-4 even for 50mm+ displacements),
+// while still selecting the minimum-norm (minimum displacement) null-space element.
 const ANCHOR_DIM  = 1e-6;
 
 /** Pins: point-ref-key (`${entityId}:${pointKey}`) → world target. */
@@ -177,9 +177,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // can move geometry freely to satisfy constraints.  During drag, ANCHOR_DRAG holds
   // non-pinned DOFs firmly in place; ANCHOR_DIM is weak enough that the constraint
   // gradient always dominates even after large displacements (see constant comments above).
-  // After constraints converge (Phase 2), anchorW is promoted to ANCHOR_DRAG to eliminate
-  // any accumulated null-space drift (rotation / translation) — see the loop below.
-  let anchorW = pins ? ANCHOR_DRAG : ANCHOR_DIM;
+  const anchorW = pins ? ANCHOR_DRAG : ANCHOR_DIM;
 
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
@@ -237,7 +235,6 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   let fx = evalR(x);
   let cost = sumSq(fx);
   let lambda = 1e-3;
-  let phase2 = false; // true once constraint residuals < 1e-4 and we switch to strong anchor
 
   for (let iter = 0; iter < MAX_ITER && cost > COST_TOL; iter++) {
     const J = jacobian(evalR, x, fx);
@@ -276,20 +273,11 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       }
       lambda *= 10;
     }
-    if (!improved) break; // stuck — over-constrained, conflicting, or null-space resolved
-    // For dimension/constraint solves (no drag): Phase 1 uses a weak anchor so constraints
-    // converge without fighting the anchor.  Once crn < 1e-4, Phase 2 promotes anchorW to
-    // ANCHOR_DRAG so the strong anchor eliminates accumulated null-space drift (rotation /
-    // translation) by finding the minimum-norm solution on the constraint manifold.
-    // Phase 2 terminates on the next !improved — which fires once the anchor can no longer
-    // improve without violating constraints (rotation resolved, correct exit).
-    if (!pins && !phase2 && norm(fx.slice(0, equations)) < 1e-4) {
-      phase2 = true;
-      anchorW = ANCHOR_DRAG;
-      fx = evalR(x);   // recompute residuals with the new weight
-      cost = sumSq(fx);
-      lambda = 1e-3;   // reset damping for the new cost landscape
-    }
+    if (!improved) break; // stuck — likely over-constrained / conflicting
+    // For dimension/constraint solves (no drag pins), exit as soon as the hard
+    // constraints converge — no need to keep grinding toward COST_TOL, which
+    // may never be reached when anchorW is tiny and displacement is large.
+    if (!pins && norm(fx.slice(0, equations)) < 1e-4) break;
   }
 
   setX(x); // make sure the solution is the final state
