@@ -234,6 +234,7 @@ export class ProjectManager {
     if (entities.length >= 2) {
       const group = {
         id: nextId("grp"),
+        name: "",
         entityIds: entities.map(e => e.id)
       };
       this.doc.groups.push(group);

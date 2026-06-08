@@ -47,6 +47,7 @@ import { updateCounter } from "./ids";
 
 export interface GroupDef {
   id: string;
+  name: string;
   entityIds: EntityId[];
 }
 
@@ -481,7 +482,7 @@ export class CADDocument {
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
-      groups: this.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })),
+      groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map(l => ({ ...l })),
       activeLayerId: this.activeLayerId,
@@ -560,7 +561,7 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
-    this.groups = s.groups ? s.groups.map(g => ({ id: g.id, entityIds: [...g.entityIds] })) : [];
+    this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
     for (const p of this.patterns) updateCounter(p.id);
     this.operations = s.operations ? s.operations.map(op => ({

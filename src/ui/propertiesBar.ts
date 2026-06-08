@@ -138,6 +138,7 @@ export class PropertiesBar {
       this.pushHistory();
       const group = {
         id: nextId("grp"),
+        name: "",
         entityIds: this.doc.selected.map(e => e.id)
       };
       this.doc.groups.push(group);

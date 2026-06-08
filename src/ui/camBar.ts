@@ -982,7 +982,7 @@ export class CamBar {
         entityList.appendChild(lh);
 
         // Render groups
-        for (const { ents: gEnts } of groupsInLayer.values()) {
+        for (const { group, ents: gEnts } of groupsInLayer.values()) {
           const validEnts = gEnts.filter(e => isValidFor(e, state.combo));
           const isValid = validEnts.length > 0;
           const allChecked = isValid && validEnts.every(e => state.entityIds.has(e.id));
@@ -1013,12 +1013,16 @@ export class CamBar {
             renderEntities();
           });
 
-          const desc = document.createElement("span");
-          desc.textContent = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
-          desc.style.fontStyle = "italic";
+          const nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.value = group.name;
+          nameInput.placeholder = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
+          nameInput.style.cssText = "background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font:inherit;font-style:italic;width:160px;padding:0 2px;outline:none;";
+          nameInput.addEventListener("change", () => { group.name = nameInput.value.trim(); });
+          nameInput.addEventListener("click", (ev) => ev.stopPropagation());
 
           lbl.appendChild(cb);
-          lbl.appendChild(desc);
+          lbl.appendChild(nameInput);
           groupRow.appendChild(lbl);
           entityList.appendChild(groupRow);
 
