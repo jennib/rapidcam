@@ -273,7 +273,6 @@ export class App {
 
   private schedulePreviewUpdate(): void {
     if (!this.preview3DVisible || !this.webglPreview) return;
-    if (this.doc.operations.length === 0) return;
     if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);
     this.previewDebounceTimer = setTimeout(() => {
       this.previewDebounceTimer = null;
