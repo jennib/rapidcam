@@ -85,19 +85,17 @@ export class PropertiesBar {
     const bounds = selectionBounds(selected);
     if (!bounds) return;
 
-    // Check if entire selection is exactly one group
+    // Find a group that contains any selected entity (pick the first one found)
     const selectedIds = new Set(selected.map(e => e.id));
-    let matchingGroup: GroupDef | null = null;
-    for (const g of this.doc.groups) {
-      const isMatch = g.entityIds.length === selected.length && g.entityIds.every(id => selectedIds.has(id));
-      if (isMatch) {
-        matchingGroup = g;
-        break;
-      }
+    let involvedGroup: GroupDef | null = null;
+    for (const e of selected) {
+      const g = this.doc.groupOf(e.id);
+      if (g) { involvedGroup = g; break; }
     }
 
-    if (matchingGroup) {
-      this.buildGroupSection(matchingGroup);
+    if (involvedGroup) {
+      const fullySelected = involvedGroup.entityIds.every(id => selectedIds.has(id));
+      this.buildGroupSection(involvedGroup, fullySelected);
     } else if (selected.length >= 2) {
       this.buildCreateGroupSection();
     }
@@ -115,17 +113,49 @@ export class PropertiesBar {
     this.buildLayerSection(selected);
   }
 
-  private buildGroupSection(group: GroupDef): void {
+  private buildGroupSection(group: GroupDef, fullySelected: boolean): void {
     const sec = this.createSection(`Group · ${group.entityIds.length} entities`);
-    const btn = document.createElement("button");
-    btn.className = "btn";
-    btn.textContent = "Ungroup";
-    btn.addEventListener("click", () => {
+
+    // Name field
+    const nameRow = document.createElement("div");
+    nameRow.className = "props-row";
+    const nameLbl = document.createElement("span");
+    nameLbl.textContent = "Name";
+    const nameIn = document.createElement("input");
+    nameIn.type = "text";
+    nameIn.value = group.name;
+    nameIn.placeholder = "Unnamed group";
+    nameIn.style.flex = "1";
+    nameIn.addEventListener("change", () => { group.name = nameIn.value.trim(); });
+    nameRow.append(nameLbl, nameIn);
+    sec.appendChild(nameRow);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:4px;margin-top:4px;";
+
+    if (!fullySelected) {
+      const selectBtn = document.createElement("button");
+      selectBtn.className = "btn";
+      selectBtn.textContent = "Select All";
+      selectBtn.title = "Select all entities in this group";
+      selectBtn.addEventListener("click", () => {
+        for (const e of this.doc.entities) e.selected = group.entityIds.includes(e.id);
+        this.doc.emitChange();
+      });
+      btnRow.appendChild(selectBtn);
+    }
+
+    const ungroupBtn = document.createElement("button");
+    ungroupBtn.className = "btn";
+    ungroupBtn.textContent = "Ungroup";
+    ungroupBtn.addEventListener("click", () => {
       this.pushHistory();
       this.doc.groups = this.doc.groups.filter(g => g.id !== group.id);
       this.doc.emitChange();
     });
-    sec.appendChild(btn);
+    btnRow.appendChild(ungroupBtn);
+
+    sec.appendChild(btnRow);
     this.content.appendChild(sec);
   }
 
