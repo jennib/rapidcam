@@ -49,13 +49,10 @@ body {
 }
 
 .brand {
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--text);
+  display: flex;
+  align-items: center;
   margin-right: 8px;
-}
-.brand span {
-  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .field-group {

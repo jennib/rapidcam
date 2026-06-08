@@ -29,7 +29,7 @@ export class TopBar {
 
   private build(): void {
     const brand = el("div", "brand");
-    brand.innerHTML = '<img src="/favicon.svg" width="20" height="20" alt="" style="vertical-align:middle;margin-right:6px;">Rapid<span>CAM</span>';
+    brand.innerHTML = '<img src="/rapidcam-logo.svg" height="32" alt="RapidCAM">';
     this.host.appendChild(brand);
 
     new FileMenu(this.host, this.cb.file);
