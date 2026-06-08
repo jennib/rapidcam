@@ -1353,6 +1353,13 @@ button.cbtn.solve {
   margin: 0 auto 16px;
 }
 
+.welcome-footer {
+  text-align: center;
+  padding: 16px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+
 .welcome-intro {
   text-align: center;
   margin-bottom: 24px;
