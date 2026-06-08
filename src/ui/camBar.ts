@@ -1,4 +1,4 @@
-import type { CADDocument } from "../model/document";
+import type { CADDocument, GroupDef } from "../model/document";
 import {
   type Entity,
   CircleEntity,
@@ -863,6 +863,12 @@ export class CamBar {
         return;
       }
 
+      // Build entity → group reverse map
+      const entityGroupMap = new Map<string, GroupDef>();
+      for (const g of this.doc.groups) {
+        for (const eid of g.entityIds) entityGroupMap.set(eid, g);
+      }
+
       // Group entities by layer
       const byLayer = new Map<string, Entity[]>();
       for (const e of ents) {
@@ -871,10 +877,75 @@ export class CamBar {
         byLayer.set(e.layerId, arr);
       }
 
+      const makeEntityRow = (e: Entity, indent = false) => {
+        const valid = isValidFor(e, state.combo);
+        if (!valid) state.entityIds.delete(e.id);
+
+        const row = document.createElement("div");
+        row.className = "tp-entity-row" + (valid ? "" : " tp-entity-disabled");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        if (indent) row.style.paddingLeft = "20px";
+
+        const lbl = document.createElement("label");
+        lbl.style.display = "flex";
+        lbl.style.alignItems = "center";
+        lbl.style.gap = "8px";
+        lbl.style.flex = "1";
+        lbl.style.cursor = valid ? "pointer" : "default";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.className = "tp-entity-cb";
+        cb.checked = valid && state.entityIds.has(e.id);
+        cb.disabled = !valid;
+        cb.addEventListener("change", () => {
+          if (cb.checked) state.entityIds.add(e.id);
+          else { state.entityIds.delete(e.id); e.selected = false; }
+          renderEntities();
+        });
+        const desc = document.createElement("span");
+        desc.textContent = describeEntity(e, this.doc);
+
+        lbl.appendChild(cb);
+        lbl.appendChild(desc);
+        row.appendChild(lbl);
+
+        if (valid && (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
+          const chainBtn = document.createElement("button");
+          chainBtn.className = "btn";
+          chainBtn.style.padding = "2px 6px";
+          chainBtn.style.fontSize = "10px";
+          chainBtn.textContent = "Chain";
+          chainBtn.title = "Select connected chain";
+          chainBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const chainIds = findContiguousChain(e.id, this.doc, state.combo);
+            for (const id of chainIds) state.entityIds.add(id);
+            renderEntities();
+          });
+          row.appendChild(chainBtn);
+        }
+
+        return row;
+      };
+
       for (const layer of this.doc.layers) {
         const layerEnts = byLayer.get(layer.id) || [];
         if (layerEnts.length === 0) continue;
-        
+
+        // Separate grouped vs ungrouped entities for this layer
+        const groupsInLayer = new Map<string, { group: GroupDef; ents: Entity[] }>();
+        const ungroupedEnts: Entity[] = [];
+        for (const e of layerEnts) {
+          const g = entityGroupMap.get(e.id);
+          if (g) {
+            if (!groupsInLayer.has(g.id)) groupsInLayer.set(g.id, { group: g, ents: [] });
+            groupsInLayer.get(g.id)!.ents.push(e);
+          } else {
+            ungroupedEnts.push(e);
+          }
+        }
+
         // Layer Header
         const lh = document.createElement("div");
         lh.style.display = "flex";
@@ -885,14 +956,14 @@ export class CamBar {
         lh.style.borderRadius = "4px";
         lh.style.marginTop = "8px";
         lh.style.marginBottom = "4px";
-        
+
         const lhTitle = document.createElement("span");
         lhTitle.style.fontSize = "11px";
         lhTitle.style.fontWeight = "700";
         lhTitle.style.color = "var(--text)";
         lhTitle.textContent = layer.name;
         lh.appendChild(lhTitle);
-        
+
         const lToggle = document.createElement("button");
         lToggle.className = "btn";
         lToggle.style.padding = "2px 6px";
@@ -909,62 +980,54 @@ export class CamBar {
         });
         lh.appendChild(lToggle);
         entityList.appendChild(lh);
-        
-        // Layer Entities
-        for (const e of layerEnts) {
-          const valid = isValidFor(e, state.combo);
-          if (!valid) state.entityIds.delete(e.id);
 
-          const row = document.createElement("div");
-          row.className = "tp-entity-row" + (valid ? "" : " tp-entity-disabled");
-          row.style.display = "flex";
-          row.style.alignItems = "center";
-          
+        // Render groups
+        for (const { ents: gEnts } of groupsInLayer.values()) {
+          const validEnts = gEnts.filter(e => isValidFor(e, state.combo));
+          const isValid = validEnts.length > 0;
+          const allChecked = isValid && validEnts.every(e => state.entityIds.has(e.id));
+          const someChecked = validEnts.some(e => state.entityIds.has(e.id));
+
+          const groupRow = document.createElement("div");
+          groupRow.className = "tp-entity-row" + (isValid ? "" : " tp-entity-disabled");
+          groupRow.style.display = "flex";
+          groupRow.style.alignItems = "center";
+
           const lbl = document.createElement("label");
           lbl.style.display = "flex";
           lbl.style.alignItems = "center";
           lbl.style.gap = "8px";
           lbl.style.flex = "1";
-          lbl.style.cursor = valid ? "pointer" : "default";
+          lbl.style.cursor = isValid ? "pointer" : "default";
 
           const cb = document.createElement("input");
           cb.type = "checkbox"; cb.className = "tp-entity-cb";
-          cb.checked = valid && state.entityIds.has(e.id);
-          cb.disabled = !valid;
+          cb.checked = allChecked;
+          cb.indeterminate = someChecked && !allChecked;
+          cb.disabled = !isValid;
           cb.addEventListener("change", () => {
-            if (cb.checked) {
-              state.entityIds.add(e.id);
-            } else {
-              state.entityIds.delete(e.id);
-              e.selected = false; // keep canvas deselected so pick-mode doesn't re-add it
+            for (const e of validEnts) {
+              if (cb.checked) state.entityIds.add(e.id);
+              else { state.entityIds.delete(e.id); e.selected = false; }
             }
             renderEntities();
           });
+
           const desc = document.createElement("span");
-          desc.textContent = describeEntity(e, this.doc);
-          
+          desc.textContent = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
+          desc.style.fontStyle = "italic";
+
           lbl.appendChild(cb);
           lbl.appendChild(desc);
-          row.appendChild(lbl);
-          
-          if (valid && (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
-            const chainBtn = document.createElement("button");
-            chainBtn.className = "btn";
-            chainBtn.style.padding = "2px 6px";
-            chainBtn.style.fontSize = "10px";
-            chainBtn.textContent = "Chain";
-            chainBtn.title = "Select connected chain";
-            chainBtn.addEventListener("click", (ev) => {
-              ev.stopPropagation();
-              const chainIds = findContiguousChain(e.id, this.doc, state.combo);
-              for (const id of chainIds) state.entityIds.add(id);
-              renderEntities();
-            });
-            row.appendChild(chainBtn);
-          }
-          
-          entityList.appendChild(row);
+          groupRow.appendChild(lbl);
+          entityList.appendChild(groupRow);
+
+          // Show individual members indented under the group
+          for (const e of gEnts) entityList.appendChild(makeEntityRow(e, true));
         }
+
+        // Render ungrouped entities
+        for (const e of ungroupedEnts) entityList.appendChild(makeEntityRow(e, false));
       }
     };
 
