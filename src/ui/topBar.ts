@@ -2,6 +2,7 @@ import { CADDocument } from "../model/document";
 import { FileMenu, FileMenuCallbacks } from "./fileMenu";
 import { EditMenu, EditMenuCallbacks } from "./editMenu";
 import { ViewMenu, ViewMenuCallbacks } from "./viewMenu";
+import { HelpMenu } from "./helpMenu";
 
 export interface TopBarCallbacks {
   onUndo: () => void;
@@ -35,6 +36,7 @@ export class TopBar {
     new FileMenu(this.host, this.cb.file);
     new EditMenu(this.host, this.cb.edit);
     new ViewMenu(this.host, this.cb.view);
+    new HelpMenu(this.host);
 
     this.undoBtn = button("↩", () => this.cb.onUndo());
     this.undoBtn.title = "Undo (Ctrl+Z)";

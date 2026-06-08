@@ -1379,7 +1379,8 @@ button.cbtn.solve {
 
 .welcome-intro {
   text-align: center;
-  margin-bottom: 24px;
+  margin-top: 20px;
+  margin-bottom: 0;
   padding: 0 8px;
 }
 .welcome-intro-heading {
@@ -1395,6 +1396,48 @@ button.cbtn.solve {
   margin: 0;
   max-width: 520px;
   margin-inline: auto;
+}
+
+.about-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 36px 28px;
+  width: 420px;
+  max-width: 90vw;
+  position: relative;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.about-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.about-close:hover { background: var(--hover); color: var(--text); }
+.about-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 340px;
+}
+.about-version {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 0;
+  opacity: 0.7;
 }
 
 .welcome-content {

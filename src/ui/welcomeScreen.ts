@@ -229,8 +229,8 @@ export function showWelcomeScreen(
   footer.appendChild(bmc);
 
   container.appendChild(logo);
-  container.appendChild(welcome);
   container.appendChild(content);
+  container.appendChild(welcome);
   container.appendChild(footer);
   backdrop.appendChild(container);
 
