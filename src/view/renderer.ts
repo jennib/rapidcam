@@ -276,9 +276,7 @@ export class Renderer {
                 ? COLORS.entityPatternStale
                 : dofStatus === "conflict"
                   ? COLORS.entityConflict
-                  : dofStatus === "under-defined"
-                    ? COLORS.entityUnderDefined
-                    : layer.color;
+                  : layer.color;
       const width = e.selected || isToolpathHighlight ? 2 : 1.5;
       this.ctx.save();
       if (e.isConstruction) {

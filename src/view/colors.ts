@@ -15,7 +15,6 @@ export const COLORS = {
   entityConstruction: "#8b909c",
   entityHover: "#ffffff",
   entitySelected: "#f97316",
-  entityUnderDefined: "#4895e0",
   entityConflict: "#e05a5a",
   entityPatternStale: "#c8982a",
 
