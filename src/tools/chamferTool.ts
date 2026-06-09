@@ -1,20 +1,26 @@
 /**
- * Chamfer tool: click a corner where two lines meet (or a polyline / polygon
- * vertex), type a distance, get a straight bevel.
+ * Chamfer tool: click or drag a corner to bevel it.
+ *
+ * Drag away from the corner for a live preview — release to commit.
+ * Click without dragging to type an exact distance instead.
+ * Works on line-line corners and polyline / polygon vertices.
  */
 
 import { Vec2, dist } from "../core/vec2";
 import { LineEntity, PolylineEntity } from "../model/entities";
 import { CADDocument } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
-import { parseLength } from "../core/units";
+import { parseLength, formatLengthWithUnit } from "../core/units";
+import type { Unit } from "../core/units";
+import { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
-const CORNER_EPS = 1e-4;
-const HIT_PX    = 16;
+const CORNER_EPS       = 1e-4;
+const HIT_PX           = 16;
+const DRAG_THRESHOLD_PX = 4;
 
 // ---------------------------------------------------------------------------
-// Corner types
+// Types
 // ---------------------------------------------------------------------------
 
 interface LineCorner {
@@ -32,6 +38,16 @@ interface PolyCorner {
 }
 
 type Corner = LineCorner | PolyCorner;
+
+interface CornerDirs {
+  P: Vec2;
+  d1: Vec2; len1: number;
+  d2: Vec2; len2: number;
+}
+
+interface ChamferGeo { T1: Vec2; T2: Vec2; }
+
+type Phase = "idle" | "dragging";
 
 // ---------------------------------------------------------------------------
 // Corner detection
@@ -63,7 +79,7 @@ function findCorner(worldPos: Vec2, doc: CADDocument, scale: number): Corner | n
     }
   }
 
-  // Polyline vertices (all vertices of closed polylines; interior vertices of open ones)
+  // Polyline vertices
   for (const ent of doc.entities) {
     if (!(ent instanceof PolylineEntity) || ent.isConstruction) continue;
     const n = ent.points.length;
@@ -79,82 +95,90 @@ function findCorner(worldPos: Vec2, doc: CADDocument, scale: number): Corner | n
 }
 
 // ---------------------------------------------------------------------------
+// Geometry
+// ---------------------------------------------------------------------------
+
+function getCornerDirs(corner: Corner): CornerDirs | null {
+  if (corner.kind === "line") {
+    const { line1, key1, line2, key2, pos: P } = corner;
+    const o1 = key1 === "a" ? line1.b : line1.a;
+    const o2 = key2 === "a" ? line2.b : line2.a;
+    const len1 = dist(P, o1), len2 = dist(P, o2);
+    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
+    return { P, d1: { x: (o1.x-P.x)/len1, y: (o1.y-P.y)/len1 }, len1, d2: { x: (o2.x-P.x)/len2, y: (o2.y-P.y)/len2 }, len2 };
+  } else {
+    const { entity: pl, index: i } = corner;
+    const n = pl.points.length;
+    if (!pl.closed && (i === 0 || i === n - 1)) return null;
+    const P = pl.points[i];
+    const prev = pl.points[(i - 1 + n) % n];
+    const next = pl.points[(i + 1) % n];
+    const len1 = dist(P, prev), len2 = dist(P, next);
+    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
+    return { P, d1: { x: (prev.x-P.x)/len1, y: (prev.y-P.y)/len1 }, len1, d2: { x: (next.x-P.x)/len2, y: (next.y-P.y)/len2 }, len2 };
+  }
+}
+
+function computeGeo(dirs: CornerDirs, d: number): ChamferGeo | null {
+  const { P, d1, len1, d2, len2 } = dirs;
+  const angle = Math.acos(Math.max(-1, Math.min(1, d1.x*d2.x + d1.y*d2.y)));
+  if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return null;
+  if (d <= 0 || d >= len1 - CORNER_EPS || d >= len2 - CORNER_EPS) return null;
+  return {
+    T1: { x: P.x + d * d1.x, y: P.y + d * d1.y },
+    T2: { x: P.x + d * d2.x, y: P.y + d * d2.y },
+  };
+}
+
+function buildPreviews(corner: Corner, value: number, unit: Unit): PreviewShape[] {
+  const base: PreviewShape = { kind: "point", pos: corner.pos };
+  if (value <= 0) return [base];
+  const dirs = getCornerDirs(corner);
+  if (!dirs) return [base];
+  const geo = computeGeo(dirs, value);
+  if (!geo) return [base];
+  return [
+    base,
+    { kind: "line", a: geo.T1, b: geo.T2 },
+    { kind: "text", pos: corner.pos, text: formatLengthWithUnit(value, unit), dx: 12, dy: -12 },
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Apply
 // ---------------------------------------------------------------------------
 
 function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boolean {
-  return corner.kind === "line"
-    ? applyLineChamfer(corner, distance, doc)
-    : applyPolyChamfer(corner, distance);
-}
+  const dirs = getCornerDirs(corner);
+  if (!dirs) return false;
+  const geo = computeGeo(dirs, distance);
+  if (!geo) return false;
 
-function applyLineChamfer(corner: LineCorner, distance: number, doc: CADDocument): boolean {
-  const { line1, key1, line2, key2, pos: P } = corner;
+  if (corner.kind === "line") {
+    const { line1, key1, line2, key2 } = corner;
+    if (key1 === "a") line1.a = geo.T1; else line1.b = geo.T1;
+    if (key2 === "a") line2.a = geo.T2; else line2.b = geo.T2;
 
-  const other1 = key1 === "a" ? line1.b : line1.a;
-  const other2 = key2 === "a" ? line2.b : line2.a;
-  const len1 = dist(P, other1);
-  const len2 = dist(P, other2);
-  if (len1 < CORNER_EPS || len2 < CORNER_EPS) return false;
+    doc.constraints = doc.constraints.filter((c) => {
+      if (c.type !== "coincident" || c.points.length !== 2) return true;
+      const has1 = c.points.some((p) => p.entityId === line1.id && p.key === key1);
+      const has2 = c.points.some((p) => p.entityId === line2.id && p.key === key2);
+      return !(has1 && has2);
+    });
 
-  const d1: Vec2 = { x: (other1.x - P.x) / len1, y: (other1.y - P.y) / len1 };
-  const d2: Vec2 = { x: (other2.x - P.x) / len2, y: (other2.y - P.y) / len2 };
+    const chamfer = new LineEntity(geo.T1, geo.T2);
+    doc.add(chamfer);
+    doc.addConstraint({ id: `chamfer-c1-${chamfer.id}`, type: "coincident", points: [
+      { entityId: line1.id, key: key1 }, { entityId: chamfer.id, key: "a" },
+    ], entities: [], params: [] });
+    doc.addConstraint({ id: `chamfer-c2-${chamfer.id}`, type: "coincident", points: [
+      { entityId: line2.id, key: key2 }, { entityId: chamfer.id, key: "b" },
+    ], entities: [], params: [] });
+  } else {
+    const { entity: pl, index: i } = corner;
+    pl.points.splice(i, 1, geo.T1, geo.T2);
+  }
 
-  const angle = Math.acos(Math.max(-1, Math.min(1, d1.x * d2.x + d1.y * d2.y)));
-  if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return false;
-  if (distance >= len1 - CORNER_EPS || distance >= len2 - CORNER_EPS) return false;
-
-  const T1: Vec2 = { x: P.x + distance * d1.x, y: P.y + distance * d1.y };
-  const T2: Vec2 = { x: P.x + distance * d2.x, y: P.y + distance * d2.y };
-
-  if (key1 === "a") line1.a = T1; else line1.b = T1;
-  if (key2 === "a") line2.a = T2; else line2.b = T2;
-
-  doc.constraints = doc.constraints.filter((c) => {
-    if (c.type !== "coincident" || c.points.length !== 2) return true;
-    const has1 = c.points.some((p) => p.entityId === line1.id && p.key === key1);
-    const has2 = c.points.some((p) => p.entityId === line2.id && p.key === key2);
-    return !(has1 && has2);
-  });
-
-  const chamfer = new LineEntity(T1, T2);
-  doc.add(chamfer);
-  doc.addConstraint({ id: `chamfer-c1-${chamfer.id}`, type: "coincident", points: [
-    { entityId: line1.id, key: key1 }, { entityId: chamfer.id, key: "a" },
-  ], entities: [], params: [] });
-  doc.addConstraint({ id: `chamfer-c2-${chamfer.id}`, type: "coincident", points: [
-    { entityId: line2.id, key: key2 }, { entityId: chamfer.id, key: "b" },
-  ], entities: [], params: [] });
-
-  return true;
-}
-
-function applyPolyChamfer(corner: PolyCorner, distance: number): boolean {
-  const { entity: pl, index: i } = corner;
-  const n = pl.points.length;
-
-  if (!pl.closed && (i === 0 || i === n - 1)) return false;
-
-  const P    = pl.points[i];
-  const prev = pl.points[(i - 1 + n) % n];
-  const next = pl.points[(i + 1) % n];
-
-  const lenPrev = dist(P, prev);
-  const lenNext = dist(P, next);
-  if (lenPrev < CORNER_EPS || lenNext < CORNER_EPS) return false;
-
-  const dPrev: Vec2 = { x: (prev.x - P.x) / lenPrev, y: (prev.y - P.y) / lenPrev };
-  const dNext: Vec2 = { x: (next.x - P.x) / lenNext, y: (next.y - P.y) / lenNext };
-
-  const angle = Math.acos(Math.max(-1, Math.min(1, dPrev.x * dNext.x + dPrev.y * dNext.y)));
-  if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return false;
-  if (distance >= lenPrev - CORNER_EPS || distance >= lenNext - CORNER_EPS) return false;
-
-  const T1: Vec2 = { x: P.x + distance * dPrev.x, y: P.y + distance * dPrev.y };
-  const T2: Vec2 = { x: P.x + distance * dNext.x, y: P.y + distance * dNext.y };
-
-  // Replace the corner vertex with the two bevel endpoints.
-  pl.points.splice(i, 1, T1, T2);
   return true;
 }
 
@@ -167,47 +191,91 @@ export class ChamferTool implements Tool {
   readonly label = "Chamfer";
   readonly icon  = ICONS.chamfer;
 
+  private phase: Phase = "idle";
   private hoverCorner: Corner | null = null;
+  private activeCorner: Corner | null = null;
+  private downScreen: Vec2 = { x: 0, y: 0 };
+  private currentValue = 0;
+  private previews: PreviewShape[] = [];
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
-    const c = findCorner(e.worldRaw, ctx.doc, ctx.view.scale);
-    if (c?.pos !== this.hoverCorner?.pos) {
-      this.hoverCorner = c;
-      ctx.requestRender();
+    if (this.phase === "idle") {
+      const c = findCorner(e.worldRaw, ctx.doc, ctx.view.scale);
+      if (c?.pos !== this.hoverCorner?.pos) {
+        this.hoverCorner = c;
+        ctx.requestRender();
+      }
+      return;
     }
+    const corner = this.activeCorner!;
+    const d = dist(e.worldRaw, corner.pos);
+    this.currentValue = d;
+    this.previews = buildPreviews(corner, d, ctx.doc.displayUnit);
+    ctx.requestRender();
   }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
     const corner = findCorner(e.worldRaw, ctx.doc, ctx.view.scale);
     if (!corner) return;
-
-    ctx.openValueEditor(
-      corner.pos,
-      `chamfer distance (${ctx.doc.displayUnit})`,
-      (raw) => {
-        const d = parseLength(raw, ctx.doc.displayUnit);
-        if (d === null || d <= 0) return false;
-        ctx.pushHistory();
-        const ok = applyChamfer(corner, d, ctx.doc);
-        if (!ok) return false;
-        ctx.solve();
-        ctx.doc.emitChange();
-      },
-      () => {},
-    );
-  }
-
-  cancel(ctx: ToolContext): void {
-    this.hoverCorner = null;
+    this.phase = "dragging";
+    this.activeCorner = corner;
+    this.downScreen = { ...e.screen };
+    this.currentValue = 0;
+    this.previews = [{ kind: "point", pos: corner.pos }];
     ctx.requestRender();
   }
 
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (this.phase !== "dragging" || !this.activeCorner) return;
+    const corner = this.activeCorner;
+    const screenDelta = dist(e.screen, this.downScreen);
+    this.reset(ctx);
+
+    if (screenDelta < DRAG_THRESHOLD_PX) {
+      // click — open value editor for precise input
+      ctx.openValueEditor(
+        corner.pos,
+        `chamfer distance (${ctx.doc.displayUnit})`,
+        (raw) => {
+          const d = parseLength(raw, ctx.doc.displayUnit);
+          if (d === null || d <= 0) return false;
+          const dirs = getCornerDirs(corner);
+          if (!dirs || !computeGeo(dirs, d)) return false;
+          ctx.pushHistory();
+          applyChamfer(corner, d, ctx.doc);
+          ctx.solve();
+          ctx.doc.emitChange();
+        },
+        () => {},
+      );
+    } else {
+      // drag commit
+      const dirs = getCornerDirs(corner);
+      if (dirs && computeGeo(dirs, this.currentValue)) {
+        ctx.pushHistory();
+        applyChamfer(corner, this.currentValue, ctx.doc);
+        ctx.solve();
+        ctx.doc.emitChange();
+      }
+    }
+  }
+
+  private reset(ctx: ToolContext): void {
+    this.phase = "idle";
+    this.activeCorner = null;
+    this.previews = [];
+    ctx.requestRender();
+  }
+
+  cancel(ctx: ToolContext): void {
+    this.reset(ctx);
+    this.hoverCorner = null;
+  }
+
   getOverlay(): ToolOverlay {
-    if (!this.hoverCorner) return { previews: [], selectionRect: null };
-    return {
-      previews: [{ kind: "point", pos: this.hoverCorner.pos }],
-      selectionRect: null,
-    };
+    if (this.phase === "dragging") return { previews: this.previews, selectionRect: null };
+    if (this.hoverCorner) return { previews: [{ kind: "point", pos: this.hoverCorner.pos }], selectionRect: null };
+    return { previews: [], selectionRect: null };
   }
 }
