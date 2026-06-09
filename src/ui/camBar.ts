@@ -116,6 +116,7 @@ export class CamBar {
   private opsList!: HTMLElement;
   private isCollapsed = false;
   private highlightedOpId: string | null = null;
+  private dragSrcIdx: number | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -192,8 +193,9 @@ export class CamBar {
       this.opsList.appendChild(empty);
       return;
     }
-    for (const op of this.doc.operations) {
-      const item = this.buildOpItem(op);
+    for (let i = 0; i < this.doc.operations.length; i++) {
+      const op = this.doc.operations[i];
+      const item = this.buildOpItem(op, i);
       if (op.id === this.highlightedOpId) item.classList.add("tp-op-active");
       this.opsList.appendChild(item);
     }
@@ -207,13 +209,63 @@ export class CamBar {
     this.renderOps();
   }
 
-  private buildOpItem(op: CAMOperation): HTMLElement {
+  private buildOpItem(op: CAMOperation, index: number): HTMLElement {
     const item = document.createElement("div");
     item.className = "tp-op-item";
+    item.draggable = true;
+
+    item.addEventListener("dragstart", (e) => {
+      this.dragSrcIdx = index;
+      e.dataTransfer!.effectAllowed = "move";
+      item.classList.add("tp-dragging");
+    });
+    item.addEventListener("dragend", () => {
+      this.dragSrcIdx = null;
+      item.classList.remove("tp-dragging");
+      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach(
+        el => el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom"),
+      );
+    });
+    item.addEventListener("dragover", (e) => {
+      if (this.dragSrcIdx === null) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach(
+        el => el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom"),
+      );
+      const rect = item.getBoundingClientRect();
+      item.classList.add(e.clientY < rect.top + rect.height / 2 ? "tp-drag-over-top" : "tp-drag-over-bottom");
+    });
+    item.addEventListener("dragleave", (e) => {
+      if (!item.contains(e.relatedTarget as Node))
+        item.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+    });
+    item.addEventListener("drop", (e) => {
+      e.preventDefault();
+      item.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+      const src = this.dragSrcIdx;
+      if (src === null || src === index) return;
+      const insertBefore = e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
+      const ops = [...this.doc.operations];
+      const [moved] = ops.splice(src, 1);
+      let tgt = src < index ? index - 1 : index;
+      ops.splice(insertBefore ? tgt : tgt + 1, 0, moved);
+      this.pushHistory?.();
+      this.doc.operations = ops;
+      this.doc.emitChange();
+      this.renderOps();
+    });
+
     item.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest(".tp-icon-btn")) return;
+      if ((e.target as HTMLElement).closest(".tp-icon-btn,.tp-drag-handle")) return;
       this.highlightOp(this.highlightedOpId === op.id ? null : op.id);
     });
+
+    const handle = document.createElement("span");
+    handle.className = "tp-drag-handle";
+    handle.textContent = "⠿";
+    handle.title = "Drag to reorder";
+    item.appendChild(handle);
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;

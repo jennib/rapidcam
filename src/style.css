@@ -1008,6 +1008,18 @@ button.cbtn.solve {
   cursor: pointer;
 }
 .tp-op-item:hover { border-color: var(--accent-dim); }
+.tp-op-item.tp-dragging { opacity: 0.4; }
+.tp-op-item.tp-drag-over-top    { border-top:    2px solid var(--accent); }
+.tp-op-item.tp-drag-over-bottom { border-bottom: 2px solid var(--accent); }
+.tp-drag-handle {
+  cursor: grab;
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 14px;
+  user-select: none;
+  padding: 0 2px;
+}
+.tp-drag-handle:active { cursor: grabbing; }
 .tp-op-item.tp-op-active {
   border-color: #f59e42;
   box-shadow: inset 2px 0 0 #f59e42;
