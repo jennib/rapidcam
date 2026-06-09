@@ -277,7 +277,7 @@ export class Renderer {
                 : dofStatus === "conflict"
                   ? COLORS.entityConflict
                   : layer.color;
-      const width = e.selected || isToolpathHighlight ? 2 : 1.5;
+      const width = 1.5;
       this.ctx.save();
       if (e.isConstruction) {
         this.ctx.setLineDash([5, 5]);
