@@ -7,7 +7,7 @@
  */
 
 import { Vec2, dist } from "../core/vec2";
-import { LineEntity, PolylineEntity } from "../model/entities";
+import { LineEntity, PolylineEntity, RectEntity } from "../model/entities";
 import { CADDocument } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { parseLength, formatLengthWithUnit } from "../core/units";
@@ -37,7 +37,14 @@ interface PolyCorner {
   pos: Vec2;
 }
 
-type Corner = LineCorner | PolyCorner;
+interface RectCorner {
+  kind: "rect";
+  entity: RectEntity;
+  index: number; // 0–3 in corners() order
+  pos: Vec2;
+}
+
+type Corner = LineCorner | PolyCorner | RectCorner;
 
 interface CornerDirs {
   P: Vec2;
@@ -91,6 +98,17 @@ function findCorner(worldPos: Vec2, doc: CADDocument, scale: number): Corner | n
     }
   }
 
+  // Rect corners
+  for (const ent of doc.entities) {
+    if (!(ent instanceof RectEntity) || ent.isConstruction) continue;
+    const corners = ent.corners();
+    for (let i = 0; i < 4; i++) {
+      const d = dist(worldPos, corners[i]);
+      if (d < thresh && (!best || d < best.d))
+        best = { corner: { kind: "rect", entity: ent, index: i, pos: corners[i] }, d };
+    }
+  }
+
   return best?.corner ?? null;
 }
 
@@ -106,13 +124,22 @@ function getCornerDirs(corner: Corner): CornerDirs | null {
     const len1 = dist(P, o1), len2 = dist(P, o2);
     if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
     return { P, d1: { x: (o1.x-P.x)/len1, y: (o1.y-P.y)/len1 }, len1, d2: { x: (o2.x-P.x)/len2, y: (o2.y-P.y)/len2 }, len2 };
-  } else {
+  } else if (corner.kind === "poly") {
     const { entity: pl, index: i } = corner;
     const n = pl.points.length;
     if (!pl.closed && (i === 0 || i === n - 1)) return null;
     const P = pl.points[i];
     const prev = pl.points[(i - 1 + n) % n];
     const next = pl.points[(i + 1) % n];
+    const len1 = dist(P, prev), len2 = dist(P, next);
+    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
+    return { P, d1: { x: (prev.x-P.x)/len1, y: (prev.y-P.y)/len1 }, len1, d2: { x: (next.x-P.x)/len2, y: (next.y-P.y)/len2 }, len2 };
+  } else {
+    const { entity: rect, index: i } = corner;
+    const c = rect.corners();
+    const P = c[i];
+    const prev = c[(i + 3) % 4];
+    const next = c[(i + 1) % 4];
     const len1 = dist(P, prev), len2 = dist(P, next);
     if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
     return { P, d1: { x: (prev.x-P.x)/len1, y: (prev.y-P.y)/len1 }, len1, d2: { x: (next.x-P.x)/len2, y: (next.y-P.y)/len2 }, len2 };
@@ -175,8 +202,23 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boole
       { entityId: line2.id, key: key2 }, { entityId: chamfer.id, key: "b" },
     ], entities: [], params: [] });
   } else {
-    const { entity: pl, index: i } = corner;
+    // poly or rect — splice the two chamfer points in
+    let pl: PolylineEntity;
+    let i: number;
+    if (corner.kind === "poly") {
+      pl = corner.entity;
+      i  = corner.index;
+    } else {
+      pl = new PolylineEntity(corner.entity.corners().map(p => ({ ...p })), true);
+      pl.layerId  = corner.entity.layerId;
+      pl.selected = corner.entity.selected;
+      i = corner.index;
+    }
     pl.points.splice(i, 1, geo.T1, geo.T2);
+    if (corner.kind === "rect") {
+      doc.remove(corner.entity);
+      doc.add(pl);
+    }
   }
 
   return true;
