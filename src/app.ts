@@ -35,6 +35,7 @@ import { FilletTool } from "./tools/filletTool";
 import { ChamferTool } from "./tools/chamferTool";
 import { TrimTool } from "./tools/trimTool";
 import { MirrorTool } from "./tools/mirrorTool";
+import { joinSelected } from "./tools/joinCommand";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
 import { openLinearPatternDialog, openCircularPatternDialog, regenerateAllStalePatterns } from "./ui/patternDialogs";
 import { computeSourceSnapshot } from "./model/patterns";
@@ -194,6 +195,7 @@ export class App {
       },
       edit: {
         onDelete: () => this.deleteSelected(),
+        onJoin: () => this.joinSelectedEntities(),
         onLinearPattern:      () => openLinearPatternDialog(this.doc, this.project.pushHistory),
         onCircularPattern:    () => openCircularPatternDialog(this.doc, this.project.pushHistory),
         onRegeneratePatterns: () => this.doRegeneratePatterns(),
@@ -643,6 +645,13 @@ export class App {
     this.requestRender();
   };
 
+  private joinSelectedEntities(): void {
+    if (this.doc.selected.length < 2) return;
+    this.project.pushHistory();
+    if (!joinSelected(this.doc)) this.project.undoRedo("undo");
+    else this.runSolve();
+  }
+
   private deleteSelected(): void {
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();
@@ -701,6 +710,12 @@ export class App {
       return;
     }
     
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "j") {
+      this.joinSelectedEntities();
+      ev.preventDefault();
+      return;
+    }
+
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "g") {
       ev.preventDefault();
       if (ev.shiftKey) {
