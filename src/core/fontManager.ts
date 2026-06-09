@@ -5,7 +5,7 @@
  * Users can also load any TTF/OTF/WOFF from a local file picker.
  */
 
-import { parse as otParse } from "opentype.js";
+import * as opentype from "opentype.js";
 import type { Font } from "opentype.js";
 
 export { Font };
@@ -37,7 +37,7 @@ export function defaultFontId(): string {
 }
 
 async function parseFont(buf: ArrayBuffer): Promise<Font> {
-  return otParse(buf);
+  return opentype.parse(buf);
 }
 
 export async function loadFromUrl(id: string, name: string, url: string): Promise<void> {
