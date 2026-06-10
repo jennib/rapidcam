@@ -23,5 +23,9 @@
     "hersheytext": "^2.0.0",
     "opentype.js": "^2.0.0",
     "posthog-js": "^1.383.2"
+  },
+  "allowScripts": {
+    "core-js@3.49.0": true,
+    "esbuild@0.28.0": true
   }
 }
