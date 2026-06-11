@@ -141,11 +141,12 @@ function pocketPolygon(
   if (insets.length === 0)
     return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
-  // Expand each island outward by toolR. Use signedArea to pick the correct
-  // direction: positive area = outer boundary (expand with +d), negative = hole
-  // in Clipper2's convention (expand with -d).
-  const islandKeepouts = islands.flatMap(isl =>
-    offsetPolygon(isl, signedArea(isl) >= 0 ? toolR : -toolR));
+  // Normalise each island to CW winding (outer boundary in Clipper2's Y-down
+  // convention) before inflating, so inflatePathsD always expands outward.
+  const islandKeepouts = islands.flatMap(isl => {
+    const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
+    return offsetPolygon(pts, toolR);
+  });
 
   const lines: string[] = [];
 

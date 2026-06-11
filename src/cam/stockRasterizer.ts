@@ -416,8 +416,10 @@ function rasPocketPolygon(
   const toolR    = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   const insets   = offsetPolygon(verts, -toolR);
-  const islandKeepouts = islands.flatMap(isl =>
-    offsetPolygon(isl, signedArea(isl) >= 0 ? toolR : -toolR));
+  const islandKeepouts = islands.flatMap(isl => {
+    const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
+    return offsetPolygon(pts, toolR);
+  });
   for (const inset of insets) {
     if (inset.length < 2) continue;
     const rows = islandKeepouts.length > 0
