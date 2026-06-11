@@ -364,6 +364,7 @@ export class CamBar {
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
+      islandIds:    new Set<string>(existing?.islandIds ?? []),
       tabsEnabled:  existing?.tabs?.enabled ?? false,
       tabCount:     existing?.tabs?.count   ?? 4,
       tabWidth:     existing?.tabs?.width   ?? 4,
@@ -953,7 +954,7 @@ export class CamBar {
         cb.disabled = !valid;
         cb.addEventListener("change", () => {
           if (cb.checked) state.entityIds.add(e.id);
-          else { state.entityIds.delete(e.id); e.selected = false; }
+          else { state.entityIds.delete(e.id); state.islandIds.delete(e.id); e.selected = false; }
           renderEntities();
         });
         const desc = document.createElement("span");
@@ -977,6 +978,27 @@ export class CamBar {
             renderEntities();
           });
           row.appendChild(chainBtn);
+        }
+
+        // Island toggle: shown for pocket ops when the entity is checked.
+        if (valid && state.combo === "pocket" && state.entityIds.has(e.id)) {
+          const isIsland = state.islandIds.has(e.id);
+          const islandBtn = document.createElement("button");
+          islandBtn.className = "btn" + (isIsland ? " active" : "");
+          islandBtn.style.padding = "2px 6px";
+          islandBtn.style.fontSize = "10px";
+          islandBtn.style.marginLeft = "4px";
+          islandBtn.title = isIsland
+            ? "Marked as island — click to use as pocket boundary instead"
+            : "Click to mark as island (excluded from fill)";
+          islandBtn.textContent = isIsland ? "Island" : "Boundary";
+          islandBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (state.islandIds.has(e.id)) state.islandIds.delete(e.id);
+            else state.islandIds.add(e.id);
+            renderEntities();
+          });
+          row.appendChild(islandBtn);
         }
 
         return row;
@@ -1139,6 +1161,9 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
+        islandIds: type === "pocket" && state.islandIds.size > 0
+          ? [...state.islandIds].filter(id => state.entityIds.has(id))
+          : undefined,
         tabs: isProfile ? {
           enabled: state.tabsEnabled,
           count:   state.tabCount,

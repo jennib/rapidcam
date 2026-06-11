@@ -22,9 +22,9 @@ import {
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
-import { offsetPolygon } from "./offset";
+import { offsetPolygon, subtractPolygons } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
-import { rasterRows } from "./pocket";
+import { rasterRows, rasterRowsMulti } from "./pocket";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -69,15 +69,37 @@ function rasterizeOp(
   const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
 
+  // Collect island polygons for pocket operations.
+  const islandSet = new Set(op.islandIds ?? []);
+  const islands: Vec2[][] = [];
+  if (op.type === "pocket" && islandSet.size > 0) {
+    for (const id of islandSet) {
+      const e = entityMap.get(id) as any;
+      if (!e || e.isConstruction) continue;
+      if (e instanceof CircleEntity) {
+        const nSegs = Math.max(64, Math.ceil(2 * Math.PI * e.radius / 0.5));
+        islands.push(Array.from({ length: nSegs }, (_: unknown, i: number) => {
+          const a = (i / nSegs) * 2 * Math.PI;
+          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
+        }));
+      } else if (e instanceof RectEntity) {
+        islands.push([...e.corners()]);
+      } else if (e instanceof PolylineEntity && e.closed) {
+        islands.push(e.points);
+      }
+    }
+  }
+
   // Chain any selected line segments into a closed polygon for profile/pocket ops.
   if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
+      .filter(id => !islandSet.has(id))
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length >= 3) {
       const polygon = chainLines(lineEnts);
       if (polygon) {
-        if (op.type === "pocket") rasPocketPolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
+        if (op.type === "pocket") rasPocketPolygon(polygon, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else rasProfilePolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
       }
       lineEnts.forEach(e => lineSegIds.add(e.id));
@@ -85,7 +107,7 @@ function rasterizeOp(
   }
 
   for (const id of op.entityIds) {
-    if (lineSegIds.has(id)) continue;
+    if (lineSegIds.has(id) || islandSet.has(id)) continue;
     const ent = entityMap.get(id) as any;
     if (!ent || ent.isConstruction) continue;
 
@@ -96,7 +118,7 @@ function rasterizeOp(
         if (op.type === "engrave")
           sweepPolyline(op, data, gridW, gridH, stockT, c.points, c.closed, stamp, stepR);
         else if (op.type === "pocket" && c.closed)
-          rasPocketPolygon(c.points, op, data, gridW, gridH, stockT, stamp, stepR);
+          rasPocketPolygon(c.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else if (op.type === "profile" && c.closed)
           rasProfilePolygon(c.points, op, data, gridW, gridH, stockT, stamp, stepR);
       }
@@ -129,11 +151,11 @@ function rasterizeOp(
     } else if (op.type === "pocket") {
       if (ent instanceof CircleEntity)
         rasPocketCircle(ent.center.x, ent.center.y, ent.radius,
-          op, data, gridW, gridH, stockT, stamp, stepR);
+          islands, op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof RectEntity)
-        rasPocketPolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon([...ent.corners()], islands, op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
-        rasPocketPolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon(ent.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
     } else { // profile
       if (ent instanceof CircleEntity)
         rasProfileCircle(ent.center.x, ent.center.y, ent.radius,
@@ -387,43 +409,60 @@ function rasProfileCircle(
 }
 
 function rasPocketPolygon(
-  verts: Vec2[], op: CAMOperation,
+  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
   stamp: StampFn, stepR: number,
 ): void {
   const toolR    = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   const insets   = offsetPolygon(verts, -toolR);
+  const islandKeepouts = islands.flatMap(isl => offsetPolygon(isl, toolR));
   for (const inset of insets) {
     if (inset.length < 2) continue;
-    const rows = rasterRows(inset, stepover);
+    const cutContours = islandKeepouts.length > 0 ? subtractPolygons(inset, islandKeepouts) : [inset];
+    const rows = islandKeepouts.length > 0 ? rasterRowsMulti(cutContours, stepover) : rasterRows(inset, stepover);
     for (const z of depthPasses(op)) {
       const depth = stockT + z;
       for (const row of rows)
         for (let i = 0; i + 1 < row.length; i += 2)
           walkSegment(row[i], row[i + 1], stepR, depth, stamp);
-      // Sweep inset boundary (finish pass)
+      // Sweep outer inset boundary (finish pass)
       const np = inset.length;
       for (let i = 0; i < np; i++)
         walkSegment(inset[i], inset[(i + 1) % np], stepR, depth, stamp);
+      // Sweep island keepout boundaries (finish pass for island walls)
+      for (const keepout of islandKeepouts) {
+        const kn = keepout.length;
+        for (let i = 0; i < kn; i++)
+          walkSegment(keepout[i], keepout[(i + 1) % kn], stepR, depth, stamp);
+      }
     }
   }
 }
 
 function rasPocketCircle(
-  cx: number, cy: number, r: number, op: CAMOperation,
+  cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
   data: Float32Array, gridW: number, gridH: number, stockT: number,
   stamp: StampFn, stepR: number,
 ): void {
   const toolR = op.diameter / 2;
-  const cutR  = r - toolR;
+  if (islands.length > 0) {
+    const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
+    const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
+      const a = (i / nSegs) * 2 * Math.PI;
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    });
+    rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
+    return;
+  }
+  const cutR = r - toolR;
   if (cutR <= 0) return;
   const nSegs = Math.max(64, Math.ceil(2 * Math.PI * cutR / 0.5));
   const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
     const a = (i / nSegs) * 2 * Math.PI;
     return { x: cx + cutR * Math.cos(a), y: cy + cutR * Math.sin(a) };
   });
-  rasPocketPolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
+  rasPocketPolygon(verts, [], op, data, gridW, gridH, stockT, stamp, stepR);
 }
 
 // ---------------------------------------------------------------------------

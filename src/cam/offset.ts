@@ -1,5 +1,5 @@
 import type { Vec2 } from "../core/vec2";
-import { inflatePathsD, JoinType, EndType } from "clipper2-ts";
+import { inflatePathsD, JoinType, EndType, differenceD, FillRule } from "clipper2-ts";
 
 /**
  * Returns true if the closed polygon has at least one reflex (concave) vertex.
@@ -40,5 +40,17 @@ export function signedArea(pts: Vec2[]): number {
 export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[][] {
   if (pts.length < 3) return [];
   const result = inflatePathsD([pts], d, JoinType.Miter, EndType.Polygon, miterLimit);
+  return result.map(path => path.map(pt => ({ x: pt.x, y: pt.y })));
+}
+
+/**
+ * Subtract clip polygons from a subject polygon using Clipper2.
+ * Returns the resulting paths (may include outer boundaries and holes);
+ * passing all result paths together to a multi-contour scanline gives the
+ * correct cuttable region via the odd-even rule.
+ */
+export function subtractPolygons(subject: Vec2[], clips: Vec2[][]): Vec2[][] {
+  if (clips.length === 0) return [subject];
+  const result = differenceD([subject], clips, FillRule.NonZero);
   return result.map(path => path.map(pt => ({ x: pt.x, y: pt.y })));
 }

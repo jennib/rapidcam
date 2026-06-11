@@ -55,6 +55,7 @@ export interface CAMOperation {
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
+  islandIds?: EntityId[];     // pocket only: entities to treat as islands (excluded from fill)
   // lead-in / lead-out (profile only)
   leadIn?: LeadDef;
   leadOut?: LeadDef;

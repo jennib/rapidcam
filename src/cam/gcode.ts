@@ -3,10 +3,10 @@ import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
-import { offsetPolygon } from "./offset";
+import { offsetPolygon, subtractPolygons } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
-import { rasterRows } from "./pocket";
+import { rasterRows, rasterRowsMulti } from "./pocket";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -132,7 +132,7 @@ function profilePolygon(
 // --- pocket ------------------------------------------------------------------
 
 function pocketPolygon(
-  verts: Vec2[], op: CAMOperation,
+  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
   const toolR    = op.diameter / 2;
@@ -141,28 +141,40 @@ function pocketPolygon(
   if (insets.length === 0)
     return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
+  // Offset each island outward by toolR so the cutter clears the island wall.
+  const islandKeepouts = islands.flatMap(isl => offsetPolygon(isl, toolR));
+
   const lines: string[] = [];
 
   for (const inset of insets) {
-    const rows = rasterRows(inset, stepover);
-    if (rows.length === 0) continue;
+    // Cut region = inset boundary minus island keepouts.
+    const cutContours = islandKeepouts.length > 0
+      ? subtractPolygons(inset, islandKeepouts)
+      : [inset];
+
+    const rows = islandKeepouts.length > 0
+      ? rasterRowsMulti(cutContours, stepover)
+      : rasterRows(inset, stepover);
+    if (rows.length === 0 && islandKeepouts.length === 0) continue;
 
     for (const z of depthPasses(op)) {
-      const entry = rows[0][0];
-      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-      lines.push(`G0 X${X(entry.x, ox)} Y${Y(entry.y, oy)}`);
-      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      let first = true;
-      for (const row of rows) {
-        for (const pt of row) {
-          const f = first ? ` F${n(op.feedrate)}` : "";
-          lines.push(`G1 X${X(pt.x, ox)} Y${Y(pt.y, oy)}${f}`);
-          first = false;
+      if (rows.length > 0) {
+        const entry = rows[0][0];
+        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+        lines.push(`G0 X${X(entry.x, ox)} Y${Y(entry.y, oy)}`);
+        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+        let first = true;
+        for (const row of rows) {
+          for (const pt of row) {
+            const f = first ? ` F${n(op.feedrate)}` : "";
+            lines.push(`G1 X${X(pt.x, ox)} Y${Y(pt.y, oy)}${f}`);
+            first = false;
+          }
         }
       }
     }
 
-    // Finish pass: profile the inset boundary at each depth.
+    // Finish pass: profile the outer inset boundary.
     const s = inset[0];
     for (const z of depthPasses(op)) {
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -174,6 +186,23 @@ function pocketPolygon(
       }
       lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
     }
+
+    // Finish pass: profile each island keepout boundary to clean island walls.
+    for (const keepout of islandKeepouts) {
+      if (keepout.length < 3) continue;
+      const ks = keepout[0];
+      for (const z of depthPasses(op)) {
+        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+        lines.push(`G0 X${X(ks.x, ox)} Y${Y(ks.y, oy)}`);
+        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+        for (let i = 1; i < keepout.length; i++) {
+          const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+          lines.push(`G1 X${X(keepout[i].x, ox)} Y${Y(keepout[i].y, oy)}${f}`);
+        }
+        lines.push(`G1 X${X(ks.x, ox)} Y${Y(ks.y, oy)}`);
+      }
+    }
+
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   }
 
@@ -181,13 +210,23 @@ function pocketPolygon(
 }
 
 function pocketCircle(
-  cx: number, cy: number, r: number, op: CAMOperation,
+  cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
   const toolR = op.diameter / 2;
   const cutR  = r - toolR;
   if (cutR <= 0)
     return [`; NOTE: pocket circle too small for ⌀${op.diameter}mm tool — skipped`];
+
+  if (islands.length > 0) {
+    // Tessellate the inset circle and delegate to pocketPolygon for island subtraction.
+    const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
+    const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
+      const a = (i / nSegs) * 2 * Math.PI;
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    });
+    return pocketPolygon(verts, islands, op, ox, oy, zOff);
+  }
 
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   const nSegs    = Math.max(64, Math.ceil(2 * Math.PI * cutR / 0.5));
@@ -341,16 +380,38 @@ function toolpathBody(
   const lines: string[] = [];
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
 
+  // Collect island polygons for pocket operations.
+  const islandSet = new Set(op.islandIds ?? []);
+  const islands: Vec2[][] = [];
+  if (op.type === "pocket" && islandSet.size > 0) {
+    for (const id of islandSet) {
+      const e = entityMap.get(id);
+      if (!e || e.isConstruction) continue;
+      if (e instanceof CircleEntity) {
+        const nSegs = Math.max(64, Math.ceil(2 * Math.PI * e.radius / 0.5));
+        islands.push(Array.from({ length: nSegs }, (_, i) => {
+          const a = (i / nSegs) * 2 * Math.PI;
+          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
+        }));
+      } else if (e instanceof RectEntity) {
+        islands.push([...e.corners()]);
+      } else if (e instanceof PolylineEntity && e.closed) {
+        islands.push(e.points);
+      }
+    }
+  }
+
   // For profile/pocket ops, chain any selected LineEntity instances into a closed polygon.
   const lineSegIds = new Set<string>();
   if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
+      .filter(id => !islandSet.has(id))
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length >= 3) {
       const polygon = chainLines(lineEnts);
       if (polygon) {
-        if (op.type === "pocket") lines.push(...pocketPolygon(polygon, op, ox, oy, zOff));
+        if (op.type === "pocket") lines.push(...pocketPolygon(polygon, islands, op, ox, oy, zOff));
         else lines.push(...profilePolygon(polygon, op, ox, oy, zOff));
         for (const e of lineEnts) lineSegIds.add(e.id);
       } else {
@@ -361,7 +422,7 @@ function toolpathBody(
   }
 
   for (const id of op.entityIds) {
-    if (lineSegIds.has(id)) continue;
+    if (lineSegIds.has(id) || islandSet.has(id)) continue;
     const ent = entityMap.get(id);
     if (!ent || ent.isConstruction) continue;
 
@@ -382,7 +443,7 @@ function toolpathBody(
         if (op.type === "engrave")
           lines.push(...engravePoints(c.points, c.closed, op, ox, oy, zOff));
         else if (op.type === "pocket" && c.closed)
-          lines.push(...pocketPolygon(c.points, op, ox, oy, zOff));
+          lines.push(...pocketPolygon(c.points, islands, op, ox, oy, zOff));
         else if (op.type === "profile" && c.closed)
           lines.push(...profilePolygon(c.points, op, ox, oy, zOff));
       }
@@ -406,11 +467,11 @@ function toolpathBody(
     // profile / pocket
     if (op.type === "pocket") {
       if (ent instanceof CircleEntity)
-        lines.push(...pocketCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
+        lines.push(...pocketCircle(ent.center.x, ent.center.y, ent.radius, islands, op, ox, oy, zOff));
       else if (ent instanceof RectEntity)
-        lines.push(...pocketPolygon([...ent.corners()], op, ox, oy, zOff));
+        lines.push(...pocketPolygon([...ent.corners()], islands, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...pocketPolygon(ent.points, op, ox, oy, zOff));
+        lines.push(...pocketPolygon(ent.points, islands, op, ox, oy, zOff));
     } else {
       if (ent instanceof CircleEntity)
         lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
