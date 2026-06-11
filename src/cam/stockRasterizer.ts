@@ -88,6 +88,14 @@ function rasterizeOp(
         islands.push(e.points);
       }
     }
+    // Also chain any line segments in the island set into closed polygons.
+    const islandLineEnts = [...islandSet]
+      .map(id => entityMap.get(id))
+      .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
+    if (islandLineEnts.length >= 3) {
+      const poly = chainLines(islandLineEnts);
+      if (poly) islands.push(poly);
+    }
   }
 
   // Chain any selected line segments into a closed polygon for profile/pocket ops.
