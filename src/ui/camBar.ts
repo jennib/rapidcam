@@ -1201,7 +1201,7 @@ export class CamBar {
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
         islandIds: type === "pocket" && state.islandIds.size > 0
-          ? [...state.islandIds].filter(id => state.entityIds.has(id))
+          ? [...state.islandIds]
           : undefined,
         tabs: isProfile ? {
           enabled: state.tabsEnabled,
