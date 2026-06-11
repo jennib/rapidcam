@@ -900,7 +900,6 @@ export class CamBar {
     pickBtn.addEventListener("click", togglePickMode);
 
     const entityList = document.createElement("div");
-    entityList.className = "tp-entity-list";
     geoSec.appendChild(entityList);
     body.appendChild(geoSec);
 
@@ -987,7 +986,7 @@ export class CamBar {
         return row;
       };
 
-      const renderSection = (section: "boundary" | "island") => {
+      const renderSection = (section: "boundary" | "island", container: HTMLElement) => {
         const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
 
@@ -1032,7 +1031,7 @@ export class CamBar {
             });
             lh.appendChild(lToggle);
           }
-          entityList.appendChild(lh);
+          container.appendChild(lh);
 
           // Groups
           for (const { group, ents: gEnts } of groupsInLayer.values()) {
@@ -1074,13 +1073,19 @@ export class CamBar {
             lbl.appendChild(cb);
             lbl.appendChild(nameInput);
             groupRow.appendChild(lbl);
-            entityList.appendChild(groupRow);
-            for (const e of gEnts) entityList.appendChild(makeEntityRow(e, section, true));
+            container.appendChild(groupRow);
+            for (const e of gEnts) container.appendChild(makeEntityRow(e, section, true));
           }
 
           // Ungrouped
-          for (const e of ungroupedEnts) entityList.appendChild(makeEntityRow(e, section));
+          for (const e of ungroupedEnts) container.appendChild(makeEntityRow(e, section));
         }
+      };
+
+      const makeSectionList = () => {
+        const el = document.createElement("div");
+        el.className = "tp-entity-list";
+        return el;
       };
 
       if (state.combo === "pocket") {
@@ -1091,7 +1096,9 @@ export class CamBar {
           "border-bottom:1px solid var(--border);margin-bottom:4px;";
         bHeader.textContent = "Boundary";
         entityList.appendChild(bHeader);
-        renderSection("boundary");
+        const bList = makeSectionList();
+        entityList.appendChild(bList);
+        renderSection("boundary", bList);
 
         // ── Islands ────────────────────────────────────────
         const iHeader = document.createElement("div");
@@ -1132,9 +1139,13 @@ export class CamBar {
         iBtnRow.appendChild(iClear);
         iHeader.appendChild(iBtnRow);
         entityList.appendChild(iHeader);
-        renderSection("island");
+        const iList = makeSectionList();
+        entityList.appendChild(iList);
+        renderSection("island", iList);
       } else {
-        renderSection("boundary");
+        const list = makeSectionList();
+        entityList.appendChild(list);
+        renderSection("boundary", list);
       }
     };
 
