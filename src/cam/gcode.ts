@@ -141,11 +141,12 @@ function pocketPolygon(
   if (insets.length === 0)
     return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
-  // Normalise each island to CW winding (outer boundary in Clipper2's Y-down
-  // convention) before inflating, so inflatePathsD always expands outward.
+  // Expand each island outward by toolR to create keepout zones.
+  // If the offset returns empty (degenerate case), fall back to the raw polygon.
   const islandKeepouts = islands.flatMap(isl => {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
-    return offsetPolygon(pts, toolR);
+    const expanded = offsetPolygon(pts, toolR);
+    return expanded.length > 0 ? expanded : [pts];
   });
 
   const lines: string[] = [];
@@ -158,16 +159,31 @@ function pocketPolygon(
 
     for (const z of depthPasses(op)) {
       if (rows.length > 0) {
-        const entry = rows[0][0];
-        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-        lines.push(`G0 X${X(entry.x, ox)} Y${Y(entry.y, oy)}`);
-        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-        let first = true;
+        // Each row contains 2*k points representing k intervals (one pair per interval).
+        // Consecutive rows connect via zig-zag G1 (safe: along outer boundary).
+        // Multiple intervals within the same row require a lift/rapid between them
+        // to avoid cutting through the island.
+        let plunged = false;
         for (const row of rows) {
-          for (const pt of row) {
-            const f = first ? ` F${n(op.feedrate)}` : "";
-            lines.push(`G1 X${X(pt.x, ox)} Y${Y(pt.y, oy)}${f}`);
-            first = false;
+          for (let i = 0; i + 1 < row.length; i += 2) {
+            const a = row[i], b = row[i + 1];
+            if (!plunged) {
+              lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+              lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+              lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+              lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
+              plunged = true;
+            } else if (i === 0) {
+              // First interval of a new row — zig-zag connection along outer boundary (safe).
+              lines.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+              lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)}`);
+            } else {
+              // Additional interval within same row — lift over island, rapid, re-plunge.
+              lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+              lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+              lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+              lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
+            }
           }
         }
       }
@@ -398,6 +414,7 @@ function toolpathBody(
         islands.push(e.points);
       }
     }
+    lines.push(`; islands: ${islands.length} polygon(s) from ${islandSet.size} entity id(s)`);
   }
 
   // For profile/pocket ops, chain any selected LineEntity instances into a closed polygon.
