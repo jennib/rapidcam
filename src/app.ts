@@ -318,6 +318,7 @@ export class App {
       const allAreConstruction = selected.every((e) => e.isConstruction);
       this.project.pushHistory();
       for (const e of selected) e.isConstruction = !allAreConstruction;
+      this.doc.isConstructionMode = !allAreConstruction;
     } else {
       this.project.pushHistory();
       this.doc.isConstructionMode = !this.doc.isConstructionMode;
