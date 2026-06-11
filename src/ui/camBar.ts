@@ -487,8 +487,24 @@ export class CamBar {
     typeSelect.value = state.combo;
     body.appendChild(this.dField("Type", typeSelect));
 
-    // tool section
+    // tool section (collapsible — starts collapsed when editing an existing op)
     const toolSec = this.dSection("Tool");
+    const toolSectionTitle = toolSec.querySelector(".tp-dialog-section-title") as HTMLElement;
+    const toolArrow = document.createElement("span");
+    toolArrow.style.cssText = "float:right;margin-left:6px;font-style:normal;";
+    toolSectionTitle.style.cursor = "pointer";
+    toolSectionTitle.appendChild(toolArrow);
+
+    const toolContent = document.createElement("div");
+    toolContent.style.cssText = "display:flex;flex-direction:column;gap:7px;";
+
+    let toolExpanded = !existing;
+    const applyToolCollapse = () => {
+      toolContent.style.display = toolExpanded ? "" : "none";
+      toolArrow.textContent = toolExpanded ? "▲" : "▼";
+    };
+    toolSectionTitle.addEventListener("click", () => { toolExpanded = !toolExpanded; applyToolCollapse(); });
+    applyToolCollapse();
 
     // --- library row ---
     const libRow = document.createElement("div");
@@ -503,13 +519,13 @@ export class CamBar {
     saveLibBtn.textContent = "Save to Library";
     libRow.appendChild(loadLibBtn);
     libRow.appendChild(saveLibBtn);
-    toolSec.appendChild(libRow);
+    toolContent.appendChild(libRow);
 
     // library picker (shown inline below the buttons)
     const libPicker = document.createElement("div");
     libPicker.style.cssText = "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
       "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
-    toolSec.appendChild(libPicker);
+    toolContent.appendChild(libPicker);
 
     const refreshPicker = () => {
       libPicker.innerHTML = "";
@@ -587,7 +603,7 @@ export class CamBar {
       toolTypeSelect.appendChild(o);
     }
     toolTypeSelect.value = state.toolType;
-    toolSec.appendChild(this.dField("Tool Type", toolTypeSelect));
+    toolContent.appendChild(this.dField("Tool Type", toolTypeSelect));
 
     // --- shared number row helper ---
     const numRow = (lbl: string, get: () => number, set: (v: number) => void) => {
@@ -628,14 +644,15 @@ export class CamBar {
     tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (isFinite(v)) state.tipAngle = v; });
     const tipAngleRow = this.dField("Tip Angle (°)", tipAngleInp);
 
-    toolSec.appendChild(toolNumRow.el);
-    toolSec.appendChild(diamRow.el);
-    toolSec.appendChild(vAngleRow);
-    toolSec.appendChild(tipAngleRow);
-    toolSec.appendChild(spindleRow.el);
-    toolSec.appendChild(feedRow.el);
-    toolSec.appendChild(plungeRow.el);
-    toolSec.appendChild(safeZRow.el);
+    toolContent.appendChild(toolNumRow.el);
+    toolContent.appendChild(diamRow.el);
+    toolContent.appendChild(vAngleRow);
+    toolContent.appendChild(tipAngleRow);
+    toolContent.appendChild(spindleRow.el);
+    toolContent.appendChild(feedRow.el);
+    toolContent.appendChild(plungeRow.el);
+    toolContent.appendChild(safeZRow.el);
+    toolSec.appendChild(toolContent);
     body.appendChild(toolSec);
 
     // apply a ToolDef from the library into state + all inputs
