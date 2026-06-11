@@ -11,6 +11,7 @@ import { PolylineEntity, SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { orthoSnap } from "../input/snapping";
 
 export class PolylineTool implements Tool {
   readonly id = "polyline";
@@ -23,24 +24,29 @@ export class PolylineTool implements Tool {
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
-    const last = this.points[this.points.length - 1];
-    if (last && distSq(last, e.world) < 1e-9) return; // ignore duplicate click
+    const prev = this.points[this.points.length - 1];
+    const shifted = e.shiftKey && prev != null;
+    const world = shifted ? orthoSnap(prev, e.world) : e.world;
+    const snap = shifted ? null : (e.snap?.key ? e.snap : null);
+
+    if (prev && distSq(prev, world) < 1e-9) return; // ignore duplicate click
 
     // Clicking the first vertex closes the polyline.
     if (this.points.length >= 2) {
       const tol = ctx.view.toWorldLen(8);
-      if (dist(this.points[0], e.world) <= tol) {
+      if (dist(this.points[0], world) <= tol) {
         this.finish(ctx, true);
         return;
       }
     }
-    this.points.push(e.world);
-    this.snaps.push(e.snap?.key ? e.snap : null);
+    this.points.push(world);
+    this.snaps.push(snap);
     ctx.requestRender();
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
-    this.cursor = e.world;
+    const prev = this.points[this.points.length - 1];
+    this.cursor = prev && e.shiftKey ? orthoSnap(prev, e.world) : e.world;
     if (this.points.length > 0) ctx.requestRender();
   }
 

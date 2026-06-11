@@ -5,6 +5,7 @@ import { LineEntity, SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { orthoSnap } from "../input/snapping";
 
 export class LineTool implements Tool {
   readonly id = "line";
@@ -21,13 +22,16 @@ export class LineTool implements Tool {
       this.start = e.world;
       this.startSnap = e.snap?.key ? e.snap : null;
     } else {
-      if (distSq(this.start, e.world) > 1e-9) {
+      const shifted = e.shiftKey;
+      const world = shifted ? orthoSnap(this.start, e.world) : e.world;
+      const endSnap = shifted ? null : (e.snap?.key ? e.snap : null);
+      if (distSq(this.start, world) > 1e-9) {
         ctx.pushHistory();
-        const ent = new LineEntity(this.start, e.world);
+        const ent = new LineEntity(this.start, world);
         ent.isConstruction = ctx.doc.isConstructionMode;
         ctx.doc.addSelected(ent);
         autoJoin(ctx, ent.id, "a", this.startSnap);
-        autoJoin(ctx, ent.id, "b", e.snap?.key ? e.snap : null);
+        autoJoin(ctx, ent.id, "b", endSnap);
         ctx.solve();
       }
       this.start = null;
@@ -36,7 +40,7 @@ export class LineTool implements Tool {
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
-    this.cursor = e.world;
+    this.cursor = this.start && e.shiftKey ? orthoSnap(this.start, e.world) : e.world;
     if (this.start) ctx.requestRender();
   }
 

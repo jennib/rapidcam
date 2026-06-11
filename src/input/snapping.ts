@@ -13,6 +13,15 @@ import { CADDocument } from "../model/document";
 import { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
 
+/** Clamp `raw` to the nearest cardinal axis (H or V) through `start`. */
+export function orthoSnap(start: Vec2, raw: Vec2): Vec2 {
+  const dx = raw.x - start.x;
+  const dy = raw.y - start.y;
+  return Math.abs(dx) >= Math.abs(dy)
+    ? { x: raw.x, y: start.y }
+    : { x: start.x, y: raw.y };
+}
+
 export interface SnapResult {
   /** Final world position to use. */
   world: Vec2;
