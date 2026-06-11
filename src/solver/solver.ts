@@ -154,6 +154,11 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   const vars: Variable[] = [];
   const anchorVars: Variable[] = [];
+  // Per-variable multiplier on anchorW. Arc angle DOFs (sa, ea) are scaled by
+  // radius so their anchor cost is normalised to mm of endpoint displacement —
+  // without this, rotating a large-radius arc is numerically cheaper than
+  // translating it, causing spurious rotation when a dimension is changed.
+  const anchorScales: number[] = [];
   for (const ent of doc.entities) {
     for (const p of ent.dofPoints()) {
       if (fixed.has(`${ent.id}:${p.key}`)) continue;
@@ -162,14 +167,19 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       vars.push(vx, vy);
       // Always anchor non-pinned DOFs to prefer minimal-change solutions in
       // under-constrained systems (e.g. editing a dimension without dragging).
-      if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) anchorVars.push(vx);
-      if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) anchorVars.push(vy);
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) { anchorVars.push(vx); anchorScales.push(1); }
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) { anchorVars.push(vy); anchorScales.push(1); }
     }
     for (const s of ent.dofScalars()) {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;
       const vs = scalarComponent(ent, s.key);
       vars.push(vs);
-      if (!pinnedScalars.has(scalarKey(ent.id, s.key))) anchorVars.push(vs);
+      if (!pinnedScalars.has(scalarKey(ent.id, s.key))) {
+        anchorVars.push(vs);
+        const scale = (ent instanceof ArcEntity && (s.key === "sa" || s.key === "ea"))
+          ? ent.radius : 1;
+        anchorScales.push(scale);
+      }
     }
   }
   const anchorStart = anchorVars.map((v) => v.get());
@@ -208,7 +218,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       out.push(PIN_WEIGHT * (pos.y - p.target.y));
     }
     for (let j = 0; j < anchorVars.length; j++) {
-      out.push(anchorW * (anchorVars[j].get() - anchorStart[j]));
+      out.push(anchorW * anchorScales[j] * (anchorVars[j].get() - anchorStart[j]));
     }
     return out;
   };
