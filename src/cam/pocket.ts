@@ -1,45 +1,51 @@
 import type { Vec2 } from "../core/vec2";
 
 /**
- * Generate zig-zag raster rows for pocket clearing.
- * `verts` must already be the inset polygon (offset inward by tool radius).
- * Returns rows in traversal order; odd rows are reversed for zig-zag.
- * Each row is a flat array of points: [p0, p1, p2, p3 ...] where pairs
- * [p0,p1], [p2,p3] etc. are individual cut segments (multiple pairs arise
- * from concave polygons). Between consecutive points on the same row the
- * cutter stays at cut depth.
+ * Rasterize a pocket with island keepouts via direct scanline interval subtraction.
+ * `outer` is the inset boundary (already shrunk inward by tool radius).
+ * `islands` are keepout polygons (each island already expanded outward by tool radius).
+ * Winding direction of either polygon does not affect correctness.
  */
-/**
- * Like rasterRows but accepts multiple contours (outer boundaries + holes).
- * Collecting all scanline intersections across all contours and pairing them
- * via the odd-even rule correctly excludes island regions.
- */
-export function rasterRowsMulti(contours: Vec2[][], stepoverMM: number): Vec2[][] {
-  if (contours.length === 0 || stepoverMM <= 0) return [];
+export function rasterRowsWithIslands(outer: Vec2[], islands: Vec2[][], stepoverMM: number): Vec2[][] {
+  if (outer.length < 3 || stepoverMM <= 0) return [];
 
   let minY = Infinity, maxY = -Infinity;
-  for (const c of contours)
-    for (const v of c) {
-      if (v.y < minY) minY = v.y;
-      if (v.y > maxY) maxY = v.y;
-    }
+  for (const v of outer) {
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
 
   const rows: Vec2[][] = [];
   let ltr = true;
 
   for (let y = minY + stepoverMM * 0.5; y <= maxY + 1e-9; y += stepoverMM) {
-    const xs: number[] = [];
-    for (const c of contours) xs.push(...scanlineXs(y, c));
-    xs.sort((a, b) => a - b);
-    if (xs.length < 2) { ltr = !ltr; continue; }
+    const oxs = scanlineXs(y, outer);
+    let intervals: [number, number][] = [];
+    for (let i = 0; i + 1 < oxs.length; i += 2)
+      intervals.push([oxs[i], oxs[i + 1]]);
+
+    for (const island of islands) {
+      const ixs = scanlineXs(y, island);
+      for (let i = 0; i + 1 < ixs.length; i += 2) {
+        const il = ixs[i], ir = ixs[i + 1];
+        const next: [number, number][] = [];
+        for (const [ol, or_] of intervals) {
+          if (ir <= ol || il >= or_) { next.push([ol, or_]); continue; }
+          if (ol < il) next.push([ol, il]);
+          if (ir < or_) next.push([ir, or_]);
+        }
+        intervals = next;
+      }
+    }
+
+    if (intervals.length === 0) { ltr = !ltr; continue; }
 
     const pts: Vec2[] = [];
     if (ltr) {
-      for (let i = 0; i + 1 < xs.length; i += 2)
-        pts.push({ x: xs[i], y }, { x: xs[i + 1], y });
+      for (const [a, b] of intervals) pts.push({ x: a, y }, { x: b, y });
     } else {
-      for (let i = xs.length - 2; i >= 0; i -= 2)
-        pts.push({ x: xs[i + 1], y }, { x: xs[i], y });
+      for (let i = intervals.length - 1; i >= 0; i--)
+        pts.push({ x: intervals[i][1], y }, { x: intervals[i][0], y });
     }
     rows.push(pts);
     ltr = !ltr;

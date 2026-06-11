@@ -3,10 +3,10 @@ import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
-import { offsetPolygon, subtractPolygons } from "./offset";
+import { offsetPolygon, signedArea } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
-import { rasterRows, rasterRowsMulti } from "./pocket";
+import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -141,19 +141,17 @@ function pocketPolygon(
   if (insets.length === 0)
     return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
-  // Offset each island outward by toolR so the cutter clears the island wall.
-  const islandKeepouts = islands.flatMap(isl => offsetPolygon(isl, toolR));
+  // Expand each island outward by toolR. Use signedArea to pick the correct
+  // direction: positive area = outer boundary (expand with +d), negative = hole
+  // in Clipper2's convention (expand with -d).
+  const islandKeepouts = islands.flatMap(isl =>
+    offsetPolygon(isl, signedArea(isl) >= 0 ? toolR : -toolR));
 
   const lines: string[] = [];
 
   for (const inset of insets) {
-    // Cut region = inset boundary minus island keepouts.
-    const cutContours = islandKeepouts.length > 0
-      ? subtractPolygons(inset, islandKeepouts)
-      : [inset];
-
     const rows = islandKeepouts.length > 0
-      ? rasterRowsMulti(cutContours, stepover)
+      ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
       : rasterRows(inset, stepover);
     if (rows.length === 0 && islandKeepouts.length === 0) continue;
 

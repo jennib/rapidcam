@@ -22,9 +22,9 @@ import {
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
-import { offsetPolygon, subtractPolygons } from "./offset";
+import { offsetPolygon, signedArea } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
-import { rasterRows, rasterRowsMulti } from "./pocket";
+import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -416,11 +416,13 @@ function rasPocketPolygon(
   const toolR    = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   const insets   = offsetPolygon(verts, -toolR);
-  const islandKeepouts = islands.flatMap(isl => offsetPolygon(isl, toolR));
+  const islandKeepouts = islands.flatMap(isl =>
+    offsetPolygon(isl, signedArea(isl) >= 0 ? toolR : -toolR));
   for (const inset of insets) {
     if (inset.length < 2) continue;
-    const cutContours = islandKeepouts.length > 0 ? subtractPolygons(inset, islandKeepouts) : [inset];
-    const rows = islandKeepouts.length > 0 ? rasterRowsMulti(cutContours, stepover) : rasterRows(inset, stepover);
+    const rows = islandKeepouts.length > 0
+      ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
+      : rasterRows(inset, stepover);
     for (const z of depthPasses(op)) {
       const depth = stockT + z;
       for (const row of rows)
