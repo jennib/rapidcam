@@ -905,7 +905,7 @@ export class CamBar {
     body.appendChild(geoSec);
 
     renderEntities = () => {
-      this.doc.toolpathHighlightIds = new Set(state.entityIds);
+      this.doc.toolpathHighlightIds = new Set([...state.entityIds, ...state.islandIds]);
       this.doc.emitChange();
       entityList.innerHTML = "";
       const ents = this.doc.entities.filter((e) => !e.isConstruction);
@@ -919,194 +919,222 @@ export class CamBar {
 
       // Build entity → group reverse map
       const entityGroupMap = new Map<string, GroupDef>();
-      for (const g of this.doc.groups) {
+      for (const g of this.doc.groups)
         for (const eid of g.entityIds) entityGroupMap.set(eid, g);
-      }
 
       // Group entities by layer
       const byLayer = new Map<string, Entity[]>();
       for (const e of ents) {
-        const arr = byLayer.get(e.layerId) || [];
+        const arr = byLayer.get(e.layerId) ?? [];
         arr.push(e);
         byLayer.set(e.layerId, arr);
       }
 
-      const makeEntityRow = (e: Entity, indent = false) => {
+      const makeEntityRow = (e: Entity, section: "boundary" | "island", indent = false) => {
         const valid = isValidFor(e, state.combo);
-        if (!valid) state.entityIds.delete(e.id);
+        if (!valid) { state.entityIds.delete(e.id); state.islandIds.delete(e.id); }
+
+        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
+        const inOther  = otherSet.has(e.id);
+        const disabled = !valid || inOther;
 
         const row = document.createElement("div");
-        row.className = "tp-entity-row" + (valid ? "" : " tp-entity-disabled");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        if (indent) row.style.paddingLeft = "20px";
+        row.className = "tp-entity-row" + (disabled ? " tp-entity-disabled" : "");
+        row.style.cssText = "display:flex;align-items:center;" + (indent ? "padding-left:20px;" : "");
 
         const lbl = document.createElement("label");
-        lbl.style.display = "flex";
-        lbl.style.alignItems = "center";
-        lbl.style.gap = "8px";
-        lbl.style.flex = "1";
-        lbl.style.cursor = valid ? "pointer" : "default";
+        lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${disabled ? "default" : "pointer"};`;
 
         const cb = document.createElement("input");
         cb.type = "checkbox"; cb.className = "tp-entity-cb";
-        cb.checked = valid && state.entityIds.has(e.id);
-        cb.disabled = !valid;
+        cb.checked = valid && thisSet.has(e.id);
+        cb.disabled = disabled;
         cb.addEventListener("change", () => {
-          if (cb.checked) state.entityIds.add(e.id);
-          else { state.entityIds.delete(e.id); state.islandIds.delete(e.id); e.selected = false; }
+          if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
+          else { thisSet.delete(e.id); e.selected = false; }
           renderEntities();
         });
+
         const desc = document.createElement("span");
         desc.textContent = describeEntity(e, this.doc);
+        if (inOther) {
+          desc.style.opacity = "0.45";
+          desc.title = section === "boundary" ? "Assigned to Islands" : "Assigned to Boundary";
+        }
 
         lbl.appendChild(cb);
         lbl.appendChild(desc);
         row.appendChild(lbl);
 
-        if (valid && (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
+        // Chain button: boundary section, line-like entities only
+        if (section === "boundary" && valid && !inOther &&
+            (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
           const chainBtn = document.createElement("button");
           chainBtn.className = "btn";
-          chainBtn.style.padding = "2px 6px";
-          chainBtn.style.fontSize = "10px";
+          chainBtn.style.cssText = "padding:2px 6px;font-size:10px;";
           chainBtn.textContent = "Chain";
           chainBtn.title = "Select connected chain";
           chainBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             const chainIds = findContiguousChain(e.id, this.doc, state.combo);
-            for (const id of chainIds) state.entityIds.add(id);
+            for (const id of chainIds) { state.entityIds.add(id); state.islandIds.delete(id); }
             renderEntities();
           });
           row.appendChild(chainBtn);
         }
 
-        // Island toggle: shown for pocket ops when the entity is checked.
-        if (valid && state.combo === "pocket" && state.entityIds.has(e.id)) {
-          const isIsland = state.islandIds.has(e.id);
-          const islandBtn = document.createElement("button");
-          islandBtn.className = "btn" + (isIsland ? " active" : "");
-          islandBtn.style.padding = "2px 6px";
-          islandBtn.style.fontSize = "10px";
-          islandBtn.style.marginLeft = "4px";
-          islandBtn.title = isIsland
-            ? "Marked as island — click to use as pocket boundary instead"
-            : "Click to mark as island (excluded from fill)";
-          islandBtn.textContent = isIsland ? "Island" : "Boundary";
-          islandBtn.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            if (state.islandIds.has(e.id)) state.islandIds.delete(e.id);
-            else state.islandIds.add(e.id);
-            renderEntities();
-          });
-          row.appendChild(islandBtn);
-        }
-
         return row;
       };
 
-      for (const layer of this.doc.layers) {
-        const layerEnts = byLayer.get(layer.id) || [];
-        if (layerEnts.length === 0) continue;
+      const renderSection = (section: "boundary" | "island") => {
+        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
 
-        // Separate grouped vs ungrouped entities for this layer
-        const groupsInLayer = new Map<string, { group: GroupDef; ents: Entity[] }>();
-        const ungroupedEnts: Entity[] = [];
-        for (const e of layerEnts) {
-          const g = entityGroupMap.get(e.id);
-          if (g) {
-            if (!groupsInLayer.has(g.id)) groupsInLayer.set(g.id, { group: g, ents: [] });
-            groupsInLayer.get(g.id)!.ents.push(e);
-          } else {
-            ungroupedEnts.push(e);
-          }
-        }
+        for (const layer of this.doc.layers) {
+          const layerEnts = byLayer.get(layer.id) ?? [];
+          if (layerEnts.length === 0) continue;
 
-        // Layer Header
-        const lh = document.createElement("div");
-        lh.style.display = "flex";
-        lh.style.justifyContent = "space-between";
-        lh.style.alignItems = "center";
-        lh.style.padding = "4px 8px";
-        lh.style.background = "var(--panel)";
-        lh.style.borderRadius = "4px";
-        lh.style.marginTop = "8px";
-        lh.style.marginBottom = "4px";
-
-        const lhTitle = document.createElement("span");
-        lhTitle.style.fontSize = "11px";
-        lhTitle.style.fontWeight = "700";
-        lhTitle.style.color = "var(--text)";
-        lhTitle.textContent = layer.name;
-        lh.appendChild(lhTitle);
-
-        const lToggle = document.createElement("button");
-        lToggle.className = "btn";
-        lToggle.style.padding = "2px 6px";
-        lToggle.style.fontSize = "10px";
-        lToggle.textContent = "Toggle";
-        lToggle.addEventListener("click", () => {
-          const valid = layerEnts.filter(e => isValidFor(e, state.combo));
-          const allChecked = valid.every(e => state.entityIds.has(e.id));
-          for (const e of valid) {
-            if (allChecked) { state.entityIds.delete(e.id); e.selected = false; }
-            else state.entityIds.add(e.id);
-          }
-          renderEntities();
-        });
-        lh.appendChild(lToggle);
-        entityList.appendChild(lh);
-
-        // Render groups
-        for (const { group, ents: gEnts } of groupsInLayer.values()) {
-          const validEnts = gEnts.filter(e => isValidFor(e, state.combo));
-          const isValid = validEnts.length > 0;
-          const allChecked = isValid && validEnts.every(e => state.entityIds.has(e.id));
-          const someChecked = validEnts.some(e => state.entityIds.has(e.id));
-
-          const groupRow = document.createElement("div");
-          groupRow.className = "tp-entity-row" + (isValid ? "" : " tp-entity-disabled");
-          groupRow.style.display = "flex";
-          groupRow.style.alignItems = "center";
-
-          const lbl = document.createElement("label");
-          lbl.style.display = "flex";
-          lbl.style.alignItems = "center";
-          lbl.style.gap = "8px";
-          lbl.style.flex = "1";
-          lbl.style.cursor = isValid ? "pointer" : "default";
-
-          const cb = document.createElement("input");
-          cb.type = "checkbox"; cb.className = "tp-entity-cb";
-          cb.checked = allChecked;
-          cb.indeterminate = someChecked && !allChecked;
-          cb.disabled = !isValid;
-          cb.addEventListener("change", () => {
-            for (const e of validEnts) {
-              if (cb.checked) state.entityIds.add(e.id);
-              else { state.entityIds.delete(e.id); e.selected = false; }
+          const groupsInLayer = new Map<string, { group: GroupDef; ents: Entity[] }>();
+          const ungroupedEnts: Entity[] = [];
+          for (const e of layerEnts) {
+            const g = entityGroupMap.get(e.id);
+            if (g) {
+              if (!groupsInLayer.has(g.id)) groupsInLayer.set(g.id, { group: g, ents: [] });
+              groupsInLayer.get(g.id)!.ents.push(e);
+            } else {
+              ungroupedEnts.push(e);
             }
-            renderEntities();
-          });
+          }
 
-          const nameInput = document.createElement("input");
-          nameInput.type = "text";
-          nameInput.value = group.name;
-          nameInput.placeholder = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
-          nameInput.style.cssText = "background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font:inherit;font-style:italic;width:160px;padding:0 2px;outline:none;";
-          nameInput.addEventListener("change", () => { group.name = nameInput.value.trim(); });
-          nameInput.addEventListener("click", (ev) => ev.stopPropagation());
+          // Layer header (with toggle button on boundary section only)
+          const lh = document.createElement("div");
+          lh.style.cssText = "display:flex;justify-content:space-between;align-items:center;" +
+            "padding:4px 8px;background:var(--panel);border-radius:4px;margin-top:8px;margin-bottom:4px;";
+          const lhTitle = document.createElement("span");
+          lhTitle.style.cssText = "font-size:11px;font-weight:700;color:var(--text);";
+          lhTitle.textContent = layer.name;
+          lh.appendChild(lhTitle);
 
-          lbl.appendChild(cb);
-          lbl.appendChild(nameInput);
-          groupRow.appendChild(lbl);
-          entityList.appendChild(groupRow);
+          if (section === "boundary") {
+            const lToggle = document.createElement("button");
+            lToggle.className = "btn";
+            lToggle.style.cssText = "padding:2px 6px;font-size:10px;";
+            lToggle.textContent = "Toggle";
+            lToggle.addEventListener("click", () => {
+              const valid = layerEnts.filter(e => isValidFor(e, state.combo) && !otherSet.has(e.id));
+              const allChecked = valid.every(e => thisSet.has(e.id));
+              for (const e of valid) {
+                if (allChecked) { thisSet.delete(e.id); e.selected = false; }
+                else thisSet.add(e.id);
+              }
+              renderEntities();
+            });
+            lh.appendChild(lToggle);
+          }
+          entityList.appendChild(lh);
 
-          // Show individual members indented under the group
-          for (const e of gEnts) entityList.appendChild(makeEntityRow(e, true));
+          // Groups
+          for (const { group, ents: gEnts } of groupsInLayer.values()) {
+            const validEnts  = gEnts.filter(e => isValidFor(e, state.combo));
+            const available  = validEnts.filter(e => !otherSet.has(e.id));
+            const isValid    = validEnts.length > 0;
+            const allChecked = available.length > 0 && available.every(e => thisSet.has(e.id));
+            const someChecked = available.some(e => thisSet.has(e.id));
+
+            const groupRow = document.createElement("div");
+            groupRow.className = "tp-entity-row" + (isValid ? "" : " tp-entity-disabled");
+            groupRow.style.cssText = "display:flex;align-items:center;";
+
+            const lbl = document.createElement("label");
+            lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${isValid ? "pointer" : "default"};`;
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox"; cb.className = "tp-entity-cb";
+            cb.checked = allChecked;
+            cb.indeterminate = someChecked && !allChecked;
+            cb.disabled = !isValid;
+            cb.addEventListener("change", () => {
+              for (const e of available) {
+                if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
+                else { thisSet.delete(e.id); e.selected = false; }
+              }
+              renderEntities();
+            });
+
+            const nameInput = document.createElement("input");
+            nameInput.type = "text";
+            nameInput.value = group.name;
+            nameInput.placeholder = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
+            nameInput.style.cssText = "background:transparent;border:none;border-bottom:1px solid var(--border);" +
+              "color:var(--text);font:inherit;font-style:italic;width:160px;padding:0 2px;outline:none;";
+            nameInput.addEventListener("change", () => { group.name = nameInput.value.trim(); });
+            nameInput.addEventListener("click", ev => ev.stopPropagation());
+
+            lbl.appendChild(cb);
+            lbl.appendChild(nameInput);
+            groupRow.appendChild(lbl);
+            entityList.appendChild(groupRow);
+            for (const e of gEnts) entityList.appendChild(makeEntityRow(e, section, true));
+          }
+
+          // Ungrouped
+          for (const e of ungroupedEnts) entityList.appendChild(makeEntityRow(e, section));
         }
+      };
 
-        // Render ungrouped entities
-        for (const e of ungroupedEnts) entityList.appendChild(makeEntityRow(e, false));
+      if (state.combo === "pocket") {
+        // ── Boundary ──────────────────────────────────────
+        const bHeader = document.createElement("div");
+        bHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--text-dim,#999);" +
+          "text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px;" +
+          "border-bottom:1px solid var(--border);margin-bottom:4px;";
+        bHeader.textContent = "Boundary";
+        entityList.appendChild(bHeader);
+        renderSection("boundary");
+
+        // ── Islands ────────────────────────────────────────
+        const iHeader = document.createElement("div");
+        iHeader.style.cssText = "display:flex;justify-content:space-between;align-items:center;" +
+          "font-size:11px;font-weight:600;color:var(--text-dim,#999);" +
+          "text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px;" +
+          "border-bottom:1px solid var(--border);margin-top:14px;margin-bottom:4px;";
+
+        const iLabel = document.createElement("span");
+        iLabel.textContent = "Islands";
+        iHeader.appendChild(iLabel);
+
+        const iBtnRow = document.createElement("div");
+        iBtnRow.style.cssText = "display:flex;gap:4px;";
+
+        const iFromSel = document.createElement("button");
+        iFromSel.className = "btn";
+        iFromSel.style.cssText = "padding:2px 6px;font-size:10px;";
+        iFromSel.textContent = "+ From Selection";
+        iFromSel.addEventListener("click", () => {
+          let added = 0;
+          for (const e of this.doc.entities) {
+            if (e.selected && !e.isConstruction && isValidFor(e, state.combo) && !state.entityIds.has(e.id)) {
+              state.islandIds.add(e.id);
+              added++;
+            }
+          }
+          if (added > 0) renderEntities();
+        });
+
+        const iClear = document.createElement("button");
+        iClear.className = "btn";
+        iClear.style.cssText = "padding:2px 6px;font-size:10px;";
+        iClear.textContent = "Clear";
+        iClear.addEventListener("click", () => { state.islandIds.clear(); renderEntities(); });
+
+        iBtnRow.appendChild(iFromSel);
+        iBtnRow.appendChild(iClear);
+        iHeader.appendChild(iBtnRow);
+        entityList.appendChild(iHeader);
+        renderSection("island");
+      } else {
+        renderSection("boundary");
       }
     };
 
