@@ -61,6 +61,50 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
   }
 }
 
+/**
+ * Group an array of LineEntity objects into:
+ *   chains  — arrays that form closed loops (≥3 segments, endpoints meet)
+ *   singles — remaining open-path segments not part of any closed loop
+ */
+function groupLinesIntoClosedChains(lines: LineEntity[]): { chains: LineEntity[][], singles: LineEntity[] } {
+  const EPS = 1e-4;
+  const unused = new Set(lines);
+  const chains: LineEntity[][] = [];
+  const singles: LineEntity[] = [];
+
+  while (unused.size > 0) {
+    const start = unused.values().next().value as LineEntity;
+    unused.delete(start);
+
+    const component: LineEntity[] = [start];
+    let frontA = { x: start.a.x, y: start.a.y };
+    let frontB = { x: start.b.x, y: start.b.y };
+
+    let growing = true;
+    while (growing) {
+      growing = false;
+      for (const seg of unused) {
+        const da_a = Math.hypot(frontA.x - seg.a.x, frontA.y - seg.a.y);
+        const da_b = Math.hypot(frontA.x - seg.b.x, frontA.y - seg.b.y);
+        const db_a = Math.hypot(frontB.x - seg.a.x, frontB.y - seg.a.y);
+        const db_b = Math.hypot(frontB.x - seg.b.x, frontB.y - seg.b.y);
+        if (db_a < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
+        if (db_b < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
+        if (da_a < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
+        if (da_b < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
+      }
+    }
+
+    const closed = component.length >= 3 &&
+      Math.hypot(frontA.x - frontB.x, frontA.y - frontB.y) < EPS;
+
+    if (closed) chains.push(component);
+    else singles.push(...component);
+  }
+
+  return { chains, singles };
+}
+
 function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
   const chain = new Set<string>();
   const front: Vec2[] = [];
@@ -1008,6 +1052,48 @@ export class CamBar {
         return row;
       };
 
+      const makeChainRow = (chain: LineEntity[], section: "boundary" | "island") => {
+        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
+        const allInOther  = chain.every(e => otherSet.has(e.id));
+        const someInOther = chain.some(e => otherSet.has(e.id));
+        const disabled = allInOther || someInOther;
+        const checked  = !disabled && chain.every(e => thisSet.has(e.id));
+        const indeterminate = !disabled && !checked && chain.some(e => thisSet.has(e.id));
+
+        const row = document.createElement("div");
+        row.className = "tp-entity-row" + (disabled ? " tp-entity-disabled" : "");
+        row.style.cssText = "display:flex;align-items:center;";
+
+        const lbl = document.createElement("label");
+        lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${disabled ? "default" : "pointer"};`;
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.className = "tp-entity-cb";
+        cb.checked = checked;
+        cb.indeterminate = indeterminate;
+        cb.disabled = disabled;
+        cb.addEventListener("change", () => {
+          for (const e of chain) {
+            if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
+            else { thisSet.delete(e.id); e.selected = false; }
+          }
+          renderEntities();
+        });
+
+        const desc = document.createElement("span");
+        desc.textContent = `Closed path — ${chain.length} segments`;
+        if (disabled) {
+          desc.style.opacity = "0.45";
+          desc.title = section === "boundary" ? "Assigned to Islands" : "Assigned to Boundary";
+        }
+
+        lbl.appendChild(cb);
+        lbl.appendChild(desc);
+        row.appendChild(lbl);
+        return row;
+      };
+
       const renderSection = (section: "boundary" | "island", container: HTMLElement) => {
         const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
@@ -1099,8 +1185,15 @@ export class CamBar {
             for (const e of gEnts) container.appendChild(makeEntityRow(e, section, true));
           }
 
-          // Ungrouped
-          for (const e of ungroupedEnts) container.appendChild(makeEntityRow(e, section));
+          // Ungrouped: group line entities into closed chains, render each chain as one item
+          const ungroupedLines = ungroupedEnts.filter((e): e is LineEntity => e instanceof LineEntity);
+          const ungroupedOther = ungroupedEnts.filter(e => !(e instanceof LineEntity));
+          const { chains: lineChains, singles: openLines } = groupLinesIntoClosedChains(ungroupedLines);
+          for (const chain of lineChains)
+            container.appendChild(makeChainRow(chain, section));
+          if (section === "boundary")
+            for (const e of openLines) container.appendChild(makeEntityRow(e, section));
+          for (const e of ungroupedOther) container.appendChild(makeEntityRow(e, section));
         }
       };
 
@@ -1141,8 +1234,16 @@ export class CamBar {
         iFromSel.style.cssText = "padding:2px 6px;font-size:10px;";
         iFromSel.textContent = "+ From Selection";
         iFromSel.addEventListener("click", () => {
+          const selLines = this.doc.entities.filter(
+            (e): e is LineEntity => e instanceof LineEntity && e.selected && !e.isConstruction && isValidFor(e, state.combo) && !state.entityIds.has(e.id)
+          );
+          const { chains, singles } = groupLinesIntoClosedChains(selLines);
           let added = 0;
+          for (const chain of chains)
+            for (const e of chain) { state.islandIds.add(e.id); added++; }
+          for (const e of singles) { state.islandIds.add(e.id); added++; }
           for (const e of this.doc.entities) {
+            if (e instanceof LineEntity) continue;
             if (e.selected && !e.isConstruction && isValidFor(e, state.combo) && !state.entityIds.has(e.id)) {
               state.islandIds.add(e.id);
               added++;
