@@ -36,7 +36,7 @@ const BUTTONS: (ButtonSpec | "sep")[] = [
   { type: "tangent", name: "Tangent", hint: "Select 1 line and 1 circle/arc, or 2 arcs/circles" },
   { type: "pointOnLine", name: "Point on line", hint: "Select 1 point and 1 line" },
   { type: "pointOnArc", name: "Point on arc", hint: "Select 1 point and 1 arc" },
-  { type: "midpoint", name: "Midpoint", hint: "Select 1 point and 1 line" },
+  { type: "midpoint", name: "Midpoint", hint: "Select 1 point and 1 line, or 3 points (first = midpoint)" },
   "sep",
   { type: "symmetric", name: "Symmetric", hint: "Select 2 points and 1 line (symmetry axis)" },
   { type: "collinear", name: "Collinear", hint: "Select 2 lines" },
@@ -119,9 +119,13 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
         : err("Select 1 point and 1 arc");
 
     case "midpoint":
-      return pts.length === 1 && lines.length === 1
-        ? ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lines[0].id] })])
-        : err("Select 1 point and 1 line");
+      if (pts.length === 1 && lines.length === 1)
+        return ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lines[0].id] })]);
+      // Two-point variant: the first selected point becomes the midpoint of
+      // the other two (e.g. circle centre + two opposite rectangle corners).
+      if (pts.length === 3 && ents.length === 0)
+        return ok([makeConstraint("midpoint", { points: [pts[0], pts[1], pts[2]] })]);
+      return err("Select 1 point and 1 line, or 3 points (first selected = midpoint)");
 
     case "symmetric":
       return pts.length === 2 && lines.length === 1

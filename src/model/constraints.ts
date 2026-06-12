@@ -30,7 +30,7 @@ export type ConstraintType =
   | "pointOnCircle" // points[1] + entities[1] (circle)
   | "symmetric"     // points[2] + entities[1] (line) → symmetric about the line
   | "collinear"     // entities[2] (lines)             → both on same infinite line
-  | "midpoint"      // points[1] + entities[1] (line) → point at midpoint of line
+  | "midpoint"      // points[1] + entities[1] (line) → point at midpoint of line; or points[3] → points[0] at midpoint of points[1]–points[2]
   | "angle"         // entities[2] (lines) + params[0]=target radians → fixed angle
   | "fixedPoint"    // points[1+] + params[0]=x, params[1]=y → pin point to world pos
   | "fixed";        // entities[1+]                   → lock all its DOFs (no equation)
@@ -208,10 +208,18 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
     }
     case "midpoint": {
       const p = readPoint(geo, c.points[0]);
-      const l = asLine(geo, c.entities[0]);
-      if (!p || !l) return [];
-      const m = { x: (l.a.x + l.b.x) / 2, y: (l.a.y + l.b.y) / 2 };
-      return [p.x - m.x, p.y - m.y];
+      if (!p) return [];
+      if (c.entities.length > 0) {
+        const l = asLine(geo, c.entities[0]);
+        if (!l) return [];
+        const m = { x: (l.a.x + l.b.x) / 2, y: (l.a.y + l.b.y) / 2 };
+        return [p.x - m.x, p.y - m.y];
+      }
+      // Two-point variant: points[0] is the midpoint of points[1]–points[2].
+      const a = readPoint(geo, c.points[1]);
+      const b = readPoint(geo, c.points[2]);
+      if (!a || !b) return [];
+      return [p.x - (a.x + b.x) / 2, p.y - (a.y + b.y) / 2];
     }
     case "pointOnCircle": {
       const p = readPoint(geo, c.points[0]);
