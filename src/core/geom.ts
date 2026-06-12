@@ -98,6 +98,54 @@ export function segSegIntersect(
   };
 }
 
+/**
+ * Intersect segment a→b with a full circle (center c, radius r).
+ * Returns 0–2 hits, each with the param t along the segment in [0,1] and
+ * theta, the world angle of the hit point on the circle.
+ */
+export function segCircleIntersect(
+  a: Vec2, b: Vec2, c: Vec2, r: number,
+): { point: Vec2; t: number; theta: number }[] {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const fx = a.x - c.x, fy = a.y - c.y;
+  const A = dx * dx + dy * dy;
+  if (A < 1e-20) return [];
+  const B = 2 * (fx * dx + fy * dy);
+  const C = fx * fx + fy * fy - r * r;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return [];
+  const sq = Math.sqrt(disc);
+  const EPS = 1e-9;
+  const out: { point: Vec2; t: number; theta: number }[] = [];
+  for (const s of sq < 1e-12 ? [1] : [-1, 1]) { // tangent → single hit
+    const t = (-B + s * sq) / (2 * A);
+    if (t < -EPS || t > 1 + EPS) continue;
+    const tc = clamp(t, 0, 1);
+    const p = { x: a.x + tc * dx, y: a.y + tc * dy };
+    out.push({ point: p, t: tc, theta: Math.atan2(p.y - c.y, p.x - c.x) });
+  }
+  return out;
+}
+
+/** Intersect two circles. Returns 0–2 points (1 when tangent). */
+export function circleCircleIntersect(c1: Vec2, r1: number, c2: Vec2, r2: number): Vec2[] {
+  const dx = c2.x - c1.x, dy = c2.y - c1.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1e-12) return []; // concentric (or identical) — no point intersections
+  if (d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
+  // Distance from c1 to the chord midpoint along the center line, and half-chord h.
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h2 = r1 * r1 - a * a;
+  const h = h2 > 0 ? Math.sqrt(h2) : 0;
+  const mx = c1.x + (a * dx) / d, my = c1.y + (a * dy) / d;
+  if (h < 1e-9) return [{ x: mx, y: my }];
+  const ox = (-dy / d) * h, oy = (dx / d) * h;
+  return [
+    { x: mx + ox, y: my + oy },
+    { x: mx - ox, y: my - oy },
+  ];
+}
+
 export const TAU = Math.PI * 2;
 export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
