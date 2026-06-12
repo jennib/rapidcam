@@ -16,13 +16,17 @@ import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type Lea
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
-import { groupLinesIntoClosedChains, chainToPolygon, classifyRegionAt, pointInPolygon, type RegionLoop } from "../cam/loops";
+import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
+import { regionAtPoint, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
 
 // ---- helpers ----------------------------------------------------------------
 
 type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill";
+
+/** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
+const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill) \d+$/;
 
 function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -62,33 +66,28 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
   }
 }
 
-/** Collect all closed loops (circles, rects, closed polylines, line chains) valid for `combo`. */
-function collectPickLoops(doc: CADDocument, combo: OpCombo): RegionLoop[] {
-  const loops: RegionLoop[] = [];
-  const lines: LineEntity[] = [];
-  for (const e of doc.entities) {
-    if (e.isConstruction || !isValidFor(e, combo)) continue;
-    if (e instanceof CircleEntity) {
-      const n = 64;
-      loops.push({
-        verts: Array.from({ length: n }, (_, i) => {
-          const a = (i / n) * 2 * Math.PI;
-          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
-        }),
-        ids: [e.id],
-      });
-    } else if (e instanceof RectEntity) {
-      loops.push({ verts: [...e.corners()], ids: [e.id] });
-    } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
-      loops.push({ verts: e.points, ids: [e.id] });
-    } else if (e instanceof LineEntity) {
-      lines.push(e);
-    }
+/**
+ * Synthesize region seeds from entity-id sets: one seed inside each boundary
+ * loop, clear of its islands. Used to migrate legacy pocket ops and to seed
+ * regions from the canvas selection.
+ */
+function seedsFromEntityIds(doc: CADDocument, entIds: Set<string>, islIds: Set<string>): Vec2[] {
+  const loops = collectClosedLoops(doc.entities);
+  const boundaries = loops.filter((L) => L.ids.every((id) => entIds.has(id)));
+  const islands = loops.filter((L) => L.ids.every((id) => islIds.has(id)));
+  const seeds: Vec2[] = [];
+  for (const b of boundaries) {
+    const holes = islands
+      .filter((i) => pointInPolygon(i.verts[0], b.verts))
+      .map((i) => i.verts);
+    const p = interiorPoint(b.verts, holes);
+    if (p) seeds.push(p);
   }
-  const { chains } = groupLinesIntoClosedChains(lines);
-  for (const chain of chains)
-    loops.push({ verts: chainToPolygon(chain), ids: chain.map((s) => s.id) });
-  return loops;
+  return seeds;
+}
+
+function legacyPocketSeeds(op: CAMOperation, doc: CADDocument): Vec2[] {
+  return seedsFromEntityIds(doc, new Set(op.entityIds), new Set(op.islandIds ?? []));
 }
 
 function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
@@ -395,6 +394,11 @@ export class CamBar {
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
+      regionSeeds:  existing?.regionSeeds
+        ? existing.regionSeeds.map((s) => ({ ...s }))
+        : existing && comboOf(existing) === "pocket"
+          ? legacyPocketSeeds(existing, this.doc)
+          : ([] as Vec2[]),
       tabsEnabled:  existing?.tabs?.enabled ?? false,
       tabCount:     existing?.tabs?.count   ?? 4,
       tabWidth:     existing?.tabs?.width   ?? 4,
@@ -885,6 +889,25 @@ export class CamBar {
     fromSelBtn.title = "Add whatever is currently selected on the canvas";
     fromSelBtn.textContent = "+ From Selection";
     fromSelBtn.addEventListener("click", () => {
+      if (state.combo === "pocket") {
+        // Seed a region inside each closed loop formed by the selection.
+        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected));
+        const docLoops = collectClosedLoops(this.doc.entities);
+        let added = 0;
+        for (const loop of selLoops) {
+          const p = interiorPoint(loop.verts);
+          if (!p) continue;
+          const region = regionAtPoint(p, docLoops);
+          if (!region) continue;
+          // Skip if an existing seed already picks this region.
+          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
+            continue;
+          state.regionSeeds.push(p);
+          added++;
+        }
+        if (added > 0) renderEntities();
+        return;
+      }
       let added = 0;
       for (const e of this.doc.entities) {
         if (e.selected && !e.isConstruction && isValidFor(e, state.combo)) {
@@ -899,6 +922,7 @@ export class CamBar {
     clearBtn.className = "btn";
     clearBtn.textContent = "Clear";
     clearBtn.addEventListener("click", () => {
+      state.regionSeeds.length = 0;
       for (const id of state.entityIds) {
         const ent = this.doc.entities.find(x => x.id === id);
         if (ent) ent.selected = false;
@@ -937,38 +961,26 @@ export class CamBar {
       pickHint.style.display = "block";
 
       if (state.combo === "pocket") {
-        // Region pick: hover previews the enclosed area under the cursor,
-        // click toggles it. The enclosing loop becomes the boundary, loops
-        // nested inside it become islands.
+        // Flood-fill region pick: hover previews the enclosed face under the
+        // cursor (any face of the planar arrangement, including those formed
+        // by overlapping shapes); click toggles it.
         pickHint.textContent = "Click an enclosed area to pocket it; click again to remove";
         this.doc.regionPickHandler = (world) => {
-          const region = classifyRegionAt(world, collectPickLoops(this.doc, state.combo));
-          if (region) {
-            const isSelected = region.boundary.ids.every((id) => state.entityIds.has(id));
-            if (isSelected) {
-              for (const id of region.boundary.ids) state.entityIds.delete(id);
-              for (const isl of region.islands)
-                for (const id of isl.ids) state.islandIds.delete(id);
-            } else {
-              for (const id of region.boundary.ids) {
-                state.entityIds.add(id);
-                state.islandIds.delete(id);
-              }
-              for (const isl of region.islands)
-                for (const id of isl.ids) {
-                  state.islandIds.add(id);
-                  state.entityIds.delete(id);
-                }
-            }
-            renderEntities();
-          }
-          return true; // consume the click even on a miss so the select tool stays out of the way
+          const loops = collectClosedLoops(this.doc.entities);
+          // If the click lands inside an already-picked region, remove that seed.
+          const hit = state.regionSeeds.findIndex((seed) => {
+            const r = regionAtPoint(seed, loops);
+            return r && pointInPolygon(world, r.outer) && !r.holes.some((h) => pointInPolygon(world, h));
+          });
+          if (hit >= 0) state.regionSeeds.splice(hit, 1);
+          else if (regionAtPoint(world, loops)) state.regionSeeds.push({ ...world });
+          else return true; // miss — consume the click so the select tool stays out of the way
+          renderEntities();
+          return true;
         };
         this.doc.regionHoverHandler = (world) => {
-          const region = classifyRegionAt(world, collectPickLoops(this.doc, state.combo));
-          this.doc.regionPickHoverFill = region
-            ? [region.boundary.verts, ...region.islands.map((i) => i.verts)]
-            : null;
+          const region = regionAtPoint(world, collectClosedLoops(this.doc.entities));
+          this.doc.regionPickHoverFill = region ? [region.outer, ...region.holes] : null;
         };
         return;
       }
@@ -1004,21 +1016,94 @@ export class CamBar {
     geoSec.appendChild(entityList);
     body.appendChild(geoSec);
 
-    // Shade currently selected pocket regions (boundary rings with island holes),
-    // derived from the live selection sets so checkbox edits stay in sync.
-    const selectedRegionFills = (): Vec2[][][] => {
-      const loops = collectPickLoops(this.doc, state.combo);
-      const boundaries = loops.filter((L) => L.ids.every((id) => state.entityIds.has(id)));
-      const islands = loops.filter((L) => L.ids.every((id) => state.islandIds.has(id)));
-      return boundaries.map((b) => [
-        b.verts,
-        ...islands.filter((i) => pointInPolygon(i.verts[0], b.verts)).map((i) => i.verts),
-      ]);
+    // Pocket geometry: list of picked flood-fill regions (seed points whose
+    // enclosed faces are recomputed from live geometry).
+    const renderRegionList = () => {
+      const loops = collectClosedLoops(this.doc.entities);
+      const items = state.regionSeeds.map((seed) => ({ seed, region: regionAtPoint(seed, loops) }));
+
+      const highlight = new Set<string>();
+      const fills: Vec2[][][] = [];
+      for (const it of items) {
+        if (!it.region) continue;
+        for (const id of it.region.loopIds) highlight.add(id);
+        fills.push([it.region.outer, ...it.region.holes]);
+      }
+      this.doc.toolpathHighlightIds = highlight;
+      this.doc.regionPickFills = fills;
+      this.doc.emitChange();
+
+      entityList.innerHTML = "";
+      if (items.length === 0) {
+        const mt = document.createElement("div");
+        mt.className = "tp-entity-empty";
+        mt.textContent = pickModeActive
+          ? "No areas picked yet — click inside an enclosed area on the canvas"
+          : "No areas picked yet — press Pick, then click inside an enclosed area";
+        entityList.appendChild(mt);
+        return;
+      }
+
+      const u = this.doc.displayUnit;
+      items.forEach((it, idx) => {
+        const row = document.createElement("div");
+        row.className = "tp-entity-row" + (it.region ? "" : " tp-entity-disabled");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;";
+
+        const desc = document.createElement("span");
+        desc.style.flex = "1";
+        if (it.region) {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const v of it.region.outer) {
+            if (v.x < minX) minX = v.x;
+            if (v.x > maxX) maxX = v.x;
+            if (v.y < minY) minY = v.y;
+            if (v.y > maxY) maxY = v.y;
+          }
+          const size = `${formatLength(maxX - minX, u)} × ${formatLength(maxY - minY, u)}`;
+          const isl = it.region.holes.length > 0
+            ? ` — ${it.region.holes.length} island${it.region.holes.length === 1 ? "" : "s"}`
+            : "";
+          desc.textContent = `Area ${idx + 1} — ${size}${isl}`;
+        } else {
+          desc.textContent = `Area ${idx + 1} — no longer enclosed`;
+          desc.style.opacity = "0.45";
+        }
+
+        // Hovering the row previews the region on the canvas.
+        row.addEventListener("mouseenter", () => {
+          this.doc.regionPickHoverFill = it.region ? [it.region.outer, ...it.region.holes] : null;
+          this.doc.emitChange();
+        });
+        row.addEventListener("mouseleave", () => {
+          this.doc.regionPickHoverFill = null;
+          this.doc.emitChange();
+        });
+
+        const rmBtn = document.createElement("button");
+        rmBtn.className = "btn";
+        rmBtn.style.cssText = "padding:2px 8px;font-size:10px;";
+        rmBtn.textContent = "✕";
+        rmBtn.title = "Remove this area";
+        rmBtn.addEventListener("click", () => {
+          state.regionSeeds.splice(idx, 1);
+          this.doc.regionPickHoverFill = null;
+          renderEntities();
+        });
+
+        row.appendChild(desc);
+        row.appendChild(rmBtn);
+        entityList.appendChild(row);
+      });
     };
 
     renderEntities = () => {
+      if (state.combo === "pocket") {
+        renderRegionList();
+        return;
+      }
       this.doc.toolpathHighlightIds = new Set([...state.entityIds, ...state.islandIds]);
-      this.doc.regionPickFills = state.combo === "pocket" ? selectedRegionFills() : null;
+      this.doc.regionPickFills = null;
       this.doc.emitChange();
       entityList.innerHTML = "";
       // Only show entities that are valid for the current op type; silently
@@ -1256,89 +1341,46 @@ export class CamBar {
         return el;
       };
 
-      if (state.combo === "pocket") {
-        // ── Boundary ──────────────────────────────────────
-        const bHeader = document.createElement("div");
-        bHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--text-dim,#999);" +
-          "text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px;" +
-          "border-bottom:1px solid var(--border);margin-bottom:4px;";
-        bHeader.textContent = "Boundary";
-        entityList.appendChild(bHeader);
-        const bList = makeSectionList();
-        entityList.appendChild(bList);
-        renderSection("boundary", bList);
+      const list = makeSectionList();
+      entityList.appendChild(list);
+      renderSection("boundary", list);
+    };
 
-        // ── Islands ────────────────────────────────────────
-        const iHeader = document.createElement("div");
-        iHeader.style.cssText = "display:flex;justify-content:space-between;align-items:center;" +
-          "font-size:11px;font-weight:600;color:var(--text-dim,#999);" +
-          "text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px;" +
-          "border-bottom:1px solid var(--border);margin-top:14px;margin-bottom:4px;";
-
-        const iLabel = document.createElement("span");
-        iLabel.textContent = "Islands";
-        iHeader.appendChild(iLabel);
-
-        const iBtnRow = document.createElement("div");
-        iBtnRow.style.cssText = "display:flex;gap:4px;";
-
-        const iFromSel = document.createElement("button");
-        iFromSel.className = "btn";
-        iFromSel.style.cssText = "padding:2px 6px;font-size:10px;";
-        iFromSel.textContent = "+ From Selection";
-        iFromSel.addEventListener("click", () => {
-          const selLines = this.doc.entities.filter(
-            (e): e is LineEntity => e instanceof LineEntity && e.selected && !e.isConstruction && isValidFor(e, state.combo) && !state.entityIds.has(e.id)
-          );
-          const { chains, singles } = groupLinesIntoClosedChains(selLines);
-          let added = 0;
-          for (const chain of chains)
-            for (const e of chain) { state.islandIds.add(e.id); added++; }
-          for (const e of singles) { state.islandIds.add(e.id); added++; }
-          for (const e of this.doc.entities) {
-            if (e instanceof LineEntity) continue;
-            if (e.selected && !e.isConstruction && isValidFor(e, state.combo) && !state.entityIds.has(e.id)) {
-              state.islandIds.add(e.id);
-              added++;
-            }
-          }
-          if (added > 0) renderEntities();
-        });
-
-        const iClear = document.createElement("button");
-        iClear.className = "btn";
-        iClear.style.cssText = "padding:2px 6px;font-size:10px;";
-        iClear.textContent = "Clear";
-        iClear.addEventListener("click", () => { state.islandIds.clear(); renderEntities(); });
-
-        iBtnRow.appendChild(iFromSel);
-        iBtnRow.appendChild(iClear);
-        iHeader.appendChild(iBtnRow);
-        entityList.appendChild(iHeader);
-        const iList = makeSectionList();
-        entityList.appendChild(iList);
-        renderSection("island", iList);
-      } else {
-        const list = makeSectionList();
-        entityList.appendChild(list);
-        renderSection("boundary", list);
-      }
+    // Seed regions from any closed loops already assigned/selected, so the
+    // "select shapes, then Add Toolpath" workflow shades immediately.
+    const ensurePocketSeeds = () => {
+      if (state.regionSeeds.length > 0 || state.entityIds.size === 0) return;
+      state.regionSeeds.push(...seedsFromEntityIds(this.doc, state.entityIds, state.islandIds));
     };
 
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
+      // If the name is still an untouched auto-generated default, rename it
+      // to match the newly chosen type.
+      if (AUTO_NAME_RE.test(state.name.trim())) {
+        state.name = this.autoName(state.combo);
+        nameInput.value = state.name;
+      }
       if (pickModeActive) stopPickMode(); // pick behaviour differs per op type
       stepRow.style.display     = state.combo === "drill"   ? "none" : "";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
+      if (state.combo === "pocket") {
+        ensurePocketSeeds();
+        startPickMode(); // pocket picking is canvas-driven — make it live immediately
+      }
       renderEntities();
     });
     stepRow.style.display     = state.combo === "drill"   ? "none" : "";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     updateTabsVisibility();
     updateLeadVisibility();
+    if (state.combo === "pocket") {
+      ensurePocketSeeds();
+      startPickMode();
+    }
     renderEntities();
 
     // footer
@@ -1350,8 +1392,21 @@ export class CamBar {
     const applyBtn = document.createElement("button");
     applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
     applyBtn.addEventListener("click", () => {
-      const ids = [...state.entityIds];
-      if (ids.length === 0) { alert("Select at least one geometry item."); return; }
+      let ids = [...state.entityIds];
+      if (state.combo === "pocket") {
+        if (state.regionSeeds.length === 0) { alert("Pick at least one enclosed area."); return; }
+        // Store the bounding loops' ids for ops-list hover highlighting.
+        const loops = collectClosedLoops(this.doc.entities);
+        const hl = new Set<string>();
+        for (const seed of state.regionSeeds) {
+          const region = regionAtPoint(seed, loops);
+          if (region) for (const id of region.loopIds) hl.add(id);
+        }
+        ids = [...hl];
+      } else if (ids.length === 0) {
+        alert("Select at least one geometry item.");
+        return;
+      }
 
       this.pushHistory?.();
 
@@ -1377,8 +1432,8 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
-        islandIds: type === "pocket" && state.islandIds.size > 0
-          ? [...state.islandIds]
+        regionSeeds: type === "pocket"
+          ? state.regionSeeds.map((s) => ({ ...s }))
           : undefined,
         tabs: isProfile ? {
           enabled: state.tabsEnabled,

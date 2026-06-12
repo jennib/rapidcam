@@ -7,7 +7,8 @@ import { offsetPolygon, signedArea } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { chainLinesIntoPolygons } from "./loops";
+import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
+import { regionAtPoint } from "./regions";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -367,6 +368,22 @@ function toolpathBody(
 ): string[] {
   const lines: string[] = [];
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+
+  // Region-seeded pockets: recompute each flood-fill region from live
+  // geometry and pocket it (holes become islands). Supersedes the legacy
+  // entityIds/islandIds pocket path.
+  if (op.type === "pocket" && op.regionSeeds && op.regionSeeds.length > 0) {
+    const loops = collectClosedLoops(doc.entities);
+    for (const seed of op.regionSeeds) {
+      const region = regionAtPoint(seed, loops);
+      if (!region) {
+        lines.push(`; NOTE: pocket region seed (${n(seed.x)}, ${n(seed.y)}) is not inside any enclosed area — skipped`);
+        continue;
+      }
+      lines.push(...pocketPolygon(region.outer, region.holes, op, ox, oy, zOff));
+    }
+    return lines;
+  }
 
   // Collect island polygons for pocket operations.
   const islandSet = new Set(op.islandIds ?? []);

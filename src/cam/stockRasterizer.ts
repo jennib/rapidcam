@@ -25,7 +25,9 @@ import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { chainLinesIntoPolygons } from "./loops";
+import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
+import { regionAtPoint } from "./regions";
+import type { Entity } from "../model/entities";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -69,6 +71,18 @@ function rasterizeOp(
   const stamp  = makeStampFn(op, data, gridW, gridH, stockT);
   const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
+
+  // Region-seeded pockets (mirrors gcode.ts): recompute each flood-fill
+  // region from live geometry and pocket it with holes as islands.
+  if (op.type === "pocket" && op.regionSeeds && op.regionSeeds.length > 0) {
+    const loops = collectClosedLoops(entityMap.values() as Iterable<Entity>);
+    for (const seed of op.regionSeeds) {
+      const region = regionAtPoint(seed, loops);
+      if (region)
+        rasPocketPolygon(region.outer, region.holes, op, data, gridW, gridH, stockT, stamp, stepR);
+    }
+    return;
+  }
 
   // Collect island polygons for pocket operations.
   const islandSet = new Set(op.islandIds ?? []);

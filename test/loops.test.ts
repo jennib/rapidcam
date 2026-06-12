@@ -4,8 +4,6 @@ import {
   chainToPolygon,
   groupLinesIntoClosedChains,
   pointInPolygon,
-  classifyRegionAt,
-  type RegionLoop,
 } from "../src/cam/loops";
 import { LineEntity } from "../src/model/entities";
 import type { Vec2 } from "../src/core/vec2";
@@ -80,45 +78,3 @@ describe("pointInPolygon", () => {
   });
 });
 
-// --- region classification -------------------------------------------------------
-
-describe("classifyRegionAt", () => {
-  const loop = (verts: Vec2[], id: string): RegionLoop => ({ verts, ids: [id] });
-
-  // outer square 0..100, two islands inside, one shape nested inside an island,
-  // and an unrelated square elsewhere.
-  const outer    = loop(square(0, 0, 100), "outer");
-  const islandA  = loop(square(10, 10, 20), "islandA");
-  const islandB  = loop(square(50, 50, 30), "islandB");
-  const nested   = loop(square(55, 55, 10), "nested");   // inside islandB
-  const elsewhere = loop(square(200, 0, 10), "elsewhere");
-  const loops = [outer, islandA, islandB, nested, elsewhere];
-
-  it("returns null when clicking empty space", () => {
-    expect(classifyRegionAt({ x: 150, y: 150 }, loops)).toBeNull();
-  });
-
-  it("picks the enclosing loop as boundary and direct children as islands", () => {
-    const r = classifyRegionAt({ x: 5, y: 95 }, loops)!; // inside outer, outside islands
-    expect(r.boundary.ids).toEqual(["outer"]);
-    const islandIds = r.islands.map((l) => l.ids[0]).sort();
-    expect(islandIds).toEqual(["islandA", "islandB"]);
-  });
-
-  it("does not treat deeply nested loops as islands of the outer boundary", () => {
-    const r = classifyRegionAt({ x: 5, y: 95 }, loops)!;
-    expect(r.islands.some((l) => l.ids[0] === "nested")).toBe(false);
-  });
-
-  it("treats a click inside an island as picking that island's interior region", () => {
-    const r = classifyRegionAt({ x: 52, y: 52 }, loops)!; // inside islandB, outside nested
-    expect(r.boundary.ids).toEqual(["islandB"]);
-    expect(r.islands.map((l) => l.ids[0])).toEqual(["nested"]);
-  });
-
-  it("prefers the innermost containing loop", () => {
-    const r = classifyRegionAt({ x: 57, y: 57 }, loops)!; // inside nested
-    expect(r.boundary.ids).toEqual(["nested"]);
-    expect(r.islands.length).toBe(0);
-  });
-});

@@ -4,8 +4,13 @@
  */
 
 import type { Vec2 } from "../core/vec2";
-import type { LineEntity } from "../model/entities";
-import { signedArea } from "./offset";
+import {
+  type Entity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+} from "../model/entities";
 
 const EPS = 1e-4;
 
@@ -102,24 +107,35 @@ export interface RegionLoop {
 }
 
 /**
- * Classify loops for a region click at `p`: the innermost loop containing `p`
- * is the boundary; loops directly nested inside it (and not containing `p`)
- * are islands. Returns null when the click is not inside any loop.
+ * Collect every closed loop in the given entities: circles, rectangles,
+ * closed polylines, and closed chains of line segments. Construction
+ * geometry is skipped.
  */
-export function classifyRegionAt(
-  p: Vec2, loops: RegionLoop[],
-): { boundary: RegionLoop; islands: RegionLoop[] } | null {
-  const containing = loops.filter((L) => pointInPolygon(p, L.verts));
-  if (containing.length === 0) return null;
-  let boundary = containing[0];
-  for (const L of containing)
-    if (Math.abs(signedArea(L.verts)) < Math.abs(signedArea(boundary.verts))) boundary = L;
-  const inner = loops.filter(
-    (L) => L !== boundary && !pointInPolygon(p, L.verts) && pointInPolygon(L.verts[0], boundary.verts),
-  );
-  // Direct children only — anything nested deeper is inside an island already.
-  const islands = inner.filter(
-    (L) => !inner.some((M) => M !== L && pointInPolygon(L.verts[0], M.verts)),
-  );
-  return { boundary, islands };
+export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
+  const loops: RegionLoop[] = [];
+  const lines: LineEntity[] = [];
+  for (const e of entities) {
+    if (e.isConstruction) continue;
+    if (e instanceof CircleEntity) {
+      const n = Math.max(64, Math.ceil((2 * Math.PI * e.radius) / 0.5));
+      loops.push({
+        verts: Array.from({ length: n }, (_, i) => {
+          const a = (i / n) * 2 * Math.PI;
+          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
+        }),
+        ids: [e.id],
+      });
+    } else if (e instanceof RectEntity) {
+      loops.push({ verts: [...e.corners()], ids: [e.id] });
+    } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
+      loops.push({ verts: e.points, ids: [e.id] });
+    } else if (e instanceof LineEntity) {
+      lines.push(e);
+    }
+  }
+  const { chains } = groupLinesIntoClosedChains(lines);
+  for (const chain of chains)
+    loops.push({ verts: chainToPolygon(chain), ids: chain.map((s) => s.id) });
+  return loops;
 }
+

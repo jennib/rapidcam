@@ -1,4 +1,5 @@
 import type { EntityId } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
 
 export type CAMOpType = "profile" | "engrave" | "drill" | "pocket";
 
@@ -55,7 +56,14 @@ export interface CAMOperation {
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
-  islandIds?: EntityId[];     // pocket only: entities to treat as islands (excluded from fill)
+  islandIds?: EntityId[];     // pocket only (legacy): entities to treat as islands (excluded from fill)
+  /**
+   * Pocket only: flood-fill region seeds. Each seed is a world point inside an
+   * enclosed area; the region around it (bounded by the nearest geometry, with
+   * enclosed shapes as islands) is recomputed from live geometry at G-code time.
+   * When present, these define the pocket instead of entityIds/islandIds.
+   */
+  regionSeeds?: Vec2[];
   // lead-in / lead-out (profile only)
   leadIn?: LeadDef;
   leadOut?: LeadDef;
