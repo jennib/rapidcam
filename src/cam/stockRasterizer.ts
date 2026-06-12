@@ -25,6 +25,7 @@ import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { chainLinesIntoPolygons } from "./loops";
 import { flattenBezier } from "../core/geom";
 
 /** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
@@ -92,23 +93,20 @@ function rasterizeOp(
     const islandLineEnts = [...islandSet]
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (islandLineEnts.length >= 3) {
-      const poly = chainLines(islandLineEnts);
-      if (poly) islands.push(poly);
-    }
+    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons)
+      islands.push(verts);
   }
 
-  // Chain any selected line segments into a closed polygon for profile/pocket ops.
+  // Chain any selected line segments into closed polygons for profile/pocket ops.
   if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
       .filter(id => !islandSet.has(id))
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (lineEnts.length >= 3) {
-      const polygon = chainLines(lineEnts);
-      if (polygon) {
-        if (op.type === "pocket") rasPocketPolygon(polygon, islands, op, data, gridW, gridH, stockT, stamp, stepR);
-        else rasProfilePolygon(polygon, op, data, gridW, gridH, stockT, stamp, stepR);
+    if (lineEnts.length > 0) {
+      for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) {
+        if (op.type === "pocket") rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        else rasProfilePolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
       }
       lineEnts.forEach(e => lineSegIds.add(e.id));
     }
@@ -478,29 +476,3 @@ function rasPocketCircle(
   rasPocketPolygon(verts, [], op, data, gridW, gridH, stockT, stamp, stepR);
 }
 
-// ---------------------------------------------------------------------------
-// Chain line segments into a closed polygon (same logic as gcode.ts)
-
-function chainLines(segs: LineEntity[]): Vec2[] | null {
-  if (segs.length < 3) return null;
-  const EPS  = 1e-4;
-  const used = new Set<string>();
-  const chain: Vec2[] = [{ ...segs[0].a }, { ...segs[0].b }];
-  used.add(segs[0].id);
-  while (used.size < segs.length) {
-    const tail = chain[chain.length - 1];
-    let found = false;
-    for (const seg of segs) {
-      if (used.has(seg.id)) continue;
-      const da = Math.hypot(seg.a.x - tail.x, seg.a.y - tail.y);
-      const db = Math.hypot(seg.b.x - tail.x, seg.b.y - tail.y);
-      if (da < EPS) { chain.push({ ...seg.b }); used.add(seg.id); found = true; break; }
-      if (db < EPS) { chain.push({ ...seg.a }); used.add(seg.id); found = true; break; }
-    }
-    if (!found) return null;
-  }
-  const head = chain[0], tail = chain[chain.length - 1];
-  if (Math.hypot(tail.x - head.x, tail.y - head.y) > EPS) return null;
-  chain.pop();
-  return chain;
-}

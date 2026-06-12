@@ -483,6 +483,12 @@ export class App {
       ev.preventDefault();
       return;
     }
+    if (ev.button === 0 && this.doc.regionPickHandler) {
+      if (this.doc.regionPickHandler(this.view.screenToWorld(screen))) {
+        this.requestRender();
+        return;
+      }
+    }
     this.canvas.setPointerCapture(ev.pointerId);
     this.tools.pointerDown(this.toolEvent(ev, screen));
     this.requestRender();
@@ -498,6 +504,7 @@ export class App {
       return;
     }
     const e = this.toolEvent(ev, screen);
+    if (this.doc.regionHoverHandler) this.doc.regionHoverHandler(e.worldRaw);
     this.currentHover =
       (this.tools.active.id === "select" || this.tools.active.id === "offset")
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)

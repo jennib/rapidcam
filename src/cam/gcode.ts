@@ -7,6 +7,7 @@ import { offsetPolygon, signedArea } from "./offset";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { chainLinesIntoPolygons } from "./loops";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -357,34 +358,6 @@ function drillPoint(
   ];
 }
 
-// --- chain lines into a closed polygon ---------------------------------------
-
-function chainLines(segs: LineEntity[]): Vec2[] | null {
-  if (segs.length < 3) return null;
-  const EPS = 1e-4;
-  const used = new Set<string>();
-  const chain: Vec2[] = [{ ...segs[0].a }, { ...segs[0].b }];
-  used.add(segs[0].id);
-
-  while (used.size < segs.length) {
-    const tail = chain[chain.length - 1];
-    let found = false;
-    for (const seg of segs) {
-      if (used.has(seg.id)) continue;
-      const da = Math.hypot(seg.a.x - tail.x, seg.a.y - tail.y);
-      const db = Math.hypot(seg.b.x - tail.x, seg.b.y - tail.y);
-      if (da < EPS) { chain.push({ ...seg.b }); used.add(seg.id); found = true; break; }
-      if (db < EPS) { chain.push({ ...seg.a }); used.add(seg.id); found = true; break; }
-    }
-    if (!found) return null;
-  }
-
-  const head = chain[0], tail = chain[chain.length - 1];
-  if (Math.hypot(tail.x - head.x, tail.y - head.y) > EPS) return null;
-  chain.pop(); // remove duplicate closing vertex
-  return chain;
-}
-
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
 function toolpathBody(
@@ -418,30 +391,27 @@ function toolpathBody(
     const islandLineEnts = [...islandSet]
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (islandLineEnts.length >= 3) {
-      const poly = chainLines(islandLineEnts);
-      if (poly) islands.push(poly);
-    }
+    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons)
+      islands.push(verts);
     lines.push(`; islands: ${islands.length} polygon(s) from ${islandSet.size} entity id(s)`);
   }
 
-  // For profile/pocket ops, chain any selected LineEntity instances into a closed polygon.
+  // For profile/pocket ops, chain any selected LineEntity instances into closed polygons.
   const lineSegIds = new Set<string>();
   if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
       .filter(id => !islandSet.has(id))
       .map(id => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (lineEnts.length >= 3) {
-      const polygon = chainLines(lineEnts);
-      if (polygon) {
-        if (op.type === "pocket") lines.push(...pocketPolygon(polygon, islands, op, ox, oy, zOff));
-        else lines.push(...profilePolygon(polygon, op, ox, oy, zOff));
-        for (const e of lineEnts) lineSegIds.add(e.id);
-      } else {
-        lines.push("; NOTE: selected lines do not form a closed polygon — skipped");
-        for (const e of lineEnts) lineSegIds.add(e.id);
+    if (lineEnts.length > 0) {
+      const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
+      for (const { verts } of polygons) {
+        if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
+        else lines.push(...profilePolygon(verts, op, ox, oy, zOff));
       }
+      if (leftover.length > 0)
+        lines.push(`; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`);
+      for (const e of lineEnts) lineSegIds.add(e.id);
     }
   }
 

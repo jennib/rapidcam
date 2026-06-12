@@ -138,6 +138,19 @@ export class CADDocument {
   /** Entity IDs to highlight in the toolpath colour while a toolpath dialog is open. Null = no dialog open. */
   toolpathHighlightIds: Set<string> | null = null;
 
+  /**
+   * When set, left-clicks on the canvas are routed here (world coords) instead
+   * of the active tool. Return true to consume the click. Used by the toolpath
+   * dialog's region-pick mode.
+   */
+  regionPickHandler: ((world: Vec2) => boolean) | null = null;
+  /** Called with the cursor's world position while region-pick mode is active. */
+  regionHoverHandler: ((world: Vec2) => void) | null = null;
+  /** Selected regions to shade — each entry is a ring list (ring 0 = outer, rest = holes). */
+  regionPickFills: Vec2[][][] | null = null;
+  /** Region under the cursor in region-pick mode (same ring format). */
+  regionPickHoverFill: Vec2[][] | null = null;
+
   private listeners = new Set<ChangeListener>();
 
   constructor(canvas: CanvasSize, displayUnit: Unit = "mm") {

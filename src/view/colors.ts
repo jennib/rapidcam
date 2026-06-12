@@ -37,4 +37,6 @@ export const COLORS = {
   dimensionTextRef: "#9fb6b5",
 
   toolpathHighlight: "#f59e42",
+  regionFill: "rgba(245,158,66,0.22)",
+  regionFillHover: "rgba(245,158,66,0.42)",
 } as const;

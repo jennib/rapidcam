@@ -16,6 +16,7 @@ import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type Lea
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
+import { groupLinesIntoClosedChains, chainToPolygon, classifyRegionAt, pointInPolygon, type RegionLoop } from "../cam/loops";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
 
@@ -61,48 +62,33 @@ function isValidFor(e: Entity, combo: OpCombo): boolean {
   }
 }
 
-/**
- * Group an array of LineEntity objects into:
- *   chains  — arrays that form closed loops (≥3 segments, endpoints meet)
- *   singles — remaining open-path segments not part of any closed loop
- */
-function groupLinesIntoClosedChains(lines: LineEntity[]): { chains: LineEntity[][], singles: LineEntity[] } {
-  const EPS = 1e-4;
-  const unused = new Set(lines);
-  const chains: LineEntity[][] = [];
-  const singles: LineEntity[] = [];
-
-  while (unused.size > 0) {
-    const start = unused.values().next().value as LineEntity;
-    unused.delete(start);
-
-    const component: LineEntity[] = [start];
-    let frontA = { x: start.a.x, y: start.a.y };
-    let frontB = { x: start.b.x, y: start.b.y };
-
-    let growing = true;
-    while (growing) {
-      growing = false;
-      for (const seg of unused) {
-        const da_a = Math.hypot(frontA.x - seg.a.x, frontA.y - seg.a.y);
-        const da_b = Math.hypot(frontA.x - seg.b.x, frontA.y - seg.b.y);
-        const db_a = Math.hypot(frontB.x - seg.a.x, frontB.y - seg.a.y);
-        const db_b = Math.hypot(frontB.x - seg.b.x, frontB.y - seg.b.y);
-        if (db_a < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
-        if (db_b < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
-        if (da_a < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
-        if (da_b < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
-      }
+/** Collect all closed loops (circles, rects, closed polylines, line chains) valid for `combo`. */
+function collectPickLoops(doc: CADDocument, combo: OpCombo): RegionLoop[] {
+  const loops: RegionLoop[] = [];
+  const lines: LineEntity[] = [];
+  for (const e of doc.entities) {
+    if (e.isConstruction || !isValidFor(e, combo)) continue;
+    if (e instanceof CircleEntity) {
+      const n = 64;
+      loops.push({
+        verts: Array.from({ length: n }, (_, i) => {
+          const a = (i / n) * 2 * Math.PI;
+          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
+        }),
+        ids: [e.id],
+      });
+    } else if (e instanceof RectEntity) {
+      loops.push({ verts: [...e.corners()], ids: [e.id] });
+    } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
+      loops.push({ verts: e.points, ids: [e.id] });
+    } else if (e instanceof LineEntity) {
+      lines.push(e);
     }
-
-    const closed = component.length >= 3 &&
-      Math.hypot(frontA.x - frontB.x, frontA.y - frontB.y) < EPS;
-
-    if (closed) chains.push(component);
-    else singles.push(...component);
   }
-
-  return { chains, singles };
+  const { chains } = groupLinesIntoClosedChains(lines);
+  for (const chain of chains)
+    loops.push({ verts: chainToPolygon(chain), ids: chain.map((s) => s.id) });
+  return loops;
 }
 
 function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
@@ -428,6 +414,10 @@ export class CamBar {
 
     const closeDialog = () => {
       if (unsubPickMode) unsubPickMode();
+      this.doc.regionPickHandler = null;
+      this.doc.regionHoverHandler = null;
+      this.doc.regionPickFills = null;
+      this.doc.regionPickHoverFill = null;
       this.doc.toolpathHighlightIds = null;
       this.doc.emitChange();
       document.getElementById("tp-dialog-backdrop")?.remove();
@@ -930,42 +920,105 @@ export class CamBar {
     pickHint.textContent = "Click entities on the canvas to add them";
     geoSec.appendChild(pickHint);
 
-    const togglePickMode = () => {
-      pickModeActive = !pickModeActive;
-      pickBtn.classList.toggle("active", pickModeActive);
-      pickHint.style.display = pickModeActive ? "block" : "none";
-      if (pickModeActive) {
-        // Absorb whatever is currently selected so the listener only reacts to NEW picks.
-        for (const e of this.doc.entities) {
-          if (!e.isConstruction && isValidFor(e, state.combo) && e.selected)
-            state.entityIds.add(e.id);
-        }
-        renderEntities();
-        unsubPickMode = this.doc.onChange(() => {
-          let changed = false;
-          for (const e of this.doc.entities) {
-            if (!e.isConstruction && isValidFor(e, state.combo) && e.selected) {
-              if (!state.entityIds.has(e.id)) {
-                state.entityIds.add(e.id);
-                changed = true;
+    const stopPickMode = () => {
+      if (unsubPickMode) { unsubPickMode(); unsubPickMode = null; }
+      this.doc.regionPickHandler = null;
+      this.doc.regionHoverHandler = null;
+      this.doc.regionPickHoverFill = null;
+      pickModeActive = false;
+      pickBtn.classList.remove("active");
+      pickHint.style.display = "none";
+      this.doc.emitChange(); // clear the hover shading
+    };
+
+    const startPickMode = () => {
+      pickModeActive = true;
+      pickBtn.classList.add("active");
+      pickHint.style.display = "block";
+
+      if (state.combo === "pocket") {
+        // Region pick: hover previews the enclosed area under the cursor,
+        // click toggles it. The enclosing loop becomes the boundary, loops
+        // nested inside it become islands.
+        pickHint.textContent = "Click an enclosed area to pocket it; click again to remove";
+        this.doc.regionPickHandler = (world) => {
+          const region = classifyRegionAt(world, collectPickLoops(this.doc, state.combo));
+          if (region) {
+            const isSelected = region.boundary.ids.every((id) => state.entityIds.has(id));
+            if (isSelected) {
+              for (const id of region.boundary.ids) state.entityIds.delete(id);
+              for (const isl of region.islands)
+                for (const id of isl.ids) state.islandIds.delete(id);
+            } else {
+              for (const id of region.boundary.ids) {
+                state.entityIds.add(id);
+                state.islandIds.delete(id);
               }
+              for (const isl of region.islands)
+                for (const id of isl.ids) {
+                  state.islandIds.add(id);
+                  state.entityIds.delete(id);
+                }
+            }
+            renderEntities();
+          }
+          return true; // consume the click even on a miss so the select tool stays out of the way
+        };
+        this.doc.regionHoverHandler = (world) => {
+          const region = classifyRegionAt(world, collectPickLoops(this.doc, state.combo));
+          this.doc.regionPickHoverFill = region
+            ? [region.boundary.verts, ...region.islands.map((i) => i.verts)]
+            : null;
+        };
+        return;
+      }
+
+      // Entity pick: absorb whatever is currently selected so the listener
+      // only reacts to NEW picks, then mirror new canvas selections.
+      pickHint.textContent = "Click entities on the canvas to add them";
+      for (const e of this.doc.entities) {
+        if (!e.isConstruction && isValidFor(e, state.combo) && e.selected)
+          state.entityIds.add(e.id);
+      }
+      renderEntities();
+      unsubPickMode = this.doc.onChange(() => {
+        let changed = false;
+        for (const e of this.doc.entities) {
+          if (!e.isConstruction && isValidFor(e, state.combo) && e.selected) {
+            if (!state.entityIds.has(e.id)) {
+              state.entityIds.add(e.id);
+              changed = true;
             }
           }
-          if (changed) renderEntities();
-        });
-      } else {
-        if (unsubPickMode) unsubPickMode();
-        unsubPickMode = null;
-      }
+        }
+        if (changed) renderEntities();
+      });
     };
-    pickBtn.addEventListener("click", togglePickMode);
+
+    pickBtn.addEventListener("click", () => {
+      if (pickModeActive) stopPickMode();
+      else startPickMode();
+    });
 
     const entityList = document.createElement("div");
     geoSec.appendChild(entityList);
     body.appendChild(geoSec);
 
+    // Shade currently selected pocket regions (boundary rings with island holes),
+    // derived from the live selection sets so checkbox edits stay in sync.
+    const selectedRegionFills = (): Vec2[][][] => {
+      const loops = collectPickLoops(this.doc, state.combo);
+      const boundaries = loops.filter((L) => L.ids.every((id) => state.entityIds.has(id)));
+      const islands = loops.filter((L) => L.ids.every((id) => state.islandIds.has(id)));
+      return boundaries.map((b) => [
+        b.verts,
+        ...islands.filter((i) => pointInPolygon(i.verts[0], b.verts)).map((i) => i.verts),
+      ]);
+    };
+
     renderEntities = () => {
       this.doc.toolpathHighlightIds = new Set([...state.entityIds, ...state.islandIds]);
+      this.doc.regionPickFills = state.combo === "pocket" ? selectedRegionFills() : null;
       this.doc.emitChange();
       entityList.innerHTML = "";
       // Only show entities that are valid for the current op type; silently
@@ -1274,6 +1327,7 @@ export class CamBar {
 
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
+      if (pickModeActive) stopPickMode(); // pick behaviour differs per op type
       stepRow.style.display     = state.combo === "drill"   ? "none" : "";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       updateVBitHint();

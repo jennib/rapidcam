@@ -56,6 +56,7 @@ export class Renderer {
     this.drawGrid(doc, view);
     this.drawWorkArea(doc, view);
     this.drawOrigin(doc, view);
+    this.drawRegionFills(doc, view);
     this.drawEntities(doc, view, overlay);
     this.drawDimensions(doc, view);
     this.drawConstraints(doc, view, overlay);
@@ -247,6 +248,37 @@ export class Renderer {
     ctx.fillText("Y", o.x, o.y - arm - 3);
 
     ctx.restore();
+  }
+
+  // --- region-pick shading ---------------------------------------------------
+  private drawRegionFills(doc: CADDocument, view: Viewport): void {
+    if (!doc.regionPickFills?.length && !doc.regionPickHoverFill) return;
+    const ctx = this.ctx;
+    const trace = (rings: { x: number; y: number }[][]) => {
+      ctx.beginPath();
+      for (const ring of rings) {
+        if (ring.length < 3) continue;
+        const s0 = view.worldToScreen(ring[0]);
+        ctx.moveTo(s0.x, s0.y);
+        for (let i = 1; i < ring.length; i++) {
+          const s = view.worldToScreen(ring[i]);
+          ctx.lineTo(s.x, s.y);
+        }
+        ctx.closePath();
+      }
+    };
+    if (doc.regionPickFills) {
+      ctx.fillStyle = COLORS.regionFill;
+      for (const rings of doc.regionPickFills) {
+        trace(rings);
+        ctx.fill("evenodd");
+      }
+    }
+    if (doc.regionPickHoverFill) {
+      ctx.fillStyle = COLORS.regionFillHover;
+      trace(doc.regionPickHoverFill);
+      ctx.fill("evenodd");
+    }
   }
 
   // --- entities ------------------------------------------------------------
