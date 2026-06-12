@@ -924,7 +924,15 @@ export class CamBar {
       this.doc.toolpathHighlightIds = new Set([...state.entityIds, ...state.islandIds]);
       this.doc.emitChange();
       entityList.innerHTML = "";
-      const ents = this.doc.entities.filter((e) => !e.isConstruction);
+      // Only show entities that are valid for the current op type; silently
+      // drop any invalid ones from the selection sets (safety cleanup).
+      const ents = this.doc.entities.filter((e) => !e.isConstruction && isValidFor(e, state.combo));
+      for (const e of this.doc.entities) {
+        if (!isValidFor(e, state.combo)) {
+          state.entityIds.delete(e.id);
+          state.islandIds.delete(e.id);
+        }
+      }
       if (ents.length === 0) {
         const mt = document.createElement("div");
         mt.className = "tp-entity-empty";
@@ -947,13 +955,10 @@ export class CamBar {
       }
 
       const makeEntityRow = (e: Entity, section: "boundary" | "island", indent = false) => {
-        const valid = isValidFor(e, state.combo);
-        if (!valid) { state.entityIds.delete(e.id); state.islandIds.delete(e.id); }
-
         const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
         const inOther  = otherSet.has(e.id);
-        const disabled = !valid || inOther;
+        const disabled = inOther; // all entities in ents[] are already valid for this combo
 
         const row = document.createElement("div");
         row.className = "tp-entity-row" + (disabled ? " tp-entity-disabled" : "");
@@ -964,7 +969,7 @@ export class CamBar {
 
         const cb = document.createElement("input");
         cb.type = "checkbox"; cb.className = "tp-entity-cb";
-        cb.checked = valid && thisSet.has(e.id);
+        cb.checked = thisSet.has(e.id);
         cb.disabled = disabled;
         cb.addEventListener("change", () => {
           if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
@@ -984,7 +989,7 @@ export class CamBar {
         row.appendChild(lbl);
 
         // Chain button: boundary section, line-like entities only
-        if (section === "boundary" && valid && !inOther &&
+        if (section === "boundary" && !inOther &&
             (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
           const chainBtn = document.createElement("button");
           chainBtn.className = "btn";
