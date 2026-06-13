@@ -680,6 +680,28 @@ export class CamBar {
     dialog.addEventListener("click", (e) => e.stopPropagation());
     backdrop.appendChild(dialog);
 
+    // Restore dialog position if previously saved
+    const storedPos = localStorage.getItem("rapidcam:toolpath-dialog-position");
+    if (storedPos) {
+      try {
+        const { left, top } = JSON.parse(storedPos);
+        const lVal = parseFloat(left);
+        const tVal = parseFloat(top);
+        if (!isNaN(lVal) && !isNaN(tVal)) {
+          const maxLeft = Math.max(0, window.innerWidth - 100);
+          const maxTop = Math.max(0, window.innerHeight - 50);
+          const clampedLeft = Math.max(0, Math.min(lVal, maxLeft));
+          const clampedTop = Math.max(0, Math.min(tVal, maxTop));
+          dialog.style.position = "absolute";
+          dialog.style.margin = "0";
+          dialog.style.left = clampedLeft + "px";
+          dialog.style.top = clampedTop + "px";
+        }
+      } catch (e) {
+        // Ignore malformed localStorage data
+      }
+    }
+
     const dheader = document.createElement("div");
     dheader.className = "tp-dialog-header";
     dheader.style.cursor = "move";
@@ -694,6 +716,10 @@ export class CamBar {
       isDragging = false;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      localStorage.setItem("rapidcam:toolpath-dialog-position", JSON.stringify({
+        left: dialog.style.left,
+        top: dialog.style.top
+      }));
     };
     dheader.addEventListener("mousedown", (e) => {
       if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;

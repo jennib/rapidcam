@@ -60,6 +60,7 @@ export class Renderer {
     this.drawEntities(doc, view, overlay);
     this.drawDimensions(doc, view);
     this.drawConstraints(doc, view, overlay);
+    this.drawSelectedSegments(doc, view);
     this.drawSelectedPoints(doc, view);
     this.drawSelectionRect(view, overlay);
     this.drawPreviews(view, overlay.previews);
@@ -628,6 +629,34 @@ export class Renderer {
         }
       }
     }
+  }
+
+  private drawSelectedSegments(doc: CADDocument, view: Viewport): void {
+    if (doc.selectedSegments.length === 0) return;
+    const ctx = this.ctx;
+    const byId = new Map(doc.entities.map((e) => [e.id, e]));
+    ctx.save();
+    ctx.strokeStyle = COLORS.entitySelected;
+    ctx.lineWidth = 2.5;
+    for (const ref of doc.selectedSegments) {
+      const ent = byId.get(ref.entityId);
+      if (!(ent instanceof PolylineEntity)) continue;
+      const layer = doc.layers.find(l => l.id === ent.layerId) || doc.layers[0];
+      if (!layer.visible) continue;
+
+      const count = ent.segmentCount();
+      if (ref.index < 0 || ref.index >= count) continue;
+
+      const [a, b] = ent.segment(ref.index);
+      const sa = view.worldToScreen(a);
+      const sb = view.worldToScreen(b);
+
+      ctx.beginPath();
+      ctx.moveTo(sa.x, sa.y);
+      ctx.lineTo(sb.x, sb.y);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawSelectedPoints(doc: CADDocument, view: Viewport): void {

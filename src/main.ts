@@ -33,9 +33,13 @@ function boot(): void {
     throw new Error("RapidCAM: required DOM elements are missing");
   }
 
-  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
+  const app = new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
   wireRightPanelTabs();
   showConsentBannerIfNeeded();
+  // Dev-only inspection hook for automated UI verification (stripped from prod builds).
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+    (window as unknown as { __app: unknown }).__app = app;
+  }
 }
 
 boot();
