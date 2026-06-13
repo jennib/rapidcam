@@ -208,6 +208,9 @@ button.cbtn.solve {
 .cb-msg.ok {
   color: var(--accent);
 }
+.cb-msg.warn {
+  color: var(--warn, #c8982a);
+}
 
 /* ---------- Workspace ---------- */
 #workspace {

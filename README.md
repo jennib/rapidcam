@@ -86,11 +86,13 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Feature | Details |
 |---------|---------|
 | Profile cut | Contour-follows any closed chain; lead-in / lead-out arcs |
-| Pocket clearing | Raster or contour strategy; respects islands |
+| Pocket clearing | Zig-zag raster clearing plus a finish-contour pass; respects islands and flood-fill region picking |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Tool library | Named tool definitions with diameter, flute count, feed/speed presets |
 | G-code export | GRBL and LinuxCNC post-processors |
 | WebGL toolpath preview | 3D preview of the cut paths |
+
+> **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
 
 ### File I/O
 
@@ -198,6 +200,19 @@ npm run build      # type check + Vite production build → dist/
 npm run preview    # serve the dist/ build locally
 npm run validate   # type check + tests + production build
 ```
+
+---
+
+## Privacy & analytics
+
+RapidCAM can collect anonymous usage analytics (via PostHog) to help guide development, but **only with your explicit consent**:
+
+- On first visit you'll see a small banner; nothing is sent unless you choose **Allow analytics**.
+- Browsers with **Do Not Track** enabled are never tracked and never shown the banner.
+- Your choice is stored locally and can be cleared at any time (clear site data, or remove the `rapidcam_analytics_consent` localStorage key) to be asked again.
+- Your geometry, G-code, and project files never leave the browser — analytics only records coarse interaction events (e.g. "tool activated", "g-code generated").
+
+The self-hosted build collects nothing unless you wire up your own PostHog key.
 
 ---
 
