@@ -39,7 +39,7 @@ import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEnti
 import type { CAMOperation } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
-import { Constraint, PointRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
+import { Constraint, PointRef, SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
 import { Variable } from "./variables";
 import { PatternDef, clonePatternDef } from "./patterns";
@@ -128,6 +128,8 @@ export class CADDocument {
 
   /** Individually selected point DOFs (in addition to whole-entity selection). */
   selectedPoints: PointRef[] = [];
+  /** Selected polyline segments (treated as lines for line-type constraints). */
+  selectedSegments: SegmentRef[] = [];
   /** Selected constraint ID, or null. */
   selectedConstraintId: string | null = null;
   /** Selected dimension ID, or null. */
@@ -181,6 +183,7 @@ export class CADDocument {
   addSelected(e: Entity): Entity {
     for (const ent of this.entities) ent.selected = false;
     this.selectedPoints = [];
+    this.selectedSegments = [];
     if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
       e.layerId = this.activeLayerId;
     }
@@ -213,6 +216,7 @@ export class CADDocument {
     this.dimensions = [];
     this.patterns = [];
     this.selectedPoints = [];
+    this.selectedSegments = [];
     this.selectedConstraintId = null;
     this.selectedDimensionId = null;
     this.emitChange();
@@ -229,6 +233,7 @@ export class CADDocument {
         d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
     );
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
+    this.selectedSegments = this.selectedSegments.filter((s) => ids.has(s.entityId));
     if (this.selectedConstraintId && !this.constraints.find((c) => c.id === this.selectedConstraintId))
       this.selectedConstraintId = null;
     if (this.selectedDimensionId && !this.dimensions.find((d) => d.id === this.selectedDimensionId))
@@ -351,8 +356,9 @@ export class CADDocument {
     return this.entities.filter((e) => e.selected);
   }
   clearSelection(): void {
-    let changed = this.selectedPoints.length > 0 || this.selectedConstraintId !== null || this.selectedDimensionId !== null;
+    let changed = this.selectedPoints.length > 0 || this.selectedSegments.length > 0 || this.selectedConstraintId !== null || this.selectedDimensionId !== null;
     this.selectedPoints = [];
+    this.selectedSegments = [];
     this.selectedConstraintId = null;
     this.selectedDimensionId = null;
     for (const e of this.entities) {
@@ -375,6 +381,15 @@ export class CADDocument {
   }
   selectPoint(ref: PointRef): void {
     this.selectedPoints = [ref];
+    this.emitChange();
+  }
+  isSegmentSelected(ref: SegmentRef): boolean {
+    return this.selectedSegments.some((s) => sameSegmentRef(s, ref));
+  }
+  toggleSegment(ref: SegmentRef): void {
+    const i = this.selectedSegments.findIndex((s) => sameSegmentRef(s, ref));
+    if (i >= 0) this.selectedSegments.splice(i, 1);
+    else this.selectedSegments.push(ref);
     this.emitChange();
   }
 
