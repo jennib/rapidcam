@@ -5,6 +5,7 @@ import {
 } from "../src/model/entities";
 import { TrimTool } from "../src/tools/trimTool";
 import { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import { evalBezier, splitBezier } from "../src/core/geom";
 import { Vec2 } from "../src/core/vec2";
 
 function makeCtx(doc: CADDocument): ToolContext {
@@ -52,18 +53,77 @@ describe("whole-entity erase when nothing bounds the clicked piece", () => {
     expect(doc.entities.includes(l)).toBe(false);
   });
 
-  it("erases an uncrossed bezier, leaves a crossed one alone", () => {
+  it("erases an uncrossed bezier", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
     const lone = new BezierEntity({ x: 0, y: 50 }, { x: 10, y: 70 }, { x: 30, y: 70 }, { x: 40, y: 50 });
     doc.add(lone);
     click(doc, { x: 20, y: 65 });
     expect(doc.entities.includes(lone)).toBe(false);
+  });
+});
 
-    const crossed = new BezierEntity({ x: 0, y: 0 }, { x: 10, y: 20 }, { x: 30, y: 20 }, { x: 40, y: 0 });
-    doc.add(crossed);
-    doc.add(new LineEntity({ x: 20, y: -10 }, { x: 20, y: 30 }));
-    click(doc, { x: 20, y: 15 });
-    expect(doc.entities.includes(crossed)).toBe(true); // partial bezier trim unsupported
+describe("splitBezier", () => {
+  it("both halves trace the original curve exactly", () => {
+    const p0 = { x: 0, y: 0 }, p1 = { x: 10, y: 20 }, p2 = { x: 30, y: 20 }, p3 = { x: 40, y: 0 };
+    const t = 0.3;
+    const { left, right } = splitBezier(p0, p1, p2, p3, t);
+    for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+      const l = evalBezier(left[0], left[1], left[2], left[3], u);
+      const ol = evalBezier(p0, p1, p2, p3, t * u);
+      expect(l.x).toBeCloseTo(ol.x, 9);
+      expect(l.y).toBeCloseTo(ol.y, 9);
+      const r = evalBezier(right[0], right[1], right[2], right[3], u);
+      const or_ = evalBezier(p0, p1, p2, p3, t + (1 - t) * u);
+      expect(r.x).toBeCloseTo(or_.x, 9);
+      expect(r.y).toBeCloseTo(or_.y, 9);
+    }
+  });
+});
+
+describe("trimming beziers", () => {
+  // Symmetric arch from (0,0) to (40,0), apex (20,15) at t=0.5.
+  const arch = () => new BezierEntity({ x: 0, y: 0 }, { x: 10, y: 20 }, { x: 30, y: 20 }, { x: 40, y: 0 });
+  const beziers = (doc: CADDocument) =>
+    doc.entities.filter((e): e is BezierEntity => e instanceof BezierEntity);
+
+  it("shortens a bezier to the crossing when clicking past it", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const bez = arch();
+    doc.add(bez);
+    doc.add(new LineEntity({ x: 20, y: -10 }, { x: 20, y: 30 })); // crosses at t=0.5 → (20,15)
+    click(doc, { x: 30.9, y: 11.25 }); // on the curve at t≈0.75 — right of the crossing
+    expect(doc.entities.includes(bez)).toBe(true);
+    expect(bez.p0.x).toBeCloseTo(0);
+    expect(bez.p3.x).toBeCloseTo(20, 3); // new end sits on the cutter line
+    expect(bez.p3.y).toBeCloseTo(15, 3);
+  });
+
+  it("splits a bezier crossed twice into two exact sub-curves", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    doc.add(arch());
+    doc.add(new LineEntity({ x: 12, y: -10 }, { x: 12, y: 30 }));
+    doc.add(new LineEntity({ x: 28, y: -10 }, { x: 28, y: 30 }));
+    click(doc, { x: 20, y: 15 }); // apex, between the crossings
+    const bs = beziers(doc);
+    expect(bs.length).toBe(2);
+    const sorted = bs.sort((a, b) => a.p0.x - b.p0.x);
+    expect(sorted[0].p0.x).toBeCloseTo(0);
+    expect(sorted[0].p3.x).toBeCloseTo(12, 3);
+    expect(sorted[1].p0.x).toBeCloseTo(28, 3);
+    expect(sorted[1].p3.x).toBeCloseTo(40);
+    expect(sorted[1].p3.y).toBeCloseTo(0);
+  });
+
+  it("trims a bezier against a circle", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const bez = arch();
+    doc.add(bez);
+    doc.add(new CircleEntity({ x: 40, y: 0 }, 10)); // swallows the tail of the arch
+    click(doc, { x: 38, y: 1 }); // near the p3 end, inside the circle
+    expect(doc.entities.includes(bez)).toBe(true);
+    // New end lands on the circle.
+    const d = Math.hypot(bez.p3.x - 40, bez.p3.y - 0);
+    expect(d).toBeCloseTo(10, 3);
   });
 });
 

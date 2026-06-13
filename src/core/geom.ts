@@ -199,6 +199,23 @@ export function bezierBounds(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2): { min: Vec
   };
 }
 
+/**
+ * De Casteljau split of a cubic Bezier at parameter t.
+ * Both halves together trace the original curve exactly.
+ */
+export function splitBezier(
+  p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number,
+): { left: [Vec2, Vec2, Vec2, Vec2]; right: [Vec2, Vec2, Vec2, Vec2] } {
+  const lp = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const a = lp(p0, p1), b = lp(p1, p2), c = lp(p2, p3);
+  const d = lp(a, b), e = lp(b, c);
+  const g = lp(d, e);
+  return {
+    left:  [{ ...p0 }, a, d, g],
+    right: [{ ...g }, e, c, { ...p3 }],
+  };
+}
+
 /** Adaptively flatten a cubic Bezier to a polyline within the given chord tolerance (mm).
  *  The first point (p0) is always included; the result ends at p3. */
 export function flattenBezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, tolerance: number): Vec2[] {

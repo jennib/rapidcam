@@ -15,12 +15,14 @@
  * Polylines: shortened, split in two, or (when closed) opened up, walking the
  *   path to the nearest intersections.
  * Rectangles: converted to an equivalent closed polyline, then trimmed.
+ * Beziers: shortened from either end or split in two via exact de Casteljau
+ *   subdivision; intersection parameters are bracketed on a sampled polyline
+ *   and refined by bisection on the true curve.
  * Entities with no intersections at all are erased whole (standard CAD trim
  *   behaviour — the hover preview highlights the entire entity).
  *
  * Everything acts as cutting geometry for everything else; beziers are
- * flattened for intersection purposes. Beziers themselves can only be erased
- * whole, not partially trimmed.
+ * flattened for intersection purposes when they act as cutters.
  */
 
 import { Vec2 } from "../core/vec2";
@@ -33,7 +35,7 @@ import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import {
   segSegIntersect, segCircleIntersect, circleCircleIntersect,
   closestPointOnSegment, distToSegment, distToCircle, distToArc,
-  angleInArc, flattenBezier, TAU,
+  angleInArc, flattenBezier, evalBezier, splitBezier, TAU,
 } from "../core/geom";
 import { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
@@ -411,6 +413,131 @@ function applyPolylineTrim(target: PolylineEntity | RectEntity, h: PolyHit, doc:
   for (const p of pieces) doc.add(p);
 }
 
+// --- bezier target -----------------------------------------------------------
+
+const BEZ_SAMPLES = 64;
+const EPS_T = 1e-4;
+
+/** Sub-curve of a cubic over [t1, t2] as exact control points. */
+function bezierSubCurve(b: BezierEntity, t1: number, t2: number): [Vec2, Vec2, Vec2, Vec2] {
+  const { right } = splitBezier(b.p0, b.p1, b.p2, b.p3, t1);
+  const tr = t1 >= 1 - EPS ? 1 : (t2 - t1) / (1 - t1);
+  return splitBezier(right[0], right[1], right[2], right[3], tr).left;
+}
+
+/**
+ * Curve parameters where other entities cross the bezier: sign changes of a
+ * cutter-side function are bracketed on a sampled grid, then refined by
+ * bisection on the exact curve.
+ */
+function bezierIntersections(bez: BezierEntity, doc: CADDocument): number[] {
+  const B = (t: number) => evalBezier(bez.p0, bez.p1, bez.p2, bez.p3, t);
+  const N = BEZ_SAMPLES;
+  const samples: Vec2[] = Array.from({ length: N + 1 }, (_, i) => B(i / N));
+
+  const bisect = (g: (t: number) => number, lo: number, hi: number): number => {
+    let glo = g(lo);
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      const gm = g(mid);
+      if ((gm < 0) === (glo < 0)) { lo = mid; glo = gm; }
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+
+  const ts: number[] = [];
+  const collect = (g: (p: Vec2) => number, accept: (t: number) => boolean) => {
+    for (let i = 0; i < N; i++) {
+      const ga = g(samples[i]), gb = g(samples[i + 1]);
+      if ((ga < 0) === (gb < 0)) continue;
+      const t = bisect((tt) => g(B(tt)), i / N, (i + 1) / N);
+      if (accept(t)) ts.push(t);
+    }
+  };
+
+  for (const ent of doc.entities) {
+    if (ent.id === bez.id || ent.isConstruction) continue;
+    if (ent instanceof CircleEntity || ent instanceof ArcEntity) {
+      const { center, radius } = ent;
+      collect(
+        (p) => Math.hypot(p.x - center.x, p.y - center.y) - radius,
+        (t) => !(ent instanceof ArcEntity) ||
+          angleInArc(angleOf(B(t), center), ent.startAngle, ent.endAngle),
+      );
+      continue;
+    }
+    for (const s of entitySegments(ent)) {
+      const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-20) continue;
+      collect(
+        (p) => dx * (p.y - s.a.y) - dy * (p.x - s.a.x), // signed side of the cutter's line
+        (t) => {
+          const p = B(t);
+          const u = ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / len2;
+          return u >= -EPS && u <= 1 + EPS; // crossing lies within the cutter segment
+        },
+      );
+    }
+  }
+
+  const inside = ts.filter((t) => t > EPS_T && t < 1 - EPS_T).sort((a, b) => a - b);
+  return inside.filter((t, i) => i === 0 || t - inside[i - 1] > EPS_T);
+}
+
+/** Curve parameter closest to a world position (sampled). */
+function bezierClickT(bez: BezierEntity, worldPos: Vec2): number {
+  const N = BEZ_SAMPLES;
+  let bestT = 0, bestD = Infinity;
+  let prev = evalBezier(bez.p0, bez.p1, bez.p2, bez.p3, 0);
+  for (let i = 0; i < N; i++) {
+    const next = evalBezier(bez.p0, bez.p1, bez.p2, bez.p3, (i + 1) / N);
+    const cp = closestPointOnSegment(worldPos, prev, next);
+    const d = Math.hypot(worldPos.x - cp.point.x, worldPos.y - cp.point.y);
+    if (d < bestD) { bestD = d; bestT = (i + cp.t) / N; }
+    prev = next;
+  }
+  return bestT;
+}
+
+function setBezier(bez: BezierEntity, cp: [Vec2, Vec2, Vec2, Vec2]): void {
+  bez.p0 = { ...cp[0] }; bez.p1 = { ...cp[1] };
+  bez.p2 = { ...cp[2] }; bez.p3 = { ...cp[3] };
+}
+
+function applyBezierTrim(bez: BezierEntity, clickT: number, ixs: number[], doc: CADDocument): void {
+  const lo = [...ixs].reverse().find((t) => t <= clickT);
+  const hi = ixs.find((t) => t > clickT);
+
+  if (lo === undefined && hi !== undefined) {
+    // Trim from the p0 end → keep [hi, 1].
+    setBezier(bez, bezierSubCurve(bez, hi, 1));
+    removeCoincidentAt(doc, bez.id, "p0");
+  } else if (lo !== undefined && hi === undefined) {
+    // Trim from the p3 end → keep [0, lo].
+    setBezier(bez, bezierSubCurve(bez, 0, lo));
+    removeCoincidentAt(doc, bez.id, "p3");
+  } else if (lo !== undefined && hi !== undefined) {
+    // Split: keep [0, lo] as the original entity, add a new bezier [hi, 1].
+    const bez2 = new BezierEntity(...bezierSubCurve(bez, hi, 1));
+    bez2.isConstruction = bez.isConstruction;
+    bez2.layerId = bez.layerId;
+
+    // Remap constraints at the p3 end to the new entity.
+    for (const c of doc.constraints) {
+      for (const p of c.points ?? []) {
+        if (p.entityId === bez.id && p.key === "p3") p.entityId = bez2.id;
+      }
+    }
+    // Remove body constraints on the original bezier.
+    doc.constraints = doc.constraints.filter(c => !c.entities?.includes(bez.id));
+
+    setBezier(bez, bezierSubCurve(bez, 0, lo));
+    doc.add(bez2);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 type Hit =
@@ -418,6 +545,7 @@ type Hit =
   | { kind: "circle"; ent: CircleEntity; clickTheta: number; thetas: number[] }
   | { kind: "arc";    ent: ArcEntity;    clickOff: number;   ixs: ArcIx[] }
   | { kind: "poly";   ent: PolylineEntity | RectEntity; poly: PolyHit }
+  | { kind: "bezier"; ent: BezierEntity; clickT: number;     ixs: number[] }
   | { kind: "erase";  ent: Entity };
 
 /** Whole-entity preview for the erase case. */
@@ -498,13 +626,9 @@ export class TrimTool implements Tool {
       return { kind: "poly", ent, poly: { points, closed, sClick: bestS, crossings } };
     }
     if (ent instanceof BezierEntity) {
-      // Beziers can only be erased whole; if anything crosses it, leave it alone.
-      for (const other of doc.entities) {
-        if (other.id === ent.id || other.isConstruction) continue;
-        for (const s of entitySegments(ent))
-          if (segCutterHits(s.a, s.b, other).length > 0) return null;
-      }
-      return { kind: "erase", ent };
+      const ixs = bezierIntersections(ent, doc);
+      if (ixs.length === 0) return { kind: "erase", ent };
+      return { kind: "bezier", ent, clickT: bezierClickT(ent, worldPos), ixs };
     }
     return null;
   }
@@ -523,6 +647,12 @@ export class TrimTool implements Tool {
       const piece = polylineRemovedPiece(h.poly);
       if (piece.length < 2) return null;
       return { kind: "polyline", points: piece, closed: false };
+    }
+    if (h.kind === "bezier") {
+      const lo = [...h.ixs].reverse().find((t) => t <= h.clickT) ?? 0;
+      const hi = h.ixs.find((t) => t > h.clickT) ?? 1;
+      const cp = bezierSubCurve(h.ent, lo, hi);
+      return { kind: "bezier", p0: cp[0], p1: cp[1], p2: cp[2], p3: cp[3] };
     }
     const lo = h.ixs.filter(x => x.off <= h.clickOff);
     const hi = h.ixs.filter(x => x.off >  h.clickOff);
@@ -550,6 +680,7 @@ export class TrimTool implements Tool {
     else if (h.kind === "line")   applyLineTrim(h.ent, h.clickT, h.ixs, ctx.doc);
     else if (h.kind === "circle") applyCircleTrim(h.ent, h.clickTheta, h.thetas, ctx.doc);
     else if (h.kind === "poly")   applyPolylineTrim(h.ent, h.poly, ctx.doc);
+    else if (h.kind === "bezier") applyBezierTrim(h.ent, h.clickT, h.ixs, ctx.doc);
     else                          applyArcTrim(h.ent, h.clickOff, h.ixs, ctx.doc);
     ctx.solve();
     ctx.doc.emitChange();
