@@ -86,7 +86,7 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Feature | Details |
 |---------|---------|
 | Profile cut | Contour-follows any closed chain; lead-in / lead-out arcs |
-| Pocket clearing | Zig-zag raster clearing plus a finish-contour pass; respects islands and flood-fill region picking |
+| Pocket clearing | Adaptive contour-parallel clearing (default) — concentric offset loops that wrap islands with helical entry and no per-row lifting — or classic zig-zag raster; both respect islands and flood-fill region picking |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Tool library | Named tool definitions with diameter, flute count, feed/speed presets |
 | G-code export | GRBL and LinuxCNC post-processors |
