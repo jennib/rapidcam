@@ -35,7 +35,7 @@ In `src/model/constraints.ts`, the `tangent` constraint uses `circularTangencyRe
 
 | # | Finding | Action |
 |---|---------|--------|
-| 1 | Polyline segments can't receive line constraints | **Skipped** — CAM uses PolylineEntity for closed profiles; converting to lines would break profiling. Documented as limitation. |
+| 1 | Polyline segments can't receive line constraints | **Fixed** — a line reference may now be a `LineEntity` id or a polyline segment encoded as `${polylineId}#${index}`. `lineGeom()` resolves either to live endpoints, so parallel/perpendicular/collinear/equal/angle/horizontal/vertical/tangent/point-on-line/symmetric/midpoint all accept polyline segments. Ctrl+click a polyline edge to select a segment (mirrors the point-pick gesture). PolylineEntity stays intact for CAM profiling. Covered by `test/polylineConstraints.test.ts`. |
 | 2 | duplicate() drops layerId | **Fixed** — added `e.layerId = this.layerId` to all 6 entity `duplicate()` methods |
 | 3 | Bezier endpoint drag warps curve | **Fixed** — `setPoint("p0")` now translates `p1` by the same delta (and `"p3"` translates `p2`); the solver's post-seed anchor holds the handle in the correct relative offset |
 | 4 | Typed arc length isn't constrained | **Fixed** — `arcTool.commitByLength` now adds a driving `arclength` dimension immediately after creating the arc |
