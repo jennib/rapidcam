@@ -680,26 +680,35 @@ export class CamBar {
     dialog.addEventListener("click", (e) => e.stopPropagation());
     backdrop.appendChild(dialog);
 
-    // Restore dialog position if previously saved
+    // Position: restore the last dragged position; otherwise default to the right
+    // side of the screen (just left of the right-hand panel). Once the user drags
+    // it, that position is remembered (localStorage) and wins on the next open.
+    const DIALOG_W = 380; // matches .tp-dialog width in style.css
+    const applyPos = (left: number, top: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - 100);
+      const maxTop = Math.max(0, window.innerHeight - 50);
+      dialog.style.position = "absolute";
+      dialog.style.margin = "0";
+      dialog.style.left = Math.max(0, Math.min(left, maxLeft)) + "px";
+      dialog.style.top = Math.max(0, Math.min(top, maxTop)) + "px";
+    };
+
+    let positioned = false;
     const storedPos = localStorage.getItem("rapidcam:toolpath-dialog-position");
     if (storedPos) {
       try {
         const { left, top } = JSON.parse(storedPos);
         const lVal = parseFloat(left);
         const tVal = parseFloat(top);
-        if (!isNaN(lVal) && !isNaN(tVal)) {
-          const maxLeft = Math.max(0, window.innerWidth - 100);
-          const maxTop = Math.max(0, window.innerHeight - 50);
-          const clampedLeft = Math.max(0, Math.min(lVal, maxLeft));
-          const clampedTop = Math.max(0, Math.min(tVal, maxTop));
-          dialog.style.position = "absolute";
-          dialog.style.margin = "0";
-          dialog.style.left = clampedLeft + "px";
-          dialog.style.top = clampedTop + "px";
-        }
-      } catch (e) {
+        if (!isNaN(lVal) && !isNaN(tVal)) { applyPos(lVal, tVal); positioned = true; }
+      } catch {
         // Ignore malformed localStorage data
       }
+    }
+    if (!positioned) {
+      const rp = document.getElementById("right-panel")?.getBoundingClientRect();
+      const rightEdge = rp ? rp.left : window.innerWidth;
+      applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
     }
 
     const dheader = document.createElement("div");
