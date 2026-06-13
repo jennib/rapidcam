@@ -61,6 +61,8 @@ RapidCAM uses a **Levenberg-Marquardt** solver with Tikhonov regularisation. Non
 - Concentric
 - Angle — angular constraint between two lines
 
+Line-type constraints (horizontal, vertical, parallel, perpendicular, collinear, equal, angle, tangent, point-on-line) also apply to **individual polyline segments** — click a segment in the select tool to constrain it like a standalone line, without exploding the polyline. Tangents to an *arc* are solved against its full circle (standard CAD behaviour); if the contact point falls outside the arc's sweep the constraint bar shows a non-blocking warning.
+
 **DOF-based entity colouring:** After each solve, every entity is coloured by its constraint status — **blue** = under-defined (free DOFs remain), **normal** = fully defined, **red** = over-constrained or conflicting. The analysis uses RREF null-space decomposition so that mutual dependencies between entities are handled correctly.
 
 ### Driving dimensions vs. reference dimensions
@@ -149,13 +151,17 @@ src/
 ├── ui/                 # UI panels — toolbar, bars, dialogs
 │   ├── toolPalette.ts
 │   ├── constraintBar.ts
-│   ├── camBar.ts
+│   ├── camBar.ts          # Toolpath list + Add/Edit Toolpath dialog
+│   ├── camBarHelpers.ts   # Pure CAM helpers (op matching, region seeding)
 │   ├── statusBar.ts
 │   └── …
 │
 ├── cam/                # CAM operations
 │   ├── types.ts        # CamOperation, ToolDef
-│   ├── pocket.ts       # Pocket clearing
+│   ├── clearing.ts     # Contour-parallel (offset) pocket clearing
+│   ├── pocket.ts       # Raster (zig-zag) pocket scanline
+│   ├── loops.ts        # Closed-loop detection (lines/arcs/beziers → polygons)
+│   ├── regions.ts      # Flood-fill region picking (Clipper2 booleans)
 │   ├── offset.ts       # Contour offsetting (via Clipper2)
 │   ├── tabs.ts         # Tab/bridge insertion
 │   ├── gcode.ts        # G-code builder
