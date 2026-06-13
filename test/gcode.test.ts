@@ -5,16 +5,20 @@
  * from endpoints, not absolute control points) and verifies GRBL falls back to G1.
  */
 
+import { test, expect } from "vitest";
 import { LinuxCNC } from "../src/cam/postprocessors/linuxcnc";
 import { Grbl } from "../src/cam/postprocessors/grbl";
 import { n } from "../src/cam/postprocessors/base";
-import { getPostProcessor } from "../src/cam/gcode";
+import { getPostProcessor, generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
+import { CADDocument } from "../src/model/document";
+import { ArcEntity, RectEntity } from "../src/model/entities";
 
-let failures = 0;
+// Each numbered block below computes a boolean eagerly and registers it as a
+// vitest assertion via check(). Run with `npx vitest run` (or `npx tsx` for the
+// old script-style console output is no longer supported — assertions only).
 function check(name: string, ok: boolean, detail = ""): void {
-  console.log(`${ok ? "  PASS" : "✗ FAIL"}  ${name}${detail ? "  — " + detail : ""}`);
-  if (!ok) failures++;
+  test(name, () => { expect(ok, detail).toBe(true); });
 }
 
 const OP: CAMOperation = {
@@ -146,6 +150,63 @@ const p3 = { x: 100, y: 104 };
   check("unknown name defaults to LinuxCNC", getPostProcessor("unknown") instanceof LinuxCNC);
 }
 
-// -----------------------------------------------------------------------------
-console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
-if (failures > 0) process.exit(1);
+// 9) Arcs must not silently vanish (regression: arc showed in 3D preview but
+//    produced ZERO G-code with no warning). Engrave → real G3; profile → NOTE.
+{
+  console.log("\n9) Arc G-code generation");
+  // A quarter arc centred at (50,50), r=20, from 0 to 90° (CCW).
+  const run = (type: CAMOperation["type"]): string => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const arc = doc.add(new ArcEntity({ x: 50, y: 50 }, 20, 0, Math.PI / 2)) as ArcEntity;
+    const op: CAMOperation = { ...OP, id: "arcop", type, toolType: "end-mill", stepover: 0.4, entityIds: [arc.id] };
+    return generateGCode([op], doc);
+  };
+
+  const engraveOut = run("engrave");
+  check("engraved arc emits a G3 move", engraveOut.split("\n").some(l => l.startsWith("G3 ")),
+    engraveOut.split("\n").find(l => l.startsWith("G3 ")) ?? "(no G3)");
+
+  const profileOut = run("profile");
+  check("profiled arc emits an explanatory NOTE (not silent)", /NOTE: arc/.test(profileOut),
+    profileOut.split("\n").find(l => l.includes("NOTE")) ?? "(no NOTE)");
+}
+
+// 10) Pocket: ramped entry + per-depth-level interleaving (rough then finish at
+//     each level, descending) instead of straight plunges and all-rough-then-finish.
+{
+  console.log("\n10) Pocket ramp + pass ordering");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 70, y: 50 })) as RectEntity;
+  // depth -3, stepdown 1.5 → two passes at Z-1.5 then Z-3.
+  const op: CAMOperation = {
+    ...OP, id: "pk", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 3, depth: -3, stepdown: 1.5, entityIds: [rect.id],
+  };
+  const out = generateGCode([op], doc);
+  const all = out.split("\n");
+
+  // Ramped entry: a single G1 move that changes X/Y AND Z together (impossible
+  // with the old straight-plunge code, which only ever moved Z alone).
+  const hasRamp = all.some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l));
+  check("pocket uses a ramped entry (combined XYZ feed move)", hasRamp,
+    all.find(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l)) ?? "(no ramp move)");
+
+  // Reaches full depth.
+  check("pocket reaches full depth Z-3", all.some(l => /Z-3(\b|\.0)/.test(l) || l.includes("Z-3")),
+    "");
+
+  // Pass ordering: finishing the shallow wall (Z-1.5) happens BEFORE clearing
+  // the deep level (Z-3). The old code did all clearing first.
+  const finishShallow = all.findIndex(l => l === "; finishing walls Z-1.5");
+  const clearDeep     = all.findIndex(l => l === "; clearing pass Z-3");
+  check("finish@Z-1.5 precedes clearing@Z-3 (interleaved by depth)",
+    finishShallow >= 0 && clearDeep >= 0 && finishShallow < clearDeep,
+    `finish@-1.5=${finishShallow}, clear@-3=${clearDeep}`);
+
+  // No straight vertical plunge straight to full depth in one shot at the entry
+  // (i.e., a `G1 Z-3` that isn't part of a ramp). Roughing entry should ramp.
+  const straightToFull = all.some(l => /^G1 Z-3(\b|\.0| )/.test(l));
+  check("no straight vertical plunge to full depth", !straightToFull,
+    all.find(l => /^G1 Z-3/.test(l)) ?? "");
+}
+

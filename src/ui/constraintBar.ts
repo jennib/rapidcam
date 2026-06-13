@@ -8,9 +8,11 @@ import { CADDocument } from "../model/document";
 import {
   Constraint,
   ConstraintType,
+  Geo,
   CONSTRAINT_GLYPH,
   makeConstraint,
   measureAngleBetweenLines,
+  tangentContactOutsideArcSweep,
 } from "../model/constraints";
 import { Entity, LineEntity, CircleEntity } from "../model/entities";
 import { dist } from "../core/vec2";
@@ -250,6 +252,17 @@ export class ConstraintBar {
       return;
     }
 
+    // Non-blocking warning: a line↔arc tangent whose contact point falls outside
+    // the arc's sweep is valid but the visible arc won't actually touch the line.
+    const geo: Geo = (() => {
+      const m = new Map(this.doc.entities.map((e) => [e.id, e]));
+      return (id) => m.get(id);
+    })();
+    if (res.constraints.some((c) => tangentContactOutsideArcSweep(c, geo))) {
+      this.message("Added tangent — ⚠ contact point lies outside the arc's sweep", "warn");
+      return;
+    }
+
     this.message(`Added ${spec.name.toLowerCase()}`, "ok");
   }
 
@@ -267,7 +280,7 @@ export class ConstraintBar {
     }
   }
 
-  private message(text: string, kind: "error" | "ok"): void {
+  private message(text: string, kind: "error" | "ok" | "warn"): void {
     this.msgEl.textContent = text;
     this.msgEl.className = `cb-msg ${kind}`;
   }

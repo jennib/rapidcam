@@ -1,17 +1,12 @@
 import type { CADDocument, GroupDef } from "../model/document";
 import {
   type Entity,
-  CircleEntity,
   LineEntity,
-  PolylineEntity,
-  RectEntity,
   ArcEntity,
   BezierEntity,
-  TextEntity,
 } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { dist } from "../core/vec2";
 import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
@@ -20,123 +15,16 @@ import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "
 import { regionAtPoint, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
-
-// ---- helpers ----------------------------------------------------------------
-
-type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill";
-
-/** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill) \d+$/;
-
-function comboOf(op: CAMOperation): OpCombo {
-  if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
-  return op.type as OpCombo;
-}
-
-function describeEntity(e: Entity, doc: CADDocument): string {
-  const u = doc.displayUnit;
-  if (e instanceof LineEntity) return `Line — ${formatLength(dist(e.a, e.b), u)}`;
-  if (e instanceof CircleEntity) return `Circle — r=${formatLength(e.radius, u)}`;
-  if (e instanceof RectEntity)
-    return `Rectangle — ${formatLength(e.width, u)} × ${formatLength(e.height, u)}`;
-  if (e instanceof PolylineEntity)
-    return `Polyline — ${e.points.length} pts${e.closed ? " (closed)" : " (open)"}`;
-  if (e instanceof TextEntity)
-    return `Text — "${e.text.length > 20 ? e.text.slice(0, 20) + "…" : e.text}"`;
-  return "Entity";
-}
-
-function isValidFor(e: Entity, combo: OpCombo): boolean {
-  if (e.isConstruction) return false;
-  switch (combo) {
-    case "profile-outside":
-    case "profile-inside":
-    case "pocket":
-      return (
-        e instanceof TextEntity ||
-        e instanceof CircleEntity ||
-        e instanceof RectEntity ||
-        e instanceof LineEntity ||
-        (e instanceof PolylineEntity && e.closed)
-      );
-    case "engrave":
-      return true;
-    case "drill":
-      return e instanceof CircleEntity;
-  }
-}
-
-/**
- * Synthesize region seeds from entity-id sets: one seed inside each boundary
- * loop, clear of its islands. Used to migrate legacy pocket ops and to seed
- * regions from the canvas selection.
- */
-function seedsFromEntityIds(doc: CADDocument, entIds: Set<string>, islIds: Set<string>): Vec2[] {
-  const loops = collectClosedLoops(doc.entities);
-  const boundaries = loops.filter((L) => L.ids.every((id) => entIds.has(id)));
-  const islands = loops.filter((L) => L.ids.every((id) => islIds.has(id)));
-  const seeds: Vec2[] = [];
-  for (const b of boundaries) {
-    const holes = islands
-      .filter((i) => pointInPolygon(i.verts[0], b.verts))
-      .map((i) => i.verts);
-    const p = interiorPoint(b.verts, holes);
-    if (p) seeds.push(p);
-  }
-  return seeds;
-}
-
-function legacyPocketSeeds(op: CAMOperation, doc: CADDocument): Vec2[] {
-  return seedsFromEntityIds(doc, new Set(op.entityIds), new Set(op.islandIds ?? []));
-}
-
-function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
-  const chain = new Set<string>();
-  const front: Vec2[] = [];
-  
-  const startEnt = doc.entities.find(e => e.id === startId);
-  if (!startEnt || startEnt.isConstruction) return [];
-  
-  const getEnds = (e: Entity): Vec2[] => {
-    if (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity) {
-      const p = e.pickablePoints();
-      if (p.length >= 2) return [p[0].pos, p[p.length - 1].pos];
-    } else if (e instanceof PolylineEntity && e.points.length > 0) {
-      return [e.points[0], e.points[e.points.length - 1]];
-    }
-    return [];
-  };
-
-  front.push(...getEnds(startEnt));
-  chain.add(startId);
-  
-  let added = true;
-  while (added) {
-    added = false;
-    for (const e of doc.entities) {
-      if (chain.has(e.id) || e.isConstruction || !isValidFor(e, validCombo)) continue;
-      
-      const ePts = getEnds(e);
-      if (ePts.length === 2) {
-        for (let i = 0; i < front.length; i++) {
-          const f = front[i];
-          if (dist(f, ePts[0]) < 1e-5) {
-            chain.add(e.id);
-            front[i] = ePts[1];
-            added = true;
-            break;
-          } else if (dist(f, ePts[1]) < 1e-5) {
-            chain.add(e.id);
-            front[i] = ePts[0];
-            added = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  return [...chain];
-}
+import {
+  type OpCombo,
+  AUTO_NAME_RE,
+  comboOf,
+  describeEntity,
+  isValidFor,
+  seedsFromEntityIds,
+  legacyPocketSeeds,
+  findContiguousChain,
+} from "./camBarHelpers";
 
 // ---- ToolpathsBar -----------------------------------------------------------
 

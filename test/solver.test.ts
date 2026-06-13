@@ -5,14 +5,13 @@
 
 import { CADDocument } from "../src/model/document";
 import { LineEntity, CircleEntity, RectEntity, ArcEntity } from "../src/model/entities";
-import { makeConstraint, constraintResiduals, Geo } from "../src/model/constraints";
+import { makeConstraint, constraintResiduals, Geo, tangentContactOutsideArcSweep } from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
+import { test, expect } from "vitest";
 
-let failures = 0;
 function check(name: string, ok: boolean, detail = ""): void {
-  console.log(`${ok ? "  PASS" : "✗ FAIL"}  ${name}${detail ? "  — " + detail : ""}`);
-  if (!ok) failures++;
+  test(name, () => { expect(ok, detail).toBe(true); });
 }
 const geoOf = (doc: CADDocument): Geo => {
   const m = new Map(doc.entities.map((e) => [e.id, e]));
@@ -278,5 +277,31 @@ const geoOf = (doc: CADDocument): Geo => {
     `sa=${arc.startAngle.toFixed(3)}`);
 }
 
-console.log(failures === 0 ? "\nALL SOLVER TESTS PASSED" : `\n${failures} TEST(S) FAILED`);
-process.exit(failures === 0 ? 0 : 1);
+// Tangent-to-arc sweep detection (CONSTRAINT_REVIEW #5) ----------------------
+{
+  // Arc in the first quadrant: centre (0,0), r=10, sweep 0°→90°.
+  const mk = () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 10, 0, Math.PI / 2)) as ArcEntity;
+    return { doc, arc };
+  };
+
+  // Vertical line tangent at the right (contact angle 0°) — inside the sweep.
+  {
+    const { doc, arc } = mk();
+    const l = doc.add(new LineEntity({ x: 10, y: -5 }, { x: 10, y: 5 })) as LineEntity;
+    const c = makeConstraint("tangent", { entities: [l.id, arc.id] });
+    check("tangent contact inside sweep → no warning",
+      tangentContactOutsideArcSweep(c, geoOf(doc)) === false);
+  }
+
+  // Horizontal line tangent at the bottom (contact angle −90°) — outside [0,90°].
+  {
+    const { doc, arc } = mk();
+    const l = doc.add(new LineEntity({ x: -5, y: -10 }, { x: 5, y: -10 })) as LineEntity;
+    const c = makeConstraint("tangent", { entities: [l.id, arc.id] });
+    check("tangent contact outside sweep → warning",
+      tangentContactOutsideArcSweep(c, geoOf(doc)) === true);
+  }
+}
+

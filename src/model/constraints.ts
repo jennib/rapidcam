@@ -14,6 +14,7 @@
 
 import { Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
 import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity } from "./entities";
+import { angleInArc } from "../core/geom";
 import { nextId } from "./ids";
 
 export type ConstraintType =
@@ -278,6 +279,31 @@ function circularTangencyResidual(
   const ext = d - g1.radius - g2.radius;
   const int_ = d - Math.abs(g1.radius - g2.radius);
   return Math.abs(ext) <= Math.abs(int_) ? ext : int_;
+}
+
+/**
+ * For a line↔arc tangent constraint, report whether the point where the line
+ * actually touches the underlying circle falls OUTSIDE the arc's angular sweep.
+ * The constraint is still mathematically valid (tangency is defined against the
+ * full circle, as in most CAD kernels), but in that case the visible arc segment
+ * won't physically touch the line — worth warning the user about. Returns false
+ * for non-line/arc tangents (arc–arc, circle, etc.) where there's no single
+ * unambiguous contact direction to check.
+ */
+export function tangentContactOutsideArcSweep(c: Constraint, geo: Geo): boolean {
+  if (c.type !== "tangent") return false;
+  const l = asLine(geo, c.entities[0]) ?? asLine(geo, c.entities[1]);
+  const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
+  if (!l || !arc) return false;
+  // Foot of perpendicular from the arc centre to the infinite line; the tangent
+  // point lies on the ray from the centre through that foot.
+  const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y;
+  const L2 = dx * dx + dy * dy;
+  if (L2 < 1e-12) return false;
+  const t = ((arc.center.x - l.a.x) * dx + (arc.center.y - l.a.y) * dy) / L2;
+  const footX = l.a.x + t * dx, footY = l.a.y + t * dy;
+  const ang = Math.atan2(footY - arc.center.y, footX - arc.center.x);
+  return !angleInArc(ang, arc.startAngle, arc.endAngle);
 }
 
 // ---------------------------------------------------------------------------

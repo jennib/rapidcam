@@ -1,5 +1,5 @@
 import "./style.css";
-import "./analytics";
+import { showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
 
 function wireRightPanelTabs(): void {
@@ -35,6 +35,7 @@ function boot(): void {
 
   new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
   wireRightPanelTabs();
+  showConsentBannerIfNeeded();
 }
 
 boot();

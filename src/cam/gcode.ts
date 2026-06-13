@@ -1,6 +1,6 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity } from "../model/entities";
+import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
@@ -48,7 +48,10 @@ function profilePolygon(
   ox: number, oy: number, zOff: number,
 ): string[] {
   const toolR = op.diameter / 2;
-  const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
+  // Normalise winding to CCW so "outside" (+toolR) always expands and "inside"
+  // (-toolR) always shrinks, regardless of how the source geometry was wound.
+  const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  const paths = offsetPolygon(ccw, op.side === "outside" ? toolR : -toolR);
   if (paths.length === 0) return [];
 
   const tabs      = op.tabs;
@@ -133,13 +136,86 @@ function profilePolygon(
 
 // --- pocket ------------------------------------------------------------------
 
+/** Ramp-entry geometry: descend at this angle off horizontal (gentle on the cutter). */
+const RAMP_ANGLE_DEG = 3;
+/** Rapid down to this clearance (mm) above the previous cut level before feeding. */
+const RAMP_CLEAR = 0.5;
+
+/**
+ * Emit a ramped plunge from `zStart` down to `zTarget` by zig-zagging along the
+ * segment a↔b, instead of a straight vertical plunge (which loads the tool tip
+ * and snaps cutters in metal/hardwood). The tool rapids to a clearance plane
+ * above the already-cleared `zStart` level, then descends at RAMP_ANGLE_DEG.
+ * Guarantees the final position is `b` at `zTarget` with the full a→b interval
+ * cut at depth. Falls back to a straight plunge for degenerate segments.
+ */
+function rampPlunge(
+  a: Vec2, b: Vec2, zStart: number, zTarget: number, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const out: string[] = [];
+  out.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  out.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+  out.push(`G0 Z${Z(zStart + RAMP_CLEAR, zOff)}`); // rapid into cleared air above last level
+
+  const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+  const depth  = zStart - zTarget; // positive: how far we still need to descend
+  if (segLen < 1e-6 || depth < 1e-9) {
+    out.push(`G1 Z${Z(zTarget, zOff)} F${n(op.plungeRate)}`);
+    if (segLen >= 1e-6) out.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
+    return out;
+  }
+
+  out.push(`G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`); // feed down to the cut level
+  const run = depth / Math.tan((RAMP_ANGLE_DEG * Math.PI) / 180); // horizontal travel needed
+
+  let dist = 0;
+  let cur = a, target = b;
+  while (dist < run - 1e-9) {
+    const remaining = run - dist;
+    if (segLen <= remaining) {
+      dist += segLen;
+      const z = zStart - depth * Math.min(1, dist / run);
+      out.push(`G1 X${X(target.x, ox)} Y${Y(target.y, oy)} Z${Z(z, zOff)} F${n(op.feedrate)}`);
+      [cur, target] = [target, cur];
+    } else {
+      const t = remaining / segLen;
+      const px = cur.x + (target.x - cur.x) * t;
+      const py = cur.y + (target.y - cur.y) * t;
+      out.push(`G1 X${X(px, ox)} Y${Y(py, oy)} Z${Z(zTarget, zOff)} F${n(op.feedrate)}`);
+      cur = { x: px, y: py };
+      dist = run;
+    }
+  }
+  // Level pass at full depth so the whole a→b interval is cut and we end at b.
+  out.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)} F${n(op.feedrate)}`);
+  out.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)}`);
+  return out;
+}
+
+/** Profile a closed contour at a fixed depth, entering with a ramp along its first edge. */
+function finishContour(
+  poly: Vec2[], zStart: number, z: number, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  if (poly.length < 3) return [];
+  const out = rampPlunge(poly[0], poly[1], zStart, z, op, ox, oy, zOff); // ends at poly[1] @ z
+  for (let i = 2; i < poly.length; i++)
+    out.push(`G1 X${X(poly[i].x, ox)} Y${Y(poly[i].y, oy)}`);
+  out.push(`G1 X${X(poly[0].x, ox)} Y${Y(poly[0].y, oy)}`);
+  return out;
+}
+
 function pocketPolygon(
   verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
   const toolR    = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
-  const insets   = offsetPolygon(verts, -toolR);
+  // Normalise winding to CCW so the inward (-toolR) inset always shrinks the
+  // boundary, regardless of the source geometry's winding direction.
+  const ccw      = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  const insets   = offsetPolygon(ccw, -toolR);
   if (insets.length === 0)
     return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
@@ -159,65 +235,43 @@ function pocketPolygon(
       : rasterRows(inset, stepover);
     if (rows.length === 0 && islandKeepouts.length === 0) continue;
 
+    // Cut each depth level COMPLETELY (rough rows → finish walls) before
+    // descending. The previous code roughed all depths then finished all
+    // depths, which retracted and re-cut shallow walls after deep roughing.
+    let prevZ = 0; // top of stock (work surface)
     for (const z of depthPasses(op)) {
       if (rows.length > 0) {
+        lines.push(`; clearing pass Z${n(z)}`);
         // Each row contains 2*k points representing k intervals (one pair per interval).
         // Consecutive rows connect via zig-zag G1 (safe: along outer boundary).
         // Multiple intervals within the same row require a lift/rapid between them
         // to avoid cutting through the island.
-        let plunged = false;
+        let entered = false;
         for (const row of rows) {
           for (let i = 0; i + 1 < row.length; i += 2) {
             const a = row[i], b = row[i + 1];
-            if (!plunged) {
-              lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-              lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
-              lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-              lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
-              plunged = true;
+            if (!entered) {
+              lines.push(...rampPlunge(a, b, prevZ, z, op, ox, oy, zOff));
+              entered = true;
             } else if (i === 0) {
               // First interval of a new row — zig-zag connection along outer boundary (safe).
               lines.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
               lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)}`);
             } else {
-              // Additional interval within same row — lift over island, rapid, re-plunge.
-              lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-              lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
-              lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-              lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
+              // Additional interval within same row — lift over island, ramp back in.
+              lines.push(...rampPlunge(a, b, prevZ, z, op, ox, oy, zOff));
             }
           }
         }
       }
-    }
 
-    // Finish pass: profile the outer inset boundary.
-    const s = inset[0];
-    for (const z of depthPasses(op)) {
-      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-      lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      for (let i = 1; i < inset.length; i++) {
-        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-        lines.push(`G1 X${X(inset[i].x, ox)} Y${Y(inset[i].y, oy)}${f}`);
-      }
-      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-    }
+      // Finish the outer wall, then each island wall, at this same depth.
+      lines.push(`; finishing walls Z${n(z)}`);
+      lines.push(...finishContour(inset, prevZ, z, op, ox, oy, zOff));
+      for (const keepout of islandKeepouts)
+        lines.push(...finishContour(keepout, prevZ, z, op, ox, oy, zOff));
 
-    // Finish pass: profile each island keepout boundary to clean island walls.
-    for (const keepout of islandKeepouts) {
-      if (keepout.length < 3) continue;
-      const ks = keepout[0];
-      for (const z of depthPasses(op)) {
-        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-        lines.push(`G0 X${X(ks.x, ox)} Y${Y(ks.y, oy)}`);
-        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-        for (let i = 1; i < keepout.length; i++) {
-          const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-          lines.push(`G1 X${X(keepout[i].x, ox)} Y${Y(keepout[i].y, oy)}${f}`);
-        }
-        lines.push(`G1 X${X(ks.x, ox)} Y${Y(ks.y, oy)}`);
-      }
+      prevZ = z;
     }
 
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -340,6 +394,33 @@ function engraveCircle(
     lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
     lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
     lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-r)} J0 F${n(op.feedrate)}`);
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
+/**
+ * Engrave a circular arc on its own centreline (no tool-radius compensation).
+ * Arcs are stored CCW from startAngle→endAngle (world Y-up), which maps to a
+ * G3 (counter-clockwise) move in the G17 plane. I/J are the centre offset
+ * relative to the arc start point.
+ */
+function engraveArc(
+  arc: ArcEntity, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  if (span < 1e-6) return [`; NOTE: arc (${arc.id}) has zero sweep — skipped`];
+  const s = arc.startPoint;
+  const e = arc.endPoint;
+  const iOff = arc.center.x - s.x;
+  const jOff = arc.center.y - s.y;
+  const lines: string[] = [];
+  for (const z of depthPasses(op)) {
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+    lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+    lines.push(`G3 X${X(e.x, ox)} Y${Y(e.y, oy)} I${n(iOff)} J${n(jOff)} F${n(op.feedrate)}`);
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;
@@ -470,6 +551,8 @@ function toolpathBody(
         lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
         lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
+      else if (ent instanceof ArcEntity)
+        lines.push(...engraveArc(ent, op, ox, oy, zOff));
       else if (ent instanceof BezierEntity)
         lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, op, ox, oy, zOff));
       continue;
@@ -483,6 +566,8 @@ function toolpathBody(
         lines.push(...pocketPolygon([...ent.corners()], islands, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
         lines.push(...pocketPolygon(ent.points, islands, op, ox, oy, zOff));
+      else if (ent instanceof ArcEntity)
+        lines.push(`; NOTE: arc (${ent.id}) skipped — pocket requires a closed region (use a closed loop or region pick)`);
     } else {
       if (ent instanceof CircleEntity)
         lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
@@ -494,6 +579,8 @@ function toolpathBody(
         lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
       else if (ent instanceof LineEntity)
         lines.push("; NOTE: open line skipped — profile requires closed geometry");
+      else if (ent instanceof ArcEntity)
+        lines.push(`; NOTE: arc (${ent.id}) skipped — profile requires closed geometry (use engrave for an open arc)`);
       else if (ent instanceof BezierEntity)
         lines.push(`; NOTE: bezier (${ent.id}) skipped in profile — beziers are open paths`);
     }

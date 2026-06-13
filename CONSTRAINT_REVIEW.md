@@ -39,4 +39,4 @@ In `src/model/constraints.ts`, the `tangent` constraint uses `circularTangencyRe
 | 2 | duplicate() drops layerId | **Fixed** — added `e.layerId = this.layerId` to all 6 entity `duplicate()` methods |
 | 3 | Bezier endpoint drag warps curve | **Fixed** — `setPoint("p0")` now translates `p1` by the same delta (and `"p3"` translates `p2`); the solver's post-seed anchor holds the handle in the correct relative offset |
 | 4 | Typed arc length isn't constrained | **Fixed** — `arcTool.commitByLength` now adds a driving `arclength` dimension immediately after creating the arc |
-| 5 | Tangent ignores arc sweep | **Not fixed** — standard CAD kernel behaviour; low priority, left as known limitation |
+| 5 | Tangent ignores arc sweep | **Addressed (warning)** — tangency is still solved against the underlying circle (standard CAD-kernel behaviour), but `tangentContactOutsideArcSweep()` now detects when a line↔arc contact point falls outside the arc's sweep, and the constraint bar shows a non-blocking ⚠ warning so the result isn't silently confusing. Covered by tests in `test/solver.test.ts`. |
