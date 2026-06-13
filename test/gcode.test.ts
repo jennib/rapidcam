@@ -12,7 +12,7 @@ import { n } from "../src/cam/postprocessors/base";
 import { getPostProcessor, generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
 import { CADDocument } from "../src/model/document";
-import { ArcEntity, RectEntity } from "../src/model/entities";
+import { ArcEntity, RectEntity, CircleEntity } from "../src/model/entities";
 
 // Each numbered block below computes a boolean eagerly and registers it as a
 // vitest assertion via check(). Run with `npx vitest run` (or `npx tsx` for the
@@ -180,7 +180,7 @@ const p3 = { x: 100, y: 104 };
   // depth -3, stepdown 1.5 → two passes at Z-1.5 then Z-3.
   const op: CAMOperation = {
     ...OP, id: "pk", type: "pocket", toolType: "end-mill", stepover: 0.4,
-    diameter: 3, depth: -3, stepdown: 1.5, entityIds: [rect.id],
+    diameter: 3, depth: -3, stepdown: 1.5, entityIds: [rect.id], pocketStrategy: "raster",
   };
   const out = generateGCode([op], doc);
   const all = out.split("\n");
@@ -208,5 +208,34 @@ const p3 = { x: 100, y: 104 };
   const straightToFull = all.some(l => /^G1 Z-3(\b|\.0| )/.test(l));
   check("no straight vertical plunge to full depth", !straightToFull,
     all.find(l => /^G1 Z-3/.test(l)) ?? "");
+}
+
+// 11) Pocket: contour-parallel (default) strategy on a pocket WITH an island —
+//     concentric loops should wrap the island with far fewer lifts than raster.
+{
+  console.log("\n11) Pocket contour-parallel + island");
+  const mkDoc = () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 70 })) as RectEntity;
+    const isl = doc.add(new CircleEntity({ x: 50, y: 40 }, 10)) as CircleEntity;
+    return { doc, ids: [rect.id], islIds: [isl.id] };
+  };
+  const op = (strategy: "offset" | "raster", d: { ids: string[]; islIds: string[] }): CAMOperation => ({
+    ...OP, id: "pk", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 6, depth: -2, stepdown: 2, entityIds: d.ids, islandIds: d.islIds, pocketStrategy: strategy,
+  });
+
+  const a = mkDoc(); const offset = generateGCode([op("offset", a)], a.doc).split("\n");
+  const b = mkDoc(); const raster = generateGCode([op("raster", b)], b.doc).split("\n");
+
+  const lifts = (ls: string[]) => ls.filter(l => /^G0 Z5\b/.test(l)).length;
+
+  check("contour-parallel header present", offset.some(l => l.includes("contour-parallel")),
+    offset.find(l => l.includes("clearing pass")) ?? "");
+  check("contour-parallel uses fewer lifts than raster on an island pocket",
+    lifts(offset) < lifts(raster), `offset lifts=${lifts(offset)}, raster lifts=${lifts(raster)}`);
+  check("contour-parallel reaches full depth Z-2", offset.some(l => l.includes("Z-2")), "");
+  check("helical entry present (descending XYZ move)",
+    offset.some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l)), "");
 }
 

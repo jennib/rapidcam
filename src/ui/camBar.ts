@@ -292,6 +292,7 @@ export class CamBar {
       tabWidth:     existing?.tabs?.width   ?? 4,
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
+      pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
       leadInLen:    existing?.leadIn?.length  ?? 2,
       leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
@@ -677,6 +678,20 @@ export class CamBar {
     });
     const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
     cutSec.appendChild(stepoverRow);
+
+    const strategySelect = document.createElement("select");
+    strategySelect.className = "unit";
+    for (const [v, l] of [["offset", "Adaptive (contour-parallel)"], ["raster", "Raster (zig-zag)"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      strategySelect.appendChild(o);
+    }
+    strategySelect.value = state.pocketStrategy;
+    strategySelect.addEventListener("change", () => {
+      state.pocketStrategy = strategySelect.value as "offset" | "raster";
+    });
+    const strategyRow = this.dField("Clearing", strategySelect);
+    cutSec.appendChild(strategyRow);
 
     body.appendChild(cutSec);
 
@@ -1252,6 +1267,7 @@ export class CamBar {
       if (pickModeActive) stopPickMode(); // pick behaviour differs per op type
       stepRow.style.display     = state.combo === "drill"   ? "none" : "";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+      strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
       updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -1263,6 +1279,7 @@ export class CamBar {
     });
     stepRow.style.display     = state.combo === "drill"   ? "none" : "";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+    strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
     updateTabsVisibility();
     updateLeadVisibility();
     if (state.combo === "pocket") {
@@ -1320,6 +1337,7 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
+        pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regionSeeds: type === "pocket"
           ? state.regionSeeds.map((s) => ({ ...s }))
           : undefined,

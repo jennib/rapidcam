@@ -56,6 +56,12 @@ export interface CAMOperation {
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
+  /**
+   * Pocket clearing strategy. "offset" = contour-parallel concentric loops
+   * (default; wraps islands with no lifting), "raster" = zig-zag rows.
+   * Undefined is treated as "offset".
+   */
+  pocketStrategy?: "offset" | "raster";
   islandIds?: EntityId[];     // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
    * Pocket only: flood-fill region seeds. Each seed is a world point inside an

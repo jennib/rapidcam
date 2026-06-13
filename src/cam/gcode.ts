@@ -4,6 +4,7 @@ import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, Tex
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
+import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
@@ -193,6 +194,60 @@ function rampPlunge(
   return out;
 }
 
+/** Max helix angle (off horizontal) for a contour-parallel loop entry. */
+const HELIX_ANGLE_MAX_DEG = 10;
+
+/**
+ * Cut a closed loop with a helical entry: descend from `zStart` to `z` while
+ * spiralling around the loop (one or more laps, kept under HELIX_ANGLE_MAX_DEG),
+ * then one flat finishing lap so the floor is level. Always ends back at loop[0].
+ * Much gentler than a vertical plunge and avoids the oscillation of ramping along
+ * a single short edge.
+ */
+function helicalLoop(
+  loop: Vec2[], zStart: number, z: number, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const out: string[] = [];
+  const N = loop.length;
+  out.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  out.push(`G0 X${X(loop[0].x, ox)} Y${Y(loop[0].y, oy)}`);
+  out.push(`G0 Z${Z(zStart + RAMP_CLEAR, zOff)}`);
+  out.push(`G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`);
+
+  const seg: number[] = [];
+  let perim = 0;
+  for (let i = 0; i < N; i++) {
+    const a = loop[i], b = loop[(i + 1) % N];
+    const L = Math.hypot(b.x - a.x, b.y - a.y);
+    seg.push(L); perim += L;
+  }
+  const depth = zStart - z;
+  if (perim < 1e-9 || depth < 1e-9) {
+    out.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+    for (let i = 1; i <= N; i++)
+      out.push(`G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}${i === 1 ? ` F${n(op.feedrate)}` : ""}`);
+    return out;
+  }
+
+  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+  const totalArc = nLaps * perim;
+  let acc = 0, first = true;
+  for (let lap = 0; lap < nLaps; lap++) {
+    for (let i = 1; i <= N; i++) {
+      acc += seg[(i - 1) % N];
+      const zc = zStart - depth * Math.min(1, acc / totalArc);
+      const p = loop[i % N];
+      out.push(`G1 X${X(p.x, ox)} Y${Y(p.y, oy)} Z${Z(zc, zOff)}${first ? ` F${n(op.feedrate)}` : ""}`);
+      first = false;
+    }
+  }
+  // Flat finishing lap at full depth (ends at loop[0]).
+  for (let i = 1; i <= N; i++)
+    out.push(`G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}`);
+  return out;
+}
+
 /** Profile a closed contour at a fixed depth, entering with a ramp along its first edge. */
 function finishContour(
   poly: Vec2[], zStart: number, z: number, op: CAMOperation,
@@ -206,7 +261,58 @@ function finishContour(
   return out;
 }
 
+/** Dispatch to the configured pocket clearing strategy (default: contour-parallel). */
 function pocketPolygon(
+  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  return (op.pocketStrategy ?? "offset") === "raster"
+    ? pocketPolygonRaster(verts, islands, op, ox, oy, zOff)
+    : pocketPolygonOffset(verts, islands, op, ox, oy, zOff);
+}
+
+/**
+ * Contour-parallel clearing: concentric offset loops that wrap islands without
+ * lifting. Each depth level is cleared completely (innermost loop → outer wall)
+ * before descending; loops link with short feed moves where the gap is already
+ * cut, otherwise the tool lifts and ramps back in.
+ */
+function pocketPolygonOffset(
+  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const toolR    = op.diameter / 2;
+  const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const moves    = contourParallelClear(verts, islands, toolR, stepover);
+  if (moves.length === 0)
+    return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
+
+  const lines: string[] = [];
+  let prevZ = 0; // top of stock (work surface)
+  for (const z of depthPasses(op)) {
+    lines.push(`; clearing pass Z${n(z)} (contour-parallel, ${moves.length} loops)`);
+    let entered = false;
+    for (const mv of moves) {
+      const loop = mv.loop;
+      if (loop.length < 3) continue;
+      if (entered && mv.link) {
+        // Safe feed-link straight into this loop (gap already cleared), trace at depth.
+        for (let i = 0; i < loop.length; i++)
+          lines.push(`G1 X${X(loop[i].x, ox)} Y${Y(loop[i].y, oy)}`);
+        lines.push(`G1 X${X(loop[0].x, ox)} Y${Y(loop[0].y, oy)}`);
+      } else {
+        // First loop of the pass, or a gap too wide to feed across: helix in.
+        lines.push(...helicalLoop(loop, prevZ, z, op, ox, oy, zOff));
+        entered = true;
+      }
+    }
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    prevZ = z;
+  }
+  return lines;
+}
+
+function pocketPolygonRaster(
   verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
