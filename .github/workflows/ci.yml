@@ -22,8 +22,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript type check
-        run: npm run typecheck
-
-      - name: Production build
-        run: npx vite build
+      - name: Validate
+        run: npm run validate

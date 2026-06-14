@@ -45,7 +45,7 @@ const COST_TOL = RESIDUAL_TOL * RESIDUAL_TOL;
 // The dragged point is SEEDED to the cursor before the solve, so free-DOF responsiveness
 // comes from seeding, not from PIN_WEIGHT. PIN_WEIGHT only governs how much constrained
 // directions can drift; lower = constraints win harder. ANCHOR holds non-dragged DOFs.
-/** Soft weight for the dragged point — kept equal to ANCHOR_DRAG so constraints dominate. */
+/** Soft weight for the dragged point target; constraints may still project it away from the cursor. */
 const PIN_WEIGHT = 1e-3;
 /**
  * Anchor weight for drag operations: strong enough to hold non-dragged DOFs in place.
@@ -54,7 +54,7 @@ const PIN_WEIGHT = 1e-3;
  * produces a gradient 5× larger than the constraint gradient at near-convergence (crn≈1e-4),
  * causing the LM solver to get stuck before converging.
  */
-const ANCHOR_DRAG = 1e-3;
+const ANCHOR_DRAG = 1e-1;
 // Anchor weight for dimension/constraint solves: weak enough that the constraint gradient
 // always dominates (prevents !improved before crn < 1e-4 even for 50mm+ displacements),
 // while still selecting the minimum-norm (minimum displacement) null-space element.
