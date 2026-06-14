@@ -4,7 +4,10 @@ import {
   LineEntity,
   ArcEntity,
   BezierEntity,
+  TextEntity,
 } from "../model/entities";
+import { textToContours } from "../cam/textOutlines";
+import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
 import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
@@ -1059,21 +1062,43 @@ export class CamBar {
     fromSelBtn.textContent = "+ From Selection";
     fromSelBtn.addEventListener("click", () => {
       if (state.combo === "pocket") {
-        // Seed a region inside each closed loop formed by the selection.
-        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected));
         const docLoops = collectClosedLoops(this.doc.entities);
         let added = 0;
+
+        const addSeed = (p: Vec2, region: ReturnType<typeof regionAtPoint>) => {
+          if (!region) return false;
+          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
+            return false;
+          state.regionSeeds.push(p);
+          return true;
+        };
+
+        // Text entities: seed each glyph's stroke area using winding direction to
+        // separate outer contours from counter holes (e.g. the hole inside 'O').
+        // Outer contours are CCW in Y-up (positive signed area); holes are CW (negative).
+        for (const e of this.doc.entities) {
+          if (!e.selected || e.isConstruction || !(e instanceof TextEntity)) continue;
+          const contours = textToContours(e).filter(c => c.closed && c.points.length >= 3);
+          const outers = contours.filter(c => signedArea(c.points) > 0);
+          const inners = contours.filter(c => signedArea(c.points) <= 0);
+          for (const outer of outers) {
+            const holes = inners
+              .filter(inn => pointInPolygon(inn.points[0], outer.points))
+              .map(inn => inn.points);
+            const p = interiorPoint(outer.points, holes);
+            if (!p) continue;
+            if (addSeed(p, regionAtPoint(p, docLoops))) added++;
+          }
+        }
+
+        // Non-text entities: existing region-seed behaviour.
+        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected && !(e instanceof TextEntity)));
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
-          const region = regionAtPoint(p, docLoops);
-          if (!region) continue;
-          // Skip if an existing seed already picks this region.
-          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
-            continue;
-          state.regionSeeds.push(p);
-          added++;
+          if (addSeed(p, regionAtPoint(p, docLoops))) added++;
         }
+
         if (added > 0) renderEntities();
         return;
       }
