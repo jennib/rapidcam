@@ -1173,7 +1173,8 @@ export class CamBar {
           return true;
         };
         this.doc.regionHoverHandler = (world) => {
-          const region = regionAtPoint(world, collectClosedLoops(this.doc.entities));
+          const loops = collectClosedLoops(this.doc.entities);
+          const region = regionAtPoint(world, loops);
           this.doc.regionPickHoverFill = region ? [region.outer, ...region.holes] : null;
         };
         return;
