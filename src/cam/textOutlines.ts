@@ -36,7 +36,8 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
   for (const cmd of path.commands) {
     switch (cmd.type) {
       case "M":
-        if (current.length > 1) contours.push({ points: current, closed: false });
+        // Fonts often omit explicit Z; treat any accumulated subpath as closed.
+        if (current.length > 1) contours.push({ points: current, closed: true });
         current = [xfm(cmd.x!, cmd.y!)];
         break;
       case "L":
@@ -72,7 +73,7 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
         break;
     }
   }
-  if (current.length > 1) contours.push({ points: current, closed: false });
+  if (current.length > 1) contours.push({ points: current, closed: true });
   return contours;
 }
 
