@@ -1,12 +1,17 @@
 import { CADDocument, GroupDef } from "../model/document";
 import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../core/transform";
 import { nextId } from "../model/ids";
+import { listFonts } from "../core/fontManager";
+import {
+  Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, Bounds,
+} from "../model/entities";
 
 export class PropertiesBar {
   private content!: HTMLElement;
   private constructionBtn!: HTMLButtonElement;
   private isCollapsed = false;
   private aspectLocked = true;
+  private transformCollapsed = true;
 
   constructor(
     private host: HTMLElement,
@@ -85,14 +90,13 @@ export class PropertiesBar {
     const bounds = selectionBounds(selected);
     if (!bounds) return;
 
-    // Find a group that contains any selected entity (pick the first one found)
+    // Group / Create Group
     const selectedIds = new Set(selected.map(e => e.id));
     let involvedGroup: GroupDef | null = null;
     for (const e of selected) {
       const g = this.doc.groupOf(e.id);
       if (g) { involvedGroup = g; break; }
     }
-
     if (involvedGroup) {
       const fullySelected = involvedGroup.entityIds.every(id => selectedIds.has(id));
       this.buildGroupSection(involvedGroup, fullySelected);
@@ -100,23 +104,274 @@ export class PropertiesBar {
       this.buildCreateGroupSection();
     }
 
-    this.buildPositionSection(bounds.min.x, bounds.min.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y);
-    this.buildScaleSection(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, bounds.min.x, bounds.min.y);
-    this.buildRotateSection(bounds.min.x + (bounds.max.x - bounds.min.x) / 2, bounds.min.y + (bounds.max.y - bounds.min.y) / 2);
-    this.buildFlipSection(bounds.min.x + (bounds.max.x - bounds.min.x) / 2, bounds.min.y + (bounds.max.y - bounds.min.y) / 2);
-    
-    if (selected.length >= 2) {
-      this.buildAlignSection();
+    // Entity-specific properties (single selection only)
+    if (selected.length === 1) {
+      this.buildEntityPropertiesSection(selected[0]);
     }
-    
-    this.buildFitSection();
+
+    // Layer
     this.buildLayerSection(selected);
+
+    // Transform (collapsible)
+    this.buildTransformSection(bounds, selected);
   }
+
+  // ---------------------------------------------------------------------------
+  // Entity-specific properties
+
+  private buildEntityPropertiesSection(entity: Entity): void {
+    if (entity instanceof TextEntity) {
+      this.buildTextProperties(entity);
+    } else if (entity instanceof CircleEntity) {
+      this.buildCircleProperties(entity);
+    } else if (entity instanceof ArcEntity) {
+      this.buildArcProperties(entity);
+    } else if (entity instanceof LineEntity) {
+      this.buildLineProperties(entity);
+    } else if (entity instanceof RectEntity) {
+      this.buildRectProperties(entity);
+    } else if (entity instanceof PolylineEntity) {
+      this.buildPolylineProperties(entity);
+    }
+  }
+
+  private buildTextProperties(entity: TextEntity): void {
+    const sec = this.createSection("TEXT");
+
+    // Text content
+    const textRow = document.createElement("div");
+    textRow.className = "props-row";
+    const textLbl = document.createElement("span"); textLbl.textContent = "Text";
+    const textIn = document.createElement("input");
+    textIn.type = "text";
+    textIn.value = entity.text;
+    textIn.style.flex = "1";
+    textIn.addEventListener("change", () => {
+      this.pushHistory();
+      entity.text = textIn.value;
+      this.doc.emitChange();
+    });
+    textRow.append(textLbl, textIn);
+    sec.appendChild(textRow);
+
+    // Font
+    const fontRow = document.createElement("div");
+    fontRow.className = "props-row";
+    const fontLbl = document.createElement("span"); fontLbl.textContent = "Font";
+    const fontSel = document.createElement("select");
+    fontSel.className = "dim";
+    fontSel.style.flex = "1";
+    for (const f of listFonts()) {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.name;
+      if (f.id === entity.fontId) opt.selected = true;
+      fontSel.appendChild(opt);
+    }
+    fontSel.addEventListener("change", () => {
+      this.pushHistory();
+      entity.fontId = fontSel.value;
+      this.doc.emitChange();
+    });
+    fontRow.append(fontLbl, fontSel);
+    sec.appendChild(fontRow);
+
+    // Size
+    const sizeRow = document.createElement("div");
+    sizeRow.className = "props-row";
+    const sizeLbl = document.createElement("span"); sizeLbl.textContent = "Size";
+    const sizeIn = document.createElement("input"); sizeIn.type = "text"; sizeIn.value = entity.sizeMM.toFixed(1);
+    const sizeUnit = document.createElement("span"); sizeUnit.textContent = "mm";
+    sizeIn.addEventListener("change", () => {
+      const v = parseFloat(sizeIn.value);
+      if (isNaN(v) || v <= 0) return;
+      this.pushHistory();
+      entity.sizeMM = v;
+      this.doc.emitChange();
+    });
+    sizeRow.append(sizeLbl, sizeIn, sizeUnit);
+    sec.appendChild(sizeRow);
+
+    // Angle
+    const angleRow = document.createElement("div");
+    angleRow.className = "props-row";
+    const angleLbl = document.createElement("span"); angleLbl.textContent = "Angle";
+    const angleIn = document.createElement("input"); angleIn.type = "text"; angleIn.value = (entity.angle * 180 / Math.PI).toFixed(1);
+    const angleUnit = document.createElement("span"); angleUnit.textContent = "°";
+    angleIn.addEventListener("change", () => {
+      const v = parseFloat(angleIn.value);
+      if (isNaN(v)) return;
+      this.pushHistory();
+      entity.angle = v * Math.PI / 180;
+      this.doc.emitChange();
+    });
+    angleRow.append(angleLbl, angleIn, angleUnit);
+    sec.appendChild(angleRow);
+
+    this.content.appendChild(sec);
+  }
+
+  private buildCircleProperties(entity: CircleEntity): void {
+    const sec = this.createSection("CIRCLE");
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = "Radius";
+    const inp = document.createElement("input"); inp.type = "text"; inp.value = entity.radius.toFixed(3);
+    const unit = document.createElement("span"); unit.textContent = "mm";
+    inp.addEventListener("change", () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v) || v <= 0) return;
+      this.pushHistory();
+      entity.radius = v;
+      this.solve();
+      this.doc.emitChange();
+    });
+    row.append(lbl, inp, unit);
+    sec.appendChild(row);
+    this.content.appendChild(sec);
+  }
+
+  private buildArcProperties(entity: ArcEntity): void {
+    const sec = this.createSection("ARC");
+    const toDeg = (r: number) => (r * 180 / Math.PI).toFixed(1) + "°";
+    const TAU = Math.PI * 2;
+    const span = ((entity.endAngle - entity.startAngle) % TAU + TAU) % TAU;
+
+    const rRow = document.createElement("div");
+    rRow.className = "props-row";
+    const rLbl = document.createElement("span"); rLbl.textContent = "Radius";
+    const rIn = document.createElement("input"); rIn.type = "text"; rIn.value = entity.radius.toFixed(3);
+    const rUnit = document.createElement("span"); rUnit.textContent = "mm";
+    rIn.addEventListener("change", () => {
+      const v = parseFloat(rIn.value);
+      if (isNaN(v) || v <= 0) return;
+      this.pushHistory();
+      entity.radius = v;
+      this.solve();
+      this.doc.emitChange();
+    });
+    rRow.append(rLbl, rIn, rUnit);
+    sec.appendChild(rRow);
+
+    const angRow = document.createElement("div");
+    angRow.className = "props-row";
+    const sLbl = document.createElement("span"); sLbl.textContent = "Start";
+    const sVal = document.createElement("input"); sVal.type = "text"; sVal.value = toDeg(entity.startAngle); sVal.disabled = true;
+    const eLbl = document.createElement("span"); eLbl.textContent = "End";
+    const eVal = document.createElement("input"); eVal.type = "text"; eVal.value = toDeg(entity.endAngle); eVal.disabled = true;
+    angRow.append(sLbl, sVal, eLbl, eVal);
+    sec.appendChild(angRow);
+
+    const sweepRow = document.createElement("div");
+    sweepRow.className = "props-row";
+    const swLbl = document.createElement("span"); swLbl.textContent = "Sweep";
+    const swVal = document.createElement("input"); swVal.type = "text"; swVal.value = toDeg(span); swVal.disabled = true;
+    sweepRow.append(swLbl, swVal);
+    sec.appendChild(sweepRow);
+
+    this.content.appendChild(sec);
+  }
+
+  private buildLineProperties(entity: LineEntity): void {
+    const sec = this.createSection("LINE");
+    const dx = entity.b.x - entity.a.x;
+    const dy = entity.b.y - entity.a.y;
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lenLbl = document.createElement("span"); lenLbl.textContent = "Length";
+    const lenVal = document.createElement("input"); lenVal.type = "text"; lenVal.value = entity.length.toFixed(3); lenVal.disabled = true;
+    const lenUnit = document.createElement("span"); lenUnit.textContent = "mm";
+    const angLbl = document.createElement("span"); angLbl.textContent = "Angle";
+    const angVal = document.createElement("input"); angVal.type = "text"; angVal.value = angleDeg.toFixed(1) + "°"; angVal.disabled = true;
+    row.append(lenLbl, lenVal, lenUnit, angLbl, angVal);
+    sec.appendChild(row);
+    this.content.appendChild(sec);
+  }
+
+  private buildRectProperties(entity: RectEntity): void {
+    const sec = this.createSection("RECTANGLE");
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const wLbl = document.createElement("span"); wLbl.textContent = "W";
+    const wVal = document.createElement("input"); wVal.type = "text"; wVal.value = entity.width.toFixed(3); wVal.disabled = true;
+    const hLbl = document.createElement("span"); hLbl.textContent = "H";
+    const hVal = document.createElement("input"); hVal.type = "text"; hVal.value = entity.height.toFixed(3); hVal.disabled = true;
+    const unit = document.createElement("span"); unit.textContent = "mm";
+    row.append(wLbl, wVal, hLbl, hVal, unit);
+    sec.appendChild(row);
+    this.content.appendChild(sec);
+  }
+
+  private buildPolylineProperties(entity: PolylineEntity): void {
+    const sec = this.createSection("POLYLINE");
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const vLbl = document.createElement("span"); vLbl.textContent = "Vertices";
+    const vVal = document.createElement("input"); vVal.type = "text"; vVal.value = entity.points.length.toString(); vVal.disabled = true;
+    const closedBtn = document.createElement("button");
+    closedBtn.className = entity.closed ? "btn active" : "btn";
+    closedBtn.textContent = entity.closed ? "Closed" : "Open";
+    closedBtn.title = "Toggle open/closed polyline";
+    closedBtn.addEventListener("click", () => {
+      this.pushHistory();
+      entity.closed = !entity.closed;
+      this.doc.emitChange();
+    });
+    row.append(vLbl, vVal, closedBtn);
+    sec.appendChild(row);
+    this.content.appendChild(sec);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Transform (collapsible)
+
+  private buildTransformSection(bounds: Bounds, selected: Entity[]): void {
+    const x = bounds.min.x, y = bounds.min.y;
+    const w = bounds.max.x - bounds.min.x, h = bounds.max.y - bounds.min.y;
+    const cx = x + w / 2, cy = y + h / 2;
+
+    const toggle = document.createElement("div");
+    toggle.className = "props-transform-toggle";
+    const label = document.createElement("span"); label.textContent = "TRANSFORM";
+    const chevron = document.createElement("span");
+    chevron.className = "props-transform-chevron";
+    chevron.textContent = this.transformCollapsed ? "›" : "⌄";
+    toggle.append(label, chevron);
+    this.content.appendChild(toggle);
+
+    const body = document.createElement("div");
+    body.className = "props-transform-body";
+    body.style.display = this.transformCollapsed ? "none" : "flex";
+    this.content.appendChild(body);
+
+    toggle.addEventListener("click", () => {
+      this.transformCollapsed = !this.transformCollapsed;
+      body.style.display = this.transformCollapsed ? "none" : "flex";
+      chevron.textContent = this.transformCollapsed ? "›" : "⌄";
+    });
+
+    // Redirect build methods into the transform body
+    const origContent = this.content;
+    this.content = body;
+
+    this.buildPositionSection(x, y, w, h);
+    this.buildScaleSection(w, h, x, y);
+    this.buildRotateSection(cx, cy);
+    this.buildFlipSection(cx, cy);
+    if (selected.length >= 2) this.buildAlignSection();
+    this.buildFitSection();
+
+    this.content = origContent;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Group sections
 
   private buildGroupSection(group: GroupDef, fullySelected: boolean): void {
     const sec = this.createSection(`Group · ${group.entityIds.length} entities`);
 
-    // Name field
     const nameRow = document.createElement("div");
     nameRow.className = "props-row";
     const nameLbl = document.createElement("span");
@@ -178,29 +433,28 @@ export class PropertiesBar {
     this.content.appendChild(sec);
   }
 
-  private buildLayerSection(selected: import("../model/entities").Entity[]): void {
+  // ---------------------------------------------------------------------------
+  // Layer
+
+  private buildLayerSection(selected: Entity[]): void {
     const sec = this.createSection("Layer");
-    
-    // Check if all selected entities share the same layer
+
     let commonLayer = selected[0].layerId;
     for (const e of selected) {
-      if (e.layerId !== commonLayer) {
-        commonLayer = "mixed";
-        break;
-      }
+      if (e.layerId !== commonLayer) { commonLayer = "mixed"; break; }
     }
 
-    const select = document.createElement("select");
-    select.className = "dim";
-    select.style.width = "100%";
-    
+    const sel = document.createElement("select");
+    sel.className = "dim";
+    sel.style.width = "100%";
+
     if (commonLayer === "mixed") {
       const opt = document.createElement("option");
       opt.value = "mixed";
       opt.textContent = "Mixed Layers";
       opt.disabled = true;
       opt.selected = true;
-      select.appendChild(opt);
+      sel.appendChild(opt);
     }
 
     for (const layer of this.doc.layers) {
@@ -208,21 +462,22 @@ export class PropertiesBar {
       opt.value = layer.id;
       opt.textContent = layer.name;
       if (layer.id === commonLayer) opt.selected = true;
-      select.appendChild(opt);
+      sel.appendChild(opt);
     }
 
-    select.addEventListener("change", () => {
-      if (select.value === "mixed") return;
+    sel.addEventListener("change", () => {
+      if (sel.value === "mixed") return;
       this.pushHistory();
-      for (const e of selected) {
-        e.layerId = select.value;
-      }
+      for (const e of selected) e.layerId = sel.value;
       this.doc.emitChange();
     });
 
-    sec.appendChild(select);
+    sec.appendChild(sel);
     this.content.appendChild(sec);
   }
+
+  // ---------------------------------------------------------------------------
+  // Transform sub-sections (appended into transform body via content redirect)
 
   private buildPositionSection(x: number, y: number, w: number, h: number): void {
     const sec = this.createSection("BOUNDING BOX");
@@ -238,12 +493,10 @@ export class PropertiesBar {
 
     const rowPos = document.createElement("div");
     rowPos.className = "props-row";
-
     const lblX = document.createElement("span"); lblX.textContent = "X";
     const inX = document.createElement("input"); inX.type = "text"; inX.value = x.toFixed(2);
     const lblY = document.createElement("span"); lblY.textContent = "Y";
     const inY = document.createElement("input"); inY.type = "text"; inY.value = y.toFixed(2);
-    
     rowPos.append(lblX, inX, lblY, inY);
 
     const applyPos = () => {
@@ -254,9 +507,7 @@ export class PropertiesBar {
       const dy = newY - y;
       if (dx === 0 && dy === 0) return;
       this.pushHistory();
-      for (const ent of this.doc.selected) {
-        ent.translate({ x: dx, y: dy });
-      }
+      for (const ent of this.doc.selected) ent.translate({ x: dx, y: dy });
       this.solve();
       this.doc.emitChange();
     };
@@ -272,7 +523,7 @@ export class PropertiesBar {
     const sec = this.createSection("SCALE");
     const row = document.createElement("div");
     row.className = "props-row";
-    
+
     const lblW = document.createElement("span"); lblW.textContent = "W";
     const inW = document.createElement("input"); inW.type = "text"; inW.value = w.toFixed(2);
     const btnLock = document.createElement("button");
@@ -328,7 +579,7 @@ export class PropertiesBar {
     const sec = this.createSection("ROTATE");
     const row = document.createElement("div");
     row.className = "props-row";
-    
+
     const lblA = document.createElement("span"); lblA.textContent = "°";
     const inA = document.createElement("input"); inA.type = "text"; inA.value = "0";
 
@@ -336,7 +587,7 @@ export class PropertiesBar {
     btnCCW.addEventListener("click", () => { inA.value = ((parseFloat(inA.value) || 0) + 90).toString(); });
     const btnCW = document.createElement("button"); btnCW.className = "btn"; btnCW.textContent = "↻ 90";
     btnCW.addEventListener("click", () => { inA.value = ((parseFloat(inA.value) || 0) - 90).toString(); });
-    
+
     row.append(inA, lblA, btnCCW, btnCW);
     sec.appendChild(row);
 
@@ -382,7 +633,7 @@ export class PropertiesBar {
       this.solve();
       this.doc.emitChange();
     });
-    
+
     row.append(btnH, btnV);
     sec.appendChild(row);
     this.content.appendChild(sec);
@@ -393,7 +644,7 @@ export class PropertiesBar {
     const row = document.createElement("div");
     row.className = "props-row props-align-row";
 
-    const align = (mode: "left"|"right"|"top"|"bottom"|"centerH"|"centerV") => {
+    const align = (mode: "left" | "right" | "top" | "bottom" | "centerH" | "centerV") => {
       const bounds = selectionBounds(this.doc.selected);
       if (!bounds) return;
       this.pushHistory();
@@ -402,7 +653,7 @@ export class PropertiesBar {
         let dx = 0, dy = 0;
         if (mode === "left") dx = bounds.min.x - eb.min.x;
         if (mode === "right") dx = bounds.max.x - eb.max.x;
-        if (mode === "top") dy = bounds.max.y - eb.max.y; // Y is up
+        if (mode === "top") dy = bounds.max.y - eb.max.y;
         if (mode === "bottom") dy = bounds.min.y - eb.min.y;
         if (mode === "centerH") dx = (bounds.min.x + bounds.max.x) / 2 - (eb.min.x + eb.max.x) / 2;
         if (mode === "centerV") dy = (bounds.min.y + bounds.max.y) / 2 - (eb.min.y + eb.max.y) / 2;
@@ -427,13 +678,15 @@ export class PropertiesBar {
       makeBtn("⇧", "top"),
       makeBtn("⇩", "bottom"),
       makeBtn("↔", "centerH"),
-      makeBtn("↕", "centerV")
+      makeBtn("↕", "centerV"),
     );
     sec.appendChild(row);
 
-    // "Center in" — only shown when exactly two full groups are selected
+    // "Center inner in outer" — only when exactly two full groups are selected
     const selectedIds = new Set(this.doc.selected.map(e => e.id));
-    const twoGroups = this.doc.groups.filter(g => g.entityIds.length > 0 && g.entityIds.every(id => selectedIds.has(id)));
+    const twoGroups = this.doc.groups.filter(g =>
+      g.entityIds.length > 0 && g.entityIds.every(id => selectedIds.has(id))
+    );
     if (twoGroups.length === 2) {
       const entsOf = (g: GroupDef) => this.doc.entities.filter(e => g.entityIds.includes(e.id));
       const b0 = selectionBounds(entsOf(twoGroups[0]));
@@ -469,11 +722,11 @@ export class PropertiesBar {
     const sec = this.createSection("FIT TO CANVAS");
     const row = document.createElement("div");
     row.className = "props-row";
-    
+
     const lblM = document.createElement("span"); lblM.textContent = "Margin";
     const inM = document.createElement("input"); inM.type = "text"; inM.value = "10";
     const lblU = document.createElement("span"); lblU.textContent = "mm";
-    
+
     row.append(lblM, inM, lblU);
     sec.appendChild(row);
 
@@ -496,22 +749,17 @@ export class PropertiesBar {
       if (availW <= 0 || availH <= 0) return;
 
       const scale = Math.min(availW / w, availH / h);
-      
       this.pushHistory();
       applyScale(this.doc.selected, bounds.min.x, bounds.min.y, scale, scale);
-      
-      // new bounds after scale
+
       const newW = w * scale;
       const newH = h * scale;
       const cx = bounds.min.x + newW / 2;
       const cy = bounds.min.y + newH / 2;
-      const targetCx = this.doc.canvas.width / 2;
-      const targetCy = this.doc.canvas.height / 2;
-      const dx = targetCx - cx;
-      const dy = targetCy - cy;
-
+      const dx = this.doc.canvas.width / 2 - cx;
+      const dy = this.doc.canvas.height / 2 - cy;
       for (const ent of this.doc.selected) ent.translate({ x: dx, y: dy });
-      
+
       this.solve();
       this.doc.emitChange();
     });
@@ -524,11 +772,8 @@ export class PropertiesBar {
       if (!bounds) return;
       const cx = bounds.min.x + (bounds.max.x - bounds.min.x) / 2;
       const cy = bounds.min.y + (bounds.max.y - bounds.min.y) / 2;
-      const targetCx = this.doc.canvas.width / 2;
-      const targetCy = this.doc.canvas.height / 2;
-      const dx = targetCx - cx;
-      const dy = targetCy - cy;
-
+      const dx = this.doc.canvas.width / 2 - cx;
+      const dy = this.doc.canvas.height / 2 - cy;
       if (dx === 0 && dy === 0) return;
       this.pushHistory();
       for (const ent of this.doc.selected) ent.translate({ x: dx, y: dy });
@@ -540,6 +785,8 @@ export class PropertiesBar {
     sec.appendChild(btnRow);
     this.content.appendChild(sec);
   }
+
+  // ---------------------------------------------------------------------------
 
   private createSection(title: string): HTMLElement {
     const sec = document.createElement("div");
