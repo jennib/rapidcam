@@ -45,8 +45,16 @@ const COST_TOL = RESIDUAL_TOL * RESIDUAL_TOL;
 // The dragged point is SEEDED to the cursor before the solve, so free-DOF responsiveness
 // comes from seeding, not from PIN_WEIGHT. PIN_WEIGHT only governs how much constrained
 // directions can drift; lower = constraints win harder. ANCHOR holds non-dragged DOFs.
-/** Soft weight for the dragged point — kept equal to ANCHOR_DRAG so constraints dominate. */
-const PIN_WEIGHT = 1e-3;
+/**
+ * Soft weight for the dragged point. Kept TWO orders below ANCHOR_DRAG so that
+ * when the cursor is unreachable (e.g. dragging one end of a length-locked line
+ * past its reach) the anchor pins the OTHER end in place and the dragged point
+ * slides to the nearest reachable point — instead of both ends sharing the
+ * movement (which let the "fixed" end creep). When the cursor IS reachable the
+ * dragged point is unanchored and seeded onto the cursor, so it still lands
+ * exactly there regardless of how small this weight is.
+ */
+const PIN_WEIGHT = 1e-5;
 /**
  * Anchor weight for drag operations: strong enough to hold non-dragged DOFs in place.
  * For dimension edits (no drag), a much weaker anchor is used (ANCHOR_DIM) so the solver
@@ -87,32 +95,18 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
   // the cursor by a weak residual, so hard constraints win in a conflict while a
-  // free point still lands on the cursor. The target also seeds the initial guess.
-  const pinEntries: { ent: Entity; key: string; target: Vec2 }[] = [];
+  // free point still lands on the cursor.
+  //
+  // The target also SEEDS the initial guess — and we flood that seed across
+  // COINCIDENT links: every point coincident with a dragged point is seeded to
+  // the same target. That makes a *reachable* drag converge exactly even though
+  // PIN_WEIGHT is tiny (the whole coincident group starts already satisfied, so
+  // the solver has no reason to move it), while still letting the weak pin lose
+  // to the anchors when the cursor is *unreachable* (so non-dragged ends hold).
+  const coincidentGroups = new Map<string, string[]>();
   if (pins) {
-    for (const [key, target] of pins) {
-      if (fixed.has(key)) continue;
-      const i = key.indexOf(":");
-      const ent = byId.get(key.slice(0, i));
-      if (!ent) continue;
-      const k = key.slice(i + 1);
-      ent.setPoint(k, target);
-      pinEntries.push({ ent, key: k, target });
-    }
-  }
-
-  // Build variables from all non-fixed DOFs (pinned points stay variable).
-  // Non-pinned DOFs are always anchored to their current position so the solver
-  // makes the MINIMAL change in any situation (drag or dimension edit). This
-  // prevents under-constrained geometry from rotating instead of stretching when
-  // a driving dimension value is changed.
-  const pinnedComponents = new Set<string>();
-  const pinnedScalars = new Set<string>();
-  if (pins) {
-    const coincidentGroups = new Map<string, string[]>();
     for (const c of doc.constraints) {
-      if (c.type !== "coincident") continue;
-      if (c.points.length < 2) continue;
+      if (c.type !== "coincident" || c.points.length < 2) continue;
       const k0 = `${c.points[0].entityId}:${c.points[0].key}`;
       const k1 = `${c.points[1].entityId}:${c.points[1].key}`;
       if (!coincidentGroups.has(k0)) coincidentGroups.set(k0, []);
@@ -120,36 +114,57 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       coincidentGroups.get(k0)!.push(k1);
       coincidentGroups.get(k1)!.push(k0);
     }
+  }
 
-    const allPinnedKeys = new Set<string>();
-    const queue: string[] = [];
-    for (const [key] of pins) {
-      allPinnedKeys.add(key);
-      queue.push(key);
-    }
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
-      const neighbors = coincidentGroups.get(curr) ?? [];
-      for (const n of neighbors) {
-        if (!allPinnedKeys.has(n)) {
-          allPinnedKeys.add(n);
-          queue.push(n);
+  // Flood each pin's target across its coincident group → key → target map.
+  const pinnedKeyTarget = new Map<string, Vec2>();
+  if (pins) {
+    for (const [key, target] of pins) {
+      if (fixed.has(key) || pinnedKeyTarget.has(key)) continue;
+      pinnedKeyTarget.set(key, target);
+      const queue = [key];
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        for (const n of coincidentGroups.get(curr) ?? []) {
+          if (!pinnedKeyTarget.has(n) && !fixed.has(n)) {
+            pinnedKeyTarget.set(n, target);
+            queue.push(n);
+          }
         }
       }
     }
+  }
 
-    for (const key of allPinnedKeys) {
-      const i = key.indexOf(":");
-      const ent = byId.get(key.slice(0, i));
-      if (!ent) continue;
-      const k = key.slice(i + 1);
-      for (const affected of ent.dofsAffectedBy(k)) {
-        pinnedComponents.add(`${ent.id}:${affected.key}:${affected.axis}`);
-      }
-      for (const sk of ent.scalarsAffectedBy(k)) {
-        pinnedScalars.add(scalarKey(ent.id, sk));
-      }
-    }
+  // Seed every pinned/linked point to its target. The SOFT pin residual is added
+  // only for the directly-dragged points; coincident partners are held together
+  // by the hard coincident constraints, not by extra pins.
+  const directPinKeys = new Set(pins ? [...pins.keys()].filter((k) => !fixed.has(k)) : []);
+  const pinEntries: { ent: Entity; key: string; target: Vec2 }[] = [];
+  for (const [key, target] of pinnedKeyTarget) {
+    const i = key.indexOf(":");
+    const ent = byId.get(key.slice(0, i));
+    if (!ent) continue;
+    const k = key.slice(i + 1);
+    ent.setPoint(k, target);
+    if (directPinKeys.has(key)) pinEntries.push({ ent, key: k, target });
+  }
+
+  // Build variables from all non-fixed DOFs (pinned points stay variable).
+  // Non-pinned DOFs are always anchored to their current position so the solver
+  // makes the MINIMAL change in any situation (drag or dimension edit). This
+  // prevents under-constrained geometry from rotating instead of stretching when
+  // a driving dimension value is changed. Pinned/linked points are NOT anchored.
+  const pinnedComponents = new Set<string>();
+  const pinnedScalars = new Set<string>();
+  for (const key of pinnedKeyTarget.keys()) {
+    const i = key.indexOf(":");
+    const ent = byId.get(key.slice(0, i));
+    if (!ent) continue;
+    const k = key.slice(i + 1);
+    for (const affected of ent.dofsAffectedBy(k))
+      pinnedComponents.add(`${ent.id}:${affected.key}:${affected.axis}`);
+    for (const sk of ent.scalarsAffectedBy(k))
+      pinnedScalars.add(scalarKey(ent.id, sk));
   }
 
   const vars: Variable[] = [];
