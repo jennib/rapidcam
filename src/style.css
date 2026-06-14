@@ -1055,9 +1055,17 @@ button.cbtn.solve {
 }
 .tp-drag-handle:active { cursor: grabbing; }
 .tp-op-item.tp-op-active {
-  border-color: #f59e42;
-  box-shadow: inset 2px 0 0 #f59e42;
-  background: rgba(245, 158, 66, 0.06);
+  border-color: var(--tp-color, #f59e42);
+  box-shadow: inset 2px 0 0 var(--tp-color, #f59e42);
+  background: color-mix(in srgb, var(--tp-color, #f59e42) 8%, transparent);
+}
+.tp-color-swatch {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tp-color, #f59e42);
+  opacity: 0.85;
 }
 
 .tp-badge {

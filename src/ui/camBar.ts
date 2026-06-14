@@ -70,6 +70,11 @@ interface DialogHooks {
   updateVBitHint(): void;
 }
 
+const TP_PALETTE = [
+  "#4aa3ff", "#f59e42", "#4cdc9a", "#e05a9f",
+  "#b97cf5", "#f5e04c", "#5ad8e0", "#f55a5a",
+];
+
 export class CamBar {
   private content!: HTMLElement;
   private opsList!: HTMLElement;
@@ -163,7 +168,22 @@ export class CamBar {
   private highlightOp(id: string | null): void {
     this.highlightedOpId = id;
     const op = id ? this.doc.operations.find(o => o.id === id) : null;
-    this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
+    if (op?.type === "pocket" && op.regionSeeds?.length) {
+      const loops = collectClosedLoops(this.doc.entities);
+      const highlight = new Set<string>();
+      const fills: Vec2[][][] = [];
+      for (const seed of op.regionSeeds) {
+        const region = regionAtPoint(seed, loops);
+        if (!region) continue;
+        for (const lid of region.loopIds) highlight.add(lid);
+        fills.push([region.outer, ...region.holes]);
+      }
+      this.doc.toolpathHighlightIds = highlight;
+      this.doc.regionPickFills = fills;
+    } else {
+      this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
+      this.doc.regionPickFills = null;
+    }
     this.doc.emitChange();
     this.renderOps();
   }
@@ -220,11 +240,18 @@ export class CamBar {
       this.highlightOp(this.highlightedOpId === op.id ? null : op.id);
     });
 
+    const opColor = TP_PALETTE[index % TP_PALETTE.length];
+    item.style.setProperty("--tp-color", opColor);
+
     const handle = document.createElement("span");
     handle.className = "tp-drag-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
     item.appendChild(handle);
+
+    const swatch = document.createElement("span");
+    swatch.className = "tp-color-swatch";
+    item.appendChild(swatch);
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
