@@ -12,8 +12,10 @@ import {
   PolylineEntity,
   ArcEntity,
   BezierEntity,
+  TextEntity,
 } from "../model/entities";
 import { flattenBezier } from "../core/geom";
+import { textToContours } from "./textOutlines";
 
 const TAU = Math.PI * 2;
 
@@ -216,6 +218,10 @@ export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
       loops.push({ verts: [...e.corners()], ids: [e.id] });
     } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
       loops.push({ verts: e.points, ids: [e.id] });
+    } else if (e instanceof TextEntity) {
+      for (const c of textToContours(e)) {
+        if (c.closed && c.points.length >= 3) loops.push({ verts: c.points, ids: [e.id] });
+      }
     } else {
       const s = openSegOf(e);
       if (s) segs.push(s);
