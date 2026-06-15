@@ -33,7 +33,7 @@ Draw geometry, add geometric constraints and driving dimensions, then generate G
 | Polygon | `N` | Click centre then a vertex; `[`/`]` change side count |
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
-| Text | `X` | Click to place; double-click any text entity to edit in place |
+| Text | `X` | Click to place; double-click to edit in place; text outlines are pocketable via region pick |
 | Dimension | `D` | Click an entity to annotate; drag the witness line |
 | Offset | `O` | Click an entity to offset inward or outward |
 | Fillet | `F` | Click a sharp corner to round it with a user-typed radius |
@@ -191,7 +191,7 @@ src/
 ### Install and run
 
 ```bash
-git clone https://github.com/your-org/rapidcam.git
+git clone https://github.com/jennib/rapidcam.git
 cd rapidcam
 npm install
 npm run dev        # starts Vite dev server at http://localhost:5173
