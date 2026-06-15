@@ -1,4 +1,5 @@
 import { showAboutDialog } from "./aboutDialog";
+import { showFeedbackDialog } from "./feedbackDialog";
 
 export class HelpMenu {
   private btn: HTMLButtonElement;
@@ -48,6 +49,7 @@ export class HelpMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
+    this.item("Send Feedback…", () => { this.close(); showFeedbackDialog(); });
     this.item("About RapidCAM…", () => { this.close(); showAboutDialog(); });
   }
 
