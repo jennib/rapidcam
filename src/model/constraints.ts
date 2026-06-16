@@ -13,7 +13,8 @@
  */
 
 import { Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
-import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity } from "./entities";
+import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity, PolylineEntity } from "./entities";
+import { angleInArc } from "../core/geom";
 import { nextId } from "./ids";
 
 export type ConstraintType =
@@ -41,6 +42,14 @@ export interface PointRef {
   key: string;
 }
 
+/** A reference to one segment (vertex `index` → `index`+1) of a polyline. */
+export interface SegmentRef {
+  entityId: EntityId;
+  index: number;
+}
+export const sameSegmentRef = (a: SegmentRef, b: SegmentRef): boolean =>
+  a.entityId === b.entityId && a.index === b.index;
+
 export interface Constraint {
   id: string;
   type: ConstraintType;
@@ -60,9 +69,24 @@ export const pointRefKey = (r: PointRef): string => `${r.entityId}:${r.key}`;
 export const samePointRef = (a: PointRef, b: PointRef): boolean =>
   a.entityId === b.entityId && a.key === b.key;
 
+/**
+ * A polyline segment can stand in for a line in any line-type constraint. It is
+ * encoded inside the constraint's `entities` array as `${polylineId}#${index}`
+ * (segment from vertex `index` to `index+1`). `lineRefEntityId` recovers the
+ * underlying entity id (for pruning/DOF purposes).
+ */
+export const SEGMENT_SEP = "#";
+export function segmentRef(polylineId: EntityId, index: number): EntityId {
+  return `${polylineId}${SEGMENT_SEP}${index}`;
+}
+export function lineRefEntityId(ref: EntityId): EntityId {
+  const i = ref.indexOf(SEGMENT_SEP);
+  return i >= 0 ? ref.slice(0, i) : ref;
+}
+
 /** Every entity id a constraint touches (used to prune on delete). */
 export function constraintEntityIds(c: Constraint): EntityId[] {
-  return [...c.entities, ...c.points.map((p) => p.entityId)];
+  return [...c.entities.map(lineRefEntityId), ...c.points.map((p) => p.entityId)];
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +97,30 @@ export type Geo = (id: EntityId) => Entity | undefined;
 function asLine(geo: Geo, id: EntityId): LineEntity | null {
   const e = geo(id);
   return e instanceof LineEntity ? e : null;
+}
+
+/** The two endpoints of a line. */
+export interface LineGeom { a: Vec2; b: Vec2; }
+
+/**
+ * Resolve a line reference to its live endpoints. Accepts a LineEntity id or a
+ * polyline-segment ref (`polylineId#index`). Returns null for non-line refs
+ * (circles, arcs, missing entities) so callers can fall through.
+ */
+function lineGeom(geo: Geo, ref: EntityId): LineGeom | null {
+  const sep = ref.indexOf(SEGMENT_SEP);
+  if (sep >= 0) {
+    const poly = geo(ref.slice(0, sep));
+    if (!(poly instanceof PolylineEntity)) return null;
+    const i = parseInt(ref.slice(sep + 1), 10);
+    const n = poly.points.length;
+    if (!Number.isFinite(i) || i < 0 || i >= n) return null;
+    const j = i + 1 < n ? i + 1 : (poly.closed ? 0 : -1);
+    if (j < 0) return null;
+    return { a: poly.points[i], b: poly.points[j] };
+  }
+  const l = asLine(geo, ref);
+  return l ? { a: l.a, b: l.b } : null;
 }
 function asCircle(geo: Geo, id: EntityId): CircleEntity | null {
   const e = geo(id);
@@ -113,35 +161,35 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       return [a.x - b.x, a.y - b.y];
     }
     case "horizontal": {
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (l) return [l.a.y - l.b.y];
       const [p, q] = readPair(geo, c.points);
       return p && q ? [p.y - q.y] : [];
     }
     case "vertical": {
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (l) return [l.a.x - l.b.x];
       const [p, q] = readPair(geo, c.points);
       return p && q ? [p.x - q.x] : [];
     }
     case "parallel": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
       if (!l1 || !l2) return [];
       // sin(angle between) = cross of unit directions
       return [cross(unitDir(l1), unitDir(l2))];
     }
     case "perpendicular": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
       if (!l1 || !l2) return [];
       // cos(angle between) = dot of unit directions
       return [dot(unitDir(l1), unitDir(l2))];
     }
     case "equal": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
-      if (l1 && l2) return [l1.length - l2.length];
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
+      if (l1 && l2) return [lineLen(l1) - lineLen(l2)];
       const r1 = (asCircle(geo, c.entities[0]) ?? asArc(geo, c.entities[0]))?.radius;
       const r2 = (asCircle(geo, c.entities[1]) ?? asArc(geo, c.entities[1]))?.radius;
       if (r1 !== undefined && r2 !== undefined) return [r1 - r2];
@@ -155,12 +203,12 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
     }
     case "pointOnLine": {
       const p = readPoint(geo, c.points[0]);
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (!p || !l) return [];
       return [signedLineDistance(l, p)];
     }
     case "tangent": {
-      const l = asLine(geo, c.entities[0]) ?? asLine(geo, c.entities[1]);
+      const l = lineGeom(geo, c.entities[0]) ?? lineGeom(geo, c.entities[1]);
       if (l) {
         const circ = asCircle(geo, c.entities[1]) ?? asCircle(geo, c.entities[0]);
         if (circ) return [Math.abs(signedLineDistance(l, circ.center)) - circ.radius];
@@ -185,7 +233,7 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       // points[0] and points[1] are symmetric about the infinite line of entities[0].
       const p = readPoint(geo, c.points[0]);
       const q = readPoint(geo, c.points[1]);
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (!p || !q || !l) return [];
       // The midpoint of p and q must lie on the line, and p-q must be perpendicular to the line.
       const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
@@ -200,8 +248,8 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       ];
     }
     case "collinear": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
       if (!l1 || !l2) return [];
       // Both endpoints of l2 lie on the infinite line of l1.
       return [signedLineDistance(l1, l2.a), signedLineDistance(l1, l2.b)];
@@ -210,7 +258,7 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       const p = readPoint(geo, c.points[0]);
       if (!p) return [];
       if (c.entities.length > 0) {
-        const l = asLine(geo, c.entities[0]);
+        const l = lineGeom(geo, c.entities[0]);
         if (!l) return [];
         const m = { x: (l.a.x + l.b.x) / 2, y: (l.a.y + l.b.y) / 2 };
         return [p.x - m.x, p.y - m.y];
@@ -228,8 +276,8 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       return [len(sub(p, circ.center)) - circ.radius];
     }
     case "angle": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
       if (!l1 || !l2) return [];
       const alpha = c.params?.[0] ?? 0;
       const u1 = unitDir(l1), u2 = unitDir(l2);
@@ -247,19 +295,27 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
 }
 
 /** Signed angle (radians, range −π..π) from l1's direction to l2's direction. */
-export function measureAngleBetweenLines(l1: LineEntity, l2: LineEntity): number {
+export function measureAngleBetweenLines(l1: LineGeom, l2: LineGeom): number {
   const u1 = unitDir(l1), u2 = unitDir(l2);
   return Math.atan2(cross(u1, u2), dot(u1, u2));
+}
+
+/** Public resolver so callers (e.g. the constraint bar) can read a line ref's endpoints. */
+export function resolveLineGeom(geo: Geo, ref: EntityId): LineGeom | null {
+  return lineGeom(geo, ref);
 }
 
 function readPair(geo: Geo, pts: PointRef[]): [Vec2 | null, Vec2 | null] {
   return [pts[0] ? readPoint(geo, pts[0]) : null, pts[1] ? readPoint(geo, pts[1]) : null];
 }
-function unitDir(l: LineEntity): Vec2 {
+function unitDir(l: LineGeom): Vec2 {
   return normalize(sub(l.b, l.a));
 }
+function lineLen(l: LineGeom): number {
+  return len(sub(l.b, l.a));
+}
 /** Signed perpendicular distance from point `p` to the infinite line through l.a,l.b. */
-function signedLineDistance(l: LineEntity, p: Vec2): number {
+function signedLineDistance(l: LineGeom, p: Vec2): number {
   const d = sub(l.b, l.a);
   const L = len(d);
   if (L < 1e-9) return len(sub(p, l.a));
@@ -278,6 +334,31 @@ function circularTangencyResidual(
   const ext = d - g1.radius - g2.radius;
   const int_ = d - Math.abs(g1.radius - g2.radius);
   return Math.abs(ext) <= Math.abs(int_) ? ext : int_;
+}
+
+/**
+ * For a line↔arc tangent constraint, report whether the point where the line
+ * actually touches the underlying circle falls OUTSIDE the arc's angular sweep.
+ * The constraint is still mathematically valid (tangency is defined against the
+ * full circle, as in most CAD kernels), but in that case the visible arc segment
+ * won't physically touch the line — worth warning the user about. Returns false
+ * for non-line/arc tangents (arc–arc, circle, etc.) where there's no single
+ * unambiguous contact direction to check.
+ */
+export function tangentContactOutsideArcSweep(c: Constraint, geo: Geo): boolean {
+  if (c.type !== "tangent") return false;
+  const l = lineGeom(geo, c.entities[0]) ?? lineGeom(geo, c.entities[1]);
+  const arc = asArc(geo, c.entities[0]) ?? asArc(geo, c.entities[1]);
+  if (!l || !arc) return false;
+  // Foot of perpendicular from the arc centre to the infinite line; the tangent
+  // point lies on the ray from the centre through that foot.
+  const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y;
+  const L2 = dx * dx + dy * dy;
+  if (L2 < 1e-12) return false;
+  const t = ((arc.center.x - l.a.x) * dx + (arc.center.y - l.a.y) * dy) / L2;
+  const footX = l.a.x + t * dx, footY = l.a.y + t * dy;
+  const ang = Math.atan2(footY - arc.center.y, footX - arc.center.x);
+  return !angleInArc(ang, arc.startAngle, arc.endAngle);
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +403,7 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     case "pointOnLine": {
       const p = readPoint(geo, c.points[0]);
       if (p) anchors.push({ ...p });
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (l) anchors.push(mid(l.a, l.b));
       break;
     }
@@ -365,7 +446,7 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     }
     case "horizontal":
     case "vertical": {
-      const l = asLine(geo, c.entities[0]);
+      const l = lineGeom(geo, c.entities[0]);
       if (l) {
         anchors.push(mid(l.a, l.b));
       } else {
@@ -382,9 +463,10 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     case "tangent":
     case "angle": {
       for (const eid of c.entities) {
+        const lg = lineGeom(geo, eid);
+        if (lg) { anchors.push(mid(lg.a, lg.b)); continue; }
         const e = geo(eid);
-        if (e instanceof LineEntity) anchors.push(mid(e.a, e.b));
-        else if (e instanceof CircleEntity) anchors.push({ ...e.center });
+        if (e instanceof CircleEntity) anchors.push({ ...e.center });
         else if (e instanceof ArcEntity) anchors.push({ ...e.center });
       }
       break;
@@ -397,8 +479,8 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       break;
     }
     case "perpendicular": {
-      const l1 = asLine(geo, c.entities[0]);
-      const l2 = asLine(geo, c.entities[1]);
+      const l1 = lineGeom(geo, c.entities[0]);
+      const l2 = lineGeom(geo, c.entities[1]);
       if (l1 && l2) {
         // Find closest endpoint to the other line to approximate the corner
         const cornerOnL1 = Math.abs(signedLineDistance(l2, l1.a)) < Math.abs(signedLineDistance(l2, l1.b)) ? l1.a : l1.b;

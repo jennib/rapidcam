@@ -15,7 +15,7 @@ This project is licensed under **CC BY-NC-SA 4.0**. By submitting a pull request
 ## Development setup
 
 ```bash
-git clone https://github.com/your-org/rapidcam.git
+git clone https://github.com/jennib/rapidcam.git
 cd rapidcam
 npm install
 npm run dev          # dev server at http://localhost:5173

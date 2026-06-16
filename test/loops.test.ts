@@ -3,9 +3,10 @@ import {
   chainLinesIntoPolygons,
   chainToPolygon,
   groupLinesIntoClosedChains,
+  collectClosedLoops,
   pointInPolygon,
 } from "../src/cam/loops";
-import { LineEntity } from "../src/model/entities";
+import { LineEntity, ArcEntity, BezierEntity } from "../src/model/entities";
 import type { Vec2 } from "../src/core/vec2";
 
 // --- helpers -----------------------------------------------------------------
@@ -75,6 +76,45 @@ describe("pointInPolygon", () => {
     expect(pointInPolygon({ x: 5, y: 5 }, sq)).toBe(true);
     expect(pointInPolygon({ x: 15, y: 5 }, sq)).toBe(false);
     expect(pointInPolygon({ x: -1, y: -1 }, sq)).toBe(false);
+  });
+});
+
+// --- collectClosedLoops: mixed-curve loops (regression for filleted rect) -----
+
+describe("collectClosedLoops", () => {
+  it("closes a loop made of lines + an arc (filleted-rectangle corner)", () => {
+    // Rect 40..160 x 30..120 with the bottom-left corner replaced by an arc.
+    const segs = [
+      new LineEntity({ x: 55, y: 30 }, { x: 160, y: 30 }),
+      new LineEntity({ x: 160, y: 30 }, { x: 160, y: 120 }),
+      new LineEntity({ x: 160, y: 120 }, { x: 40, y: 120 }),
+      new LineEntity({ x: 40, y: 120 }, { x: 40, y: 45 }),
+      new ArcEntity({ x: 55, y: 45 }, 15, Math.PI, Math.PI * 1.5), // (40,45)→(55,30)
+    ];
+    const loops = collectClosedLoops(segs);
+    expect(loops.length).toBe(1);
+    expect(loops[0].ids.length).toBe(5);
+    expect(pointInPolygon({ x: 100, y: 75 }, loops[0].verts)).toBe(true);
+  });
+
+  it("closes a loop made of lines + a bezier", () => {
+    const segs = [
+      new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 }),
+      new LineEntity({ x: 100, y: 0 }, { x: 100, y: 50 }),
+      new BezierEntity({ x: 100, y: 50 }, { x: 60, y: 90 }, { x: 40, y: 90 }, { x: 0, y: 50 }),
+      new LineEntity({ x: 0, y: 50 }, { x: 0, y: 0 }),
+    ];
+    const loops = collectClosedLoops(segs);
+    expect(loops.length).toBe(1);
+    expect(pointInPolygon({ x: 50, y: 25 }, loops[0].verts)).toBe(true);
+  });
+
+  it("does not form a loop from a non-closing line + arc", () => {
+    const segs = [
+      new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 }),
+      new ArcEntity({ x: 100, y: 50 }, 50, -Math.PI / 2, 0), // starts at (100,0), ends elsewhere, no closure
+    ];
+    expect(collectClosedLoops(segs).length).toBe(0);
   });
 });
 

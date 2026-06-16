@@ -8,9 +8,13 @@ import { CADDocument } from "../model/document";
 import {
   Constraint,
   ConstraintType,
+  Geo,
   CONSTRAINT_GLYPH,
   makeConstraint,
   measureAngleBetweenLines,
+  tangentContactOutsideArcSweep,
+  segmentRef,
+  resolveLineGeom,
 } from "../model/constraints";
 import { Entity, LineEntity, CircleEntity } from "../model/entities";
 import { dist } from "../core/vec2";
@@ -60,6 +64,14 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
   const pts = doc.selectedPoints;
   const ids = (es: Entity[]) => es.map((e) => e.id);
 
+  // Line-like references for line-type constraints: whole LineEntities PLUS any
+  // selected polyline segments (encoded as `${polylineId}#${index}`). This lets
+  // parallel/perpendicular/equal/etc. address individual polyline edges.
+  const lineRefs: string[] = [
+    ...lines.map((l) => l.id),
+    ...doc.selectedSegments.map((s) => segmentRef(s.entityId, s.index)),
+  ];
+
   const ok = (constraints: Constraint[]): BuildResult => ({ ok: true, constraints });
   const err = (error: string): BuildResult => ({ ok: false, error });
 
@@ -80,20 +92,20 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
 
     case "horizontal":
     case "vertical":
-      if (lines.length === 1) return ok([makeConstraint(type, { entities: [lines[0].id] })]);
+      if (lineRefs.length === 1) return ok([makeConstraint(type, { entities: [lineRefs[0]] })]);
       if (pts.length === 2) return ok([makeConstraint(type, { points: [pts[0], pts[1]] })]);
-      return err("Select 1 line or 2 points");
+      return err("Select 1 line/segment or 2 points");
 
     case "parallel":
     case "perpendicular":
-      return lines.length === 2
-        ? ok([makeConstraint(type, { entities: ids(lines) })])
-        : err("Select 2 lines");
+      return lineRefs.length === 2
+        ? ok([makeConstraint(type, { entities: lineRefs })])
+        : err("Select 2 lines/segments");
 
     case "equal":
-      if (lines.length === 2) return ok([makeConstraint("equal", { entities: ids(lines) })]);
+      if (lineRefs.length === 2) return ok([makeConstraint("equal", { entities: lineRefs })]);
       if (circular.length === 2) return ok([makeConstraint("equal", { entities: ids(circular) })]);
-      return err("Select 2 lines or 2 circles/arcs");
+      return err("Select 2 lines/segments or 2 circles/arcs");
 
     case "concentric":
       return circular.length === 2
@@ -101,17 +113,17 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
         : err("Select 2 circles/arcs");
 
     case "tangent": {
-      if (lines.length === 1 && circular.length === 1)
-        return ok([makeConstraint("tangent", { entities: [lines[0].id, circular[0].id] })]);
+      if (lineRefs.length === 1 && circular.length === 1)
+        return ok([makeConstraint("tangent", { entities: [lineRefs[0], circular[0].id] })]);
       if (circular.length === 2)
         return ok([makeConstraint("tangent", { entities: ids(circular) })]);
-      return err("Select 1 line and 1 circle/arc, or 2 arcs/circles");
+      return err("Select 1 line/segment and 1 circle/arc, or 2 arcs/circles");
     }
 
     case "pointOnLine":
-      return pts.length === 1 && lines.length === 1
-        ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [lines[0].id] })])
-        : err("Select 1 point and 1 line");
+      return pts.length === 1 && lineRefs.length === 1
+        ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [lineRefs[0]] })])
+        : err("Select 1 point and 1 line/segment");
 
     case "pointOnArc":
       return pts.length === 1 && arcs.length === 1
@@ -119,8 +131,8 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
         : err("Select 1 point and 1 arc");
 
     case "midpoint":
-      if (pts.length === 1 && lines.length === 1)
-        return ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lines[0].id] })]);
+      if (pts.length === 1 && lineRefs.length === 1)
+        return ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lineRefs[0]] })]);
       // Two-point variant: the first selected point becomes the midpoint of
       // the other two (e.g. circle centre + two opposite rectangle corners).
       if (pts.length === 3 && ents.length === 0)
@@ -128,14 +140,14 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
       return err("Select 1 point and 1 line, or 3 points (first selected = midpoint)");
 
     case "symmetric":
-      return pts.length === 2 && lines.length === 1
-        ? ok([makeConstraint("symmetric", { points: [pts[0], pts[1]], entities: [lines[0].id] })])
-        : err("Select 2 points and 1 line (symmetry axis)");
+      return pts.length === 2 && lineRefs.length === 1
+        ? ok([makeConstraint("symmetric", { points: [pts[0], pts[1]], entities: [lineRefs[0]] })])
+        : err("Select 2 points and 1 line/segment (symmetry axis)");
 
     case "collinear":
-      return lines.length === 2
-        ? ok([makeConstraint("collinear", { entities: ids(lines) })])
-        : err("Select 2 lines");
+      return lineRefs.length === 2
+        ? ok([makeConstraint("collinear", { entities: lineRefs })])
+        : err("Select 2 lines/segments");
 
     case "pointOnCircle":
       return pts.length === 1 && circles.length === 1
@@ -143,9 +155,14 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
         : err("Select 1 point and 1 circle");
 
     case "angle": {
-      if (lines.length !== 2) return err("Select 2 lines");
-      const angle = measureAngleBetweenLines(lines[0] as LineEntity, lines[1] as LineEntity);
-      return ok([makeConstraint("angle", { entities: ids(lines), params: [angle] })]);
+      if (lineRefs.length !== 2) return err("Select 2 lines/segments");
+      const byId = new Map(doc.entities.map((e) => [e.id, e]));
+      const geo: Geo = (id) => byId.get(id);
+      const g1 = resolveLineGeom(geo, lineRefs[0]);
+      const g2 = resolveLineGeom(geo, lineRefs[1]);
+      if (!g1 || !g2) return err("Select 2 lines/segments");
+      const angle = measureAngleBetweenLines(g1, g2);
+      return ok([makeConstraint("angle", { entities: lineRefs, params: [angle] })]);
     }
 
     case "fixedPoint": {
@@ -250,6 +267,17 @@ export class ConstraintBar {
       return;
     }
 
+    // Non-blocking warning: a line↔arc tangent whose contact point falls outside
+    // the arc's sweep is valid but the visible arc won't actually touch the line.
+    const geo: Geo = (() => {
+      const m = new Map(this.doc.entities.map((e) => [e.id, e]));
+      return (id) => m.get(id);
+    })();
+    if (res.constraints.some((c) => tangentContactOutsideArcSweep(c, geo))) {
+      this.message("Added tangent — ⚠ contact point lies outside the arc's sweep", "warn");
+      return;
+    }
+
     this.message(`Added ${spec.name.toLowerCase()}`, "ok");
   }
 
@@ -267,7 +295,7 @@ export class ConstraintBar {
     }
   }
 
-  private message(text: string, kind: "error" | "ok"): void {
+  private message(text: string, kind: "error" | "ok" | "warn"): void {
     this.msgEl.textContent = text;
     this.msgEl.className = `cb-msg ${kind}`;
   }

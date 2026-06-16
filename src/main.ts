@@ -1,5 +1,5 @@
 import "./style.css";
-import "./analytics";
+import { showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
 
 function wireRightPanelTabs(): void {
@@ -14,7 +14,37 @@ function wireRightPanelTabs(): void {
   });
 }
 
-function boot(): void {
+function showMobileWarning(): boolean {
+  const isSmallScreen = window.innerWidth < 1024 || window.innerHeight < 600;
+  const isTouch = navigator.maxTouchPoints > 1 && !window.matchMedia("(pointer: fine)").matches;
+  if (!isSmallScreen && !isTouch) return false;
+
+  const overlay = document.createElement("div");
+  overlay.className = "mobile-warning";
+  overlay.innerHTML = `
+    <div class="mobile-warning-card">
+      <img src="/rapidcam-logo.svg" alt="RapidCAM" class="mobile-warning-logo" />
+      <h1 class="mobile-warning-title">RapidCAM</h1>
+      <p class="mobile-warning-body">
+        RapidCAM is a precision CAD/CAM tool designed for desktop use.
+        It requires a keyboard, mouse, and a screen at least 1024&nbsp;px wide
+        to use effectively.
+      </p>
+      <p class="mobile-warning-body">
+        Please open it on a desktop or laptop computer.
+      </p>
+      <button class="mobile-warning-continue">Continue anyway</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".mobile-warning-continue")!.addEventListener("click", () => {
+    overlay.remove();
+    bootApp();
+  });
+  return true;
+}
+
+function bootApp(): void {
   const canvas = document.getElementById("scene") as HTMLCanvasElement | null;
   const palette = document.getElementById("toolpalette");
   const topbar = document.getElementById("topbar");
@@ -33,8 +63,13 @@ function boot(): void {
     throw new Error("RapidCAM: required DOM elements are missing");
   }
 
-  new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
+  const app = new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
   wireRightPanelTabs();
+  showConsentBannerIfNeeded();
+  // Dev-only inspection hook for automated UI verification (stripped from prod builds).
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+    (window as unknown as { __app: unknown }).__app = app;
+  }
 }
 
-boot();
+if (!showMobileWarning()) bootApp();

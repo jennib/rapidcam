@@ -1,17 +1,15 @@
 import type { CADDocument, GroupDef } from "../model/document";
 import {
   type Entity,
-  CircleEntity,
   LineEntity,
-  PolylineEntity,
-  RectEntity,
   ArcEntity,
   BezierEntity,
   TextEntity,
 } from "../model/entities";
+import { textToContours } from "../cam/textOutlines";
+import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { dist } from "../core/vec2";
 import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
@@ -20,125 +18,62 @@ import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "
 import { regionAtPoint, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
+import {
+  type OpCombo,
+  AUTO_NAME_RE,
+  comboOf,
+  describeEntity,
+  isValidFor,
+  seedsFromEntityIds,
+  legacyPocketSeeds,
+  findContiguousChain,
+} from "./camBarHelpers";
 
-// ---- helpers ----------------------------------------------------------------
+// ---- ToolpathsBar -----------------------------------------------------------
 
-type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill";
-
-/** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill) \d+$/;
-
-function comboOf(op: CAMOperation): OpCombo {
-  if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
-  return op.type as OpCombo;
-}
-
-function describeEntity(e: Entity, doc: CADDocument): string {
-  const u = doc.displayUnit;
-  if (e instanceof LineEntity) return `Line — ${formatLength(dist(e.a, e.b), u)}`;
-  if (e instanceof CircleEntity) return `Circle — r=${formatLength(e.radius, u)}`;
-  if (e instanceof RectEntity)
-    return `Rectangle — ${formatLength(e.width, u)} × ${formatLength(e.height, u)}`;
-  if (e instanceof PolylineEntity)
-    return `Polyline — ${e.points.length} pts${e.closed ? " (closed)" : " (open)"}`;
-  if (e instanceof TextEntity)
-    return `Text — "${e.text.length > 20 ? e.text.slice(0, 20) + "…" : e.text}"`;
-  return "Entity";
-}
-
-function isValidFor(e: Entity, combo: OpCombo): boolean {
-  if (e.isConstruction) return false;
-  switch (combo) {
-    case "profile-outside":
-    case "profile-inside":
-    case "pocket":
-      return (
-        e instanceof TextEntity ||
-        e instanceof CircleEntity ||
-        e instanceof RectEntity ||
-        e instanceof LineEntity ||
-        (e instanceof PolylineEntity && e.closed)
-      );
-    case "engrave":
-      return true;
-    case "drill":
-      return e instanceof CircleEntity;
-  }
+/** Mutable working copy of a CAM operation while the Add/Edit dialog is open. */
+interface OpState {
+  name: string;
+  combo: OpCombo;
+  toolType: ToolType;
+  toolNumber: number;
+  diameter: number;
+  vAngle: number;
+  tipAngle: number;
+  feedrate: number;
+  plungeRate: number;
+  spindleSpeed: number;
+  safeZ: number;
+  depth: number;
+  stepdown: number;
+  entityIds: Set<string>;
+  islandIds: Set<string>;
+  regionSeeds: Vec2[];
+  tabsEnabled: boolean;
+  tabCount: number;
+  tabWidth: number;
+  tabHeight: number;
+  stepover: number;
+  pocketStrategy: "offset" | "raster";
+  leadInType: LeadType;
+  leadInLen: number;
+  leadOutType: LeadType;
+  leadOutLen: number;
 }
 
 /**
- * Synthesize region seeds from entity-id sets: one seed inside each boundary
- * loop, clear of its islands. Used to migrate legacy pocket ops and to seed
- * regions from the canvas selection.
+ * Late-bound callbacks shared between dialog sections. The tool-section inputs
+ * trigger the cut-section V-bit hint, which is created later; the hook starts as
+ * a no-op and is overwritten when the cut section builds it.
  */
-function seedsFromEntityIds(doc: CADDocument, entIds: Set<string>, islIds: Set<string>): Vec2[] {
-  const loops = collectClosedLoops(doc.entities);
-  const boundaries = loops.filter((L) => L.ids.every((id) => entIds.has(id)));
-  const islands = loops.filter((L) => L.ids.every((id) => islIds.has(id)));
-  const seeds: Vec2[] = [];
-  for (const b of boundaries) {
-    const holes = islands
-      .filter((i) => pointInPolygon(i.verts[0], b.verts))
-      .map((i) => i.verts);
-    const p = interiorPoint(b.verts, holes);
-    if (p) seeds.push(p);
-  }
-  return seeds;
+interface DialogHooks {
+  updateVBitHint(): void;
 }
 
-function legacyPocketSeeds(op: CAMOperation, doc: CADDocument): Vec2[] {
-  return seedsFromEntityIds(doc, new Set(op.entityIds), new Set(op.islandIds ?? []));
-}
-
-function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
-  const chain = new Set<string>();
-  const front: Vec2[] = [];
-  
-  const startEnt = doc.entities.find(e => e.id === startId);
-  if (!startEnt || startEnt.isConstruction) return [];
-  
-  const getEnds = (e: Entity): Vec2[] => {
-    if (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity) {
-      const p = e.pickablePoints();
-      if (p.length >= 2) return [p[0].pos, p[p.length - 1].pos];
-    } else if (e instanceof PolylineEntity && e.points.length > 0) {
-      return [e.points[0], e.points[e.points.length - 1]];
-    }
-    return [];
-  };
-
-  front.push(...getEnds(startEnt));
-  chain.add(startId);
-  
-  let added = true;
-  while (added) {
-    added = false;
-    for (const e of doc.entities) {
-      if (chain.has(e.id) || e.isConstruction || !isValidFor(e, validCombo)) continue;
-      
-      const ePts = getEnds(e);
-      if (ePts.length === 2) {
-        for (let i = 0; i < front.length; i++) {
-          const f = front[i];
-          if (dist(f, ePts[0]) < 1e-5) {
-            chain.add(e.id);
-            front[i] = ePts[1];
-            added = true;
-            break;
-          } else if (dist(f, ePts[1]) < 1e-5) {
-            chain.add(e.id);
-            front[i] = ePts[0];
-            added = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  return [...chain];
-}
-
-// ---- ToolpathsBar -----------------------------------------------------------
+const TP_PALETTE = [
+  "#4aa3ff", "#f59e42", "#4cdc9a", "#e05a9f",
+  "#b97cf5", "#f5e04c", "#5ad8e0", "#f55a5a",
+];
 
 export class CamBar {
   private content!: HTMLElement;
@@ -233,7 +168,22 @@ export class CamBar {
   private highlightOp(id: string | null): void {
     this.highlightedOpId = id;
     const op = id ? this.doc.operations.find(o => o.id === id) : null;
-    this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
+    if (op?.type === "pocket" && op.regionSeeds?.length) {
+      const loops = collectClosedLoops(this.doc.entities);
+      const highlight = new Set<string>();
+      const fills: Vec2[][][] = [];
+      for (const seed of op.regionSeeds) {
+        const region = regionAtPoint(seed, loops);
+        if (!region) continue;
+        for (const lid of region.loopIds) highlight.add(lid);
+        fills.push([region.outer, ...region.holes]);
+      }
+      this.doc.toolpathHighlightIds = highlight;
+      this.doc.regionPickFills = fills;
+    } else {
+      this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
+      this.doc.regionPickFills = null;
+    }
     this.doc.emitChange();
     this.renderOps();
   }
@@ -290,11 +240,18 @@ export class CamBar {
       this.highlightOp(this.highlightedOpId === op.id ? null : op.id);
     });
 
+    const opColor = TP_PALETTE[index % TP_PALETTE.length];
+    item.style.setProperty("--tp-color", opColor);
+
     const handle = document.createElement("span");
     handle.className = "tp-drag-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
     item.appendChild(handle);
+
+    const swatch = document.createElement("span");
+    swatch.className = "tp-color-swatch";
+    item.appendChild(swatch);
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
@@ -404,20 +361,17 @@ export class CamBar {
       tabWidth:     existing?.tabs?.width   ?? 4,
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
+      pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
       leadInLen:    existing?.leadIn?.length  ?? 2,
       leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
       leadOutLen:   existing?.leadOut?.length ?? 2,
     };
 
-    let renderEntities: () => void;
-
-    // Pick mode: additive-only canvas sync, active only when the user enables it.
-    let pickModeActive = false;
-    let unsubPickMode: (() => void) | null = null;
+    let geomCleanup: () => void = () => {};
 
     const closeDialog = () => {
-      if (unsubPickMode) unsubPickMode();
+      geomCleanup();
       this.doc.regionPickHandler = null;
       this.doc.regionHoverHandler = null;
       this.doc.regionPickFills = null;
@@ -427,77 +381,11 @@ export class CamBar {
       document.getElementById("tp-dialog-backdrop")?.remove();
     };
 
-    // --- backdrop + dialog shell ---
-    const backdrop = document.createElement("div");
-    backdrop.id = "tp-dialog-backdrop";
-    backdrop.className = "tp-backdrop";
-    backdrop.style.pointerEvents = "none";
-    backdrop.style.background = "none";
+    // Late-bound cross-section callbacks (see DialogHooks).
+    const hooks: DialogHooks = { updateVBitHint: () => {} };
 
-    const dialog = document.createElement("div");
-    dialog.className = "tp-dialog";
-    dialog.style.pointerEvents = "auto";
-    dialog.addEventListener("click", (e) => e.stopPropagation());
-    backdrop.appendChild(dialog);
-
-    // header
-    const dheader = document.createElement("div");
-    dheader.className = "tp-dialog-header";
-    dheader.style.cursor = "move";
-    
-    // Drag logic
-    let isDragging = false;
-    let startX = 0;
-    let startY = 0;
-    let startLeft = 0;
-    let startTop = 0;
-
-    dheader.addEventListener("mousedown", (e) => {
-      if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = dialog.getBoundingClientRect();
-      startLeft = rect.left;
-      startTop = rect.top;
-      
-      // Detach from flex centering
-      dialog.style.position = "absolute";
-      dialog.style.margin = "0";
-      dialog.style.left = startLeft + "px";
-      dialog.style.top = startTop + "px";
-
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-    });
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      dialog.style.left = startLeft + (e.clientX - startX) + "px";
-      dialog.style.top = startTop + (e.clientY - startY) + "px";
-    };
-
-    const onMouseUp = () => {
-      isDragging = false;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    const dtitle = document.createElement("h3");
-    dtitle.textContent = isNew ? "Add Toolpath" : "Edit Toolpath";
-    dtitle.style.userSelect = "none";
-    dheader.appendChild(dtitle);
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "tp-dialog-close";
-    closeBtn.innerHTML = "&#x2715;";
-    closeBtn.addEventListener("click", () => closeDialog());
-    dheader.appendChild(closeBtn);
-    dialog.appendChild(dheader);
-
-    // body
-    const body = document.createElement("div");
-    body.className = "tp-dialog-body";
-    dialog.appendChild(body);
+    // --- backdrop + draggable dialog shell ---
+    const { backdrop, dialog, body } = this.buildDialogShell(isNew, closeDialog);
 
     // name
     const nameInput = document.createElement("input");
@@ -526,6 +414,386 @@ export class CamBar {
     body.appendChild(this.dField("Type", typeSelect));
 
     // tool section (collapsible — starts collapsed when editing an existing op)
+    body.appendChild(this.buildToolSection(state, hooks, isNew));
+
+    // cut section
+    const cutSec = this.dSection("Cut");
+    const depthRow = document.createElement("div");
+    depthRow.className = "tp-depth-row";
+    const depthInp = document.createElement("input");
+    depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
+    depthInp.value = String(state.depth);
+    depthInp.addEventListener("change", () => {
+      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; hooks.updateVBitHint(); }
+    });
+    const throughBtn = document.createElement("button");
+    throughBtn.className = "cbtn";
+    throughBtn.textContent = "⊥ stock";
+    throughBtn.title = `Set to stock thickness (${this.doc.stockThickness}mm)`;
+    throughBtn.addEventListener("click", () => {
+      state.depth = -this.doc.stockThickness;
+      depthInp.value = String(state.depth);
+    });
+    depthRow.appendChild(depthInp);
+    depthRow.appendChild(throughBtn);
+    cutSec.appendChild(this.dField("Depth (mm)", depthRow));
+
+    // V-bit effective width hint
+    const vbitHint = document.createElement("div");
+    vbitHint.style.cssText = "font-size:11px;color:var(--accent);padding:3px 0 4px 0;display:none;";
+    cutSec.appendChild(vbitHint);
+
+    hooks.updateVBitHint = () => {
+      if (state.toolType !== "v-bit" || state.combo !== "engrave") {
+        vbitHint.style.display = "none";
+        return;
+      }
+      const halfAngle = (state.vAngle / 2) * (Math.PI / 180);
+      const width = 2 * Math.abs(state.depth) * Math.tan(halfAngle);
+      vbitHint.textContent = `→ effective cut width: ${width.toFixed(3)} mm`;
+      vbitHint.style.display = "block";
+    };
+    hooks.updateVBitHint();
+
+    const stepInp = document.createElement("input");
+    stepInp.type = "number"; stepInp.className = "dim"; stepInp.step = "any";
+    stepInp.value = String(state.stepdown);
+    stepInp.addEventListener("change", () => {
+      const v = parseFloat(stepInp.value); if (isFinite(v)) state.stepdown = v;
+    });
+    const stepRow = this.dField("Stepdown (mm)", stepInp);
+    cutSec.appendChild(stepRow);
+
+    const stepoverInp = document.createElement("input");
+    stepoverInp.type = "number"; stepoverInp.className = "dim"; stepoverInp.step = "any";
+    stepoverInp.min = "0.01"; stepoverInp.max = "1";
+    stepoverInp.value = String(state.stepover);
+    stepoverInp.addEventListener("change", () => {
+      const v = parseFloat(stepoverInp.value); if (isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
+    });
+    const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
+    cutSec.appendChild(stepoverRow);
+
+    const strategySelect = document.createElement("select");
+    strategySelect.className = "unit";
+    for (const [v, l] of [["offset", "Adaptive (contour-parallel)"], ["raster", "Raster (zig-zag)"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      strategySelect.appendChild(o);
+    }
+    strategySelect.value = state.pocketStrategy;
+    strategySelect.addEventListener("change", () => {
+      state.pocketStrategy = strategySelect.value as "offset" | "raster";
+    });
+    const strategyRow = this.dField("Clearing", strategySelect);
+    cutSec.appendChild(strategyRow);
+
+    body.appendChild(cutSec);
+
+    // tabs section — profile ops only
+    const tabs = this.buildTabsSection(state);
+    body.appendChild(tabs.root);
+    const updateTabsVisibility = tabs.update;
+
+    // lead-in / lead-out section (profile ops only)
+    const lead = this.buildLeadSection(state);
+    body.appendChild(lead.root);
+    const updateLeadVisibility = lead.update;
+
+    // geometry section
+    const geom = this.buildGeometrySection(state);
+    body.appendChild(geom.root);
+    const { renderEntities, ensurePocketSeeds, startPickMode, stopPickMode, getPickActive } = geom;
+    geomCleanup = geom.cleanup;
+
+    typeSelect.addEventListener("change", () => {
+      state.combo = typeSelect.value as OpCombo;
+      // If the name is still an untouched auto-generated default, rename it
+      // to match the newly chosen type.
+      if (AUTO_NAME_RE.test(state.name.trim())) {
+        state.name = this.autoName(state.combo);
+        nameInput.value = state.name;
+      }
+      if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
+      stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+      stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+      strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+      hooks.updateVBitHint();
+      updateTabsVisibility();
+      updateLeadVisibility();
+      if (state.combo === "pocket") {
+        ensurePocketSeeds();
+        startPickMode(); // pocket picking is canvas-driven — make it live immediately
+      }
+      renderEntities();
+    });
+    stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+    stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+    strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+    updateTabsVisibility();
+    updateLeadVisibility();
+    if (state.combo === "pocket") {
+      ensurePocketSeeds();
+      startPickMode();
+    }
+    renderEntities();
+
+    // footer
+    const footer = document.createElement("div");
+    footer.className = "tp-dialog-footer";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn"; cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => closeDialog());
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
+    applyBtn.addEventListener("click", () => {
+      let ids = [...state.entityIds];
+      if (state.combo === "pocket") {
+        if (state.regionSeeds.length === 0) { alert("Pick at least one enclosed area."); return; }
+        // Store the bounding loops' ids for ops-list hover highlighting.
+        const loops = collectClosedLoops(this.doc.entities);
+        const hl = new Set<string>();
+        for (const seed of state.regionSeeds) {
+          const region = regionAtPoint(seed, loops);
+          if (region) for (const id of region.loopIds) hl.add(id);
+        }
+        ids = [...hl];
+      } else if (ids.length === 0) {
+        alert("Select at least one geometry item.");
+        return;
+      }
+
+      this.pushHistory?.();
+
+      let type: CAMOpType, side: "outside" | "inside";
+      if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
+      else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
+      else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
+      else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
+      else { type = "drill"; side = "outside"; }
+
+      const isProfile = type === "profile";
+
+      const op: CAMOperation = {
+        id: existing?.id ?? nextId("cam"),
+        name: state.name || this.autoName(state.combo),
+        type, side, entityIds: ids,
+        toolType: state.toolType,
+        toolNumber: state.toolNumber,
+        diameter: state.diameter,
+        vAngle: state.toolType === "v-bit" ? state.vAngle : undefined,
+        tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
+        feedrate: state.feedrate,
+        plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
+        safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
+        stepover: state.stepover,
+        pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
+        regionSeeds: type === "pocket"
+          ? state.regionSeeds.map((s) => ({ ...s }))
+          : undefined,
+        tabs: isProfile ? {
+          enabled: state.tabsEnabled,
+          count:   state.tabCount,
+          width:   state.tabWidth,
+          height:  state.tabHeight,
+        } : undefined,
+        leadIn:  isProfile && state.leadInType  !== "none" ? { type: state.leadInType,  length: state.leadInLen  } : undefined,
+        leadOut: isProfile && state.leadOutType !== "none" ? { type: state.leadOutType, length: state.leadOutLen } : undefined,
+      };
+
+      if (existing) {
+        const idx = this.doc.operations.findIndex((o) => o.id === existing.id);
+        if (idx >= 0) this.doc.operations[idx] = op;
+      } else {
+        this.doc.operations.push(op);
+      }
+      this.doc.emitChange();
+      this.renderOps();
+      closeDialog();
+    });
+    footer.appendChild(cancelBtn);
+    footer.appendChild(applyBtn);
+    dialog.appendChild(footer);
+
+    document.body.appendChild(backdrop);
+    setTimeout(() => nameInput.select(), 40);
+  }
+
+  // --- G-code generation -----------------------------------------------------
+
+  private generate(): void {
+    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    track("gcode_generated", { operation_count: this.doc.operations.length });
+    this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
+  }
+
+  private download(code: string, name: string): void {
+    const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safe || "toolpath"}.nc`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // --- helpers ---------------------------------------------------------------
+
+  private autoName(combo: OpCombo): string {
+    const prefix =
+      combo === "profile-outside" ? "Profile (outside)"
+      : combo === "profile-inside" ? "Profile (inside)"
+      : combo === "pocket"  ? "Pocket"
+      : combo === "engrave" ? "Engrave"
+      : "Drill";
+    const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
+    return `${prefix} ${n}`;
+  }
+
+  private toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    this.host.classList.toggle("collapsed", this.isCollapsed);
+  }
+
+  private dSection(title: string): HTMLElement {
+    const sec = document.createElement("div");
+    sec.className = "tp-dialog-section";
+    const h = document.createElement("div");
+    h.className = "tp-dialog-section-title";
+    h.textContent = title;
+    sec.appendChild(h);
+    return sec;
+  }
+
+  private dField(label: string, control: HTMLElement): HTMLElement {
+    const g = document.createElement("div");
+    g.className = "tp-field";
+    const l = document.createElement("label");
+    l.textContent = label;
+    g.appendChild(l);
+    g.appendChild(control);
+    return g;
+  }
+
+  /** Labelled number input that writes through `set` on change. */
+  private numRow(label: string, get: () => number, set: (v: number) => void): { el: HTMLElement; inp: HTMLInputElement } {
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.className = "dim"; inp.step = "any";
+    inp.value = String(get());
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
+    return { el: this.dField(label, inp), inp };
+  }
+
+  /** Like numRow, but `set` also receives the input so a ToolDef load can repopulate it. */
+  private syncableInput(label: string, get: () => number, set: (v: number, inp: HTMLInputElement) => void): { el: HTMLElement; inp: HTMLInputElement } {
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.className = "dim"; inp.step = "any";
+    inp.value = String(get());
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v, inp); });
+    return { el: this.dField(label, inp), inp };
+  }
+
+  // --- Add/Edit dialog section builders --------------------------------------
+
+  /** Backdrop + draggable dialog frame (header, close, body). */
+  private buildDialogShell(isNew: boolean, onClose: () => void): { backdrop: HTMLElement; dialog: HTMLElement; body: HTMLElement } {
+    const backdrop = document.createElement("div");
+    backdrop.id = "tp-dialog-backdrop";
+    backdrop.className = "tp-backdrop";
+    backdrop.style.pointerEvents = "none";
+    backdrop.style.background = "none";
+
+    const dialog = document.createElement("div");
+    dialog.className = "tp-dialog";
+    dialog.style.pointerEvents = "auto";
+    dialog.addEventListener("click", (e) => e.stopPropagation());
+    backdrop.appendChild(dialog);
+
+    // Position: restore the last dragged position; otherwise default to the right
+    // side of the screen (just left of the right-hand panel). Once the user drags
+    // it, that position is remembered (localStorage) and wins on the next open.
+    const DIALOG_W = 380; // matches .tp-dialog width in style.css
+    const applyPos = (left: number, top: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - 100);
+      const maxTop = Math.max(0, window.innerHeight - 50);
+      dialog.style.position = "absolute";
+      dialog.style.margin = "0";
+      dialog.style.left = Math.max(0, Math.min(left, maxLeft)) + "px";
+      dialog.style.top = Math.max(0, Math.min(top, maxTop)) + "px";
+    };
+
+    let positioned = false;
+    const storedPos = localStorage.getItem("rapidcam:toolpath-dialog-position");
+    if (storedPos) {
+      try {
+        const { left, top } = JSON.parse(storedPos);
+        const lVal = parseFloat(left);
+        const tVal = parseFloat(top);
+        if (!isNaN(lVal) && !isNaN(tVal)) { applyPos(lVal, tVal); positioned = true; }
+      } catch {
+        // Ignore malformed localStorage data
+      }
+    }
+    if (!positioned) {
+      const rp = document.getElementById("right-panel")?.getBoundingClientRect();
+      const rightEdge = rp ? rp.left : window.innerWidth;
+      applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
+    }
+
+    const dheader = document.createElement("div");
+    dheader.className = "tp-dialog-header";
+    dheader.style.cursor = "move";
+
+    let isDragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      dialog.style.left = startLeft + (e.clientX - startX) + "px";
+      dialog.style.top = startTop + (e.clientY - startY) + "px";
+    };
+    const onMouseUp = () => {
+      isDragging = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      localStorage.setItem("rapidcam:toolpath-dialog-position", JSON.stringify({
+        left: dialog.style.left,
+        top: dialog.style.top
+      }));
+    };
+    dheader.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;
+      isDragging = true;
+      startX = e.clientX; startY = e.clientY;
+      const rect = dialog.getBoundingClientRect();
+      startLeft = rect.left; startTop = rect.top;
+      dialog.style.position = "absolute";
+      dialog.style.margin = "0";
+      dialog.style.left = startLeft + "px";
+      dialog.style.top = startTop + "px";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    const dtitle = document.createElement("h3");
+    dtitle.textContent = isNew ? "Add Toolpath" : "Edit Toolpath";
+    dtitle.style.userSelect = "none";
+    dheader.appendChild(dtitle);
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "tp-dialog-close";
+    closeBtn.innerHTML = "&#x2715;";
+    closeBtn.addEventListener("click", () => onClose());
+    dheader.appendChild(closeBtn);
+    dialog.appendChild(dheader);
+
+    const body = document.createElement("div");
+    body.className = "tp-dialog-body";
+    dialog.appendChild(body);
+
+    return { backdrop, dialog, body };
+  }
+
+  /** Tool section: library load/save, tool type, diameter, feeds/speeds, conditional V-bit/drill fields. */
+  private buildToolSection(state: OpState, hooks: DialogHooks, isNew: boolean): HTMLElement {
     const toolSec = this.dSection("Tool");
     const toolSectionTitle = toolSec.querySelector(".tp-dialog-section-title") as HTMLElement;
     const toolArrow = document.createElement("span");
@@ -536,7 +804,7 @@ export class CamBar {
     const toolContent = document.createElement("div");
     toolContent.style.cssText = "display:flex;flex-direction:column;gap:7px;";
 
-    let toolExpanded = !existing;
+    let toolExpanded = isNew;
     const applyToolCollapse = () => {
       toolContent.style.display = toolExpanded ? "" : "none";
       toolArrow.textContent = toolExpanded ? "▲" : "▼";
@@ -559,7 +827,6 @@ export class CamBar {
     libRow.appendChild(saveLibBtn);
     toolContent.appendChild(libRow);
 
-    // library picker (shown inline below the buttons)
     const libPicker = document.createElement("div");
     libPicker.style.cssText = "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
       "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
@@ -643,39 +910,19 @@ export class CamBar {
     toolTypeSelect.value = state.toolType;
     toolContent.appendChild(this.dField("Tool Type", toolTypeSelect));
 
-    // --- shared number row helper ---
-    const numRow = (lbl: string, get: () => number, set: (v: number) => void) => {
-      const inp = document.createElement("input");
-      inp.type = "number"; inp.className = "dim"; inp.step = "any";
-      inp.value = String(get());
-      inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
-      return { el: this.dField(lbl, inp), inp };
-    };
+    const toolNumRow  = this.numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
+    const diamRow     = this.syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { state.diameter = v; i.value = String(v); hooks.updateVBitHint(); });
+    const spindleRow  = this.syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
+    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { state.feedrate = v; i.value = String(v); });
+    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { state.plungeRate = v; i.value = String(v); });
+    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { state.safeZ = v; i.value = String(v); });
 
-    // helper to create an input that a ToolDef can repopulate
-    const syncableInput = (lbl: string, get: () => number, set: (v: number, inp: HTMLInputElement) => void) => {
-      const inp = document.createElement("input");
-      inp.type = "number"; inp.className = "dim"; inp.step = "any";
-      inp.value = String(get());
-      inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v, inp); });
-      return { el: this.dField(lbl, inp), inp };
-    };
-
-    const toolNumRow  = numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
-    const diamRow     = syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { state.diameter = v; i.value = String(v); updateVBitHint(); });
-    const spindleRow  = syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
-    const feedRow     = syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { state.feedrate = v; i.value = String(v); });
-    const plungeRow   = syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { state.plungeRate = v; i.value = String(v); });
-    const safeZRow    = syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { state.safeZ = v; i.value = String(v); });
-
-    // --- conditional V-bit fields ---
     const vAngleInp = document.createElement("input");
     vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";
     vAngleInp.value = String(state.vAngle);
-    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { state.vAngle = v; updateVBitHint(); } });
+    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { state.vAngle = v; hooks.updateVBitHint(); } });
     const vAngleRow = this.dField("V Angle (°)", vAngleInp);
 
-    // --- conditional drill tip angle ---
     const tipAngleInp = document.createElement("input");
     tipAngleInp.type = "number"; tipAngleInp.className = "dim"; tipAngleInp.step = "any";
     tipAngleInp.value = String(state.tipAngle);
@@ -691,9 +938,13 @@ export class CamBar {
     toolContent.appendChild(plungeRow.el);
     toolContent.appendChild(safeZRow.el);
     toolSec.appendChild(toolContent);
-    body.appendChild(toolSec);
 
-    // apply a ToolDef from the library into state + all inputs
+    const updateToolTypeVisibility = () => {
+      const tt = state.toolType;
+      vAngleRow.style.display   = tt === "v-bit" ? "" : "none";
+      tipAngleRow.style.display = tt === "drill"  ? "" : "none";
+    };
+
     const applyToolDef = (t: ToolDef) => {
       state.toolType   = t.toolType;
       state.diameter   = t.diameter;
@@ -712,89 +963,21 @@ export class CamBar {
       plungeRow.inp.value    = String(t.plungeRate);
       safeZRow.inp.value     = String(t.safeZ);
       updateToolTypeVisibility();
-      updateVBitHint();
+      hooks.updateVBitHint();
     };
 
-    // show/hide conditional rows + keep drill-only type in sync with op type
-    const updateToolTypeVisibility = () => {
-      const tt = state.toolType;
-      vAngleRow.style.display   = tt === "v-bit" ? "" : "none";
-      tipAngleRow.style.display = tt === "drill"  ? "" : "none";
-    };
     updateToolTypeVisibility();
-
     toolTypeSelect.addEventListener("change", () => {
       state.toolType = toolTypeSelect.value as ToolType;
       updateToolTypeVisibility();
-      updateVBitHint();
+      hooks.updateVBitHint();
     });
 
-    // forward declaration — defined after the vbit hint element is created below
-    let updateVBitHint: () => void = () => {};
+    return toolSec;
+  }
 
-    // cut section
-    const cutSec = this.dSection("Cut");
-    const depthRow = document.createElement("div");
-    depthRow.className = "tp-depth-row";
-    const depthInp = document.createElement("input");
-    depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
-    depthInp.value = String(state.depth);
-    depthInp.addEventListener("change", () => {
-      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; updateVBitHint(); }
-    });
-    const throughBtn = document.createElement("button");
-    throughBtn.className = "cbtn";
-    throughBtn.textContent = "⊥ stock";
-    throughBtn.title = `Set to stock thickness (${this.doc.stockThickness}mm)`;
-    throughBtn.addEventListener("click", () => {
-      state.depth = -this.doc.stockThickness;
-      depthInp.value = String(state.depth);
-    });
-    depthRow.appendChild(depthInp);
-    depthRow.appendChild(throughBtn);
-    cutSec.appendChild(this.dField("Depth (mm)", depthRow));
-
-    // V-bit effective width hint
-    const vbitHint = document.createElement("div");
-    vbitHint.style.cssText = "font-size:11px;color:var(--accent);padding:3px 0 4px 0;display:none;";
-    cutSec.appendChild(vbitHint);
-
-    updateVBitHint = () => {
-      if (state.toolType !== "v-bit" || state.combo !== "engrave") {
-        vbitHint.style.display = "none";
-        return;
-      }
-      const halfAngle = (state.vAngle / 2) * (Math.PI / 180);
-      const width = 2 * Math.abs(state.depth) * Math.tan(halfAngle);
-      vbitHint.textContent = `→ effective cut width: ${width.toFixed(3)} mm`;
-      vbitHint.style.display = "block";
-    };
-    updateVBitHint();
-
-    const stepInp = document.createElement("input");
-    stepInp.type = "number"; stepInp.className = "dim"; stepInp.step = "any";
-    stepInp.value = String(state.stepdown);
-    stepInp.addEventListener("change", () => {
-      const v = parseFloat(stepInp.value); if (isFinite(v)) state.stepdown = v;
-    });
-    const stepRow = this.dField("Stepdown (mm)", stepInp);
-    cutSec.appendChild(stepRow);
-
-    const stepoverInp = document.createElement("input");
-    stepoverInp.type = "number"; stepoverInp.className = "dim"; stepoverInp.step = "any";
-    stepoverInp.min = "0.01"; stepoverInp.max = "1";
-    stepoverInp.value = String(state.stepover);
-    stepoverInp.addEventListener("change", () => {
-      const v = parseFloat(stepoverInp.value); if (isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
-    });
-    const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
-    cutSec.appendChild(stepoverRow);
-
-    body.appendChild(cutSec);
-
-    // tabs section — profile ops only
-    let updateTabsVisibility: () => void = () => {};
-
+  /** Tabs/bridges section (profile ops only). Returns its visibility updater. */
+  private buildTabsSection(state: OpState): { root: HTMLElement; update: () => void } {
     const tabsSec = this.dSection("Tabs / Bridges");
 
     const tabEnabledWrap = document.createElement("div");
@@ -810,15 +993,14 @@ export class CamBar {
     tabEnabledWrap.appendChild(tabEnabledLbl);
     tabsSec.appendChild(tabEnabledWrap);
 
-    const tabCountRow  = numRow("Tab count",       () => state.tabCount,  (v) => { state.tabCount  = Math.max(1, Math.round(v)); });
-    const tabWidthRow  = numRow("Tab width (mm)",  () => state.tabWidth,  (v) => { state.tabWidth  = Math.max(0.1, v); });
-    const tabHeightRow = numRow("Tab height (mm)", () => state.tabHeight, (v) => { state.tabHeight = Math.max(0.1, v); });
+    const tabCountRow  = this.numRow("Tab count",       () => state.tabCount,  (v) => { state.tabCount  = Math.max(1, Math.round(v)); });
+    const tabWidthRow  = this.numRow("Tab width (mm)",  () => state.tabWidth,  (v) => { state.tabWidth  = Math.max(0.1, v); });
+    const tabHeightRow = this.numRow("Tab height (mm)", () => state.tabHeight, (v) => { state.tabHeight = Math.max(0.1, v); });
     tabsSec.appendChild(tabCountRow.el);
     tabsSec.appendChild(tabWidthRow.el);
     tabsSec.appendChild(tabHeightRow.el);
-    body.appendChild(tabsSec);
 
-    updateTabsVisibility = () => {
+    const update = () => {
       const isProfile = state.combo === "profile-outside" || state.combo === "profile-inside";
       tabsSec.style.display = isProfile ? "" : "none";
       const fieldsOn = isProfile && state.tabsEnabled;
@@ -826,20 +1008,27 @@ export class CamBar {
       tabWidthRow.el.style.display  = fieldsOn ? "" : "none";
       tabHeightRow.el.style.display = fieldsOn ? "" : "none";
     };
-    updateTabsVisibility();
+    update();
 
     tabEnabledCb.addEventListener("change", () => {
       state.tabsEnabled = tabEnabledCb.checked;
-      updateTabsVisibility();
+      update();
     });
 
-    // lead-in / lead-out section (profile ops only)
-    let updateLeadVisibility: () => void = () => {};
+    return { root: tabsSec, update };
+  }
 
+  /** Lead-in / lead-out section (profile ops only). Returns its visibility updater. */
+  private buildLeadSection(state: OpState): { root: HTMLElement; update: () => void } {
     const leadSec = this.dSection("Lead-in / Lead-out");
-    body.appendChild(leadSec);
-
     const leadTypes: [LeadType, string][] = [["none", "None"], ["linear", "Linear"], ["arc", "Arc (90°)"]];
+
+    const update = () => {
+      const isProfile = state.combo.startsWith("profile");
+      leadSec.style.display     = isProfile ? "" : "none";
+      liLenRow.el.style.display = (isProfile && state.leadInType  !== "none") ? "" : "none";
+      loLenRow.el.style.display = (isProfile && state.leadOutType !== "none") ? "" : "none";
+    };
 
     const makeLeadSelect = (get: () => string, set: (v: LeadType) => void) => {
       const sel = document.createElement("select");
@@ -849,27 +1038,37 @@ export class CamBar {
         sel.appendChild(o);
       }
       sel.value = get();
-      sel.addEventListener("change", () => { set(sel.value as LeadType); updateLeadVisibility(); });
+      sel.addEventListener("change", () => { set(sel.value as LeadType); update(); });
       return sel;
     };
 
     const liSel = makeLeadSelect(() => state.leadInType, (v) => { state.leadInType = v; });
     leadSec.appendChild(this.dField("Lead-in", liSel));
-    const liLenRow = numRow("Lead-in length (mm)", () => state.leadInLen,  (v) => { state.leadInLen  = Math.max(0.1, v); });
+    const liLenRow = this.numRow("Lead-in length (mm)", () => state.leadInLen, (v) => { state.leadInLen = Math.max(0.1, v); });
     leadSec.appendChild(liLenRow.el);
 
     const loSel = makeLeadSelect(() => state.leadOutType, (v) => { state.leadOutType = v; });
     leadSec.appendChild(this.dField("Lead-out", loSel));
-    const loLenRow = numRow("Lead-out length (mm)", () => state.leadOutLen, (v) => { state.leadOutLen = Math.max(0.1, v); });
+    const loLenRow = this.numRow("Lead-out length (mm)", () => state.leadOutLen, (v) => { state.leadOutLen = Math.max(0.1, v); });
     leadSec.appendChild(loLenRow.el);
 
-    updateLeadVisibility = () => {
-      const isProfile = state.combo.startsWith("profile");
-      leadSec.style.display        = isProfile ? "" : "none";
-      liLenRow.el.style.display    = (isProfile && state.leadInType  !== "none") ? "" : "none";
-      loLenRow.el.style.display    = (isProfile && state.leadOutType !== "none") ? "" : "none";
-    };
-    updateLeadVisibility();
+    update();
+    return { root: leadSec, update };
+  }
+
+  /** Geometry section: entity/region picking, canvas pick-mode, and the live entity list. */
+  private buildGeometrySection(state: OpState): {
+    root: HTMLElement;
+    renderEntities: () => void;
+    ensurePocketSeeds: () => void;
+    startPickMode: () => void;
+    stopPickMode: () => void;
+    getPickActive: () => boolean;
+    cleanup: () => void;
+  } {
+    let renderEntities!: () => void;
+    let pickModeActive = false;
+    let unsubPickMode: (() => void) | null = null;
 
     // geometry section
     const geoSec = this.dSection("Geometry");
@@ -890,21 +1089,43 @@ export class CamBar {
     fromSelBtn.textContent = "+ From Selection";
     fromSelBtn.addEventListener("click", () => {
       if (state.combo === "pocket") {
-        // Seed a region inside each closed loop formed by the selection.
-        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected));
         const docLoops = collectClosedLoops(this.doc.entities);
         let added = 0;
+
+        const addSeed = (p: Vec2, region: ReturnType<typeof regionAtPoint>) => {
+          if (!region) return false;
+          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
+            return false;
+          state.regionSeeds.push(p);
+          return true;
+        };
+
+        // Text entities: seed each glyph's stroke area using winding direction to
+        // separate outer contours from counter holes (e.g. the hole inside 'O').
+        // Outer contours are CCW in Y-up (positive signed area); holes are CW (negative).
+        for (const e of this.doc.entities) {
+          if (!e.selected || e.isConstruction || !(e instanceof TextEntity)) continue;
+          const contours = textToContours(e).filter(c => c.closed && c.points.length >= 3);
+          const outers = contours.filter(c => signedArea(c.points) > 0);
+          const inners = contours.filter(c => signedArea(c.points) <= 0);
+          for (const outer of outers) {
+            const holes = inners
+              .filter(inn => pointInPolygon(inn.points[0], outer.points))
+              .map(inn => inn.points);
+            const p = interiorPoint(outer.points, holes);
+            if (!p) continue;
+            if (addSeed(p, regionAtPoint(p, docLoops))) added++;
+          }
+        }
+
+        // Non-text entities: existing region-seed behaviour.
+        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected && !(e instanceof TextEntity)));
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
-          const region = regionAtPoint(p, docLoops);
-          if (!region) continue;
-          // Skip if an existing seed already picks this region.
-          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
-            continue;
-          state.regionSeeds.push(p);
-          added++;
+          if (addSeed(p, regionAtPoint(p, docLoops))) added++;
         }
+
         if (added > 0) renderEntities();
         return;
       }
@@ -979,7 +1200,8 @@ export class CamBar {
           return true;
         };
         this.doc.regionHoverHandler = (world) => {
-          const region = regionAtPoint(world, collectClosedLoops(this.doc.entities));
+          const loops = collectClosedLoops(this.doc.entities);
+          const region = regionAtPoint(world, loops);
           this.doc.regionPickHoverFill = region ? [region.outer, ...region.holes] : null;
         };
         return;
@@ -1014,7 +1236,6 @@ export class CamBar {
 
     const entityList = document.createElement("div");
     geoSec.appendChild(entityList);
-    body.appendChild(geoSec);
 
     // Pocket geometry: list of picked flood-fill regions (seed points whose
     // enclosed faces are recomputed from live geometry).
@@ -1353,170 +1574,14 @@ export class CamBar {
       state.regionSeeds.push(...seedsFromEntityIds(this.doc, state.entityIds, state.islandIds));
     };
 
-    typeSelect.addEventListener("change", () => {
-      state.combo = typeSelect.value as OpCombo;
-      // If the name is still an untouched auto-generated default, rename it
-      // to match the newly chosen type.
-      if (AUTO_NAME_RE.test(state.name.trim())) {
-        state.name = this.autoName(state.combo);
-        nameInput.value = state.name;
-      }
-      if (pickModeActive) stopPickMode(); // pick behaviour differs per op type
-      stepRow.style.display     = state.combo === "drill"   ? "none" : "";
-      stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
-      updateVBitHint();
-      updateTabsVisibility();
-      updateLeadVisibility();
-      if (state.combo === "pocket") {
-        ensurePocketSeeds();
-        startPickMode(); // pocket picking is canvas-driven — make it live immediately
-      }
-      renderEntities();
-    });
-    stepRow.style.display     = state.combo === "drill"   ? "none" : "";
-    stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
-    updateTabsVisibility();
-    updateLeadVisibility();
-    if (state.combo === "pocket") {
-      ensurePocketSeeds();
-      startPickMode();
-    }
-    renderEntities();
-
-    // footer
-    const footer = document.createElement("div");
-    footer.className = "tp-dialog-footer";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "btn"; cancelBtn.textContent = "Cancel";
-    cancelBtn.addEventListener("click", () => closeDialog());
-    const applyBtn = document.createElement("button");
-    applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
-    applyBtn.addEventListener("click", () => {
-      let ids = [...state.entityIds];
-      if (state.combo === "pocket") {
-        if (state.regionSeeds.length === 0) { alert("Pick at least one enclosed area."); return; }
-        // Store the bounding loops' ids for ops-list hover highlighting.
-        const loops = collectClosedLoops(this.doc.entities);
-        const hl = new Set<string>();
-        for (const seed of state.regionSeeds) {
-          const region = regionAtPoint(seed, loops);
-          if (region) for (const id of region.loopIds) hl.add(id);
-        }
-        ids = [...hl];
-      } else if (ids.length === 0) {
-        alert("Select at least one geometry item.");
-        return;
-      }
-
-      this.pushHistory?.();
-
-      let type: CAMOpType, side: "outside" | "inside";
-      if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
-      else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
-      else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
-      else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
-      else { type = "drill"; side = "outside"; }
-
-      const isProfile = type === "profile";
-
-      const op: CAMOperation = {
-        id: existing?.id ?? nextId("cam"),
-        name: state.name || this.autoName(state.combo),
-        type, side, entityIds: ids,
-        toolType: state.toolType,
-        toolNumber: state.toolNumber,
-        diameter: state.diameter,
-        vAngle: state.toolType === "v-bit" ? state.vAngle : undefined,
-        tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
-        feedrate: state.feedrate,
-        plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
-        safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
-        stepover: state.stepover,
-        regionSeeds: type === "pocket"
-          ? state.regionSeeds.map((s) => ({ ...s }))
-          : undefined,
-        tabs: isProfile ? {
-          enabled: state.tabsEnabled,
-          count:   state.tabCount,
-          width:   state.tabWidth,
-          height:  state.tabHeight,
-        } : undefined,
-        leadIn:  isProfile && state.leadInType  !== "none" ? { type: state.leadInType,  length: state.leadInLen  } : undefined,
-        leadOut: isProfile && state.leadOutType !== "none" ? { type: state.leadOutType, length: state.leadOutLen } : undefined,
-      };
-
-      if (existing) {
-        const idx = this.doc.operations.findIndex((o) => o.id === existing.id);
-        if (idx >= 0) this.doc.operations[idx] = op;
-      } else {
-        this.doc.operations.push(op);
-      }
-      this.doc.emitChange();
-      this.renderOps();
-      closeDialog();
-    });
-    footer.appendChild(cancelBtn);
-    footer.appendChild(applyBtn);
-    dialog.appendChild(footer);
-
-    document.body.appendChild(backdrop);
-    setTimeout(() => nameInput.select(), 40);
-  }
-
-  // --- G-code generation -----------------------------------------------------
-
-  private generate(): void {
-    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
-    track("gcode_generated", { operation_count: this.doc.operations.length });
-    this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
-  }
-
-  private download(code: string, name: string): void {
-    const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
-    const blob = new Blob([code], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${safe || "toolpath"}.nc`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // --- helpers ---------------------------------------------------------------
-
-  private autoName(combo: OpCombo): string {
-    const prefix =
-      combo === "profile-outside" ? "Profile (outside)"
-      : combo === "profile-inside" ? "Profile (inside)"
-      : combo === "pocket"  ? "Pocket"
-      : combo === "engrave" ? "Engrave"
-      : "Drill";
-    const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
-    return `${prefix} ${n}`;
-  }
-
-  private toggleCollapse(): void {
-    this.isCollapsed = !this.isCollapsed;
-    this.host.classList.toggle("collapsed", this.isCollapsed);
-  }
-
-  private dSection(title: string): HTMLElement {
-    const sec = document.createElement("div");
-    sec.className = "tp-dialog-section";
-    const h = document.createElement("div");
-    h.className = "tp-dialog-section-title";
-    h.textContent = title;
-    sec.appendChild(h);
-    return sec;
-  }
-
-  private dField(label: string, control: HTMLElement): HTMLElement {
-    const g = document.createElement("div");
-    g.className = "tp-field";
-    const l = document.createElement("label");
-    l.textContent = label;
-    g.appendChild(l);
-    g.appendChild(control);
-    return g;
+    return {
+      root: geoSec,
+      renderEntities,
+      ensurePocketSeeds,
+      startPickMode,
+      stopPickMode,
+      getPickActive: () => pickModeActive,
+      cleanup: () => { if (unsubPickMode) unsubPickMode(); },
+    };
   }
 }

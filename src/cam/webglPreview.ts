@@ -53,18 +53,30 @@ void main() {
   float gradZ = (hU - hD) / (2.0 * uCellMM.y);
   vec3 normal = normalize(vec3(gradX, 1.0, gradZ));
 
-  // Wood color: uncut surface vs freshly cut vs through-cut shadow
-  // All values in linear (pre-gamma) space.
-  float t = clamp(vHeight / uStockT, 0.0, 1.0);
-  vec3 deep     = vec3(0.06, 0.03, 0.01);   // shadow at base of deep cuts
-  vec3 machined = vec3(0.76, 0.58, 0.30);   // fresh-cut pine, warm and bright
-  vec3 uncut    = vec3(0.52, 0.34, 0.12);   // top surface, slightly darker/more worn
+  // Color based on how much material was REMOVED from the top.
+  // depthFrac = 0 → uncut surface; depthFrac = 1 → cut all the way through.
+  // This makes even shallow pockets read as bright machined wood against the
+  // darker uncut surface, regardless of stock thickness.
+  float cutDepth  = uStockT - vHeight;
+  float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
+
+  vec3 deep     = vec3(0.05, 0.025, 0.008); // dark shadow at base of deep cuts
+  vec3 machined = vec3(0.82, 0.63,  0.32);  // bright fresh-cut wood
+  vec3 uncut    = vec3(0.38, 0.24,  0.08);  // natural top surface — noticeably darker
 
   vec3 baseColor;
-  if (t < 0.08) {
-    baseColor = mix(deep, machined, t / 0.08);
+  if (depthFrac < 0.005) {
+    // Uncut surface
+    baseColor = uncut;
+  } else if (depthFrac < 0.08) {
+    // Transition from uncut to machined at the very start of a cut
+    baseColor = mix(uncut, machined, depthFrac / 0.08);
+  } else if (depthFrac < 0.80) {
+    // Machined floor — constant bright wood; gentle darkening toward deep
+    baseColor = mix(machined, machined * 0.7, smoothstep(0.08, 0.80, depthFrac));
   } else {
-    baseColor = mix(machined, uncut, smoothstep(0.0, 0.35, t - 0.08));
+    // Deep cuts: darken toward shadow
+    baseColor = mix(machined * 0.7, deep, smoothstep(0.80, 1.0, depthFrac));
   }
 
   // Three-light rig — key from upper-right-front, fill from upper-left-back, top bounce.
@@ -77,21 +89,21 @@ void main() {
   float d2 = max(dot(normal, L2), 0.0);
   float d3 = max(dot(normal, L3), 0.0);
 
-  float light = 0.38               // ambient — raise floor so nothing goes black
-              + d1 * 0.72          // key
-              + d2 * 0.30          // fill
-              + d3 * 0.18;         // bounce
+  float light = 0.28               // ambient — lower for more contrast
+              + d1 * 0.82          // key
+              + d2 * 0.32          // fill
+              + d3 * 0.20;         // bounce
 
   vec3 col = baseColor * light;
 
   // Gamma correction: linear → sRGB so the display looks correct.
   col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
 
-  // Edge highlight: cut walls have large height gradients — add a bright rim
-  // so cuts read clearly from any orbit angle.
+  // Edge highlight: cut walls have large height gradients — add a warm rim
+  // so shallow cuts read clearly. Lower threshold catches finer detail.
   float gradMag = length(vec2(gradX, gradZ));
-  float edge = smoothstep(1.5, 6.0, gradMag) * 0.45;
-  col = clamp(col + vec3(edge * 0.90, edge * 0.78, edge * 0.55), 0.0, 1.0);
+  float edge = smoothstep(0.4, 4.0, gradMag) * 0.55;
+  col = clamp(col + vec3(edge * 0.88, edge * 0.72, edge * 0.45), 0.0, 1.0);
 
   fragColor = vec4(col, 1.0);
 }`;

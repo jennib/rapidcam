@@ -1,11 +1,12 @@
 import { Vec2, dist, sub } from "../core/vec2";
-import { Bounds, LineEntity, TextEntity } from "../model/entities";
-import { PointRef, pointRefKey, Constraint, constraintAnchors, ConstraintType } from "../model/constraints";
+import { Bounds, LineEntity, TextEntity, PolylineEntity } from "../model/entities";
+import { PointRef, pointRefKey, Constraint, constraintAnchors, ConstraintType, SegmentRef } from "../model/constraints";
 import { CADDocument, DocSnapshot } from "../model/document";
 import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { Viewport } from "../view/viewport";
 import { dimensionHitDistance, dimensionOffsetFromCursor, Dimension, dimensionLayout } from "../model/dimensions";
 import { Geo } from "../model/constraints";
+import { distToSegment } from "../core/geom";
 import { PinMap } from "../solver/solver";
 import { selectionBounds, applyScale, applyRotate } from "../core/transform";
 import { TransformBox, TransformHandle } from "../view/overlay";
@@ -73,6 +74,15 @@ export class SelectTool implements Tool {
         const ent = ctx.doc.entities.find(x => x.id === bestRef!.entityId)!;
         if (!ent.selected) ent.selected = true;
         ctx.doc.togglePoint(bestRef);
+        return;
+      }
+      // No vertex hit: try a polyline segment so it can be used like a line in
+      // line-type constraints (parallel/perpendicular/equal/…).
+      const seg = this.pickPolylineSegment(e, ctx);
+      if (seg) {
+        const ent = ctx.doc.entities.find(x => x.id === seg.entityId)!;
+        if (!ent.selected) ent.selected = true;
+        ctx.doc.toggleSegment(seg);
       }
       return;
     }
@@ -567,6 +577,23 @@ export class SelectTool implements Tool {
       if (toSelect.has(ent.id)) ent.selected = true;
     }
     ctx.doc.emitChange();
+  }
+
+  /** Nearest polyline segment under the cursor (within 8px on screen), or null. */
+  private pickPolylineSegment(e: ToolPointerEvent, ctx: ToolContext): SegmentRef | null {
+    let best: SegmentRef | null = null;
+    let bestPx = Infinity;
+    for (const ent of ctx.doc.entities) {
+      if (!(ent instanceof PolylineEntity) || ctx.doc.groupOf(ent.id)) continue;
+      const n = ent.points.length;
+      const segCount = ent.closed ? n : n - 1;
+      for (let i = 0; i < segCount; i++) {
+        const a = ent.points[i], b = ent.points[(i + 1) % n];
+        const px = distToSegment(e.worldRaw, a, b) * ctx.view.scale;
+        if (px < 8 && px < bestPx) { bestPx = px; best = { entityId: ent.id, index: i }; }
+      }
+    }
+    return best;
   }
 
   private getTransformBox(ctx: ToolContext): TransformBox | null {

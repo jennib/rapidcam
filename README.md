@@ -33,7 +33,7 @@ Draw geometry, add geometric constraints and driving dimensions, then generate G
 | Polygon | `N` | Click centre then a vertex; `[`/`]` change side count |
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
-| Text | `X` | Click to place; double-click any text entity to edit in place |
+| Text | `X` | Click to place; double-click to edit in place; text outlines are pocketable via region pick |
 | Dimension | `D` | Click an entity to annotate; drag the witness line |
 | Offset | `O` | Click an entity to offset inward or outward |
 | Fillet | `F` | Click a sharp corner to round it with a user-typed radius |
@@ -61,6 +61,8 @@ RapidCAM uses a **Levenberg-Marquardt** solver with Tikhonov regularisation. Non
 - Concentric
 - Angle — angular constraint between two lines
 
+Line-type constraints (horizontal, vertical, parallel, perpendicular, collinear, equal, angle, tangent, point-on-line) also apply to **individual polyline segments** — click a segment in the select tool to constrain it like a standalone line, without exploding the polyline. Tangents to an *arc* are solved against its full circle (standard CAD behaviour); if the contact point falls outside the arc's sweep the constraint bar shows a non-blocking warning.
+
 **DOF-based entity colouring:** After each solve, every entity is coloured by its constraint status — **blue** = under-defined (free DOFs remain), **normal** = fully defined, **red** = over-constrained or conflicting. The analysis uses RREF null-space decomposition so that mutual dependencies between entities are handled correctly.
 
 ### Driving dimensions vs. reference dimensions
@@ -86,11 +88,13 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Feature | Details |
 |---------|---------|
 | Profile cut | Contour-follows any closed chain; lead-in / lead-out arcs |
-| Pocket clearing | Raster or contour strategy; respects islands |
+| Pocket clearing | Adaptive contour-parallel clearing (default) — concentric offset loops that wrap islands with helical entry and no per-row lifting — or classic zig-zag raster; both respect islands and flood-fill region picking |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Tool library | Named tool definitions with diameter, flute count, feed/speed presets |
 | G-code export | GRBL and LinuxCNC post-processors |
 | WebGL toolpath preview | 3D preview of the cut paths |
+
+> **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
 
 ### File I/O
 
@@ -147,13 +151,17 @@ src/
 ├── ui/                 # UI panels — toolbar, bars, dialogs
 │   ├── toolPalette.ts
 │   ├── constraintBar.ts
-│   ├── camBar.ts
+│   ├── camBar.ts          # Toolpath list + Add/Edit Toolpath dialog
+│   ├── camBarHelpers.ts   # Pure CAM helpers (op matching, region seeding)
 │   ├── statusBar.ts
 │   └── …
 │
 ├── cam/                # CAM operations
 │   ├── types.ts        # CamOperation, ToolDef
-│   ├── pocket.ts       # Pocket clearing
+│   ├── clearing.ts     # Contour-parallel (offset) pocket clearing
+│   ├── pocket.ts       # Raster (zig-zag) pocket scanline
+│   ├── loops.ts        # Closed-loop detection (lines/arcs/beziers → polygons)
+│   ├── regions.ts      # Flood-fill region picking (Clipper2 booleans)
 │   ├── offset.ts       # Contour offsetting (via Clipper2)
 │   ├── tabs.ts         # Tab/bridge insertion
 │   ├── gcode.ts        # G-code builder
@@ -183,7 +191,7 @@ src/
 ### Install and run
 
 ```bash
-git clone https://github.com/your-org/rapidcam.git
+git clone https://github.com/jennib/rapidcam.git
 cd rapidcam
 npm install
 npm run dev        # starts Vite dev server at http://localhost:5173
@@ -198,6 +206,19 @@ npm run build      # type check + Vite production build → dist/
 npm run preview    # serve the dist/ build locally
 npm run validate   # type check + tests + production build
 ```
+
+---
+
+## Privacy & analytics
+
+RapidCAM can collect anonymous usage analytics (via PostHog) to help guide development, but **only with your explicit consent**:
+
+- On first visit you'll see a small banner; nothing is sent unless you choose **Allow analytics**.
+- Browsers with **Do Not Track** enabled are never tracked and never shown the banner.
+- Your choice is stored locally and can be cleared at any time (clear site data, or remove the `rapidcam_analytics_consent` localStorage key) to be asked again.
+- Your geometry, G-code, and project files never leave the browser — analytics only records coarse interaction events (e.g. "tool activated", "g-code generated").
+
+The self-hosted build collects nothing unless you wire up your own PostHog key.
 
 ---
 
