@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run test/loops.test.ts test/midpointConstraint.test.ts test/pocketRegions.test.ts test/regions.test.ts test/transform.test.ts test/trim.test.ts test/trimShapes.test.ts",
+    "test:unit": "vitest run test/camBarHelpers.test.ts test/clearing.test.ts test/loops.test.ts test/midpointConstraint.test.ts test/pocketRegions.test.ts test/polylineConstraints.test.ts test/regions.test.ts test/transform.test.ts test/trim.test.ts test/trimShapes.test.ts",
     "test:runtime": "node scripts/run-runtime-tests.mjs",
     "test": "npm run test:unit && npm run test:runtime",
     "validate": "npm run typecheck && npm test && npm run build",
