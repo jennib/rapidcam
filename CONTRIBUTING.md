@@ -19,7 +19,7 @@ git clone https://github.com/your-org/rapidcam.git
 cd rapidcam
 npm install
 npm run dev          # dev server at http://localhost:5173
-npm run typecheck    # must pass before opening a PR
+npm run validate     # must pass before opening a PR
 ```
 
 ## Workflow
@@ -29,7 +29,7 @@ npm run typecheck    # must pass before opening a PR
    git checkout -b feat/my-feature
    ```
 2. Make focused, minimal changes — one logical change per PR.
-3. Run `npm run typecheck` and fix any type errors.
+3. Run `npm run validate` and fix any failures.
 4. Open a pull request against `main` with a clear title and description.
 
 ## Code conventions
@@ -55,7 +55,7 @@ npm run typecheck    # must pass before opening a PR
 
 ### Solver (`src/solver/`)
 
-- Anchor weight and pin weight are both `1e-3`. Do not raise these; they must remain well below `1` so hard constraints always dominate.
+- Drag anchors are stronger than drag pins so non-dragged geometry stays put while constrained drags project the cursor target. Keep both weights below `1` so hard constraints always dominate.
 - The `computeEntityDofStatus()` function must not modify entity state — it runs `evalR(x)` at the end to restore positions after the Jacobian perturbation.
 - New constraint types must expose `constraintResiduals()` returning a flat `number[]`.
 
@@ -87,7 +87,7 @@ npm run typecheck    # must pass before opening a PR
 
 ## Pull request checklist
 
-- [ ] `npm run typecheck` passes with zero errors
+- [ ] `npm run validate` passes with zero errors
 - [ ] No `any` casts introduced
 - [ ] No hard-coded pixel values or colour strings in source files
 - [ ] No mutations of entity state inside the renderer
