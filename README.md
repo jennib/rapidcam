@@ -201,7 +201,7 @@ npm run dev        # starts Vite dev server at http://localhost:5173
 
 ```bash
 npm run typecheck  # TypeScript type check (no emit)
-npm test           # run unit tests and runtime verification harnesses
+npm test           # run all tests via vitest
 npm run build      # type check + Vite production build → dist/
 npm run preview    # serve the dist/ build locally
 npm run validate   # type check + tests + production build
