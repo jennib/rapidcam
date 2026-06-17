@@ -217,7 +217,8 @@ Y-up. The version-1 format is **frozen** and documented for external tooling:
 - [`docs/rcam-format-v1.md`](docs/rcam-format-v1.md) — authoring guide (entity
   point-key vocabularies, constraint/dimension semantics, CAM operations, gotchas).
 - [`public/schema/rcam-v1.schema.json`](public/schema/rcam-v1.schema.json) — machine-readable
-  JSON Schema (draft 2020-12) for validating generated files.
+  JSON Schema (draft 2020-12) for validating generated files. Published at its
+  canonical URL **https://rapidcam.app/schema/rcam-v1.schema.json**.
 
 Both are kept honest by a drift-guard test that validates every bundled
 [example](examples/) against the schema (`npm test -- rcam-schema`).
