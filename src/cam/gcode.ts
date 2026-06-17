@@ -534,12 +534,15 @@ function engraveArc(
 
 // --- drill -------------------------------------------------------------------
 
+// One peck cycle: rapid to the hole, plunge, retract to safe Z. The tool is
+// assumed already at safe Z (the caller emits a single retract before the first
+// hole), so we don't re-retract on entry — that produced a redundant duplicate
+// `G0 Z<safe>` between every pair of holes.
 function drillPoint(
   cx: number, cy: number, op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
   return [
-    `G0 Z${Z(op.safeZ, zOff)}`,
     `G0 X${X(cx, ox)} Y${Y(cy, oy)}`,
     `G1 Z${Z(op.depth, zOff)} F${n(op.plungeRate)}`,
     `G0 Z${Z(op.safeZ, zOff)}`,
@@ -619,14 +622,18 @@ function toolpathBody(
     }
   }
 
+  let firstDrill = true;
   for (const id of op.entityIds) {
     if (lineSegIds.has(id) || islandSet.has(id)) continue;
     const ent = entityMap.get(id);
     if (!ent || ent.isConstruction) continue;
 
     if (op.type === "drill") {
-      if (ent instanceof CircleEntity)
+      if (ent instanceof CircleEntity) {
+        // Establish safe Z once, before the first hole, then peck each hole.
+        if (firstDrill) { lines.push(`G0 Z${Z(op.safeZ, zOff)}`); firstDrill = false; }
         lines.push(...drillPoint(ent.center.x, ent.center.y, op, ox, oy, zOff));
+      }
       continue;
     }
 
