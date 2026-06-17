@@ -16,22 +16,44 @@ const modules = import.meta.glob("../../examples/*.rcam", {
   eager: true,
 }) as Record<string, string>;
 
+/**
+ * Curated learning order (the tier progression documented in examples/README.md).
+ * Listed files appear in this order; any others sort after them, alphabetically.
+ * Keyed on filename so renaming the display `name` doesn't reshuffle the list.
+ */
+const ORDER = [
+  "keychain-tag.rcam",      // Tier 1 — first contact
+  "mounting-plate.rcam",
+  "bracket.rcam",           // Tier 2 — constraints / variables / patterns
+  "bolt-circle.rcam",
+  "mounting-plate-cam.rcam", // Tier 3 — full CAM pipeline
+  "enclosure-lid.rcam",
+];
+
 let cache: ExampleEntry[] | null = null;
 
 export function getExamples(): ExampleEntry[] {
   if (cache) return cache;
-  const out: ExampleEntry[] = [];
+  const items: { entry: ExampleEntry; base: string }[] = [];
   for (const [path, raw] of Object.entries(modules)) {
     try {
       const file = JSON.parse(raw) as RcamFile;
       if (file.version !== 1) continue;
-      const fallback = path.split("/").pop()!.replace(/\.rcam$/i, "");
-      out.push({ name: file.name || fallback, file });
+      const base = path.split("/").pop()!;
+      const fallback = base.replace(/\.rcam$/i, "");
+      items.push({ entry: { name: file.name || fallback, file }, base });
     } catch {
       // Skip a malformed example rather than breaking the menu.
     }
   }
-  out.sort((a, b) => a.name.localeCompare(b.name));
-  cache = out;
-  return out;
+  items.sort((a, b) => {
+    const ia = ORDER.indexOf(a.base);
+    const ib = ORDER.indexOf(b.base);
+    if (ia !== -1 && ib !== -1) return ia - ib;     // both curated → tier order
+    if (ia !== -1) return -1;                        // curated before un-curated
+    if (ib !== -1) return 1;
+    return a.entry.name.localeCompare(b.entry.name); // neither → alphabetical
+  });
+  cache = items.map((i) => i.entry);
+  return cache;
 }
