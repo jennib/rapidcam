@@ -231,16 +231,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The short version:
 3. Run `npm run typecheck` and confirm it passes with no errors.
 4. Open a pull request against `main`.
 
-**License note:** This project is licensed under [CC BY-NC-SA 4.0](LICENSE). Contributions are accepted under the same licence. Commercial forks are not permitted without prior written agreement.
+**License note:** This project is licensed under [AGPL-3.0](LICENSE). By submitting a contribution you agree to license it under the same terms. The author also reserves the right to offer the project under separate commercial terms (dual licensing).
 
 ---
 
 ## License
 
-[![CC BY-NC-SA 4.0](https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-RapidCAM is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International** licence.
+RapidCAM is licensed under the **GNU Affero General Public License v3.0**.
 
-You are free to share and adapt the material for **non-commercial purposes**, provided you give appropriate credit and distribute your contributions under the same licence.
+You are free to use, study, modify, and share it. If you distribute it — or run a modified version as a network/hosted service — you must make the complete corresponding source code available to your users under the same license.
+
+Want to use RapidCAM without these obligations (e.g. to host it commercially)? A separate commercial license is available — contact the author.
 
 See [LICENSE](LICENSE) for the full legal text.

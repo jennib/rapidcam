@@ -10,7 +10,7 @@ Thanks for your interest in contributing! This document covers the development w
 
 ## Licence
 
-This project is licensed under **CC BY-NC-SA 4.0**. By submitting a pull request you agree that your contribution will be published under the same licence. Commercial use of this code without prior written agreement from the author is not permitted.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. By submitting a pull request you agree that your contribution will be published under the same license. The author additionally reserves the right to distribute the project under separate commercial terms (dual licensing); a commercial license is available for anyone who wants to use or host RapidCAM without the AGPL's obligations.
 
 ## Development setup
 
