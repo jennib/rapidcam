@@ -190,6 +190,7 @@ export class App {
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
+        onOpenExample: (e) => this.project.loadExample(e),
         onImportSvg: () => this.project.svgImport(),
         onExportSvg: () => this.project.svgExport(),
       },
@@ -244,7 +245,8 @@ export class App {
       () => this.project.openSetupDialog(),
       () => { void this.project.fileOpen(); },
       (entry) => this.project.fileOpenRecent(entry),
-      () => this.project.restoreDraft()
+      () => this.project.restoreDraft(),
+      (entry) => this.project.loadExample(entry)
     );
   }
 

@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "name": "Mounting Plate + CAM",
+  "canvas": { "width": 170, "height": 130 },
+  "displayUnit": "mm",
+  "stockThickness": 10,
+  "hasToolChanger": false,
+  "origin": { "x": "left", "y": "front", "z": "top" },
+  "postProcessor": "grbl",
+  "groups": [],
+  "operations": [
+    {
+      "id": "op1",
+      "name": "Drill holes",
+      "type": "drill",
+      "entityIds": ["ent4", "ent5", "ent6", "ent7"],
+      "side": "outside",
+      "toolType": "drill",
+      "toolNumber": 1,
+      "diameter": 8,
+      "tipAngle": 118,
+      "feedrate": 200,
+      "plungeRate": 120,
+      "spindleSpeed": 6000,
+      "safeZ": 5,
+      "depth": -12,
+      "stepdown": 3,
+      "stepover": 0.4
+    },
+    {
+      "id": "op2",
+      "name": "Profile outline",
+      "type": "profile",
+      "entityIds": ["ent1"],
+      "side": "outside",
+      "toolType": "end-mill",
+      "toolNumber": 2,
+      "diameter": 6,
+      "feedrate": 900,
+      "plungeRate": 250,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -12,
+      "stepdown": 2,
+      "stepover": 0.4,
+      "tabs": { "enabled": true, "count": 4, "width": 6, "height": 2 },
+      "leadIn": { "type": "arc", "length": 3 },
+      "leadOut": { "type": "arc", "length": 3 }
+    }
+  ],
+  "isConstructionMode": false,
+  "selectedPoints": [],
+  "entities": [
+    {
+      "type": "rectangle",
+      "id": "ent1",
+      "p0": { "x": 25, "y": 25 },
+      "p1": { "x": 145, "y": 105 },
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "ent2",
+      "a": { "x": 85, "y": 25 },
+      "b": { "x": 85, "y": 105 },
+      "selected": false,
+      "isConstruction": true,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "ent3",
+      "a": { "x": 25, "y": 65 },
+      "b": { "x": 145, "y": 65 },
+      "selected": false,
+      "isConstruction": true,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent4",
+      "center": { "x": 40, "y": 40 },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent5",
+      "center": { "x": 130, "y": 40 },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent6",
+      "center": { "x": 130, "y": 90 },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent7",
+      "center": { "x": 40, "y": 90 },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixedPoint",
+      "points": [{ "entityId": "ent1", "key": "bl" }],
+      "entities": [],
+      "params": [25, 25]
+    },
+    {
+      "id": "con2",
+      "type": "midpoint",
+      "points": [
+        { "entityId": "ent2", "key": "a" },
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent1", "key": "br" }
+      ],
+      "entities": []
+    },
+    {
+      "id": "con3",
+      "type": "midpoint",
+      "points": [
+        { "entityId": "ent2", "key": "b" },
+        { "entityId": "ent1", "key": "tl" },
+        { "entityId": "ent1", "key": "tr" }
+      ],
+      "entities": []
+    },
+    {
+      "id": "con4",
+      "type": "midpoint",
+      "points": [
+        { "entityId": "ent3", "key": "a" },
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent1", "key": "tl" }
+      ],
+      "entities": []
+    },
+    {
+      "id": "con5",
+      "type": "midpoint",
+      "points": [
+        { "entityId": "ent3", "key": "b" },
+        { "entityId": "ent1", "key": "br" },
+        { "entityId": "ent1", "key": "tr" }
+      ],
+      "entities": []
+    },
+    {
+      "id": "con6",
+      "type": "symmetric",
+      "points": [
+        { "entityId": "ent4", "key": "c" },
+        { "entityId": "ent5", "key": "c" }
+      ],
+      "entities": ["ent2"]
+    },
+    {
+      "id": "con7",
+      "type": "symmetric",
+      "points": [
+        { "entityId": "ent4", "key": "c" },
+        { "entityId": "ent7", "key": "c" }
+      ],
+      "entities": ["ent3"]
+    },
+    {
+      "id": "con8",
+      "type": "symmetric",
+      "points": [
+        { "entityId": "ent7", "key": "c" },
+        { "entityId": "ent6", "key": "c" }
+      ],
+      "entities": ["ent2"]
+    },
+    {
+      "id": "con9",
+      "type": "equal",
+      "points": [],
+      "entities": ["ent4", "ent5"]
+    },
+    {
+      "id": "con10",
+      "type": "equal",
+      "points": [],
+      "entities": ["ent4", "ent7"]
+    },
+    {
+      "id": "con11",
+      "type": "equal",
+      "points": [],
+      "entities": ["ent4", "ent6"]
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "dim1",
+      "type": "horizontal",
+      "points": [
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent1", "key": "br" }
+      ],
+      "entities": [],
+      "value": 120,
+      "driving": true,
+      "offset": -19
+    },
+    {
+      "id": "dim2",
+      "type": "vertical",
+      "points": [
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent1", "key": "tl" }
+      ],
+      "entities": [],
+      "value": 80,
+      "driving": true,
+      "offset": -19
+    },
+    {
+      "id": "dim3",
+      "type": "horizontal",
+      "points": [
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent4", "key": "c" }
+      ],
+      "entities": [],
+      "value": 15,
+      "driving": true,
+      "offset": -17.5
+    },
+    {
+      "id": "dim4",
+      "type": "vertical",
+      "points": [
+        { "entityId": "ent1", "key": "bl" },
+        { "entityId": "ent4", "key": "c" }
+      ],
+      "entities": [],
+      "value": 15,
+      "driving": true,
+      "offset": -17.5
+    },
+    {
+      "id": "dim5",
+      "type": "diameter",
+      "points": [],
+      "entities": ["ent4"],
+      "value": 8,
+      "driving": true,
+      "offset": -2.356
+    }
+  ]
+}

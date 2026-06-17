@@ -1,9 +1,10 @@
-import { CADDocument, DocSnapshot } from "../model/document";
+import { CADDocument, DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
+import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { track } from "../analytics";
@@ -157,6 +158,14 @@ export class ProjectManager {
     if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
     track("project_opened_recent");
     this.loadDocument(entry.data, entry.name);
+  }
+
+  loadExample(entry: ExampleEntry): void {
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
+    if (hasWork && !confirm(`Discard current drawing and open example "${entry.name}"?`)) return;
+    track("example_opened", { name: entry.name });
+    // No file handle: a later Save prompts for a new file, leaving the bundled example intact.
+    this.loadDocument(entry.file, entry.name);
   }
 
   /** Shared load path for open-file, open-recent, and draft-restore. */

@@ -1,11 +1,14 @@
 import type { RecentEntry } from "../io/fileio";
 import { getRecents } from "../io/fileio";
+import type { ExampleEntry } from "../io/examples";
+import { getExamples } from "../io/examples";
 
 export interface FileMenuCallbacks {
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
   onOpenRecent: (entry: RecentEntry) => void;
+  onOpenExample: (entry: ExampleEntry) => void;
   onImportSvg: () => void;
   onExportSvg: () => void;
 }
@@ -65,6 +68,15 @@ export class FileMenu {
     this.sep();
     this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
     this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
+
+    const examples = getExamples();
+    if (examples.length) {
+      this.sep();
+      this.sectionLabel("Examples");
+      for (const entry of examples) {
+        this.item(entry.name, "", () => { this.close(); this.cb.onOpenExample(entry); });
+      }
+    }
 
     const recents = getRecents();
     if (recents.length) {

@@ -1,4 +1,5 @@
 import { getRecents, type RecentEntry } from "../io/fileio";
+import { getExamples, type ExampleEntry } from "../io/examples";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -18,9 +19,11 @@ export function showWelcomeScreen(
   onNew: () => void,
   onOpen: () => void,
   onOpenRecent: (entry: RecentEntry) => void,
-  onRestoreDraft: () => void
+  onRestoreDraft: () => void,
+  onOpenExample: (entry: ExampleEntry) => void
 ): void {
   const recents = getRecents();
+  const examples = getExamples();
 
   const draftRaw = localStorage.getItem("rapidcam:autosave-draft");
   let draft: { name: string; savedAt: number } | null = null;
@@ -158,23 +161,19 @@ export function showWelcomeScreen(
   cards.appendChild(openCard);
   leftCol.appendChild(cards);
 
-  // Right column (Recent files)
+  // Right column (Recent files + Examples)
   const rightCol = document.createElement("div");
   rightCol.className = "welcome-section";
 
-  const rightTitle = document.createElement("div");
-  rightTitle.className = "welcome-section-title";
-  rightTitle.textContent = "Recent Projects";
-  rightCol.appendChild(rightTitle);
+  // Recent Projects — only shown when there are some.
+  if (recents.length > 0) {
+    const rightTitle = document.createElement("div");
+    rightTitle.className = "welcome-section-title";
+    rightTitle.textContent = "Recent Projects";
+    rightCol.appendChild(rightTitle);
 
-  const recentsContainer = document.createElement("div");
-  recentsContainer.className = "welcome-recents";
-  if (recents.length === 0) {
-    const emptyState = document.createElement("div");
-    emptyState.className = "welcome-recents-empty";
-    emptyState.textContent = "No recent files. Start by creating a new project!";
-    recentsContainer.appendChild(emptyState);
-  } else {
+    const recentsContainer = document.createElement("div");
+    recentsContainer.className = "welcome-recents";
     for (const r of recents) {
       const item = document.createElement("div");
       item.className = "welcome-recent-item";
@@ -211,9 +210,62 @@ export function showWelcomeScreen(
 
       recentsContainer.appendChild(item);
     }
+    rightCol.appendChild(recentsContainer);
   }
 
-  rightCol.appendChild(recentsContainer);
+  // Examples — always offered, so a first-time user has a one-click way into a
+  // real project instead of a blank canvas.
+  if (examples.length > 0) {
+    const exTitle = document.createElement("div");
+    exTitle.className = "welcome-section-title";
+    exTitle.textContent = "Examples";
+    rightCol.appendChild(exTitle);
+
+    const exContainer = document.createElement("div");
+    exContainer.className = "welcome-recents";
+    for (const ex of examples) {
+      const item = document.createElement("div");
+      item.className = "welcome-recent-item";
+
+      const header = document.createElement("div");
+      header.className = "welcome-recent-header";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "welcome-recent-name";
+      nameSpan.textContent = ex.name;
+      nameSpan.title = ex.name;
+
+      header.appendChild(nameSpan);
+      item.appendChild(header);
+
+      const meta = document.createElement("div");
+      meta.className = "welcome-recent-meta";
+      const w = ex.file.canvas.width;
+      const h = ex.file.canvas.height;
+      const unit = ex.file.displayUnit || "mm";
+      const opCount = ex.file.operations?.length ?? 0;
+      meta.textContent = opCount > 0
+        ? `${w} × ${h} ${unit} · ${opCount} toolpath${opCount !== 1 ? "s" : ""}`
+        : `${w} × ${h} ${unit}`;
+      item.appendChild(meta);
+
+      item.addEventListener("click", () => {
+        backdrop.remove();
+        onOpenExample(ex);
+      });
+
+      exContainer.appendChild(item);
+    }
+    rightCol.appendChild(exContainer);
+  }
+
+  // Nothing to show at all (no recents, no bundled examples) — keep a hint.
+  if (recents.length === 0 && examples.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "welcome-recents-empty";
+    emptyState.textContent = "No recent files. Start by creating a new project!";
+    rightCol.appendChild(emptyState);
+  }
 
   content.appendChild(leftCol);
   content.appendChild(rightCol);
