@@ -1,0 +1,517 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rapidcam.app/schema/rcam-v1.schema.json",
+  "title": "RapidCAM Project (.rcam) — version 1",
+  "description": "Frozen contract for the RapidCAM v1 file format. A .rcam file is JSON. All lengths are in millimetres, in a Y-up world frame, regardless of displayUnit. See docs/rcam-format-v1.md for the authoring guide.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "name",
+    "canvas",
+    "displayUnit",
+    "entities",
+    "constraints",
+    "dimensions",
+    "isConstructionMode",
+    "selectedPoints"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Format version. Must be exactly 1. The loader rejects anything else."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable project name."
+    },
+    "canvas": { "$ref": "#/$defs/canvas" },
+    "displayUnit": {
+      "enum": ["mm", "in"],
+      "description": "Unit the UI presents values in. Does NOT change the file's units — geometry is always mm."
+    },
+    "stockThickness": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Stock thickness in mm. Default 10 if omitted."
+    },
+    "hasToolChanger": {
+      "type": "boolean",
+      "description": "Whether the machine has an automatic tool changer (emits T/M6). Default false."
+    },
+    "origin": { "$ref": "#/$defs/origin" },
+    "postProcessor": {
+      "enum": ["linuxcnc", "grbl"],
+      "description": "G-code dialect. Default \"linuxcnc\"."
+    },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" },
+      "description": "Named entity groups. Default []."
+    },
+    "layers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/layer" },
+      "description": "Layers. If omitted, a single \"layer-0\" / \"Default\" layer is created."
+    },
+    "activeLayerId": {
+      "type": "string",
+      "description": "Id of the active layer. Default \"layer-0\"."
+    },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity" },
+      "description": "Geometry. May be empty. The reserved origin point \"__origin__\" is injected automatically and need not be authored."
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" },
+      "description": "Parametric constraints. May be empty — geometry is valid without them."
+    },
+    "dimensions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dimension" },
+      "description": "Dimensions. Driving dimensions also act as constraints. May be empty."
+    },
+    "variables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/variable" },
+      "description": "Named numeric variables referenced by dimension/pattern expressions."
+    },
+    "patterns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pattern" },
+      "description": "Linear/circular pattern definitions."
+    },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" },
+      "description": "CAM toolpath operations."
+    },
+    "isConstructionMode": {
+      "type": "boolean",
+      "description": "Whether the editor was in construction-geometry mode. Author as false."
+    },
+    "selectedPoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pointRef" },
+      "description": "UI selection state. Author as []."
+    },
+    "selectedConstraintId": { "type": ["string", "null"] },
+    "selectedDimensionId": { "type": ["string", "null"] }
+  },
+
+  "$defs": {
+    "vec2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "description": "mm" },
+        "y": { "type": "number", "description": "mm (Y-up: larger = further from the front)" }
+      }
+    },
+
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0, "description": "Work-area width, mm." },
+        "height": { "type": "number", "exclusiveMinimum": 0, "description": "Work-area height, mm." }
+      }
+    },
+
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "description": "Named work-coordinate-system origin. Default front-left-top.",
+      "properties": {
+        "x": { "enum": ["left", "center", "right"] },
+        "y": { "enum": ["front", "center", "back"] },
+        "z": { "enum": ["top", "bed"] }
+      }
+    },
+
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "entityIds"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "entityIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "color", "visible", "locked"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "color": { "type": "string", "description": "CSS hex colour, e.g. \"#cdd2da\"." },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" }
+      }
+    },
+
+    "entityCommon": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Unique within the file. \"__origin__\" is reserved." },
+        "selected": { "type": "boolean", "description": "UI state; default false." },
+        "isConstruction": { "type": "boolean", "description": "Construction (reference) geometry; default false." },
+        "layerId": { "type": "string", "description": "Owning layer id; default \"layer-0\"." }
+      }
+    },
+
+    "entity": {
+      "oneOf": [
+        { "$ref": "#/$defs/lineEntity" },
+        { "$ref": "#/$defs/circleEntity" },
+        { "$ref": "#/$defs/rectangleEntity" },
+        { "$ref": "#/$defs/polylineEntity" },
+        { "$ref": "#/$defs/arcEntity" },
+        { "$ref": "#/$defs/bezierEntity" },
+        { "$ref": "#/$defs/pointEntity" },
+        { "$ref": "#/$defs/textEntity" }
+      ]
+    },
+
+    "lineEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "a", "b"],
+      "description": "Point DOF keys: a, b (endpoints), mid (midpoint, pickable but derived).",
+      "properties": {
+        "type": { "const": "line" },
+        "id": { "type": "string", "minLength": 1 },
+        "a": { "$ref": "#/$defs/vec2" },
+        "b": { "$ref": "#/$defs/vec2" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "circleEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "center", "radius"],
+      "description": "Point DOF key: c (center). Scalar DOF key: r (radius).",
+      "properties": {
+        "type": { "const": "circle" },
+        "id": { "type": "string", "minLength": 1 },
+        "center": { "$ref": "#/$defs/vec2" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "rectangleEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "p0", "p1"],
+      "description": "Axis-aligned. p0/p1 are opposite corners (stored normalised to min/max). Point DOF keys: bl, br, tr, tl (corners); mid_b, mid_r, mid_t, mid_l (edge midpoints); center.",
+      "properties": {
+        "type": { "const": "rectangle" },
+        "id": { "type": "string", "minLength": 1 },
+        "p0": { "$ref": "#/$defs/vec2" },
+        "p1": { "$ref": "#/$defs/vec2" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "polylineEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "points", "closed"],
+      "description": "Point DOF keys: v0, v1, ... vN (vertices); mid_0, mid_1, ... (segment midpoints). A segment can substitute for a line in line-type constraints via the entity ref \"<polylineId>#<segmentIndex>\".",
+      "properties": {
+        "type": { "const": "polyline" },
+        "id": { "type": "string", "minLength": 1 },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/vec2" }, "minItems": 2 },
+        "closed": { "type": "boolean" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "arcEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "center", "radius", "startAngle", "endAngle"],
+      "description": "CCW from startAngle to endAngle (radians, world Y-up). Point DOF key: c (center); start/end pickable. Scalar DOF keys: r, sa, ea.",
+      "properties": {
+        "type": { "const": "arc" },
+        "id": { "type": "string", "minLength": 1 },
+        "center": { "$ref": "#/$defs/vec2" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "startAngle": { "type": "number", "description": "radians" },
+        "endAngle": { "type": "number", "description": "radians" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "bezierEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "p0", "p1", "p2", "p3"],
+      "description": "Cubic Bezier. p0=start, p1=start handle, p2=end handle, p3=end. Point DOF keys: p0, p1, p2, p3. Only p0/p3 participate in constraints; p1/p2 are drag-only.",
+      "properties": {
+        "type": { "const": "bezier" },
+        "id": { "type": "string", "minLength": 1 },
+        "p0": { "$ref": "#/$defs/vec2" },
+        "p1": { "$ref": "#/$defs/vec2" },
+        "p2": { "$ref": "#/$defs/vec2" },
+        "p3": { "$ref": "#/$defs/vec2" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "pointEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "pos"],
+      "description": "Single reference point. Point DOF key: p. The reserved WCS origin uses id \"__origin__\".",
+      "properties": {
+        "type": { "const": "point" },
+        "id": { "type": "string", "minLength": 1 },
+        "pos": { "$ref": "#/$defs/vec2" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "textEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "text", "fontId", "sizeMM", "position", "angle"],
+      "description": "Editable text, expanded to glyph contours at CAM export. position is the baseline-left anchor. angle is CCW radians. Point DOF key: pos.",
+      "properties": {
+        "type": { "const": "text" },
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string" },
+        "fontId": { "type": "string", "description": "e.g. \"roboto-regular\"." },
+        "sizeMM": { "type": "number", "exclusiveMinimum": 0 },
+        "position": { "$ref": "#/$defs/vec2" },
+        "angle": { "type": "number", "description": "radians" },
+        "selected": { "type": "boolean" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
+    "pointRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "key"],
+      "description": "A reference to one named point DOF inside an entity. See each entity's DOF-key list.",
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "points", "entities"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "coincident", "horizontal", "vertical", "parallel", "perpendicular",
+            "equal", "concentric", "pointOnLine", "tangent", "pointOnArc",
+            "pointOnCircle", "symmetric", "collinear", "midpoint", "angle",
+            "fixedPoint", "fixed"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pointRef" },
+          "description": "Point operands. Count/role depends on type (see docs)."
+        },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Entity operands (entity ids, or polyline-segment refs \"<id>#<index>\"). Count/role depends on type."
+        },
+        "params": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Type-specific numbers: angle→[radians]; fixedPoint→[x, y]."
+        }
+      }
+    },
+
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "points", "entities", "value", "driving", "offset"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance"]
+        },
+        "points": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pointRef" },
+          "description": "Linear dims: the 2 measured points."
+        },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids."
+        },
+        "value": { "type": "number", "description": "mm, or radians for type \"angle\"." },
+        "driving": { "type": "boolean", "description": "When true, also constrains the measurement to value." },
+        "offset": { "type": "number", "description": "Placement of the dimension line/leader. Visual only." },
+        "anchors": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[t1, t2] parametric anchors for line-distance extension lines."
+        },
+        "expr": { "type": "string", "description": "Optional formula driving value, e.g. \"width * 2\"." }
+      }
+    },
+
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "expr", "value"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$", "description": "Valid identifier; referenced by expressions." },
+        "expr": { "type": "string", "description": "Raw input string, e.g. \"100\", \"50mm\", \"3.5in\"." },
+        "value": { "type": "number", "description": "Cached evaluated value in mm." }
+      }
+    },
+
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "sourceIds", "instanceIds", "params"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["linear", "circular"] },
+        "sourceIds": { "type": "array", "items": { "type": "string" }, "description": "Original (master) entity ids." },
+        "instanceIds": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "One sub-array per generated step, listing that step's copy entity ids. Those entities must also exist in `entities`."
+        },
+        "params": {
+          "oneOf": [
+            { "$ref": "#/$defs/linearPatternParams" },
+            { "$ref": "#/$defs/circularPatternParams" }
+          ]
+        },
+        "sourceSnapshot": { "type": "number", "description": "FNV-32 hash of source geometry; staleness check. Optional." }
+      }
+    },
+
+    "linearPatternParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["countX", "countY", "spacingX", "spacingY"],
+      "properties": {
+        "countX": { "type": "integer", "minimum": 1 },
+        "countY": { "type": "integer", "minimum": 1 },
+        "spacingX": { "type": "number", "description": "mm" },
+        "spacingY": { "type": "number", "description": "mm" },
+        "spacingXExpr": { "type": "string" },
+        "spacingYExpr": { "type": "string" }
+      }
+    },
+
+    "circularPatternParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "cx", "cy", "totalAngle"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 1 },
+        "cx": { "type": "number", "description": "rotation centre X, mm" },
+        "cy": { "type": "number", "description": "rotation centre Y, mm" },
+        "totalAngle": { "type": "number", "description": "radians; 2π = full circle" }
+      }
+    },
+
+    "leadDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "length"],
+      "properties": {
+        "type": { "enum": ["none", "linear", "arc"] },
+        "length": { "type": "number", "description": "mm" }
+      }
+    },
+
+    "tabDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "count", "width", "height"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "count": { "type": "integer", "minimum": 0 },
+        "width": { "type": "number", "description": "arc-length of each tab, mm" },
+        "height": { "type": "number", "description": "material left standing above the floor, mm" }
+      }
+    },
+
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "name", "type", "entityIds", "side", "toolType", "toolNumber",
+        "diameter", "feedrate", "plungeRate", "spindleSpeed", "safeZ",
+        "depth", "stepdown", "stepover"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket"] },
+        "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
+        "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
+        "toolType": { "enum": ["end-mill", "ball-nose", "v-bit", "drill"] },
+        "toolNumber": { "type": "integer", "minimum": 1, "description": "T-number (1-based)." },
+        "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Tool diameter, mm." },
+        "vAngle": { "type": "number", "description": "V-bit included angle, degrees." },
+        "tipDiameter": { "type": "number", "description": "V-bit flat tip diameter, mm." },
+        "tipAngle": { "type": "number", "description": "Drill tip angle, degrees." },
+        "feedrate": { "type": "number", "exclusiveMinimum": 0, "description": "mm/min" },
+        "plungeRate": { "type": "number", "exclusiveMinimum": 0, "description": "mm/min" },
+        "spindleSpeed": { "type": "number", "minimum": 0, "description": "rpm" },
+        "safeZ": { "type": "number", "description": "mm above work surface" },
+        "depth": { "type": "number", "description": "mm below surface; NEGATIVE for cuts." },
+        "stepdown": { "type": "number", "exclusiveMinimum": 0, "description": "mm per depth pass (ignored for drill)." },
+        "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter." },
+        "pocketStrategy": { "enum": ["offset", "raster"], "description": "Pocket only; default \"offset\"." },
+        "islandIds": { "type": "array", "items": { "type": "string" }, "description": "Pocket only (legacy): entities treated as islands." },
+        "regionSeeds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vec2" },
+          "description": "Pocket only: world points each inside an enclosed area; the region is flood-filled from live geometry at G-code time."
+        },
+        "tabs": { "$ref": "#/$defs/tabDef" },
+        "leadIn": { "$ref": "#/$defs/leadDef" },
+        "leadOut": { "$ref": "#/$defs/leadDef" }
+      }
+    }
+  }
+}
