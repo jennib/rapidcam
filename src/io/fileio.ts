@@ -11,6 +11,8 @@ export interface RcamFile {
   origin?: { x: string; y: string; z: string };
   postProcessor?: string;
   groups?: unknown[];
+  layers?: unknown[];
+  activeLayerId?: string;
   entities: unknown[];
   constraints: unknown[];
   dimensions: unknown[];
@@ -56,6 +58,8 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
     postProcessor: doc.postProcessor,
     groups: snap.groups as unknown[],
+    layers: snap.layers as unknown[],
+    activeLayerId: snap.activeLayerId,
     entities: snap.entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
