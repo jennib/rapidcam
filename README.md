@@ -216,7 +216,7 @@ Y-up. The version-1 format is **frozen** and documented for external tooling:
 
 - [`docs/rcam-format-v1.md`](docs/rcam-format-v1.md) — authoring guide (entity
   point-key vocabularies, constraint/dimension semantics, CAM operations, gotchas).
-- [`schema/rcam-v1.schema.json`](schema/rcam-v1.schema.json) — machine-readable
+- [`public/schema/rcam-v1.schema.json`](public/schema/rcam-v1.schema.json) — machine-readable
   JSON Schema (draft 2020-12) for validating generated files.
 
 Both are kept honest by a drift-guard test that validates every bundled

@@ -9,7 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- **Frozen `.rcam` v1 format spec** — a published [JSON Schema](schema/rcam-v1.schema.json) and [authoring guide](docs/rcam-format-v1.md) document the version-1 file format (entity point-key vocabularies, constraint/dimension semantics, CAM operations). A drift-guard test validates every bundled example against the schema so v1 cannot silently change. Lets external tools and AIs author `.rcam` files reliably.
+- **Frozen `.rcam` v1 format spec** — a published [JSON Schema](public/schema/rcam-v1.schema.json) and [authoring guide](docs/rcam-format-v1.md) document the version-1 file format (entity point-key vocabularies, constraint/dimension semantics, CAM operations). A drift-guard test validates every bundled example against the schema so v1 cannot silently change. Lets external tools and AIs author `.rcam` files reliably.
 - **DOF-based entity colouring** — entities are coloured blue (under-defined) or their normal colour (fully defined) after each solve. Over-constrained / conflicting sketches are highlighted red. Analysis uses RREF null-space decomposition so that mutual dependencies between entities are handled correctly.
 - **Driven (reference) dimension UI** — non-driving dimensions now display their value in parentheses `(50.00 mm)` in a muted colour, matching the SolidWorks / FreeCAD convention.
 - **Chamfer tool** — trims two meeting line ends by a user-typed distance and inserts a straight bevel line with coincident constraints at both ends. Mirrors the fillet tool workflow.

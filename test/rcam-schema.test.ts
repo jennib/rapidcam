@@ -1,7 +1,7 @@
 /**
  * Drift guard for the frozen v1 .rcam format.
  *
- * Validates every bundled example project against schema/rcam-v1.schema.json.
+ * Validates every bundled example project against public/schema/rcam-v1.schema.json.
  * If the format changes, either the schema or the examples must be updated to
  * match — this test forces them to stay in sync, which is what "frozen v1"
  * actually buys us. It also doubles as a contract test for external authors
@@ -16,7 +16,7 @@ import Ajv2020 from "ajv/dist/2020";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
-const schemaPath = join(repoRoot, "schema", "rcam-v1.schema.json");
+const schemaPath = join(repoRoot, "public", "schema", "rcam-v1.schema.json");
 const examplesDir = join(repoRoot, "examples");
 
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));

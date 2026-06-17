@@ -2,10 +2,16 @@
 
 This is the authoring guide and stability contract for the RapidCAM project file
 format. A `.rcam` file is plain JSON. The machine-readable contract lives in
-[`schema/rcam-v1.schema.json`](../schema/rcam-v1.schema.json) (JSON Schema, draft
+[`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json) (JSON Schema, draft
 2020-12); this document is the human- (and AI-) readable companion that explains
 the parts a schema can't — the vocabulary of point keys, what each constraint
 means, and the gotchas.
+
+The schema's canonical published URL is
+**`https://rapidcam.app/schema/rcam-v1.schema.json`** (this is also its `$id`).
+In the repository it lives at
+[`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json), which
+is what gets served at that URL.
 
 If you are an automated tool (including an LLM) generating `.rcam` files: validate
 your output against the schema, and prefer the patterns shown in
@@ -265,7 +271,7 @@ not just the schema.
 npm test -- rcam-schema
 ```
 
-External tools can validate against [`schema/rcam-v1.schema.json`](../schema/rcam-v1.schema.json)
+External tools can validate against [`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json)
 with any JSON Schema (draft 2020-12) validator. The schema enforces structure and
 enumerations; it cannot tell you whether a constraint system converges or a pocket
 seed lands inside its region — for that you need to load the file in RapidCAM.
