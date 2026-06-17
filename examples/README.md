@@ -1,12 +1,29 @@
 # Example projects
 
-Sample `.rcam` projects to help you learn RapidCAM. Open one with **File → Open**
-(or drag it onto the canvas) and try editing the dimensions.
+Sample `.rcam` projects to help you learn RapidCAM. Open one from the **Examples**
+section of the welcome screen, or via **File → Examples** (or drag a file onto the
+canvas), then try editing the dimensions. They're arranged as a progression — start
+at the top and work down.
+
+### Tier 1 — first contact (drawing + dimensions)
 
 | File | What it shows |
 |------|---------------|
-| [mounting-plate.rcam](mounting-plate.rcam) | **CAD only.** A fully-constrained 120 × 80 mm plate with four Ø8 corner holes. Double-click the **120** / **80** dimension and the holes track their corners; double-click the **Ø8** and all four holes resize together. The gentlest introduction to the parametric workflow. |
-| [mounting-plate-cam.rcam](mounting-plate-cam.rcam) | **CAD + CAM.** The same plate with two ready-to-run toolpaths — drill the holes, profile-cut the outline with tabs — so you can take it all the way to G-code. |
+| [keychain-tag.rcam](keychain-tag.rcam) | The smallest complete part: a tag body, a keyring hole, and editable **text**. Double-click the text to type a name; double-click the **Ø6** to resize the hole. Introduces the text tool and driving dimensions. |
+| [mounting-plate.rcam](mounting-plate.rcam) | A fully-constrained 120 × 80 mm plate with four Ø8 corner holes. Double-click the **120** / **80** dimension and the holes track their corners; double-click the **Ø8** and all four holes resize together. |
+
+### Tier 2 — constraints
+
+| File | What it shows |
+|------|---------------|
+| [bracket.rcam](bracket.rcam) | An L-shaped profile driven entirely to **"Fully constrained"** with per-segment horizontal/vertical constraints and four dimensions. Edit any dimension and the whole outline reflows while staying square. |
+
+### Tier 3 — full CAM pipeline (draw → G-code)
+
+| File | What it shows |
+|------|---------------|
+| [mounting-plate-cam.rcam](mounting-plate-cam.rcam) | The mounting plate with two ready-to-run toolpaths — drill the holes, profile-cut the outline with tabs. |
+| [enclosure-lid.rcam](enclosure-lid.rcam) | A pocketed lid: an **adaptive contour-parallel pocket** that clears a recess around a central boss (island), then a tabbed profile cut of the outline. Showcases flood-fill region picking and island handling. |
 
 ## mounting-plate.rcam — guided tour
 

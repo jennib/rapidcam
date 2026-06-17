@@ -14,6 +14,8 @@ export interface RcamFile {
   entities: unknown[];
   constraints: unknown[];
   dimensions: unknown[];
+  variables?: unknown[];
+  patterns?: unknown[];
   operations?: unknown[];
   isConstructionMode: boolean;
   selectedPoints: unknown[];
@@ -57,6 +59,8 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     entities: snap.entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
+    variables: snap.variables as unknown[],
+    patterns: snap.patterns as unknown[],
     operations: snap.operations as unknown[],
     isConstructionMode: snap.isConstructionMode,
     selectedPoints: snap.selectedPoints as unknown[],

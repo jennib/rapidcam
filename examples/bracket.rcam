@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "name": "L-Bracket",
+  "canvas": { "width": 130, "height": 110 },
+  "displayUnit": "mm",
+  "stockThickness": 6,
+  "hasToolChanger": false,
+  "origin": { "x": "left", "y": "front", "z": "top" },
+  "postProcessor": "grbl",
+  "groups": [],
+  "operations": [],
+  "isConstructionMode": false,
+  "selectedPoints": [],
+  "entities": [
+    {
+      "type": "polyline",
+      "id": "ent1",
+      "points": [
+        { "x": 20, "y": 20 },
+        { "x": 100, "y": 20 },
+        { "x": 100, "y": 45 },
+        { "x": 45, "y": 45 },
+        { "x": 45, "y": 80 },
+        { "x": 20, "y": 80 }
+      ],
+      "closed": true,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixedPoint",
+      "points": [{ "entityId": "ent1", "key": "v0" }],
+      "entities": [],
+      "params": [20, 20]
+    },
+    { "id": "con2", "type": "horizontal", "points": [], "entities": ["ent1#0"] },
+    { "id": "con3", "type": "vertical",   "points": [], "entities": ["ent1#1"] },
+    { "id": "con4", "type": "horizontal", "points": [], "entities": ["ent1#2"] },
+    { "id": "con5", "type": "vertical",   "points": [], "entities": ["ent1#3"] },
+    { "id": "con6", "type": "horizontal", "points": [], "entities": ["ent1#4"] },
+    { "id": "con7", "type": "vertical",   "points": [], "entities": ["ent1#5"] }
+  ],
+  "dimensions": [
+    {
+      "id": "dim1",
+      "type": "horizontal",
+      "points": [
+        { "entityId": "ent1", "key": "v0" },
+        { "entityId": "ent1", "key": "v1" }
+      ],
+      "entities": [],
+      "value": 80,
+      "driving": true,
+      "offset": -12
+    },
+    {
+      "id": "dim2",
+      "type": "vertical",
+      "points": [
+        { "entityId": "ent1", "key": "v0" },
+        { "entityId": "ent1", "key": "v5" }
+      ],
+      "entities": [],
+      "value": 60,
+      "driving": true,
+      "offset": -12
+    },
+    {
+      "id": "dim3",
+      "type": "vertical",
+      "points": [
+        { "entityId": "ent1", "key": "v1" },
+        { "entityId": "ent1", "key": "v2" }
+      ],
+      "entities": [],
+      "value": 25,
+      "driving": true,
+      "offset": 12
+    },
+    {
+      "id": "dim4",
+      "type": "horizontal",
+      "points": [
+        { "entityId": "ent1", "key": "v4" },
+        { "entityId": "ent1", "key": "v5" }
+      ],
+      "entities": [],
+      "value": 25,
+      "driving": true,
+      "offset": 12
+    }
+  ]
+}
