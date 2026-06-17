@@ -269,11 +269,18 @@ export class Renderer {
       }
     };
     if (doc.regionPickFills) {
-      ctx.fillStyle = COLORS.regionFill;
+      ctx.save();
+      if (doc.toolpathHighlightColor) {
+        ctx.fillStyle = doc.toolpathHighlightColor;
+        ctx.globalAlpha = 0.22;
+      } else {
+        ctx.fillStyle = COLORS.regionFill;
+      }
       for (const rings of doc.regionPickFills) {
         trace(rings);
         ctx.fill("evenodd");
       }
+      ctx.restore();
     }
     if (doc.regionPickHoverFill) {
       ctx.fillStyle = COLORS.regionFillHover;
@@ -302,7 +309,7 @@ export class Renderer {
         : isHover
           ? COLORS.entityHover
           : isToolpathHighlight
-            ? COLORS.toolpathHighlight
+            ? (doc.toolpathHighlightColor ?? COLORS.toolpathHighlight)
             : e.isConstruction
               ? COLORS.entityConstruction
               : isStaleInstance

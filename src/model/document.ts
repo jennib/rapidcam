@@ -139,6 +139,8 @@ export class CADDocument {
 
   /** Entity IDs to highlight in the toolpath colour while a toolpath dialog is open. Null = no dialog open. */
   toolpathHighlightIds: Set<string> | null = null;
+  /** Colour to draw highlighted toolpath entities in. Null = use the default toolpath highlight colour. */
+  toolpathHighlightColor: string | null = null;
 
   /**
    * When set, left-clicks on the canvas are routed here (world coords) instead

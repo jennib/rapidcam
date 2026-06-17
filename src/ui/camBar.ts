@@ -167,7 +167,9 @@ export class CamBar {
 
   private highlightOp(id: string | null): void {
     this.highlightedOpId = id;
-    const op = id ? this.doc.operations.find(o => o.id === id) : null;
+    const opIndex = id ? this.doc.operations.findIndex(o => o.id === id) : -1;
+    const op = opIndex >= 0 ? this.doc.operations[opIndex] : null;
+    this.doc.toolpathHighlightColor = op ? TP_PALETTE[opIndex % TP_PALETTE.length] : null;
     if (op?.type === "pocket" && op.regionSeeds?.length) {
       const loops = collectClosedLoops(this.doc.entities);
       const highlight = new Set<string>();
