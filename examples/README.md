@@ -12,11 +12,12 @@ at the top and work down.
 | [keychain-tag.rcam](keychain-tag.rcam) | The smallest complete part: a tag body, a keyring hole, and editable **text**. Double-click the text to type a name; double-click the **Ø6** to resize the hole. Introduces the text tool and driving dimensions. |
 | [mounting-plate.rcam](mounting-plate.rcam) | A fully-constrained 120 × 80 mm plate with four Ø8 corner holes. Double-click the **120** / **80** dimension and the holes track their corners; double-click the **Ø8** and all four holes resize together. |
 
-### Tier 2 — constraints
+### Tier 2 — constraints, variables & patterns
 
 | File | What it shows |
 |------|---------------|
 | [bracket.rcam](bracket.rcam) | An L-shaped profile driven entirely to **"Fully constrained"** with per-segment horizontal/vertical constraints and four dimensions. Edit any dimension and the whole outline reflows while staying square. |
+| [bolt-circle.rcam](bolt-circle.rcam) | A 6-hole bolt flange driven by **variables**. The Variables panel defines `pcd` (pitch-circle diameter) and `holeDia`; the source hole's position and size reference them. The other five holes are a **circular pattern**. Change `pcd` in the Variables panel, then Edit → Regenerate Patterns to spread the bolt circle. The green hole is the parametric master; the blue ones are pattern copies (regenerated geometry, not constraint-solved — so they read as under-defined, which is expected). |
 
 ### Tier 3 — full CAM pipeline (draw → G-code)
 

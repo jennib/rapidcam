@@ -107,7 +107,8 @@ export interface LineGeom { a: Vec2; b: Vec2; }
  * polyline-segment ref (`polylineId#index`). Returns null for non-line refs
  * (circles, arcs, missing entities) so callers can fall through.
  */
-function lineGeom(geo: Geo, ref: EntityId): LineGeom | null {
+function lineGeom(geo: Geo, ref: EntityId | undefined): LineGeom | null {
+  if (!ref) return null; // entity-less constraint (e.g. point-pair horizontal/vertical) — let caller fall through
   const sep = ref.indexOf(SEGMENT_SEP);
   if (sep >= 0) {
     const poly = geo(ref.slice(0, sep));

@@ -1,0 +1,262 @@
+{
+  "version": 1,
+  "name": "Bolt Circle Flange",
+  "canvas": {
+    "width": 150,
+    "height": 130
+  },
+  "displayUnit": "mm",
+  "stockThickness": 8,
+  "hasToolChanger": false,
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
+  "postProcessor": "grbl",
+  "groups": [],
+  "entities": [
+    {
+      "type": "circle",
+      "id": "ent1",
+      "center": {
+        "x": 75,
+        "y": 65
+      },
+      "radius": 55,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent2",
+      "center": {
+        "x": 75,
+        "y": 65
+      },
+      "radius": 15,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent3",
+      "center": {
+        "x": 115,
+        "y": 65
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent4",
+      "center": {
+        "x": 95,
+        "y": 99.64101615137754
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent5",
+      "center": {
+        "x": 55.00000000000001,
+        "y": 99.64101615137756
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent6",
+      "center": {
+        "x": 35,
+        "y": 65
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent7",
+      "center": {
+        "x": 54.999999999999986,
+        "y": 30.358983848622458
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent8",
+      "center": {
+        "x": 94.99999999999997,
+        "y": 30.358983848622437
+      },
+      "radius": 4,
+      "selected": false,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixedPoint",
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "c"
+        }
+      ],
+      "entities": [],
+      "params": [
+        75,
+        65
+      ]
+    },
+    {
+      "id": "con2",
+      "type": "concentric",
+      "points": [],
+      "entities": [
+        "ent1",
+        "ent2"
+      ]
+    },
+    {
+      "id": "con3",
+      "type": "horizontal",
+      "points": [
+        {
+          "entityId": "ent2",
+          "key": "c"
+        },
+        {
+          "entityId": "ent3",
+          "key": "c"
+        }
+      ],
+      "entities": []
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "dim1",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "ent1"
+      ],
+      "value": 110,
+      "driving": true,
+      "offset": -0.7
+    },
+    {
+      "id": "dim2",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "ent2"
+      ],
+      "value": 30,
+      "driving": true,
+      "offset": 2.2
+    },
+    {
+      "id": "dim3",
+      "type": "horizontal",
+      "points": [
+        {
+          "entityId": "ent2",
+          "key": "c"
+        },
+        {
+          "entityId": "ent3",
+          "key": "c"
+        }
+      ],
+      "entities": [],
+      "value": 40,
+      "driving": true,
+      "offset": -42,
+      "expr": "pcd / 2"
+    },
+    {
+      "id": "dim4",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "ent3"
+      ],
+      "value": 8,
+      "driving": true,
+      "offset": 0.6,
+      "expr": "holeDia"
+    }
+  ],
+  "variables": [
+    {
+      "id": "var1",
+      "name": "pcd",
+      "expr": "80",
+      "value": 80
+    },
+    {
+      "id": "var2",
+      "name": "holeDia",
+      "expr": "8",
+      "value": 8
+    }
+  ],
+  "patterns": [
+    {
+      "id": "pat1",
+      "kind": "circular",
+      "sourceIds": [
+        "ent3"
+      ],
+      "instanceIds": [
+        [
+          "ent4"
+        ],
+        [
+          "ent5"
+        ],
+        [
+          "ent6"
+        ],
+        [
+          "ent7"
+        ],
+        [
+          "ent8"
+        ]
+      ],
+      "params": {
+        "count": 6,
+        "cx": 75,
+        "cy": 65,
+        "totalAngle": 6.283185307179586
+      },
+      "sourceSnapshot": -1361978825
+    }
+  ],
+  "operations": [],
+  "isConstructionMode": false,
+  "selectedPoints": []
+}
