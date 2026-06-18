@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
-import type { CAMOperation } from "../src/cam/types";
+import { collectClosedLoops } from "../src/cam/loops";
+import { refAtPoint } from "../src/cam/regions";
+import type { CAMOperation, RegionRef } from "../src/cam/types";
 import type { Vec2 } from "../src/core/vec2";
 
 // Multi-region pocket: two disjoint line-drawn boundaries plus a line-drawn
@@ -53,15 +55,21 @@ describe("pocket G-code for multiple line-chained regions", () => {
   });
 });
 
-describe("pocket G-code from flood-fill region seeds", () => {
+describe("pocket G-code from region references", () => {
   // Two overlapping rectangles: A spans x 0..50, B spans x 30..80, both y 0..50.
   const doc = new CADDocument({ width: 200, height: 200 });
   const A = addSquare(doc, 0, 0, 50);
   const B = addSquareWH(doc, 30, 0, 50, 50);
 
-  function genWithSeeds(seeds: Vec2[]): number[] {
+  const refFor = (p: Vec2): RegionRef => {
+    const ref = refAtPoint(p, collectClosedLoops(doc.entities));
+    if (!ref) throw new Error(`(${p.x},${p.y}) is inside no region`);
+    return ref;
+  };
+
+  function genWithRegions(regions: RegionRef[]): number[] {
     const op = pocketOp([...A, ...B].map((e) => e.id), []);
-    op.regionSeeds = seeds;
+    op.regions = regions;
     const code = generateGCode([op], doc);
     return code
       .split("\n")
@@ -70,23 +78,25 @@ describe("pocket G-code from flood-fill region seeds", () => {
   }
 
   it("pocketing the intersection stays inside the overlap (x 30..50)", () => {
-    const xs = genWithSeeds([{ x: 40, y: 25 }]);
+    const xs = genWithRegions([refFor({ x: 40, y: 25 })]);
     expect(xs.length).toBeGreaterThan(0);
     expect(Math.min(...xs)).toBeGreaterThanOrEqual(30 - 0.01);
     expect(Math.max(...xs)).toBeLessThanOrEqual(50 + 0.01);
   });
 
   it("pocketing the A-only crescent never enters the overlap", () => {
-    const xs = genWithSeeds([{ x: 10, y: 25 }]);
+    const xs = genWithRegions([refFor({ x: 10, y: 25 })]);
     expect(xs.length).toBeGreaterThan(0);
     expect(Math.max(...xs)).toBeLessThanOrEqual(30 + 0.01);
   });
 
-  it("a seed outside any enclosed area is skipped with a note", () => {
-    const op = pocketOp([...A, ...B].map((e) => e.id), []);
-    op.regionSeeds = [{ x: 150, y: 150 }];
-    const code = generateGCode([op], doc);
-    expect(code).toContain("not inside any enclosed area");
+  it("an unresolvable region (boundary removed) is skipped with a note", () => {
+    const ref = refFor({ x: 10, y: 25 });
+    const empty = new CADDocument({ width: 200, height: 200 }); // no loops at all
+    const op = pocketOp([], []);
+    op.regions = [ref];
+    const code = generateGCode([op], empty);
+    expect(code).toContain("could not be resolved");
     expect(code.split("\n").some((l) => l.startsWith("G1 X"))).toBe(false);
   });
 });

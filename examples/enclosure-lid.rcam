@@ -101,12 +101,6 @@
       "name": "Pocket recess",
       "type": "pocket",
       "entityIds": [],
-      "regionSeeds": [
-        {
-          "x": 45,
-          "y": 40
-        }
-      ],
       "side": "inside",
       "toolType": "end-mill",
       "toolNumber": 1,
@@ -118,7 +112,19 @@
       "depth": -4,
       "stepdown": 2,
       "stepover": 0.4,
-      "pocketStrategy": "offset"
+      "pocketStrategy": "offset",
+      "regions": [
+        {
+          "containingLoops": [
+            [
+              "ent1"
+            ],
+            [
+              "ent2"
+            ]
+          ]
+        }
+      ]
     },
     {
       "id": "op2",

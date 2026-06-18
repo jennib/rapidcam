@@ -466,6 +466,20 @@
       }
     },
 
+    "regionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containingLoops"],
+      "description": "A pocket target region, identified by the loops that enclose it (each loop = the entity ids whose geometry forms it). Resolved against live geometry at toolpath time so it survives constraint-driven reflow.",
+      "properties": {
+        "containingLoops": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Entity-id sets of the loops enclosing the region; one inner array per loop. The face lies inside exactly these loops and outside all others."
+        }
+      }
+    },
+
     "operation": {
       "type": "object",
       "additionalProperties": false,
@@ -496,10 +510,10 @@
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter." },
         "pocketStrategy": { "enum": ["offset", "raster"], "description": "Pocket only; default \"offset\"." },
         "islandIds": { "type": "array", "items": { "type": "string" }, "description": "Pocket only (legacy): entities treated as islands." },
-        "regionSeeds": {
+        "regions": {
           "type": "array",
-          "items": { "$ref": "#/$defs/vec2" },
-          "description": "Pocket only: world points each inside an enclosed area; the region is flood-filled from live geometry at G-code time."
+          "items": { "$ref": "#/$defs/regionRef" },
+          "description": "Pocket only: the enclosed regions to clear, identified parametrically (by the loops that enclose each) so they reflow with the model. Resolved against live geometry at toolpath time. Supersedes the older absolute-coordinate seeds."
         },
         "tabs": { "$ref": "#/$defs/tabDef" },
         "leadIn": { "$ref": "#/$defs/leadDef" },

@@ -16,7 +16,7 @@ import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
-import { regionAtPoint, interiorPoint } from "../cam/regions";
+import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
 import {
@@ -27,6 +27,8 @@ import {
   isValidFor,
   seedsFromEntityIds,
   legacyPocketSeeds,
+  refsFromSeeds,
+  seedsFromRegions,
   findContiguousChain,
 } from "./camBarHelpers";
 
@@ -173,12 +175,12 @@ export class CamBar {
     const opIndex = id ? this.doc.operations.findIndex(o => o.id === id) : -1;
     const op = opIndex >= 0 ? this.doc.operations[opIndex] : null;
     this.doc.toolpathHighlightColor = op ? TP_PALETTE[opIndex % TP_PALETTE.length] : null;
-    if (op?.type === "pocket" && op.regionSeeds?.length) {
+    if (op?.type === "pocket" && op.regions?.length) {
       const loops = collectClosedLoops(this.doc.entities);
       const highlight = new Set<string>();
       const fills: Vec2[][][] = [];
-      for (const seed of op.regionSeeds) {
-        const region = regionAtPoint(seed, loops);
+      for (const ref of op.regions) {
+        const region = resolveRegion(ref, loops);
         if (!region) continue;
         for (const lid of region.loopIds) highlight.add(lid);
         fills.push([region.outer, ...region.holes]);
@@ -357,8 +359,8 @@ export class CamBar {
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
-      regionSeeds:  existing?.regionSeeds
-        ? existing.regionSeeds.map((s) => ({ ...s }))
+      regionSeeds:  existing?.regions?.length
+        ? seedsFromRegions(this.doc, existing.regions)
         : existing && comboOf(existing) === "pocket"
           ? legacyPocketSeeds(existing, this.doc)
           : ([] as Vec2[]),
@@ -595,8 +597,8 @@ export class CamBar {
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
-        regionSeeds: type === "pocket"
-          ? state.regionSeeds.map((s) => ({ ...s }))
+        regions: type === "pocket"
+          ? refsFromSeeds(this.doc, state.regionSeeds)
           : undefined,
         tabs: isProfile ? {
           enabled: state.tabsEnabled,

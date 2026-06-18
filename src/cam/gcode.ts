@@ -9,7 +9,7 @@ import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
-import { regionAtPoint } from "./regions";
+import { resolveRegion } from "./regions";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -559,15 +559,15 @@ function toolpathBody(
   const lines: string[] = [];
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
 
-  // Region-seeded pockets: recompute each flood-fill region from live
-  // geometry and pocket it (holes become islands). Supersedes the legacy
+  // Region pockets: resolve each parametric region against live geometry and
+  // pocket it (enclosed loops become islands). Supersedes the legacy
   // entityIds/islandIds pocket path.
-  if (op.type === "pocket" && op.regionSeeds && op.regionSeeds.length > 0) {
+  if (op.type === "pocket" && op.regions && op.regions.length > 0) {
     const loops = collectClosedLoops(doc.entities);
-    for (const seed of op.regionSeeds) {
-      const region = regionAtPoint(seed, loops);
+    for (const ref of op.regions) {
+      const region = resolveRegion(ref, loops);
       if (!region) {
-        lines.push(`; NOTE: pocket region seed (${n(seed.x)}, ${n(seed.y)}) is not inside any enclosed area — skipped`);
+        lines.push(`; NOTE: a pocket region could not be resolved — its boundary geometry changed or was removed — skipped`);
         continue;
       }
       lines.push(...pocketPolygon(region.outer, region.holes, op, ox, oy, zOff));

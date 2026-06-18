@@ -261,13 +261,29 @@ Operations with no `toolId` use their inline fields directly.
 | `profile` | contours a closed shape; uses `side` (`"outside"`/`"inside"`), optional `tabs`, `leadIn`, `leadOut` |
 | `drill` | plunges at each entity (e.g. circle centres); `stepdown` ignored |
 | `engrave` | follows geometry at depth |
-| `pocket` | clears an area; `pocketStrategy` (`"offset"`/`"raster"`), and `regionSeeds` |
+| `pocket` | clears an area; `pocketStrategy` (`"offset"`/`"raster"`), and `regions` |
 
-`regionSeeds` (pocket) is the subtle one: each seed is a **world point that must
-lie inside an enclosed area**. At G-code time the region around it is flood-filled
-from live geometry, with enclosed shapes treated as islands. Getting a seed point
-that's actually inside the intended region requires reasoning about the geometry,
-not just the schema.
+`regions` (pocket) is the subtle one. A pocket clears one or more **enclosed
+faces** of the drawing. Each region is identified *parametrically* — not by a
+coordinate — so it reflows when a driving dimension moves the geometry. A region
+is `{ "containingLoops": [ ... ] }`, where each entry is the set of **entity ids**
+whose live geometry forms a loop that encloses the face (a face lies inside
+exactly its containing loops and outside all others). At toolpath time the loops
+are rebuilt from current geometry, matched back by id-set, and the face — with any
+enclosed loops as islands — is recomputed fresh. If a referenced loop no longer
+exists, that region is skipped (with a G-code note) rather than cutting the wrong
+area.
+
+```jsonc
+// Pocket the inside of a rectangle (ids r1..r4 form its boundary loop),
+// with a circle "c1" sitting inside it automatically becoming an island:
+{ "containingLoops": [ ["r1", "r2", "r3", "r4"] ] }
+```
+
+Authoring these by hand is awkward (you must know which entity ids chain into the
+enclosing loop); in practice they're produced by region-picking in the toolpath
+dialog. A single closed entity (circle, rectangle, closed polyline) is a one-id
+loop, e.g. `{ "containingLoops": [ ["circle-7"] ] }`.
 
 ```jsonc
 { "id": "op1", "name": "Profile outline", "type": "profile",
