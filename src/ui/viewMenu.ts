@@ -2,6 +2,8 @@ export interface ViewMenuCallbacks {
   onFit: () => void;
   onToggle3D: () => void;
   is3DVisible: () => boolean;
+  onToggleDimensions: () => void;
+  areDimensionsVisible: () => boolean;
 }
 
 export class ViewMenu {
@@ -54,6 +56,8 @@ export class ViewMenu {
     this.dropdown.innerHTML = "";
     this.item("Fit View", "F", () => { this.close(); this.cb.onFit(); });
     this.separator();
+    const dimsOn = this.cb.areDimensionsVisible();
+    this.item((dimsOn ? "✓ " : "   ") + "Dimensions", "", () => { this.close(); this.cb.onToggleDimensions(); });
     const checked = this.cb.is3DVisible();
     this.item((checked ? "✓ " : "   ") + "3D Preview", "", () => { this.close(); this.cb.onToggle3D(); });
   }

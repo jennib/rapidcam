@@ -796,6 +796,17 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     lines.push("");
   }
 
+  // Optional end-of-program park: lift to the last op's safe Z, then rapid to
+  // the requested work-coordinate position (e.g. 0,0 = WCS origin). The end
+  // position is already in work coords, so it's emitted without the origin
+  // offset that X()/Y() apply to model coordinates.
+  const ep = doc.endPosition;
+  if (ep) {
+    const lastSafeZ = ops[ops.length - 1].safeZ;
+    lines.push(`G0 Z${Z(lastSafeZ, zOffset)}`);
+    lines.push(`G0 X${n(ep.x)} Y${n(ep.y)} ; return to end position`);
+  }
+
   lines.push("M5 ; spindle stop");
   lines.push("M30 ; end program");
   return lines.join("\n");

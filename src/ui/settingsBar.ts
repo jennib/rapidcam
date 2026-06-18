@@ -10,6 +10,9 @@ export class SettingsBar {
   private originZSelect!: HTMLSelectElement;
   private toolChangerCheck!: HTMLInputElement;
   private postProcessorSelect!: HTMLSelectElement;
+  private endReturnCheck!: HTMLInputElement;
+  private endXInput!: HTMLInputElement;
+  private endYInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -98,6 +101,18 @@ export class SettingsBar {
     machineGroup.appendChild(this.field("Post-processor", this.postProcessorSelect));
     this.content.appendChild(machineGroup);
 
+    // Program end — optional park position at program end (before M30).
+    const endGroup = this.group("Program End");
+    this.endReturnCheck = document.createElement("input");
+    this.endReturnCheck.type = "checkbox";
+    this.endReturnCheck.className = "settings-checkbox";
+    endGroup.appendChild(this.field("Return to position", this.endReturnCheck));
+    this.endXInput = this.dimInput();
+    this.endYInput = this.dimInput();
+    endGroup.appendChild(this.field("End X", this.endXInput));
+    endGroup.appendChild(this.field("End Y", this.endYInput));
+    this.content.appendChild(endGroup);
+
     // Units
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
@@ -139,6 +154,30 @@ export class SettingsBar {
       this.doc.postProcessor = this.postProcessorSelect.value;
       this.doc.emitChange();
     });
+    this.endReturnCheck.addEventListener("change", () => {
+      this.pushHistory();
+      if (this.endReturnCheck.checked) {
+        const x = parseLength(this.endXInput.value, this.doc.displayUnit) ?? 0;
+        const y = parseLength(this.endYInput.value, this.doc.displayUnit) ?? 0;
+        this.doc.endPosition = { x, y };
+      } else {
+        this.doc.endPosition = null;
+      }
+      this.doc.emitChange();
+    });
+    const commitEnd = (): void => {
+      if (!this.doc.endPosition) return;
+      const x = parseLength(this.endXInput.value, this.doc.displayUnit);
+      const y = parseLength(this.endYInput.value, this.doc.displayUnit);
+      this.pushHistory();
+      this.doc.endPosition = {
+        x: x ?? this.doc.endPosition.x,
+        y: y ?? this.doc.endPosition.y,
+      };
+      this.doc.emitChange();
+    };
+    this.endXInput.addEventListener("change", commitEnd);
+    this.endYInput.addEventListener("change", commitEnd);
     this.unitSelect.addEventListener("change", () => {
       this.doc.displayUnit = this.unitSelect.value as Unit;
       this.doc.emitChange();
@@ -244,6 +283,14 @@ export class SettingsBar {
     this.originZSelect.value = this.doc.origin.z;
     this.toolChangerCheck.checked = this.doc.hasToolChanger;
     this.postProcessorSelect.value = this.doc.postProcessor;
+    const ep = this.doc.endPosition;
+    this.endReturnCheck.checked = !!ep;
+    this.endXInput.disabled = !ep;
+    this.endYInput.disabled = !ep;
+    if (document.activeElement !== this.endXInput)
+      this.endXInput.value = formatLength(ep ? ep.x : 0, u);
+    if (document.activeElement !== this.endYInput)
+      this.endYInput.value = formatLength(ep ? ep.y : 0, u);
     this.unitSelect.value = u;
   }
 }

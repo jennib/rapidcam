@@ -65,6 +65,7 @@ vocabularies is unchanged.
   "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
   "postProcessor": "linuxcnc",                  // "linuxcnc" | "grbl"
+  "endPosition": null,                          // optional park position; see below
   "groups": [],
   "layers": [ /* optional; a Default layer is created if omitted */ ],
   "activeLayerId": "layer-0",
@@ -99,8 +100,13 @@ that loads cleanly and draws a circle:
 ```
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
-`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `layers` → one
-`"layer-0"` "Default" layer, `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
+`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `endPosition` → `null`,
+`layers` → one `"layer-0"` "Default" layer,
+`groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
+
+`endPosition` is an optional `{ "x", "y" }` (work coordinates, mm) the spindle
+rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS
+origin. `null` (or omitted) leaves the tool wherever the last toolpath ended.
 
 ## IDs
 

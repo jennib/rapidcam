@@ -27,6 +27,8 @@ export class Renderer {
   private dpr = 1;
   entityStatus: EntityStatusMap = new Map();
   stalePatternEntityIds: Set<string> = new Set();
+  /** View preference (transient, not persisted): draw dimension annotations. */
+  showDimensions = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -58,7 +60,7 @@ export class Renderer {
     this.drawOrigin(doc, view);
     this.drawRegionFills(doc, view);
     this.drawEntities(doc, view, overlay);
-    this.drawDimensions(doc, view);
+    if (this.showDimensions) this.drawDimensions(doc, view);
     this.drawConstraints(doc, view, overlay);
     this.drawSelectedSegments(doc, view);
     this.drawSelectedPoints(doc, view);

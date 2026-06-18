@@ -42,6 +42,13 @@
       "enum": ["linuxcnc", "grbl"],
       "description": "G-code dialect. Default \"linuxcnc\"."
     },
+    "endPosition": {
+      "oneOf": [
+        { "$ref": "#/$defs/vec2" },
+        { "type": "null" }
+      ],
+      "description": "Optional end-of-program park position in work coordinates (mm); the program rapids here at safe Z before M30. { x: 0, y: 0 } parks at the WCS origin. null/omitted leaves the tool where the last toolpath ended."
+    },
     "groups": {
       "type": "array",
       "items": { "$ref": "#/$defs/group" },
