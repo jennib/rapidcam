@@ -1,16 +1,16 @@
-# RapidCAM `.rcam` file format — version 1 (frozen)
+# RapidCAM `.rcam` file format — version 2
 
 This is the authoring guide and stability contract for the RapidCAM project file
 format. A `.rcam` file is plain JSON. The machine-readable contract lives in
-[`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json) (JSON Schema, draft
+[`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json) (JSON Schema, draft
 2020-12); this document is the human- (and AI-) readable companion that explains
 the parts a schema can't — the vocabulary of point keys, what each constraint
 means, and the gotchas.
 
 The schema's canonical published URL is
-**`https://rapidcam.app/schema/rcam-v1.schema.json`** (this is also its `$id`).
+**`https://rapidcam.app/schema/rcam-v2.schema.json`** (this is also its `$id`).
 In the repository it lives at
-[`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json), which
+[`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json), which
 is what gets served at that URL.
 
 If you are an automated tool (including an LLM) generating `.rcam` files: validate
@@ -18,12 +18,25 @@ your output against the schema, and prefer the patterns shown in
 [`examples/`](../examples/). The bundled examples are golden files and are tested
 against this schema on every commit.
 
+## What changed from version 1
+
+Version 2 treats a `.rcam` file as a **design**, not an editor session:
+
+- **No selection / UI state.** The top-level `isConstructionMode`,
+  `selectedPoints`, `selectedConstraintId`, `selectedDimensionId` fields and the
+  per-entity `selected` flag are gone. (A file shouldn't record what happened to be
+  selected when it was saved.)
+- **Embedded fonts.** A new optional top-level [`fonts`](#fonts) array carries the
+  bytes of any non-bundled font a text entity uses, so glyph outlines — and
+  therefore toolpaths — reproduce on any machine.
+
+Version-1 files still open: RapidCAM upgrades them on load (dropping the UI state).
+The set of entity types, constraint types, dimension types, and point-key
+vocabularies is unchanged.
+
 ## Stability promise
 
-- **Version 1 is frozen.** Every file declares `"version": 1`; the loader rejects
-  anything else. The set of fields, entity types, constraint types, dimension
-  types, and point-key vocabularies documented here will not change meaning under
-  version 1.
+- Every file declares `"version": 2`. The loader auto-upgrades `"version": 1`.
 - The loader is **tolerant of additive growth**: unknown fields are ignored, and
   most top-level sections default sensibly when absent (see *Minimum viable file*).
   New, optional capabilities may be added without bumping the version. Anything
@@ -44,7 +57,7 @@ against this schema on every commit.
 
 ```jsonc
 {
-  "version": 1,
+  "version": 2,
   "name": "My Part",
   "canvas": { "width": 120, "height": 80 },   // mm
   "displayUnit": "mm",                          // "mm" | "in" (display only)
@@ -62,8 +75,7 @@ against this schema on every commit.
   "patterns": [ /* linear / circular patterns */ ],
   "operations": [ /* CAM toolpaths */ ],
   "tools": [ /* reusable tool definitions referenced by operations */ ],
-  "isConstructionMode": false,
-  "selectedPoints": []
+  "fonts": [ /* embedded non-bundled fonts used by text entities */ ]
 }
 ```
 
@@ -74,7 +86,7 @@ that loads cleanly and draws a circle:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "Minimal",
   "canvas": { "width": 100, "height": 100 },
   "displayUnit": "mm",
@@ -82,15 +94,13 @@ that loads cleanly and draws a circle:
     { "type": "circle", "id": "ent1", "center": { "x": 50, "y": 50 }, "radius": 10 }
   ],
   "constraints": [],
-  "dimensions": [],
-  "isConstructionMode": false,
-  "selectedPoints": []
+  "dimensions": []
 }
 ```
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
 `origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `layers` → one
-`"layer-0"` "Default" layer, `groups`/`variables`/`patterns`/`operations`/`tools` → empty.
+`"layer-0"` "Default" layer, `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
 
 ## IDs
 
@@ -104,9 +114,9 @@ Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → fal
 
 ## Entities
 
-Each entity is an object tagged by `type`. Common optional fields: `selected`
-(default false), `isConstruction` (default false — construction/reference
-geometry, excluded from CAM), `layerId` (default `"layer-0"`).
+Each entity is an object tagged by `type`. Common optional fields: `isConstruction`
+(default false — construction/reference geometry, excluded from CAM) and `layerId`
+(default `"layer-0"`).
 
 The **point keys** below are the addresses constraints and dimensions use to refer
 to a specific point on an entity (via a `{ "entityId", "key" }` pair). Getting
@@ -129,8 +139,9 @@ Notes:
 - A **polyline segment** can stand in for a line anywhere a line-type constraint
   expects an entity: use the entity reference string `"<polylineId>#<segmentIndex>"`
   (segment from vertex `index` to `index+1`).
-- `fontId` examples in the bundled files: `"roboto-regular"`. Text stays editable
-  until CAM export, where it is expanded to glyph contours.
+- `fontId` is either a bundled font (e.g. `"roboto-regular"`) or a `"font-XXXXXXXX"`
+  id present in the top-level [`fonts`](#fonts) array. Text stays editable until CAM
+  export, where it is expanded to glyph contours.
 
 ## Constraints
 
@@ -243,8 +254,7 @@ geometry/feeds (`toolType`, `diameter`, `vAngle`, `tipAngle`, `feedrate`,
 `plungeRate`, `spindleSpeed`, `safeZ`) drive the operation, and the inline copies
 of those fields act only as a fallback for an unresolved id. `toolNumber` and the
 cut settings (`depth`, `stepdown`, `stepover`, tabs, leads) always stay per-operation.
-Operations with no `toolId` (including every v1 file written before tools existed)
-use their inline fields directly — behaviour is unchanged.
+Operations with no `toolId` use their inline fields directly.
 
 | `type` | Notes |
 |--------|-------|
@@ -296,6 +306,27 @@ operation, so the file is self-contained and portable. See
 `mounting-plate-cam.rcam` for an example of two operations driven by a shared
 `tools` library.
 
+## Fonts
+
+A text entity's `fontId` must resolve to a font. **Bundled** fonts (currently
+`"roboto-regular"` and `"roboto-bold"`) ship with the app and resolve by id, so
+they are never embedded. Any **other** font — one a user loaded from disk — is
+embedded in the top-level `fonts` array so the file is self-contained: it renders
+and cuts identically on a machine that has never seen that font.
+
+Each embedded font has a content-addressed `id` (`"font-XXXXXXXX"`, an FNV-32 hash
+of the bytes, so the same font always dedupes to the same id), a human-readable
+`name`, a `format` (`"ttf"` | `"otf"` | `"woff"`), and base64-encoded `data`.
+
+```jsonc
+{ "id": "font-1a2b3c4d", "name": "Some Custom Font",
+  "format": "ttf", "data": "AAEAAAAL..." }   // base64 font bytes
+```
+
+RapidCAM embeds only the fonts actually referenced by a text entity. If a text
+entity's `fontId` is neither a bundled font nor present in `fonts`, the text cannot
+be rendered or cut.
+
 ## Validating your output
 
 ```bash
@@ -303,7 +334,7 @@ operation, so the file is self-contained and portable. See
 npm test -- rcam-schema
 ```
 
-External tools can validate against [`public/schema/rcam-v1.schema.json`](../public/schema/rcam-v1.schema.json)
+External tools can validate against [`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json)
 with any JSON Schema (draft 2020-12) validator. The schema enforces structure and
 enumerations; it cannot tell you whether a constraint system converges or a pocket
 seed lands inside its region — for that you need to load the file in RapidCAM.

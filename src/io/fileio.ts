@@ -1,8 +1,16 @@
 import type { Unit } from "../core/units";
 import type { CADDocument, DocSnapshot } from "../model/document";
+import { TextEntity } from "../model/entities";
+import {
+  collectEmbeddedFonts,
+  registerEmbeddedFont,
+  type EmbeddedFont,
+} from "../core/fontManager";
+
+export const RCAM_VERSION = 2 as const;
 
 export interface RcamFile {
-  version: 1;
+  version: typeof RCAM_VERSION;
   name: string;
   canvas: { width: number; height: number };
   displayUnit: string;
@@ -20,8 +28,44 @@ export interface RcamFile {
   patterns?: unknown[];
   operations?: unknown[];
   tools?: unknown[];
-  isConstructionMode: boolean;
-  selectedPoints: unknown[];
+  /** Non-bundled fonts referenced by text entities, embedded so the file cuts
+   *  identically on any machine. Bundled fonts resolve by id and are omitted. */
+  fonts?: EmbeddedFont[];
+}
+
+/**
+ * Upgrade a legacy v1 file (the old "serialized session snapshot" shape) to v2:
+ * drop transient editor state (`isConstructionMode`, the `selected*` fields, and
+ * each entity's `selected` flag). v1 had no embedded fonts, so none are added.
+ */
+export function migrateV1ToV2(old: Record<string, unknown>): RcamFile {
+  const {
+    isConstructionMode: _m,
+    selectedPoints: _sp,
+    selectedConstraintId: _sc,
+    selectedDimensionId: _sd,
+    version: _v,
+    entities,
+    ...rest
+  } = old as Record<string, unknown> & { entities?: Record<string, unknown>[] };
+  return {
+    ...(rest as object),
+    version: RCAM_VERSION,
+    entities: (entities ?? []).map(({ selected: _s, ...keep }) => keep),
+  } as RcamFile;
+}
+
+/** Parse raw .rcam text into a current-version file, migrating older versions. */
+export function parseRcam(text: string): RcamFile {
+  return normalizeRcam(JSON.parse(text));
+}
+
+/** Coerce a parsed object to the current version, migrating v1. Throws otherwise. */
+export function normalizeRcam(raw: unknown): RcamFile {
+  const v = (raw as { version?: unknown }).version;
+  if (v === RCAM_VERSION) return raw as RcamFile;
+  if (v === 1) return migrateV1ToV2(raw as Record<string, unknown>);
+  throw new Error(`Unsupported .rcam version: ${String(v)}`);
 }
 
 export interface RecentEntry {
@@ -53,8 +97,17 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
   // forked away from don't linger in the saved file.
   const usedToolIds = new Set(doc.operations.map((op) => op.toolId).filter(Boolean));
   const tools = (snap.tools ?? []).filter((t) => usedToolIds.has(t.id));
+  // Embed the (non-bundled) fonts any text entity references, so the file
+  // reproduces its glyph outlines — and therefore its toolpaths — anywhere.
+  const fontIds = doc.entities
+    .filter((e): e is TextEntity => e instanceof TextEntity)
+    .map((e) => e.fontId);
+  const fonts = collectEmbeddedFonts(fontIds);
+  // The file describes a design, not an editor session: drop the transient
+  // `selected` flag from every entity (selection/mode are not persisted).
+  const entities = snap.entities.map(({ selected: _s, ...rest }) => rest);
   return {
-    version: 1,
+    version: RCAM_VERSION,
     name,
     canvas: { ...doc.canvas },
     displayUnit: doc.displayUnit,
@@ -65,15 +118,14 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
     activeLayerId: snap.activeLayerId,
-    entities: snap.entities as unknown[],
+    entities: entities as unknown[],
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
     variables: snap.variables as unknown[],
     patterns: snap.patterns as unknown[],
     operations: snap.operations as unknown[],
     tools: tools as unknown[],
-    isConstructionMode: snap.isConstructionMode,
-    selectedPoints: snap.selectedPoints as unknown[],
+    ...(fonts.length ? { fonts } : {}),
   };
 }
 
@@ -89,20 +141,36 @@ export function saveFile(doc: CADDocument, name: string): void {
   pushRecent({ name, savedAt: Date.now(), data: file });
 }
 
-export function applyFile(doc: CADDocument, file: RcamFile): void {
-  doc.canvas = { ...file.canvas };
+export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
+  // Tolerate legacy v1 files arriving via recents/autosave drafts.
+  const file = normalizeRcam(fileIn);
+  // Register embedded fonts before restoring, so text entities resolve them.
+  for (const f of file.fonts ?? []) registerEmbeddedFont(f);
   doc.displayUnit = file.displayUnit as Unit;
-  if (file.stockThickness !== undefined) doc.stockThickness = file.stockThickness;
-  if (file.hasToolChanger !== undefined) doc.hasToolChanger = file.hasToolChanger;
-  if (file.origin !== undefined) {
-    doc.origin = {
-      x: (file.origin.x as import("../model/document").OriginX) ?? "left",
-      y: (file.origin.y as import("../model/document").OriginY) ?? "front",
-      z: (file.origin.z as import("../model/document").OriginZ) ?? "top",
-    };
-  }
-  if (file.postProcessor) doc.postProcessor = file.postProcessor;
-  doc.restore(file as unknown as DocSnapshot);
+  // Build a DocSnapshot from the file, injecting empty selection/mode state —
+  // those are not persisted, but doc.restore() expects them present.
+  const snap: DocSnapshot = {
+    entities: (file.entities ?? []) as DocSnapshot["entities"],
+    constraints: (file.constraints ?? []) as DocSnapshot["constraints"],
+    dimensions: (file.dimensions ?? []) as DocSnapshot["dimensions"],
+    variables: file.variables as DocSnapshot["variables"],
+    patterns: file.patterns as DocSnapshot["patterns"],
+    operations: file.operations as DocSnapshot["operations"],
+    tools: file.tools as DocSnapshot["tools"],
+    groups: file.groups as DocSnapshot["groups"],
+    layers: file.layers as DocSnapshot["layers"],
+    activeLayerId: file.activeLayerId,
+    canvas: file.canvas,
+    stockThickness: file.stockThickness,
+    hasToolChanger: file.hasToolChanger,
+    origin: file.origin as DocSnapshot["origin"],
+    postProcessor: file.postProcessor,
+    isConstructionMode: false,
+    selectedPoints: [],
+    selectedConstraintId: null,
+    selectedDimensionId: null,
+  };
+  doc.restore(snap);
 }
 
 export async function openFile(): Promise<{ name: string; file: RcamFile; handle?: FileSystemFileHandle } | null> {
@@ -118,8 +186,7 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
       });
       const fileObj = await handle.getFile();
       const text = await fileObj.text();
-      const file = JSON.parse(text) as RcamFile;
-      if (file.version !== 1) throw new Error("Unsupported file version");
+      const file = parseRcam(text);
       const name = fileObj.name.replace(/\.rcam$/i, "");
       pushRecent({ name, savedAt: Date.now(), data: file });
       return { name, file, handle };
@@ -147,8 +214,7 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const file = JSON.parse(reader.result as string) as RcamFile;
-          if (file.version !== 1) throw new Error("Unsupported file version");
+          const file = parseRcam(reader.result as string);
           pushRecent({ name, savedAt: Date.now(), data: file });
           settle({ name, file });
         } catch {

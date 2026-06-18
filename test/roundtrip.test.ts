@@ -10,6 +10,10 @@ import { makeCircularPattern, computeSourceSnapshot, type CircularPatternParams 
 import { applyRotate } from "../src/core/transform";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { getFont, loadFromFile, registerEmbeddedFont } from "../src/core/fontManager";
 
 /**
  * Round-trip fidelity: a document exercising every persisted feature must
@@ -23,7 +27,6 @@ function buildKitchenSink(): CADDocument {
   doc.hasToolChanger = true;
   doc.origin = { x: "center", y: "center", z: "bed" };
   doc.postProcessor = "grbl";
-  doc.isConstructionMode = true;
 
   // Custom layer + make it active.
   doc.layers.push({ id: "layer-1", name: "Cuts", color: "#ff3344", visible: false, locked: true });
@@ -107,4 +110,41 @@ test("a fully-featured document survives a save/load round-trip", () => {
   expect(after).toEqual(before);
   // displayUnit is persisted as a direct RcamFile field (not part of snapshot()).
   expect(doc2.displayUnit).toBe("in");
+});
+
+test("text in a non-bundled font embeds the font and reproduces it on load", async () => {
+  // Load a real font as if the user picked it from disk (so it's non-bundled).
+  const here = dirname(fileURLToPath(import.meta.url));
+  const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
+  const fakeFile = {
+    name: "user-font.woff",
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as File;
+  const { id: fontId } = await loadFromFile(fakeFile);
+  expect(fontId.startsWith("font-")).toBe(true);
+
+  const doc = new CADDocument({ width: 100, height: 60 }, "mm");
+  doc.add(new TextEntity("Hi", fontId, 10, { x: 10, y: 10 }, 0));
+
+  const file = serializeDoc(doc, "Fonted");
+  // The non-bundled font is embedded with its bytes.
+  expect(file.fonts).toHaveLength(1);
+  expect(file.fonts![0].id).toBe(fontId);
+  expect(file.fonts![0].format).toBe("woff");
+  const decoded = Buffer.from(file.fonts![0].data, "base64");
+  expect(decoded.byteLength).toBe(bytes.byteLength);
+
+  // Re-registering under a fresh id (simulating a load on a clean machine)
+  // parses the embedded bytes back into a usable font.
+  const freshId = `font-clean-${Date.now()}`;
+  expect(getFont(freshId)).toBeNull();
+  registerEmbeddedFont({ ...file.fonts![0], id: freshId });
+  expect(getFont(freshId)).not.toBeNull();
+});
+
+test("bundled fonts are referenced by id, never embedded", () => {
+  const doc = new CADDocument({ width: 100, height: 60 }, "mm");
+  doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 10, y: 10 }, 0));
+  const file = serializeDoc(doc, "Bundled");
+  expect(file.fonts).toBeUndefined();
 });

@@ -1,4 +1,4 @@
-import type { RcamFile } from "./fileio";
+import { normalizeRcam, type RcamFile } from "./fileio";
 
 export interface ExampleEntry {
   name: string;
@@ -37,8 +37,7 @@ export function getExamples(): ExampleEntry[] {
   const items: { entry: ExampleEntry; base: string }[] = [];
   for (const [path, raw] of Object.entries(modules)) {
     try {
-      const file = JSON.parse(raw) as RcamFile;
-      if (file.version !== 1) continue;
+      const file = normalizeRcam(JSON.parse(raw));
       const base = path.split("/").pop()!;
       const fallback = base.replace(/\.rcam$/i, "");
       items.push({ entry: { name: file.name || fallback, file }, base });

@@ -1,11 +1,11 @@
 /**
- * Drift guard for the frozen v1 .rcam format.
+ * Drift guard for the published v2 .rcam format.
  *
- * Validates every bundled example project against public/schema/rcam-v1.schema.json.
+ * Validates every bundled example project against public/schema/rcam-v2.schema.json.
  * If the format changes, either the schema or the examples must be updated to
- * match — this test forces them to stay in sync, which is what "frozen v1"
- * actually buys us. It also doubles as a contract test for external authors
- * (including AIs) generating .rcam files from the published schema.
+ * match — this test forces them to stay in sync. It also doubles as a contract
+ * test for external authors (including AIs) generating .rcam files from the
+ * published schema.
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,7 +16,7 @@ import Ajv2020 from "ajv/dist/2020";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
-const schemaPath = join(repoRoot, "public", "schema", "rcam-v1.schema.json");
+const schemaPath = join(repoRoot, "public", "schema", "rcam-v2.schema.json");
 const examplesDir = join(repoRoot, "examples");
 
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
@@ -25,27 +25,34 @@ const validate = ajv.compile(schema);
 
 const exampleFiles = readdirSync(examplesDir).filter((f) => f.endsWith(".rcam"));
 
-describe("rcam v1 schema", () => {
+describe("rcam v2 schema", () => {
   it("finds the bundled examples", () => {
     expect(exampleFiles.length).toBeGreaterThan(0);
   });
 
   for (const file of exampleFiles) {
-    it(`validates ${file} against the v1 schema`, () => {
+    it(`validates ${file} against the v2 schema`, () => {
       const data = JSON.parse(readFileSync(join(examplesDir, file), "utf8"));
       const ok = validate(data);
       if (!ok) {
         const msg = (validate.errors ?? [])
           .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
           .join("\n");
-        throw new Error(`${file} does not match rcam-v1 schema:\n${msg}`);
+        throw new Error(`${file} does not match rcam-v2 schema:\n${msg}`);
       }
       expect(ok).toBe(true);
     });
   }
 
   it("rejects a file with the wrong version", () => {
-    expect(validate({ ...minimalDoc(), version: 2 })).toBe(false);
+    expect(validate({ ...minimalDoc(), version: 1 })).toBe(false);
+    expect(validate({ ...minimalDoc(), version: 3 })).toBe(false);
+  });
+
+  it("rejects an entity carrying the dropped UI `selected` field", () => {
+    const doc = minimalDoc();
+    doc.entities[0].selected = false;
+    expect(validate(doc)).toBe(false);
   });
 
   it("rejects an unknown entity type", () => {
@@ -59,10 +66,10 @@ describe("rcam v1 schema", () => {
   });
 });
 
-/** Smallest document an external author must emit for a valid v1 file. */
+/** Smallest document an external author must emit for a valid v2 file. */
 function minimalDoc(): any {
   return {
-    version: 1,
+    version: 2,
     name: "Minimal",
     canvas: { width: 100, height: 100 },
     displayUnit: "mm",
@@ -71,7 +78,5 @@ function minimalDoc(): any {
     ],
     constraints: [],
     dimensions: [],
-    isConstructionMode: false,
-    selectedPoints: [],
   };
 }

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Bolt Circle Flange",
   "canvas": {
     "width": 150,
@@ -15,6 +15,16 @@
   },
   "postProcessor": "grbl",
   "groups": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
   "entities": [
     {
       "type": "circle",
@@ -24,7 +34,6 @@
         "y": 65
       },
       "radius": 55,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -36,7 +45,6 @@
         "y": 65
       },
       "radius": 15,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -48,7 +56,6 @@
         "y": 65
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -60,7 +67,6 @@
         "y": 99.64101615137754
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -72,7 +78,6 @@
         "y": 99.64101615137756
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -84,7 +89,6 @@
         "y": 65
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -96,7 +100,6 @@
         "y": 30.358983848622458
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -108,7 +111,6 @@
         "y": 30.358983848622437
       },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     }
@@ -257,6 +259,5 @@
     }
   ],
   "operations": [],
-  "isConstructionMode": false,
-  "selectedPoints": []
+  "tools": []
 }
