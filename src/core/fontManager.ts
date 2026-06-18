@@ -37,6 +37,17 @@ export function isBundledFont(id: string): boolean {
   return BUNDLED_IDS.has(id);
 }
 
+/**
+ * Whether a fontId can be resolved to glyphs: it's registered, or it's a bundled
+ * font that ships with the app. Bundled ids count as resolvable even before their
+ * async startup load finishes, so freshly loaded documents don't raise spurious
+ * "missing font" warnings. A genuinely absent font (unembedded + non-bundled)
+ * returns false — its text will render as a placeholder and produce no toolpath.
+ */
+export function isFontResolvable(id: string): boolean {
+  return BUNDLED_IDS.has(id) || FONTS.has(id);
+}
+
 export function getFont(id: string): Font | null {
   return FONTS.get(id)?.font ?? null;
 }

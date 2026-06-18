@@ -6,6 +6,8 @@ import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
+import { TextEntity } from "../model/entities";
+import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { track } from "../analytics";
 
@@ -181,6 +183,26 @@ export class ProjectManager {
     this.cb.onFitView();
     this.isDocumentLoading = false;
     this.markClean();
+    this.warnMissingFonts();
+  }
+
+  /**
+   * After a load, alert if any text references a font that couldn't be resolved
+   * (e.g. a hand-authored file naming a font without embedding it). Such text
+   * renders as a placeholder box and is omitted from G-code, so the user should
+   * know up front rather than discover it in the cut.
+   */
+  private warnMissingFonts(): void {
+    const missing = this.doc.entities.filter(
+      (e): e is TextEntity => e instanceof TextEntity && !isFontResolvable(e.fontId),
+    );
+    if (missing.length === 0) return;
+    const list = missing.map((t) => `  • "${t.text}"  (font: ${t.fontId})`).join("\n");
+    alert(
+      `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
+      `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
+      `omitted from G-code until the font is re-added.`,
+    );
   }
 
   async writeToHandle(handle: FileSystemFileHandle): Promise<RcamFile> {
@@ -287,6 +309,7 @@ export class ProjectManager {
       this.cb.onFitView();
       this.isDocumentLoading = false;
       this.markClean();
+      this.warnMissingFonts();
     } catch (e) {
       console.error("Failed to restore draft:", e);
     }

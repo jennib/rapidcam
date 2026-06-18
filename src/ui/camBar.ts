@@ -14,6 +14,7 @@ import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type Lea
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
+import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
@@ -629,8 +630,28 @@ export class CamBar {
 
   private generate(): void {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    // Text whose font can't be resolved produces no toolpath geometry. Surface
+    // that as an explicit choice rather than silently omitting it from the cut.
+    const missing = this.missingFontText();
+    if (missing.length > 0) {
+      const list = missing.map((t) => `  • "${t.text}"`).join("\n");
+      const ok = confirm(
+        `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
+        `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
+      );
+      if (!ok) return;
+    }
     track("gcode_generated", { operation_count: this.doc.operations.length });
     this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
+  }
+
+  /** Text entities targeted by an operation whose font can't be resolved. */
+  private missingFontText(): TextEntity[] {
+    const targeted = new Set(this.doc.operations.flatMap((o) => o.entityIds));
+    return this.doc.entities.filter(
+      (e): e is TextEntity =>
+        e instanceof TextEntity && targeted.has(e.id) && !isFontResolvable(e.fontId),
+    );
   }
 
   private download(code: string, name: string): void {

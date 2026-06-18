@@ -13,7 +13,7 @@ import type { CAMOperation } from "../src/cam/types";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getFont, loadFromFile, registerEmbeddedFont } from "../src/core/fontManager";
+import { getFont, loadFromFile, registerEmbeddedFont, isFontResolvable } from "../src/core/fontManager";
 
 /**
  * Round-trip fidelity: a document exercising every persisted feature must
@@ -147,4 +147,19 @@ test("bundled fonts are referenced by id, never embedded", () => {
   doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 10, y: 10 }, 0));
   const file = serializeDoc(doc, "Bundled");
   expect(file.fonts).toBeUndefined();
+});
+
+test("isFontResolvable: bundled always, registered yes, unknown no", async () => {
+  // Bundled ids resolve even when their async load hasn't run (node test env).
+  expect(isFontResolvable("roboto-regular")).toBe(true);
+  // An unknown id (e.g. a hand-authored file naming a font it never embedded).
+  expect(isFontResolvable("font-deadbeef")).toBe(false);
+  // A registered user font resolves.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
+  const { id } = await loadFromFile({
+    name: "u.woff",
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as File);
+  expect(isFontResolvable(id)).toBe(true);
 });
