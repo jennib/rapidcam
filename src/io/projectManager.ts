@@ -229,8 +229,10 @@ export class ProjectManager {
     const file = await new Promise<File | null>((resolve) => {
       let settled = false;
       const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      // `cancel` = picker dismissed with no file; avoids the focus+timeout race
+      // that could drop a real selection (see openFile in fileio.ts).
+      input.addEventListener("cancel", () => settle(null));
       input.addEventListener("change", () => settle(input.files?.[0] ?? null));
-      window.addEventListener("focus", () => setTimeout(() => settle(null), 300), { once: true });
       input.click();
     });
     if (!file) return;

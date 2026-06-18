@@ -207,6 +207,14 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
       resolve(v);
     };
 
+    // `cancel` fires when the picker is dismissed with no selection. Every
+    // browser that lacks showOpenFilePicker — and therefore reaches this
+    // fallback — supports it (Firefox 109+, Safari 16.4+). It replaces an older
+    // focus+300ms-timeout heuristic that raced the file read: a real selection
+    // whose read outran the timer was silently dropped, a risk that grew once
+    // v2 files embed fonts and take longer to read.
+    input.addEventListener("cancel", () => settle(null));
+
     input.addEventListener("change", () => {
       const f = input.files?.[0];
       if (!f) { settle(null); return; }
@@ -222,15 +230,12 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
           settle(null);
         }
       };
+      reader.onerror = () => {
+        alert("Could not read the file.");
+        settle(null);
+      };
       reader.readAsText(f);
     });
-
-    // Detect picker cancellation via window focus regained
-    window.addEventListener(
-      "focus",
-      () => setTimeout(() => settle(null), 300),
-      { once: true },
-    );
 
     input.click();
   });
