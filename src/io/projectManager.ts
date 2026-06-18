@@ -1,6 +1,6 @@
 import { CADDocument, DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
-import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
+import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
@@ -229,8 +229,8 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         const data = await this.writeToHandle(this.currentFileHandle);
-        localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
-          name: this.currentFileName, savedAt: Date.now(), data,
+        trySetItem("rapidcam:autosave-draft", JSON.stringify({
+          name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
         }));
         return;
       } catch (e) {
@@ -239,8 +239,8 @@ export class ProjectManager {
     }
 
     const data = serializeDoc(this.doc, this.currentFileName);
-    localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
-      name: this.currentFileName, savedAt: Date.now(), data,
+    trySetItem("rapidcam:autosave-draft", JSON.stringify({
+      name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
     }));
   }
 

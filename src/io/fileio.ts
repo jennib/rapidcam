@@ -85,10 +85,45 @@ export function getRecents(): RecentEntry[] {
   }
 }
 
+/**
+ * localStorage.setItem that never throws — e.g. on QuotaExceededError. Returns
+ * whether the write succeeded. localStorage is the wrong home for large blobs;
+ * callers must treat a `false` as "cache skipped", never as a hard failure.
+ */
+export function trySetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.warn(`[storage] could not write "${key}" (quota exceeded?):`, e);
+    return false;
+  }
+}
+
+/**
+ * Strip embedded font bytes from a file before it goes into a localStorage-backed
+ * cache (recents, autosave draft). The font registry already holds them for the
+ * current session, and the durable home for font bytes is the .rcam file on disk —
+ * so caching MB-sized base64 here would only risk blowing the localStorage quota.
+ * After a full browser restart a restored cache may reference an unloaded font;
+ * that surfaces as the missing-font warning rather than silent breakage.
+ */
+export function stripEmbeddedFonts(file: RcamFile): RcamFile {
+  if (!file.fonts) return file;
+  const { fonts: _drop, ...rest } = file;
+  return rest;
+}
+
 export function pushRecent(entry: RecentEntry): void {
-  const list = getRecents().filter((r) => r.name !== entry.name);
-  list.unshift(entry);
-  localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, MAX_RECENTS)));
+  const light: RecentEntry = { ...entry, data: stripEmbeddedFonts(entry.data) };
+  let list = getRecents().filter((r) => r.name !== light.name);
+  list.unshift(light);
+  list = list.slice(0, MAX_RECENTS);
+  // Recents are a convenience cache: if the list still won't fit, drop the oldest
+  // entries until it does — never throw out of a save/open.
+  while (list.length > 0 && !trySetItem(RECENTS_KEY, JSON.stringify(list))) {
+    list.pop();
+  }
 }
 
 export function serializeDoc(doc: CADDocument, name: string): RcamFile {

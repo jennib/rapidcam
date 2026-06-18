@@ -8,7 +8,7 @@ import { makeDimension } from "../src/model/dimensions";
 import { makeVariable } from "../src/model/variables";
 import { makeCircularPattern, computeSourceSnapshot, type CircularPatternParams } from "../src/model/patterns";
 import { applyRotate } from "../src/core/transform";
-import { serializeDoc, applyFile } from "../src/io/fileio";
+import { serializeDoc, applyFile, pushRecent, trySetItem, stripEmbeddedFonts, type RcamFile } from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -162,4 +162,40 @@ test("isFontResolvable: bundled always, registered yes, unknown no", async () =>
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File);
   expect(isFontResolvable(id)).toBe(true);
+});
+
+test("stripEmbeddedFonts drops fonts but keeps the rest of the file", () => {
+  const file: RcamFile = {
+    version: 2, name: "F", canvas: { width: 1, height: 1 }, displayUnit: "mm",
+    entities: [{ type: "text", id: "t1", text: "Hi", fontId: "font-x", sizeMM: 5, position: { x: 0, y: 0 }, angle: 0 }],
+    constraints: [], dimensions: [],
+    fonts: [{ id: "font-x", name: "X", format: "ttf", data: "AAAA" }],
+  };
+  const light = stripEmbeddedFonts(file);
+  expect(light.fonts).toBeUndefined();
+  expect(light.entities).toEqual(file.entities); // text + its fontId untouched
+  expect(file.fonts).toHaveLength(1); // original not mutated
+});
+
+test("localStorage writes never throw under quota pressure", () => {
+  // Fake a localStorage that rejects any single value over 100 chars.
+  const store = new Map<string, string>();
+  const fake = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      if (v.length > 100) { const e = new Error("quota"); e.name = "QuotaExceededError"; throw e; }
+      store.set(k, v);
+    },
+    removeItem: (k: string) => { store.delete(k); },
+  };
+  (globalThis as { localStorage?: unknown }).localStorage = fake;
+  try {
+    expect(trySetItem("k", "x".repeat(50))).toBe(true);
+    expect(trySetItem("k", "x".repeat(500))).toBe(false); // too big → false, no throw
+    const data = { version: 2, name: "Big", canvas: { width: 1, height: 1 }, displayUnit: "mm", entities: [], constraints: [], dimensions: [] } as unknown as RcamFile;
+    // Oversized recent: pushRecent must shed it without throwing.
+    expect(() => pushRecent({ name: "Big", savedAt: 0, data })).not.toThrow();
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });
