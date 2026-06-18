@@ -1,6 +1,14 @@
 import { showAboutDialog } from "./aboutDialog";
 import { showFeedbackDialog } from "./feedbackDialog";
 
+const REPO_URL = "https://github.com/jennib/rapidcam";
+const FORMAT_DOC_URL = `${REPO_URL}/blob/main/docs/rcam-format-v1.md`;
+const SCHEMA_URL = "https://rapidcam.app/schema/rcam-v1.schema.json";
+
+function openExternal(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export class HelpMenu {
   private btn: HTMLButtonElement;
   private dropdown: HTMLElement;
@@ -51,6 +59,12 @@ export class HelpMenu {
     this.dropdown.innerHTML = "";
     this.item("Send Feedback…", () => { this.close(); showFeedbackDialog(); });
     this.item("About RapidCAM…", () => { this.close(); showAboutDialog(); });
+
+    this.sep();
+    this.sectionLabel("File Format & Source");
+    this.externalItem(".rcam File Format Guide", FORMAT_DOC_URL);
+    this.externalItem(".rcam JSON Schema", SCHEMA_URL);
+    this.externalItem("Source on GitHub", REPO_URL);
   }
 
   private item(text: string, onClick: () => void): void {
@@ -60,6 +74,34 @@ export class HelpMenu {
     label.textContent = text;
     div.appendChild(label);
     div.addEventListener("click", onClick);
+    this.dropdown.appendChild(div);
+  }
+
+  /** A menu item that opens an external URL in a new tab, marked with a ↗ glyph. */
+  private externalItem(text: string, url: string): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-item";
+    const label = document.createElement("span");
+    label.textContent = text;
+    div.appendChild(label);
+    const arrow = document.createElement("span");
+    arrow.className = "fmenu-kbd";
+    arrow.textContent = "↗";
+    div.appendChild(arrow);
+    div.addEventListener("click", () => { this.close(); openExternal(url); });
+    this.dropdown.appendChild(div);
+  }
+
+  private sep(): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-sep";
+    this.dropdown.appendChild(div);
+  }
+
+  private sectionLabel(text: string): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-section-label";
+    div.textContent = text;
     this.dropdown.appendChild(div);
   }
 }
