@@ -13,7 +13,7 @@ import type { CAMOperation } from "../src/cam/types";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getFont, loadFromFile, registerEmbeddedFont, isFontResolvable } from "../src/core/fontManager";
+import { getFont, loadFromFile, registerEmbeddedFont, isFontResolvable, fsTypeAllowsEmbedding } from "../src/core/fontManager";
 
 /**
  * Round-trip fidelity: a document exercising every persisted feature must
@@ -162,6 +162,16 @@ test("isFontResolvable: bundled always, registered yes, unknown no", async () =>
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File);
   expect(isFontResolvable(id)).toBe(true);
+});
+
+test("fsTypeAllowsEmbedding follows the OS/2 restricted-license bit", () => {
+  expect(fsTypeAllowsEmbedding(0x0000)).toBe(true);          // installable
+  expect(fsTypeAllowsEmbedding(0x0004)).toBe(true);          // preview & print
+  expect(fsTypeAllowsEmbedding(0x0008)).toBe(true);          // editable
+  expect(fsTypeAllowsEmbedding(0x0002)).toBe(false);         // restricted license
+  expect(fsTypeAllowsEmbedding(0x0002 | 0x0004)).toBe(false); // restricted bit dominates
+  expect(fsTypeAllowsEmbedding(null)).toBe(true);            // no OS/2 table → no restriction
+  expect(fsTypeAllowsEmbedding(undefined)).toBe(true);
 });
 
 test("stripEmbeddedFonts drops fonts but keeps the rest of the file", () => {

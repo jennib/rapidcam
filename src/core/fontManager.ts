@@ -21,6 +21,8 @@ export interface FontEntry {
   format: FontFormat;
   /** True for fonts shipped with the app (resolvable by id, never embedded). */
   bundled: boolean;
+  /** Whether the font's license (OS/2 fsType) permits embedding it in a file. */
+  embeddable: boolean;
 }
 
 const FONTS = new Map<string, FontEntry>();
@@ -75,6 +77,29 @@ function detectFormat(buf: ArrayBuffer): FontFormat {
   return "ttf";
 }
 
+/**
+ * Whether an OS/2 `fsType` value permits embedding the font in a document.
+ * Bit 1 (0x0002) is "Restricted License embedding" — the font must not be
+ * embedded. The other levels (installable=0, preview&print=0x0004,
+ * editable=0x0008) all permit it. A missing fsType (no OS/2 table) states no
+ * restriction, so it's treated as embeddable. Exported for testing.
+ */
+export function fsTypeAllowsEmbedding(fsType: number | null | undefined): boolean {
+  if (fsType == null) return true;
+  return (fsType & 0x0002) === 0;
+}
+
+/** Read a parsed font's embedding permission from its OS/2 table. */
+function fontEmbeddable(font: Font): boolean {
+  const os2 = (font.tables as { os2?: { fsType?: number } } | undefined)?.os2;
+  return fsTypeAllowsEmbedding(os2?.fsType);
+}
+
+/** Whether a loaded font's license permits embedding it into a .rcam file. */
+export function isFontEmbeddable(id: string): boolean {
+  return FONTS.get(id)?.embeddable ?? false;
+}
+
 /** FNV-1a 32-bit hash of the bytes, hex — stable content id for embedded fonts. */
 function hashBytes(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -92,22 +117,23 @@ export async function loadFromUrl(id: string, name: string, url: string): Promis
   if (!res.ok) throw new Error(`Font fetch failed: ${url} (${res.status})`);
   const buf = await res.arrayBuffer();
   const font = await parseFont(buf);
-  FONTS.set(id, { id, name, font, data: buf, format: detectFormat(buf), bundled: BUNDLED_IDS.has(id) });
+  FONTS.set(id, { id, name, font, data: buf, format: detectFormat(buf), bundled: BUNDLED_IDS.has(id), embeddable: fontEmbeddable(font) });
 }
 
-export async function loadFromFile(file: File): Promise<{ id: string; name: string }> {
+export async function loadFromFile(file: File): Promise<{ id: string; name: string; embeddable: boolean }> {
   const buf = await file.arrayBuffer();
   const font = await parseFont(buf);
   const nameStr =
     (font.names.fullName as Record<string, string> | undefined)?.en ??
     file.name.replace(/\.[^.]+$/, "");
+  const embeddable = fontEmbeddable(font);
   // Content-addressed id: same font bytes always yield the same id, so a font
   // dedupes across sessions and round-trips stably through saved files.
   const id = `font-${hashBytes(buf)}`;
   if (!FONTS.has(id)) {
-    FONTS.set(id, { id, name: nameStr, font, data: buf, format: detectFormat(buf), bundled: false });
+    FONTS.set(id, { id, name: nameStr, font, data: buf, format: detectFormat(buf), bundled: false, embeddable });
   }
-  return { id, name: nameStr };
+  return { id, name: nameStr, embeddable };
 }
 
 /** An embedded font as it appears in a .rcam file. */
@@ -120,7 +146,8 @@ export interface EmbeddedFont {
 }
 
 /** Collect the embeddable (non-bundled) fonts for the given ids, skipping any
- *  that aren't loaded or are bundled (those resolve by id at runtime). */
+ *  that aren't loaded, are bundled (resolve by id at runtime), or whose license
+ *  forbids embedding (we must not redistribute those in a shared file). */
 export function collectEmbeddedFonts(ids: Iterable<string>): EmbeddedFont[] {
   const out: EmbeddedFont[] = [];
   const seen = new Set<string>();
@@ -129,6 +156,10 @@ export function collectEmbeddedFonts(ids: Iterable<string>): EmbeddedFont[] {
     seen.add(id);
     const e = FONTS.get(id);
     if (!e || e.bundled) continue;
+    if (!e.embeddable) {
+      console.warn(`[fonts] not embedding "${e.name}" (${e.id}): its license (OS/2 fsType) forbids embedding.`);
+      continue;
+    }
     out.push({ id: e.id, name: e.name, format: e.format, data: bytesToBase64(e.data) });
   }
   return out;
@@ -140,7 +171,7 @@ export function registerEmbeddedFont(f: EmbeddedFont): void {
   const data = base64ToBytes(f.data);
   try {
     const font = opentype.parse(data);
-    FONTS.set(f.id, { id: f.id, name: f.name, font, data, format: f.format, bundled: false });
+    FONTS.set(f.id, { id: f.id, name: f.name, font, data, format: f.format, bundled: false, embeddable: fontEmbeddable(font) });
   } catch (e) {
     console.warn(`[fonts] Could not parse embedded font "${f.name}" (${f.id}):`, (e as Error).message);
   }
