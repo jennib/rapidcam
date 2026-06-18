@@ -55,6 +55,17 @@ export function initAnalytics(): void {
     capture_pageview: true,
     capture_pageleave: true,
     respect_dnt: true,
+    session_recording: {
+      // The drawing lives in a <canvas>, which rrweb does NOT capture from the
+      // DOM — without this, replays show the cursor and dialogs but a blank
+      // canvas. recordCanvas streams the pixels (at a throttled fps) so the
+      // geometry is visible in session replays.
+      captureCanvas: {
+        recordCanvas: true,
+        canvasFps: 4,
+        canvasQuality: "0.6",
+      },
+    },
   });
   initialised = true;
 }
