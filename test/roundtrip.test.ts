@@ -75,9 +75,16 @@ function buildKitchenSink(): CADDocument {
   }
   doc.addPattern(makeCircularPattern([circle.id], instanceIds, params, computeSourceSnapshot(doc.entities, [circle.id])));
 
+  // Embedded tool library + an operation that references it by toolId.
+  doc.tools.push({
+    id: "tool-em-6", name: "6mm End Mill", toolType: "end-mill", diameter: 6,
+    feedrate: 900, plungeRate: 250, spindleSpeed: 18000, safeZ: 5,
+  });
+
   // CAM operation with the nested optional shapes.
   const op: CAMOperation = {
     id: "op1", name: "Profile", type: "profile", entityIds: [rect.id], side: "outside",
+    toolId: "tool-em-6",
     toolType: "end-mill", toolNumber: 2, diameter: 6, feedrate: 900, plungeRate: 250,
     spindleSpeed: 18000, safeZ: 5, depth: -12, stepdown: 2.5, stepover: 0.4,
     tabs: { enabled: true, count: 4, width: 6, height: 2 },

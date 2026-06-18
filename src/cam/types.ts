@@ -40,6 +40,15 @@ export interface CAMOperation {
   entityIds: EntityId[];
   side: "outside" | "inside"; // profile only
   // tool
+  /**
+   * Optional reference into the document's `tools` library. When set and it
+   * resolves to a tool, that tool's geometry/feeds (toolType, diameter, vAngle,
+   * tipAngle, feedrate, plungeRate, spindleSpeed, safeZ) drive the operation and
+   * the inline fields below act only as a fallback for unresolved ids. Editing a
+   * tool field in the UI clears `toolId` (the op forks to a one-off). Old files
+   * have no `toolId`, so their inline fields are always authoritative.
+   */
+  toolId?: string;
   toolType: ToolType;
   toolNumber: number;         // T-number for tool changer (1-based)
   diameter: number;           // mm
@@ -96,3 +105,28 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
   "v-bit":     "V-Bit",
   "drill":     "Drill",
 };
+
+/**
+ * Resolve an operation's effective tool. If `op.toolId` references a tool in
+ * `tools`, return a shallow copy of the op with that tool's geometry/feeds
+ * applied (so a single library tool can drive many ops — edit it once, every
+ * referencing op updates). Otherwise the op is returned unchanged, so the inline
+ * fields stay authoritative. `toolNumber`/`depth`/`stepdown`/`stepover` and other
+ * per-op cut settings are never overridden — they belong to the operation.
+ */
+export function resolveOpTool(op: CAMOperation, tools?: ToolDef[]): CAMOperation {
+  if (!op.toolId || !tools || tools.length === 0) return op;
+  const t = tools.find((td) => td.id === op.toolId);
+  if (!t) return op;
+  return {
+    ...op,
+    toolType: t.toolType,
+    diameter: t.diameter,
+    vAngle: t.vAngle ?? op.vAngle,
+    tipAngle: t.tipAngle ?? op.tipAngle,
+    feedrate: t.feedrate,
+    plungeRate: t.plungeRate,
+    spindleSpeed: t.spindleSpeed,
+    safeZ: t.safeZ,
+  };
+}

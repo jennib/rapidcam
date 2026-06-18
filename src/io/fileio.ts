@@ -19,6 +19,7 @@ export interface RcamFile {
   variables?: unknown[];
   patterns?: unknown[];
   operations?: unknown[];
+  tools?: unknown[];
   isConstructionMode: boolean;
   selectedPoints: unknown[];
 }
@@ -48,6 +49,10 @@ export function pushRecent(entry: RecentEntry): void {
 
 export function serializeDoc(doc: CADDocument, name: string): RcamFile {
   const snap = doc.snapshot();
+  // Only persist tools actually referenced by an operation, so tools the user
+  // forked away from don't linger in the saved file.
+  const usedToolIds = new Set(doc.operations.map((op) => op.toolId).filter(Boolean));
+  const tools = (snap.tools ?? []).filter((t) => usedToolIds.has(t.id));
   return {
     version: 1,
     name,
@@ -66,6 +71,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     variables: snap.variables as unknown[],
     patterns: snap.patterns as unknown[],
     operations: snap.operations as unknown[],
+    tools: tools as unknown[],
     isConstructionMode: snap.isConstructionMode,
     selectedPoints: snap.selectedPoints as unknown[],
   };

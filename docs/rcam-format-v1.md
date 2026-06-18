@@ -61,6 +61,7 @@ against this schema on every commit.
   "variables": [ /* named numbers */ ],
   "patterns": [ /* linear / circular patterns */ ],
   "operations": [ /* CAM toolpaths */ ],
+  "tools": [ /* reusable tool definitions referenced by operations */ ],
   "isConstructionMode": false,
   "selectedPoints": []
 }
@@ -89,7 +90,7 @@ that loads cleanly and draws a circle:
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
 `origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `layers` → one
-`"layer-0"` "Default" layer, `groups`/`variables`/`patterns`/`operations` → empty.
+`"layer-0"` "Default" layer, `groups`/`variables`/`patterns`/`operations`/`tools` → empty.
 
 ## IDs
 
@@ -236,6 +237,15 @@ Each operation is a toolpath over some `entityIds`. Required fields cover the to
 and cut; several are type-specific and optional. `depth` is mm below the surface
 and is **negative** for cuts. `stepover` is a fraction of tool diameter (0–1).
 
+An operation may carry an optional **`toolId`** referencing an entry in the
+top-level [`tools`](#tools) array (see below). When `toolId` resolves, that tool's
+geometry/feeds (`toolType`, `diameter`, `vAngle`, `tipAngle`, `feedrate`,
+`plungeRate`, `spindleSpeed`, `safeZ`) drive the operation, and the inline copies
+of those fields act only as a fallback for an unresolved id. `toolNumber` and the
+cut settings (`depth`, `stepdown`, `stepover`, tabs, leads) always stay per-operation.
+Operations with no `toolId` (including every v1 file written before tools existed)
+use their inline fields directly — behaviour is unchanged.
+
 | `type` | Notes |
 |--------|-------|
 | `profile` | contours a closed shape; uses `side` (`"outside"`/`"inside"`), optional `tabs`, `leadIn`, `leadOut` |
@@ -263,6 +273,28 @@ not just the schema.
 > **Feeds & speeds are not a recipe.** Any numbers you emit are starting points
 > only and must be tuned for the actual material, tool, and machine. Always verify
 > `depth`, the chosen `origin`, and tool changes before cutting.
+
+## Tools
+
+The top-level `tools` array holds reusable tool definitions. An operation
+references one by `toolId`; a single tool can drive many operations, so a feed or
+diameter change in one place updates every operation that points at it. `tools` is
+optional and defaults to `[]`.
+
+Each tool requires `id`, `name`, `toolType`, `diameter`, `feedrate`, `plungeRate`,
+`spindleSpeed`, and `safeZ`; `vAngle`, `tipDiameter`, and `tipAngle` are optional
+and type-specific (as on operations). The `id` is the target of an operation's
+`toolId`.
+
+```json
+{ "id": "tool-em-6", "name": "6mm End Mill", "toolType": "end-mill",
+  "diameter": 6, "feedrate": 900, "plungeRate": 250, "spindleSpeed": 18000, "safeZ": 5 }
+```
+
+When RapidCAM saves a file it embeds only the tools actually referenced by an
+operation, so the file is self-contained and portable. See
+`mounting-plate-cam.rcam` for an example of two operations driven by a shared
+`tools` library.
 
 ## Validating your output
 

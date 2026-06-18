@@ -88,6 +88,11 @@
       "items": { "$ref": "#/$defs/operation" },
       "description": "CAM toolpath operations."
     },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tool" },
+      "description": "Tool definitions embedded in the file. Operations reference these by toolId; a single tool can drive many operations. Default []."
+    },
     "isConstructionMode": {
       "type": "boolean",
       "description": "Whether the editor was in construction-geometry mode. Author as false."
@@ -488,6 +493,7 @@
         "type": { "enum": ["profile", "engrave", "drill", "pocket"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
+        "toolId": { "type": "string", "description": "Optional reference to a tool id in the top-level \"tools\" array. When it resolves, that tool's geometry/feeds override the inline toolType/diameter/vAngle/tipAngle/feedrate/plungeRate/spindleSpeed/safeZ fields below (which remain as a fallback). toolNumber and the cut settings (depth/stepdown/stepover) always stay per-operation." },
         "toolType": { "enum": ["end-mill", "ball-nose", "v-bit", "drill"] },
         "toolNumber": { "type": "integer", "minimum": 1, "description": "T-number (1-based)." },
         "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Tool diameter, mm." },
@@ -511,6 +517,25 @@
         "tabs": { "$ref": "#/$defs/tabDef" },
         "leadIn": { "$ref": "#/$defs/leadDef" },
         "leadOut": { "$ref": "#/$defs/leadDef" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "toolType", "diameter", "feedrate", "plungeRate", "spindleSpeed", "safeZ"],
+      "description": "A reusable tool definition referenced by operations via toolId.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Unique tool id; the target of operation.toolId." },
+        "name": { "type": "string", "description": "Human-readable tool name." },
+        "toolType": { "enum": ["end-mill", "ball-nose", "v-bit", "drill"] },
+        "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Tool diameter, mm." },
+        "vAngle": { "type": "number", "description": "V-bit included angle, degrees." },
+        "tipDiameter": { "type": "number", "description": "V-bit flat tip diameter, mm." },
+        "tipAngle": { "type": "number", "description": "Drill tip angle, degrees." },
+        "feedrate": { "type": "number", "exclusiveMinimum": 0, "description": "mm/min" },
+        "plungeRate": { "type": "number", "exclusiveMinimum": 0, "description": "mm/min" },
+        "spindleSpeed": { "type": "number", "minimum": 0, "description": "rpm" },
+        "safeZ": { "type": "number", "description": "mm above work surface" }
       }
     }
   }
