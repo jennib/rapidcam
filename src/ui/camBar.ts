@@ -14,6 +14,7 @@ import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type Lea
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
+import { getCustomGcode } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -294,7 +295,7 @@ export class CamBar {
       `<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>` +
       `</svg>`;
     dlBtn.addEventListener("click", () => {
-      const code = generateGCode([op], this.doc);
+      const code = generateGCode([op], this.doc, this.gcodeOpts());
       this.download(code, op.name);
     });
     item.appendChild(dlBtn);
@@ -630,6 +631,12 @@ export class CamBar {
 
   // --- G-code generation -----------------------------------------------------
 
+  /** Map the machine-wide custom-G-code preference into generator options. */
+  private gcodeOpts() {
+    const g = getCustomGcode();
+    return { customStart: g.start, customEnd: g.end };
+  }
+
   private generate(): void {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     // Text whose font can't be resolved produces no toolpath geometry. Surface
@@ -644,7 +651,7 @@ export class CamBar {
       if (!ok) return;
     }
     track("gcode_generated", { operation_count: this.doc.operations.length });
-    this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
+    this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */

@@ -18,6 +18,8 @@ export interface RcamFile {
   hasToolChanger?: boolean;
   origin?: { x: string; y: string; z: string };
   postProcessor?: string;
+  /** Coolant mode: "off" | "mist" (M7) | "flood" (M8). Omitted when off. */
+  coolant?: string;
   /** Optional end-of-program park position (work coords, mm). Omitted when off. */
   endPosition?: { x: number; y: number } | null;
   groups?: unknown[];
@@ -152,6 +154,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     hasToolChanger: doc.hasToolChanger,
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
     postProcessor: doc.postProcessor,
+    ...(doc.coolant && doc.coolant !== "off" ? { coolant: doc.coolant } : {}),
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
@@ -203,6 +206,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     hasToolChanger: file.hasToolChanger,
     origin: file.origin as DocSnapshot["origin"],
     postProcessor: file.postProcessor,
+    coolant: file.coolant as DocSnapshot["coolant"],
     endPosition: file.endPosition ?? null,
     isConstructionMode: false,
     selectedPoints: [],

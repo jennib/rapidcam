@@ -65,6 +65,7 @@ vocabularies is unchanged.
   "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
   "postProcessor": "linuxcnc",                  // "linuxcnc" | "grbl"
+  "coolant": "off",                             // "off" | "mist" (M7) | "flood" (M8)
   "endPosition": null,                          // optional park position; see below
   "groups": [],
   "layers": [ /* optional; a Default layer is created if omitted */ ],
@@ -100,9 +101,15 @@ that loads cleanly and draws a circle:
 ```
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
-`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `endPosition` → `null`,
-`layers` → one `"layer-0"` "Default" layer,
+`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `coolant` → `"off"`,
+`endPosition` → `null`, `layers` → one `"layer-0"` "Default" layer,
 `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
+
+`coolant` emits a coolant command after each spindle start (`"mist"` → `M7`,
+`"flood"` → `M8`) and turns it off (`M9`) before each spindle stop and at
+program end. Custom program start/end G-code is **not** stored here — it is a
+machine-wide (localStorage) preference, since it describes the operator's shop,
+not the design.
 
 `endPosition` is an optional `{ "x", "y" }` (work coordinates, mm) the spindle
 rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS

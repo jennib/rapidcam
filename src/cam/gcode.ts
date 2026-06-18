@@ -703,7 +703,22 @@ function toolpathBody(
 
 // --- main entry --------------------------------------------------------------
 
-export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string {
+export interface GCodeOptions {
+  /** Machine-wide custom lines injected after the G21/G90/G17 setup block. */
+  customStart?: string;
+  /** Machine-wide custom lines injected after the final M5, before M30. */
+  customEnd?: string;
+}
+
+/** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
+function customLines(block: string | undefined): string[] {
+  if (!block || !block.trim()) return [];
+  return block.replace(/\s+$/, "").split(/\r?\n/);
+}
+
+export function generateGCode(
+  rawOps: CAMOperation[], doc: CADDocument, opts: GCodeOptions = {},
+): string {
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
   // Resolve each op's tool reference up front so every downstream read of
@@ -747,6 +762,19 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     "",
   ];
 
+  // Machine-wide custom program start (e.g. a shop's safe-start block).
+  const startLines = customLines(opts.customStart);
+  if (startLines.length > 0) {
+    lines.push("; --- custom start ---", ...startLines, "");
+  }
+
+  // Coolant: M7 (mist) / M8 (flood) turned on after each spindle start, M9 off
+  // before each spindle stop and at program end.
+  const coolant = doc.coolant ?? "off";
+  const coolantOn = coolant === "mist" ? "M7 ; mist coolant on"
+                  : coolant === "flood" ? "M8 ; flood coolant on"
+                  : null;
+
   let currentTool: number | null = null;
   let currentSpeed: number | null = null;
 
@@ -758,6 +786,7 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     if (toolChanged || isFirst) {
       if (!isFirst) {
         lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
+        if (coolantOn) lines.push("M9 ; coolant off");
         lines.push("M5 ; spindle stop");
       }
 
@@ -769,6 +798,7 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
       }
 
       lines.push(`M3 S${op.spindleSpeed} ; spindle on`);
+      if (coolantOn) lines.push(coolantOn);
       lines.push("");
     } else if (speedChanged) {
       lines.push(`S${op.spindleSpeed} ; spindle speed change`);
@@ -807,7 +837,15 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     lines.push(`G0 X${n(ep.x)} Y${n(ep.y)} ; return to end position`);
   }
 
+  if (coolantOn) lines.push("M9 ; coolant off");
   lines.push("M5 ; spindle stop");
+
+  // Machine-wide custom program end (after spindle stop, before M30).
+  const endLines = customLines(opts.customEnd);
+  if (endLines.length > 0) {
+    lines.push("; --- custom end ---", ...endLines);
+  }
+
   lines.push("M30 ; end program");
   return lines.join("\n");
 }

@@ -42,6 +42,10 @@
       "enum": ["linuxcnc", "grbl"],
       "description": "G-code dialect. Default \"linuxcnc\"."
     },
+    "coolant": {
+      "enum": ["off", "mist", "flood"],
+      "description": "Coolant mode emitted around spindle on/off: \"mist\" → M7, \"flood\" → M8, M9 turns it off. Default \"off\" (omitted)."
+    },
     "endPosition": {
       "oneOf": [
         { "$ref": "#/$defs/vec2" },
