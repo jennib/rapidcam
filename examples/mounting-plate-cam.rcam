@@ -15,6 +15,7 @@
       "type": "drill",
       "entityIds": ["ent4", "ent5", "ent6", "ent7"],
       "side": "outside",
+      "toolId": "tool-drill-8",
       "toolType": "drill",
       "toolNumber": 1,
       "diameter": 8,
@@ -33,6 +34,7 @@
       "type": "profile",
       "entityIds": ["ent1"],
       "side": "outside",
+      "toolId": "tool-em-6",
       "toolType": "end-mill",
       "toolNumber": 2,
       "diameter": 6,
@@ -46,6 +48,29 @@
       "tabs": { "enabled": true, "count": 4, "width": 6, "height": 2 },
       "leadIn": { "type": "arc", "length": 3 },
       "leadOut": { "type": "arc", "length": 3 }
+    }
+  ],
+  "tools": [
+    {
+      "id": "tool-drill-8",
+      "name": "8mm Drill",
+      "toolType": "drill",
+      "diameter": 8,
+      "tipAngle": 118,
+      "feedrate": 200,
+      "plungeRate": 120,
+      "spindleSpeed": 6000,
+      "safeZ": 5
+    },
+    {
+      "id": "tool-em-6",
+      "name": "6mm End Mill",
+      "toolType": "end-mill",
+      "diameter": 6,
+      "feedrate": 900,
+      "plungeRate": 250,
+      "spindleSpeed": 18000,
+      "safeZ": 5
     }
   ],
   "isConstructionMode": false,

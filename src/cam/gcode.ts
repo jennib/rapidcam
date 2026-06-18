@@ -2,7 +2,7 @@ import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import type { CAMOperation } from "./types";
+import { type CAMOperation, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -703,8 +703,12 @@ function toolpathBody(
 
 // --- main entry --------------------------------------------------------------
 
-export function generateGCode(ops: CAMOperation[], doc: CADDocument): string {
-  if (ops.length === 0) return "; No toolpaths\nM30\n";
+export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string {
+  if (rawOps.length === 0) return "; No toolpaths\nM30\n";
+
+  // Resolve each op's tool reference up front so every downstream read of
+  // op.diameter/feedrate/etc. sees the embedded tool's values when toolId is set.
+  const ops = rawOps.map((op) => resolveOpTool(op, doc.tools));
 
   const { ox, oy, zOffset } = resolveOrigin(doc);
   const pp = getPostProcessor(doc.postProcessor ?? "linuxcnc");

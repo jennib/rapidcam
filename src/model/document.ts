@@ -36,7 +36,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
   return { ox, oy, zOffset };
 }
 import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity, TextEntity } from "./entities";
-import type { CAMOperation } from "../cam/types";
+import type { CAMOperation, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
 import { Constraint, PointRef, SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
@@ -74,6 +74,7 @@ export interface DocSnapshot {
   dimensions: Dimension[];
   variables?: Variable[];
   operations?: CAMOperation[];
+  tools?: ToolDef[];
   patterns?: PatternDef[];
   isConstructionMode: boolean;
   selectedPoints: PointRef[];
@@ -136,6 +137,13 @@ export class CADDocument {
   selectedDimensionId: string | null = null;
 
   operations: CAMOperation[] = [];
+
+  /**
+   * Tool definitions embedded in this document. Operations reference these by
+   * `toolId`; a single entry can drive many ops (see {@link resolveOpTool}).
+   * Populated when a tool is loaded from the library into an operation.
+   */
+  tools: ToolDef[] = [];
 
   /** Entity IDs to highlight in the toolpath colour while a toolpath dialog is open. Null = no dialog open. */
   toolpathHighlightIds: Set<string> | null = null;
@@ -517,6 +525,7 @@ export class CADDocument {
       layers: this.layers.map(l => ({ ...l })),
       activeLayerId: this.activeLayerId,
       operations: this.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })),
+      tools: this.tools.map(t => ({ ...t })),
     };
   }
 
@@ -600,6 +609,7 @@ export class CADDocument {
       stepover: op.stepover ?? 0.4,
       entityIds: [...op.entityIds],
     })) : [];
+    this.tools = s.tools ? s.tools.map(t => ({ ...t })) : [];
     // Always ensure the WCS origin entity is present after loading.
     if (!this.entities.find(e => e.id === ORIGIN_ENTITY_ID))
       this.entities.unshift(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));

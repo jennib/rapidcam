@@ -35,6 +35,8 @@ import {
 interface OpState {
   name: string;
   combo: OpCombo;
+  /** Library tool this op references, or undefined for a one-off tool. */
+  toolId?: string;
   toolType: ToolType;
   toolNumber: number;
   diameter: number;
@@ -340,6 +342,7 @@ export class CamBar {
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
+      toolId: existing?.toolId,
       toolType: (existing?.toolType ?? DEFAULTS.toolType) as ToolType,
       toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
       diameter: existing?.diameter ?? DEFAULTS.diameter,
@@ -580,6 +583,7 @@ export class CamBar {
         id: existing?.id ?? nextId("cam"),
         name: state.name || this.autoName(state.combo),
         type, side, entityIds: ids,
+        toolId: state.toolId,
         toolType: state.toolType,
         toolNumber: state.toolNumber,
         diameter: state.diameter,
@@ -913,22 +917,22 @@ export class CamBar {
     toolContent.appendChild(this.dField("Tool Type", toolTypeSelect));
 
     const toolNumRow  = this.numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
-    const diamRow     = this.syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { state.diameter = v; i.value = String(v); hooks.updateVBitHint(); });
-    const spindleRow  = this.syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
-    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { state.feedrate = v; i.value = String(v); });
-    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { state.plungeRate = v; i.value = String(v); });
-    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { state.safeZ = v; i.value = String(v); });
+    const diamRow     = this.syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { fork(); state.diameter = v; i.value = String(v); hooks.updateVBitHint(); });
+    const spindleRow  = this.syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { fork(); state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
+    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { fork(); state.feedrate = v; i.value = String(v); });
+    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { fork(); state.plungeRate = v; i.value = String(v); });
+    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { fork(); state.safeZ = v; i.value = String(v); });
 
     const vAngleInp = document.createElement("input");
     vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";
     vAngleInp.value = String(state.vAngle);
-    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { state.vAngle = v; hooks.updateVBitHint(); } });
+    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { fork(); state.vAngle = v; hooks.updateVBitHint(); } });
     const vAngleRow = this.dField("V Angle (°)", vAngleInp);
 
     const tipAngleInp = document.createElement("input");
     tipAngleInp.type = "number"; tipAngleInp.className = "dim"; tipAngleInp.step = "any";
     tipAngleInp.value = String(state.tipAngle);
-    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (isFinite(v)) state.tipAngle = v; });
+    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (isFinite(v)) { fork(); state.tipAngle = v; } });
     const tipAngleRow = this.dField("Tip Angle (°)", tipAngleInp);
 
     toolContent.appendChild(toolNumRow.el);
@@ -947,7 +951,16 @@ export class CamBar {
       tipAngleRow.style.display = tt === "drill"  ? "" : "none";
     };
 
+    // Manual edits to any tool-defining field fork the op off its library tool.
+    const fork = () => { state.toolId = undefined; };
+
     const applyToolDef = (t: ToolDef) => {
+      state.toolId     = t.id;
+      // Embed (upsert) the tool in the document so the file is self-contained
+      // and a single tool can drive multiple operations.
+      const existingIdx = this.doc.tools.findIndex((x) => x.id === t.id);
+      if (existingIdx >= 0) this.doc.tools[existingIdx] = { ...t };
+      else this.doc.tools.push({ ...t });
       state.toolType   = t.toolType;
       state.diameter   = t.diameter;
       state.vAngle     = t.vAngle ?? DEFAULTS.vAngle;
@@ -970,6 +983,7 @@ export class CamBar {
 
     updateToolTypeVisibility();
     toolTypeSelect.addEventListener("change", () => {
+      fork();
       state.toolType = toolTypeSelect.value as ToolType;
       updateToolTypeVisibility();
       hooks.updateVBitHint();
