@@ -16,6 +16,17 @@ export interface OriginDef {
 }
 
 /**
+ * Optional position the spindle rapids to (at safe Z) at the end of a G-code
+ * program, before M30. Coordinates are in work units (the same frame as the
+ * G-code output), so `{ x: 0, y: 0 }` parks at the WCS origin. `null` = stay
+ * where the last toolpath ended (only Z lifts to safe).
+ */
+export interface EndPosition {
+  x: number;
+  y: number;
+}
+
+/**
  * Resolve the named origin into concrete offsets used by G-code generation.
  * ox / oy: subtract from canvas coords to get G-code coords.
  * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
@@ -87,6 +98,7 @@ export interface DocSnapshot {
   hasToolChanger?: boolean;
   origin?: OriginDef;
   postProcessor?: string;
+  endPosition?: EndPosition | null;
   groups?: GroupDef[];
   layers?: LayerDef[];
   activeLayerId?: string;
@@ -116,6 +128,12 @@ export class CADDocument {
   origin: OriginDef = { x: "left", y: "front", z: "top" };
   /** Post-processor to use when generating G-code. */
   postProcessor = "linuxcnc";
+  /**
+   * Optional end-of-program park position (work coords, mm). When set, the
+   * G-code rapids here at safe Z before M30; `null` leaves the tool where the
+   * last toolpath ended. Defaults to off.
+   */
+  endPosition: EndPosition | null = null;
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
@@ -520,6 +538,7 @@ export class CADDocument {
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
+      endPosition: this.endPosition ? { ...this.endPosition } : null,
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map(l => ({ ...l })),
@@ -600,6 +619,7 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
+    this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
     for (const p of this.patterns) updateCounter(p.id);

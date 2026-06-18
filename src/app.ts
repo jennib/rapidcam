@@ -207,6 +207,11 @@ export class App {
         onFit: () => this.fitView(),
         onToggle3D: () => this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider),
         is3DVisible: () => this.preview3DVisible,
+        onToggleDimensions: () => {
+          this.renderer.showDimensions = !this.renderer.showDimensions;
+          this.requestRender();
+        },
+        areDimensionsVisible: () => this.renderer.showDimensions,
       },
     });
     new LayersBar(dom.layersbar, this.doc, this.project.pushHistory);
