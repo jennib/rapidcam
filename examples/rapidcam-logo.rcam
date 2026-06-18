@@ -1,0 +1,239 @@
+{
+  "version": 2,
+  "name": "RapidCAM Logo",
+  "canvas": {
+    "width": 192,
+    "height": 192
+  },
+  "displayUnit": "mm",
+  "stockThickness": 3,
+  "hasToolChanger": false,
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
+  "postProcessor": "grbl",
+  "groups": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
+  "entities": [
+    {
+      "type": "circle",
+      "id": "ring",
+      "center": {
+        "x": 96,
+        "y": 96
+      },
+      "radius": 60,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "innerRing",
+      "center": {
+        "x": 96,
+        "y": 96
+      },
+      "radius": 40,
+      "isConstruction": true,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "hub",
+      "center": {
+        "x": 96,
+        "y": 96
+      },
+      "radius": 7,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "crossTop",
+      "a": {
+        "x": 96,
+        "y": 140
+      },
+      "b": {
+        "x": 96,
+        "y": 174
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "crossBottom",
+      "a": {
+        "x": 96,
+        "y": 18
+      },
+      "b": {
+        "x": 96,
+        "y": 52
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "crossLeft",
+      "a": {
+        "x": 18,
+        "y": 96
+      },
+      "b": {
+        "x": 52,
+        "y": 96
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "crossRight",
+      "a": {
+        "x": 140,
+        "y": 96
+      },
+      "b": {
+        "x": 174,
+        "y": 96
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "bezier",
+      "id": "arc",
+      "p0": {
+        "x": 56,
+        "y": 56
+      },
+      "p1": {
+        "x": 82.667,
+        "y": 112
+      },
+      "p2": {
+        "x": 109.333,
+        "y": 112
+      },
+      "p3": {
+        "x": 136,
+        "y": 56
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "nodeDot",
+      "center": {
+        "x": 136,
+        "y": 56
+      },
+      "radius": 2.5,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixedPoint",
+      "points": [
+        {
+          "entityId": "ring",
+          "key": "c"
+        }
+      ],
+      "entities": [],
+      "params": [
+        96,
+        96
+      ]
+    },
+    {
+      "id": "con2",
+      "type": "concentric",
+      "points": [],
+      "entities": [
+        "innerRing",
+        "ring"
+      ]
+    },
+    {
+      "id": "con3",
+      "type": "concentric",
+      "points": [],
+      "entities": [
+        "hub",
+        "ring"
+      ]
+    },
+    {
+      "id": "con4",
+      "type": "fixed",
+      "points": [],
+      "entities": [
+        "crossTop",
+        "crossBottom",
+        "crossLeft",
+        "crossRight",
+        "arc",
+        "nodeDot"
+      ]
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "dim1",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "ring"
+      ],
+      "value": 120,
+      "driving": true,
+      "offset": 2.356
+    },
+    {
+      "id": "dim2",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "innerRing"
+      ],
+      "value": 80,
+      "driving": true,
+      "offset": -2.356
+    },
+    {
+      "id": "dim3",
+      "type": "diameter",
+      "points": [],
+      "entities": [
+        "hub"
+      ],
+      "value": 14,
+      "driving": true,
+      "offset": 1.571
+    }
+  ],
+  "variables": [],
+  "patterns": [],
+  "operations": [],
+  "tools": []
+}

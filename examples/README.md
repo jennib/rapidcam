@@ -24,6 +24,12 @@ at the top and work down.
 | [bracket.rcam](bracket.rcam) | An L-shaped profile driven entirely to **"Fully constrained"** with per-segment horizontal/vertical constraints and four dimensions. Edit any dimension and the whole outline reflows while staying square. |
 | [bolt-circle.rcam](bolt-circle.rcam) | A 6-hole bolt flange driven by **variables**. The Variables panel defines `pcd` (pitch-circle diameter) and `holeDia`; the source hole's position and size reference them. The other five holes are a **circular pattern**. Change `pcd` in the Variables panel, then Edit → Regenerate Patterns to spread the bolt circle. The green hole is the parametric master; the blue ones are pattern copies (regenerated geometry, not constraint-solved — so they read as under-defined, which is expected). |
 
+### Bonus — the RapidCAM mark
+
+| File | What it shows |
+|------|---------------|
+| [rapidcam-logo.rcam](rapidcam-logo.rcam) | The app's own logo, drawn as a real sketch: a ring with crosshair centrelines, a bezier "tool arc" ending in a node, a centre hub, and a dashed **construction** inner ring. Fully constrained — the rings are pinned concentric and driven by three **diameter** dimensions; double-click **Ø120** and the whole mark scales. A small tour of beziers, construction geometry, and `concentric` / `fixed` constraints. |
+
 ### Tier 3 — full CAM pipeline (draw → G-code)
 
 | File | What it shows |
