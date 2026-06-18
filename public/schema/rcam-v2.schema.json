@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rapidcam.app/schema/rcam-v1.schema.json",
-  "title": "RapidCAM Project (.rcam) — version 1",
-  "description": "Frozen contract for the RapidCAM v1 file format. A .rcam file is JSON. All lengths are in millimetres, in a Y-up world frame, regardless of displayUnit. See docs/rcam-format-v1.md for the authoring guide.",
+  "$id": "https://rapidcam.app/schema/rcam-v2.schema.json",
+  "title": "RapidCAM Project (.rcam) — version 2",
+  "description": "Contract for the RapidCAM v2 file format. A .rcam file is JSON describing a design (not an editor session): unlike v1 it carries no selection/UI state, and it may embed the fonts its text entities use. All lengths are in millimetres, in a Y-up world frame, regardless of displayUnit. See docs/rcam-format-v2.md for the authoring guide.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,14 +12,12 @@
     "displayUnit",
     "entities",
     "constraints",
-    "dimensions",
-    "isConstructionMode",
-    "selectedPoints"
+    "dimensions"
   ],
   "properties": {
     "version": {
-      "const": 1,
-      "description": "Format version. Must be exactly 1. The loader rejects anything else."
+      "const": 2,
+      "description": "Format version. Must be exactly 2. The loader upgrades version-1 files automatically."
     },
     "name": {
       "type": "string",
@@ -93,17 +91,11 @@
       "items": { "$ref": "#/$defs/tool" },
       "description": "Tool definitions embedded in the file. Operations reference these by toolId; a single tool can drive many operations. Default []."
     },
-    "isConstructionMode": {
-      "type": "boolean",
-      "description": "Whether the editor was in construction-geometry mode. Author as false."
-    },
-    "selectedPoints": {
+    "fonts": {
       "type": "array",
-      "items": { "$ref": "#/$defs/pointRef" },
-      "description": "UI selection state. Author as []."
-    },
-    "selectedConstraintId": { "type": ["string", "null"] },
-    "selectedDimensionId": { "type": ["string", "null"] }
+      "items": { "$ref": "#/$defs/embeddedFont" },
+      "description": "Non-bundled fonts referenced by text entities, embedded so glyph outlines — and therefore toolpaths — reproduce on any machine. Bundled fonts (e.g. \"roboto-regular\") resolve by id and are omitted."
+    }
   },
 
   "$defs": {
@@ -163,16 +155,6 @@
       }
     },
 
-    "entityCommon": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "minLength": 1, "description": "Unique within the file. \"__origin__\" is reserved." },
-        "selected": { "type": "boolean", "description": "UI state; default false." },
-        "isConstruction": { "type": "boolean", "description": "Construction (reference) geometry; default false." },
-        "layerId": { "type": "string", "description": "Owning layer id; default \"layer-0\"." }
-      }
-    },
-
     "entity": {
       "oneOf": [
         { "$ref": "#/$defs/lineEntity" },
@@ -196,7 +178,6 @@
         "id": { "type": "string", "minLength": 1 },
         "a": { "$ref": "#/$defs/vec2" },
         "b": { "$ref": "#/$defs/vec2" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -212,7 +193,6 @@
         "id": { "type": "string", "minLength": 1 },
         "center": { "$ref": "#/$defs/vec2" },
         "radius": { "type": "number", "exclusiveMinimum": 0 },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -228,7 +208,6 @@
         "id": { "type": "string", "minLength": 1 },
         "p0": { "$ref": "#/$defs/vec2" },
         "p1": { "$ref": "#/$defs/vec2" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -244,7 +223,6 @@
         "id": { "type": "string", "minLength": 1 },
         "points": { "type": "array", "items": { "$ref": "#/$defs/vec2" }, "minItems": 2 },
         "closed": { "type": "boolean" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -262,7 +240,6 @@
         "radius": { "type": "number", "exclusiveMinimum": 0 },
         "startAngle": { "type": "number", "description": "radians" },
         "endAngle": { "type": "number", "description": "radians" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -280,7 +257,6 @@
         "p1": { "$ref": "#/$defs/vec2" },
         "p2": { "$ref": "#/$defs/vec2" },
         "p3": { "$ref": "#/$defs/vec2" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -295,7 +271,6 @@
         "type": { "const": "point" },
         "id": { "type": "string", "minLength": 1 },
         "pos": { "$ref": "#/$defs/vec2" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -305,18 +280,30 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "text", "fontId", "sizeMM", "position", "angle"],
-      "description": "Editable text, expanded to glyph contours at CAM export. position is the baseline-left anchor. angle is CCW radians. Point DOF key: pos.",
+      "description": "Editable text, expanded to glyph contours at CAM export. position is the baseline-left anchor. angle is CCW radians. Point DOF key: pos. If fontId is not a bundled font, the font's bytes must appear in the top-level \"fonts\" array.",
       "properties": {
         "type": { "const": "text" },
         "id": { "type": "string", "minLength": 1 },
         "text": { "type": "string" },
-        "fontId": { "type": "string", "description": "e.g. \"roboto-regular\"." },
+        "fontId": { "type": "string", "description": "e.g. \"roboto-regular\" (bundled), or a \"font-XXXXXXXX\" id present in \"fonts\"." },
         "sizeMM": { "type": "number", "exclusiveMinimum": 0 },
         "position": { "$ref": "#/$defs/vec2" },
         "angle": { "type": "number", "description": "radians" },
-        "selected": { "type": "boolean" },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
+      }
+    },
+
+    "embeddedFont": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "format", "data"],
+      "description": "A font embedded in the file, referenced by textEntity.fontId.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable content-addressed id, e.g. \"font-1a2b3c4d\"." },
+        "name": { "type": "string", "description": "Human-readable font name." },
+        "format": { "enum": ["ttf", "otf", "woff"], "description": "Container format of the embedded bytes." },
+        "data": { "type": "string", "description": "Base64-encoded font bytes." }
       }
     },
 
@@ -479,6 +466,20 @@
       }
     },
 
+    "regionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containingLoops"],
+      "description": "A pocket target region, identified by the loops that enclose it (each loop = the entity ids whose geometry forms it). Resolved against live geometry at toolpath time so it survives constraint-driven reflow.",
+      "properties": {
+        "containingLoops": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Entity-id sets of the loops enclosing the region; one inner array per loop. The face lies inside exactly these loops and outside all others."
+        }
+      }
+    },
+
     "operation": {
       "type": "object",
       "additionalProperties": false,
@@ -509,10 +510,10 @@
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter." },
         "pocketStrategy": { "enum": ["offset", "raster"], "description": "Pocket only; default \"offset\"." },
         "islandIds": { "type": "array", "items": { "type": "string" }, "description": "Pocket only (legacy): entities treated as islands." },
-        "regionSeeds": {
+        "regions": {
           "type": "array",
-          "items": { "$ref": "#/$defs/vec2" },
-          "description": "Pocket only: world points each inside an enclosed area; the region is flood-filled from live geometry at G-code time."
+          "items": { "$ref": "#/$defs/regionRef" },
+          "description": "Pocket only: the enclosed regions to clear, identified parametrically (by the loops that enclose each) so they reflow with the model. Resolved against live geometry at toolpath time. Supersedes the older absolute-coordinate seeds."
         },
         "tabs": { "$ref": "#/$defs/tabDef" },
         "leadIn": { "$ref": "#/$defs/leadDef" },

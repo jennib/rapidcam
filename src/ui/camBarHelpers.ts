@@ -17,9 +17,9 @@ import {
 import type { Vec2 } from "../core/vec2";
 import { dist } from "../core/vec2";
 import { formatLength } from "../core/units";
-import type { CAMOperation } from "../cam/types";
+import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops, pointInPolygon } from "../cam/loops";
-import { interiorPoint } from "../cam/regions";
+import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
 
 export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill";
 
@@ -86,6 +86,33 @@ export function seedsFromEntityIds(doc: CADDocument, entIds: Set<string>, islIds
 
 export function legacyPocketSeeds(op: CAMOperation, doc: CADDocument): Vec2[] {
   return seedsFromEntityIds(doc, new Set(op.entityIds), new Set(op.islandIds ?? []));
+}
+
+/**
+ * Convert transient edit-time seed points (valid against the current, static
+ * geometry while the dialog is open) into parametric region refs for storage.
+ */
+export function refsFromSeeds(doc: CADDocument, seeds: Vec2[]): RegionRef[] {
+  const loops = collectClosedLoops(doc.entities);
+  const refs: RegionRef[] = [];
+  for (const p of seeds) {
+    const ref = refAtPoint(p, loops);
+    if (ref) refs.push(ref);
+  }
+  return refs;
+}
+
+/** Resolve stored region refs back to interior seed points for live editing. */
+export function seedsFromRegions(doc: CADDocument, regions: RegionRef[]): Vec2[] {
+  const loops = collectClosedLoops(doc.entities);
+  const seeds: Vec2[] = [];
+  for (const ref of regions) {
+    const region = resolveRegion(ref, loops);
+    if (!region) continue;
+    const p = interiorPoint(region.outer, region.holes);
+    if (p) seeds.push(p);
+  }
+  return seeds;
 }
 
 export function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {

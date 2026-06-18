@@ -6,9 +6,9 @@ canvas), then try editing the dimensions. They're arranged as a progression — 
 at the top and work down.
 
 > Writing `.rcam` files by hand or with tooling? These files are the canonical,
-> schema-tested references for the frozen v1 format. See the
-> [format authoring guide](../docs/rcam-format-v1.md) and
-> [JSON Schema](../public/schema/rcam-v1.schema.json).
+> schema-tested references for the v2 format. See the
+> [format authoring guide](../docs/rcam-format-v2.md) and
+> [JSON Schema](../public/schema/rcam-v2.schema.json).
 
 ### Tier 1 — first contact (drawing + dimensions)
 

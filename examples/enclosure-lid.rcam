@@ -1,20 +1,106 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Enclosure Lid",
-  "canvas": { "width": 150, "height": 110 },
+  "canvas": {
+    "width": 150,
+    "height": 110
+  },
   "displayUnit": "mm",
   "stockThickness": 10,
   "hasToolChanger": false,
-  "origin": { "x": "left", "y": "front", "z": "top" },
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
   "postProcessor": "grbl",
   "groups": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
+  "entities": [
+    {
+      "type": "rectangle",
+      "id": "ent1",
+      "p0": {
+        "x": 15,
+        "y": 15
+      },
+      "p1": {
+        "x": 135,
+        "y": 95
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "rectangle",
+      "id": "ent2",
+      "p0": {
+        "x": 30,
+        "y": 30
+      },
+      "p1": {
+        "x": 120,
+        "y": 80
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "circle",
+      "id": "ent3",
+      "center": {
+        "x": 75,
+        "y": 55
+      },
+      "radius": 10,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixed",
+      "points": [],
+      "entities": [
+        "ent1"
+      ]
+    },
+    {
+      "id": "con2",
+      "type": "fixed",
+      "points": [],
+      "entities": [
+        "ent2"
+      ]
+    },
+    {
+      "id": "con3",
+      "type": "fixed",
+      "points": [],
+      "entities": [
+        "ent3"
+      ]
+    }
+  ],
+  "dimensions": [],
+  "variables": [],
+  "patterns": [],
   "operations": [
     {
       "id": "op1",
       "name": "Pocket recess",
       "type": "pocket",
       "entityIds": [],
-      "regionSeeds": [{ "x": 45, "y": 40 }],
       "side": "inside",
       "toolType": "end-mill",
       "toolNumber": 1,
@@ -26,13 +112,27 @@
       "depth": -4,
       "stepdown": 2,
       "stepover": 0.4,
-      "pocketStrategy": "offset"
+      "pocketStrategy": "offset",
+      "regions": [
+        {
+          "containingLoops": [
+            [
+              "ent1"
+            ],
+            [
+              "ent2"
+            ]
+          ]
+        }
+      ]
     },
     {
       "id": "op2",
       "name": "Profile outline",
       "type": "profile",
-      "entityIds": ["ent1"],
+      "entityIds": [
+        "ent1"
+      ],
       "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
@@ -44,46 +144,21 @@
       "depth": -12,
       "stepdown": 2.5,
       "stepover": 0.4,
-      "tabs": { "enabled": true, "count": 4, "width": 6, "height": 2 },
-      "leadIn": { "type": "arc", "length": 3 },
-      "leadOut": { "type": "arc", "length": 3 }
+      "tabs": {
+        "enabled": true,
+        "count": 4,
+        "width": 6,
+        "height": 2
+      },
+      "leadIn": {
+        "type": "arc",
+        "length": 3
+      },
+      "leadOut": {
+        "type": "arc",
+        "length": 3
+      }
     }
   ],
-  "isConstructionMode": false,
-  "selectedPoints": [],
-  "entities": [
-    {
-      "type": "rectangle",
-      "id": "ent1",
-      "p0": { "x": 15, "y": 15 },
-      "p1": { "x": 135, "y": 95 },
-      "selected": false,
-      "isConstruction": false,
-      "layerId": "layer-0"
-    },
-    {
-      "type": "rectangle",
-      "id": "ent2",
-      "p0": { "x": 30, "y": 30 },
-      "p1": { "x": 120, "y": 80 },
-      "selected": false,
-      "isConstruction": false,
-      "layerId": "layer-0"
-    },
-    {
-      "type": "circle",
-      "id": "ent3",
-      "center": { "x": 75, "y": 55 },
-      "radius": 10,
-      "selected": false,
-      "isConstruction": false,
-      "layerId": "layer-0"
-    }
-  ],
-  "constraints": [
-    { "id": "con1", "type": "fixed", "points": [], "entities": ["ent1"] },
-    { "id": "con2", "type": "fixed", "points": [], "entities": ["ent2"] },
-    { "id": "con3", "type": "fixed", "points": [], "entities": ["ent3"] }
-  ],
-  "dimensions": []
+  "tools": []
 }

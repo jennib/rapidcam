@@ -1,32 +1,53 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Keychain Tag",
-  "canvas": { "width": 90, "height": 50 },
+  "canvas": {
+    "width": 90,
+    "height": 50
+  },
   "displayUnit": "mm",
   "stockThickness": 3,
   "hasToolChanger": false,
-  "origin": { "x": "left", "y": "front", "z": "top" },
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
   "postProcessor": "grbl",
   "groups": [],
-  "operations": [],
-  "isConstructionMode": false,
-  "selectedPoints": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
   "entities": [
     {
       "type": "rectangle",
       "id": "ent1",
-      "p0": { "x": 15, "y": 12 },
-      "p1": { "x": 75, "y": 36 },
-      "selected": false,
+      "p0": {
+        "x": 15,
+        "y": 12
+      },
+      "p1": {
+        "x": 75,
+        "y": 36
+      },
       "isConstruction": false,
       "layerId": "layer-0"
     },
     {
       "type": "circle",
       "id": "ent2",
-      "center": { "x": 25, "y": 24 },
+      "center": {
+        "x": 25,
+        "y": 24
+      },
       "radius": 3,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
@@ -36,9 +57,11 @@
       "text": "NAME",
       "fontId": "roboto-regular",
       "sizeMM": 10,
-      "position": { "x": 33, "y": 19 },
+      "position": {
+        "x": 33,
+        "y": 19
+      },
       "angle": 0,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     }
@@ -47,23 +70,47 @@
     {
       "id": "con1",
       "type": "fixedPoint",
-      "points": [{ "entityId": "ent1", "key": "bl" }],
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        }
+      ],
       "entities": [],
-      "params": [15, 12]
+      "params": [
+        15,
+        12
+      ]
     },
     {
       "id": "con2",
       "type": "fixedPoint",
-      "points": [{ "entityId": "ent2", "key": "c" }],
+      "points": [
+        {
+          "entityId": "ent2",
+          "key": "c"
+        }
+      ],
       "entities": [],
-      "params": [25, 24]
+      "params": [
+        25,
+        24
+      ]
     },
     {
       "id": "con3",
       "type": "fixedPoint",
-      "points": [{ "entityId": "ent3", "key": "pos" }],
+      "points": [
+        {
+          "entityId": "ent3",
+          "key": "pos"
+        }
+      ],
       "entities": [],
-      "params": [33, 19]
+      "params": [
+        33,
+        19
+      ]
     }
   ],
   "dimensions": [
@@ -71,8 +118,14 @@
       "id": "dim1",
       "type": "horizontal",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "br" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        }
       ],
       "entities": [],
       "value": 60,
@@ -83,8 +136,14 @@
       "id": "dim2",
       "type": "vertical",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "tl" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tl"
+        }
       ],
       "entities": [],
       "value": 24,
@@ -95,10 +154,16 @@
       "id": "dim3",
       "type": "diameter",
       "points": [],
-      "entities": ["ent2"],
+      "entities": [
+        "ent2"
+      ],
       "value": 6,
       "driving": true,
       "offset": 2.356
     }
-  ]
+  ],
+  "variables": [],
+  "patterns": [],
+  "operations": [],
+  "tools": []
 }

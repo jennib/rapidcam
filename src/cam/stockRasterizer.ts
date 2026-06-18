@@ -26,7 +26,7 @@ import { offsetPolygon, signedArea } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
-import { regionAtPoint } from "./regions";
+import { resolveRegion } from "./regions";
 import type { Entity } from "../model/entities";
 import { flattenBezier } from "../core/geom";
 
@@ -72,12 +72,12 @@ function rasterizeOp(
   const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
 
-  // Region-seeded pockets (mirrors gcode.ts): recompute each flood-fill
-  // region from live geometry and pocket it with holes as islands.
-  if (op.type === "pocket" && op.regionSeeds && op.regionSeeds.length > 0) {
+  // Region pockets (mirrors gcode.ts): resolve each parametric region from live
+  // geometry and pocket it with enclosed loops as islands.
+  if (op.type === "pocket" && op.regions && op.regions.length > 0) {
     const loops = collectClosedLoops(entityMap.values() as Iterable<Entity>);
-    for (const seed of op.regionSeeds) {
-      const region = regionAtPoint(seed, loops);
+    for (const ref of op.regions) {
+      const region = resolveRegion(ref, loops);
       if (region)
         rasPocketPolygon(region.outer, region.holes, op, data, gridW, gridH, stockT, stamp, stepR);
     }

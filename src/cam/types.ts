@@ -1,5 +1,4 @@
 import type { EntityId } from "../model/entities";
-import type { Vec2 } from "../core/vec2";
 
 export type CAMOpType = "profile" | "engrave" | "drill" | "pocket";
 
@@ -31,6 +30,23 @@ export interface TabDef {
   count: number;    // tabs distributed evenly around the path
   width: number;    // mm — arc-length of each tab
   height: number;   // mm — material left standing above the cut floor
+}
+
+/**
+ * A parametric reference to one enclosed region (pocket face), resolved against
+ * live geometry at toolpath time so it survives constraint-driven reflow.
+ *
+ * A face in the planar arrangement of closed loops is uniquely identified by the
+ * set of loops that *contain* it (it lies inside exactly these, outside all
+ * others). We store each containing loop by the entity ids whose geometry forms
+ * it — ids are stable across reflow, coordinates are not. At toolpath time the
+ * loops are rebuilt from current geometry, matched back by id-set, and the face
+ * (with any enclosed loops as islands) is recomputed fresh. If a referenced loop
+ * no longer exists, the reference fails loudly rather than cutting the wrong area.
+ */
+export interface RegionRef {
+  /** Entity-id sets of the loops enclosing the region; one inner array per loop. */
+  containingLoops: EntityId[][];
 }
 
 export interface CAMOperation {
@@ -73,12 +89,13 @@ export interface CAMOperation {
   pocketStrategy?: "offset" | "raster";
   islandIds?: EntityId[];     // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
-   * Pocket only: flood-fill region seeds. Each seed is a world point inside an
-   * enclosed area; the region around it (bounded by the nearest geometry, with
-   * enclosed shapes as islands) is recomputed from live geometry at G-code time.
+   * Pocket only: the enclosed regions to clear, identified *parametrically* so
+   * they reflow with the model. Each region records the loops that enclose it
+   * (by the entity ids whose live geometry forms each loop); the actual fill is
+   * recomputed from current geometry at toolpath time — see {@link RegionRef}.
    * When present, these define the pocket instead of entityIds/islandIds.
    */
-  regionSeeds?: Vec2[];
+  regions?: RegionRef[];
   // lead-in / lead-out (profile only)
   leadIn?: LeadDef;
   leadOut?: LeadDef;

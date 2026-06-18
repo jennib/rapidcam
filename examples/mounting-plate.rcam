@@ -1,77 +1,114 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Mounting Plate",
-  "canvas": { "width": 170, "height": 130 },
+  "canvas": {
+    "width": 170,
+    "height": 130
+  },
   "displayUnit": "mm",
   "stockThickness": 10,
   "hasToolChanger": false,
-  "origin": { "x": "left", "y": "front", "z": "top" },
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
   "postProcessor": "grbl",
   "groups": [],
-  "operations": [],
-  "isConstructionMode": false,
-  "selectedPoints": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
   "entities": [
     {
       "type": "rectangle",
       "id": "ent1",
-      "p0": { "x": 25, "y": 25 },
-      "p1": { "x": 145, "y": 105 },
-      "selected": false,
+      "p0": {
+        "x": 25,
+        "y": 25
+      },
+      "p1": {
+        "x": 145,
+        "y": 105
+      },
       "isConstruction": false,
       "layerId": "layer-0"
     },
     {
       "type": "line",
       "id": "ent2",
-      "a": { "x": 85, "y": 25 },
-      "b": { "x": 85, "y": 105 },
-      "selected": false,
+      "a": {
+        "x": 85,
+        "y": 25
+      },
+      "b": {
+        "x": 85,
+        "y": 105
+      },
       "isConstruction": true,
       "layerId": "layer-0"
     },
     {
       "type": "line",
       "id": "ent3",
-      "a": { "x": 25, "y": 65 },
-      "b": { "x": 145, "y": 65 },
-      "selected": false,
+      "a": {
+        "x": 25,
+        "y": 65
+      },
+      "b": {
+        "x": 145,
+        "y": 65
+      },
       "isConstruction": true,
       "layerId": "layer-0"
     },
     {
       "type": "circle",
       "id": "ent4",
-      "center": { "x": 40, "y": 40 },
+      "center": {
+        "x": 40,
+        "y": 40
+      },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
     {
       "type": "circle",
       "id": "ent5",
-      "center": { "x": 130, "y": 40 },
+      "center": {
+        "x": 130,
+        "y": 40
+      },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
     {
       "type": "circle",
       "id": "ent6",
-      "center": { "x": 130, "y": 90 },
+      "center": {
+        "x": 130,
+        "y": 90
+      },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     },
     {
       "type": "circle",
       "id": "ent7",
-      "center": { "x": 40, "y": 90 },
+      "center": {
+        "x": 40,
+        "y": 90
+      },
       "radius": 4,
-      "selected": false,
       "isConstruction": false,
       "layerId": "layer-0"
     }
@@ -80,17 +117,34 @@
     {
       "id": "con1",
       "type": "fixedPoint",
-      "points": [{ "entityId": "ent1", "key": "bl" }],
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        }
+      ],
       "entities": [],
-      "params": [25, 25]
+      "params": [
+        25,
+        25
+      ]
     },
     {
       "id": "con2",
       "type": "midpoint",
       "points": [
-        { "entityId": "ent2", "key": "a" },
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "br" }
+        {
+          "entityId": "ent2",
+          "key": "a"
+        },
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        }
       ],
       "entities": []
     },
@@ -98,9 +152,18 @@
       "id": "con3",
       "type": "midpoint",
       "points": [
-        { "entityId": "ent2", "key": "b" },
-        { "entityId": "ent1", "key": "tl" },
-        { "entityId": "ent1", "key": "tr" }
+        {
+          "entityId": "ent2",
+          "key": "b"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tr"
+        }
       ],
       "entities": []
     },
@@ -108,9 +171,18 @@
       "id": "con4",
       "type": "midpoint",
       "points": [
-        { "entityId": "ent3", "key": "a" },
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "tl" }
+        {
+          "entityId": "ent3",
+          "key": "a"
+        },
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tl"
+        }
       ],
       "entities": []
     },
@@ -118,9 +190,18 @@
       "id": "con5",
       "type": "midpoint",
       "points": [
-        { "entityId": "ent3", "key": "b" },
-        { "entityId": "ent1", "key": "br" },
-        { "entityId": "ent1", "key": "tr" }
+        {
+          "entityId": "ent3",
+          "key": "b"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tr"
+        }
       ],
       "entities": []
     },
@@ -128,46 +209,79 @@
       "id": "con6",
       "type": "symmetric",
       "points": [
-        { "entityId": "ent4", "key": "c" },
-        { "entityId": "ent5", "key": "c" }
+        {
+          "entityId": "ent4",
+          "key": "c"
+        },
+        {
+          "entityId": "ent5",
+          "key": "c"
+        }
       ],
-      "entities": ["ent2"]
+      "entities": [
+        "ent2"
+      ]
     },
     {
       "id": "con7",
       "type": "symmetric",
       "points": [
-        { "entityId": "ent4", "key": "c" },
-        { "entityId": "ent7", "key": "c" }
+        {
+          "entityId": "ent4",
+          "key": "c"
+        },
+        {
+          "entityId": "ent7",
+          "key": "c"
+        }
       ],
-      "entities": ["ent3"]
+      "entities": [
+        "ent3"
+      ]
     },
     {
       "id": "con8",
       "type": "symmetric",
       "points": [
-        { "entityId": "ent7", "key": "c" },
-        { "entityId": "ent6", "key": "c" }
+        {
+          "entityId": "ent7",
+          "key": "c"
+        },
+        {
+          "entityId": "ent6",
+          "key": "c"
+        }
       ],
-      "entities": ["ent2"]
+      "entities": [
+        "ent2"
+      ]
     },
     {
       "id": "con9",
       "type": "equal",
       "points": [],
-      "entities": ["ent4", "ent5"]
+      "entities": [
+        "ent4",
+        "ent5"
+      ]
     },
     {
       "id": "con10",
       "type": "equal",
       "points": [],
-      "entities": ["ent4", "ent7"]
+      "entities": [
+        "ent4",
+        "ent7"
+      ]
     },
     {
       "id": "con11",
       "type": "equal",
       "points": [],
-      "entities": ["ent4", "ent6"]
+      "entities": [
+        "ent4",
+        "ent6"
+      ]
     }
   ],
   "dimensions": [
@@ -175,8 +289,14 @@
       "id": "dim1",
       "type": "horizontal",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "br" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        }
       ],
       "entities": [],
       "value": 120,
@@ -187,8 +307,14 @@
       "id": "dim2",
       "type": "vertical",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent1", "key": "tl" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tl"
+        }
       ],
       "entities": [],
       "value": 80,
@@ -199,8 +325,14 @@
       "id": "dim3",
       "type": "horizontal",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent4", "key": "c" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent4",
+          "key": "c"
+        }
       ],
       "entities": [],
       "value": 15,
@@ -211,8 +343,14 @@
       "id": "dim4",
       "type": "vertical",
       "points": [
-        { "entityId": "ent1", "key": "bl" },
-        { "entityId": "ent4", "key": "c" }
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent4",
+          "key": "c"
+        }
       ],
       "entities": [],
       "value": 15,
@@ -223,10 +361,16 @@
       "id": "dim5",
       "type": "diameter",
       "points": [],
-      "entities": ["ent4"],
+      "entities": [
+        "ent4"
+      ],
       "value": 8,
       "driving": true,
       "offset": -2.356
     }
-  ]
+  ],
+  "variables": [],
+  "patterns": [],
+  "operations": [],
+  "tools": []
 }

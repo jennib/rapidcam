@@ -2,8 +2,8 @@ import { showAboutDialog } from "./aboutDialog";
 import { showFeedbackDialog } from "./feedbackDialog";
 
 const REPO_URL = "https://github.com/jennib/rapidcam";
-const FORMAT_DOC_URL = `${REPO_URL}/blob/main/docs/rcam-format-v1.md`;
-const SCHEMA_URL = "https://rapidcam.app/schema/rcam-v1.schema.json";
+const FORMAT_DOC_URL = `${REPO_URL}/blob/main/docs/rcam-format-v2.md`;
+const SCHEMA_URL = "https://rapidcam.app/schema/rcam-v2.schema.json";
 
 function openExternal(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer");

@@ -1,11 +1,13 @@
 import { CADDocument, DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
-import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
+import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
+import { TextEntity } from "../model/entities";
+import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { track } from "../analytics";
 
@@ -181,6 +183,26 @@ export class ProjectManager {
     this.cb.onFitView();
     this.isDocumentLoading = false;
     this.markClean();
+    this.warnMissingFonts();
+  }
+
+  /**
+   * After a load, alert if any text references a font that couldn't be resolved
+   * (e.g. a hand-authored file naming a font without embedding it). Such text
+   * renders as a placeholder box and is omitted from G-code, so the user should
+   * know up front rather than discover it in the cut.
+   */
+  private warnMissingFonts(): void {
+    const missing = this.doc.entities.filter(
+      (e): e is TextEntity => e instanceof TextEntity && !isFontResolvable(e.fontId),
+    );
+    if (missing.length === 0) return;
+    const list = missing.map((t) => `  • "${t.text}"  (font: ${t.fontId})`).join("\n");
+    alert(
+      `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
+      `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
+      `omitted from G-code until the font is re-added.`,
+    );
   }
 
   async writeToHandle(handle: FileSystemFileHandle): Promise<RcamFile> {
@@ -207,8 +229,8 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         const data = await this.writeToHandle(this.currentFileHandle);
-        localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
-          name: this.currentFileName, savedAt: Date.now(), data,
+        trySetItem("rapidcam:autosave-draft", JSON.stringify({
+          name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
         }));
         return;
       } catch (e) {
@@ -217,8 +239,8 @@ export class ProjectManager {
     }
 
     const data = serializeDoc(this.doc, this.currentFileName);
-    localStorage.setItem("rapidcam:autosave-draft", JSON.stringify({
-      name: this.currentFileName, savedAt: Date.now(), data,
+    trySetItem("rapidcam:autosave-draft", JSON.stringify({
+      name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
     }));
   }
 
@@ -229,8 +251,10 @@ export class ProjectManager {
     const file = await new Promise<File | null>((resolve) => {
       let settled = false;
       const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      // `cancel` = picker dismissed with no file; avoids the focus+timeout race
+      // that could drop a real selection (see openFile in fileio.ts).
+      input.addEventListener("cancel", () => settle(null));
       input.addEventListener("change", () => settle(input.files?.[0] ?? null));
-      window.addEventListener("focus", () => setTimeout(() => settle(null), 300), { once: true });
       input.click();
     });
     if (!file) return;
@@ -285,6 +309,7 @@ export class ProjectManager {
       this.cb.onFitView();
       this.isDocumentLoading = false;
       this.markClean();
+      this.warnMissingFonts();
     } catch (e) {
       console.error("Failed to restore draft:", e);
     }

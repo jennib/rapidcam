@@ -161,7 +161,17 @@ export class PropertiesBar {
     const fontSel = document.createElement("select");
     fontSel.className = "dim";
     fontSel.style.flex = "1";
-    for (const f of listFonts()) {
+    const known = listFonts();
+    // If the entity's font isn't loaded, show that honestly instead of letting the
+    // <select> silently display its first option as if it were the entity's font.
+    if (!known.some((f) => f.id === entity.fontId)) {
+      const opt = document.createElement("option");
+      opt.value = entity.fontId;
+      opt.textContent = `⚠ missing: ${entity.fontId}`;
+      opt.selected = true;
+      fontSel.appendChild(opt);
+    }
+    for (const f of known) {
       const opt = document.createElement("option");
       opt.value = f.id;
       opt.textContent = f.name;
