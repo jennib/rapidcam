@@ -87,6 +87,9 @@ export class CamBar {
   private isCollapsed = false;
   private highlightedOpId: string | null = null;
   private dragSrcIdx: number | null = null;
+  /** Transient (not persisted) selection of toolpaths for a combined export. */
+  private selectedOpIds = new Set<string>();
+  private exportSelBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -150,17 +153,47 @@ export class CamBar {
     genBtn.textContent = "Generate G-code";
     genBtn.addEventListener("click", () => this.generate());
     this.content.appendChild(genBtn);
+
+    // Export a chosen subset of toolpaths into a single file (e.g. all the ops
+    // that share a tool). Appears only when ≥1 toolpath is checked.
+    const exportSelBtn = document.createElement("button");
+    exportSelBtn.className = "cam-add-btn cam-export-sel-btn";
+    exportSelBtn.style.cssText = "width:100%;margin-top:6px;display:none;";
+    exportSelBtn.addEventListener("click", () => this.exportSelected());
+    this.exportSelBtn = exportSelBtn;
+    this.content.appendChild(exportSelBtn);
+    this.updateExportSelBtn();
+  }
+
+  private updateExportSelBtn(): void {
+    if (!this.exportSelBtn) return;
+    const n = this.selectedOpIds.size;
+    this.exportSelBtn.style.display = n > 0 ? "" : "none";
+    this.exportSelBtn.textContent = `Export ${n} selected to one file`;
+  }
+
+  private exportSelected(): void {
+    // Preserve document order so the combined file runs ops top-to-bottom.
+    const ops = this.doc.operations.filter((o) => this.selectedOpIds.has(o.id));
+    if (ops.length === 0) return;
+    track("gcode_generated", { operation_count: ops.length, subset: true });
+    this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
   }
 
   // --- list rendering --------------------------------------------------------
 
   private renderOps(): void {
+    // Drop selections for ops that no longer exist (deleted).
+    const live = new Set(this.doc.operations.map((o) => o.id));
+    for (const id of [...this.selectedOpIds]) if (!live.has(id)) this.selectedOpIds.delete(id);
+
     this.opsList.innerHTML = "";
     if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
       empty.className = "cam-ops-empty";
       empty.textContent = "No toolpaths yet";
       this.opsList.appendChild(empty);
+      this.updateExportSelBtn();
       return;
     }
     for (let i = 0; i < this.doc.operations.length; i++) {
@@ -169,6 +202,7 @@ export class CamBar {
       if (op.id === this.highlightedOpId) item.classList.add("tp-op-active");
       this.opsList.appendChild(item);
     }
+    this.updateExportSelBtn();
   }
 
   private highlightOp(id: string | null): void {
@@ -250,6 +284,19 @@ export class CamBar {
 
     const opColor = TP_PALETTE[index % TP_PALETTE.length];
     item.style.setProperty("--tp-color", opColor);
+
+    const sel = document.createElement("input");
+    sel.type = "checkbox";
+    sel.className = "tp-select";
+    sel.title = "Select for combined export";
+    sel.checked = this.selectedOpIds.has(op.id);
+    sel.addEventListener("click", (e) => e.stopPropagation());
+    sel.addEventListener("change", () => {
+      if (sel.checked) this.selectedOpIds.add(op.id);
+      else this.selectedOpIds.delete(op.id);
+      this.updateExportSelBtn();
+    });
+    item.appendChild(sel);
 
     const handle = document.createElement("span");
     handle.className = "tp-drag-handle";
@@ -359,6 +406,7 @@ export class CamBar {
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
+      finishPass: existing?.finishPass ?? false,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -509,6 +557,15 @@ export class CamBar {
     const strategyRow = this.dField("Clearing", strategySelect);
     cutSec.appendChild(strategyRow);
 
+    // Finishing pass — profile + pocket only. A final full-depth wall lap.
+    const finishChk = document.createElement("input");
+    finishChk.type = "checkbox";
+    finishChk.className = "settings-checkbox";
+    finishChk.checked = state.finishPass;
+    finishChk.addEventListener("change", () => { state.finishPass = finishChk.checked; });
+    const finishRow = this.dField("Finishing pass", finishChk);
+    cutSec.appendChild(finishRow);
+
     // Coolant — per operation, shown only when the machine has coolant (a
     // machine-wide capability). Off/Mist (M7)/Flood (M8).
     if (getMachineHasCoolant()) {
@@ -557,6 +614,7 @@ export class CamBar {
       peckRow.style.display     = state.combo === "drill"   ? "" : "none";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+      finishRow.style.display   = (state.combo.startsWith("profile") || state.combo === "pocket") ? "" : "none";
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -570,6 +628,7 @@ export class CamBar {
     peckRow.style.display     = state.combo === "drill"   ? "" : "none";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+    finishRow.style.display   = (state.combo.startsWith("profile") || state.combo === "pocket") ? "" : "none";
     updateTabsVisibility();
     updateLeadVisibility();
     if (state.combo === "pocket") {
@@ -629,6 +688,7 @@ export class CamBar {
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
+        finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"

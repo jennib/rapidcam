@@ -22,7 +22,7 @@ import {
 import { textToContours } from "./textOutlines";
 import type { CAMOperation } from "./types";
 import { depthPasses } from "./postprocessors/base";
-import { offsetPolygon, signedArea } from "./offset";
+import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
@@ -393,15 +393,33 @@ function rasProfilePolygon(
   const hasTabs = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
   const tabZOff = hasTabs ? op.depth + tabs!.height : 0;
 
-  for (const path of paths) {
-    if (path.length < 2) continue;
+  // Lead-in/out lengths (linear approximation of the cut path — enough to carve
+  // the lead grooves into the height field so the preview matches the G-code).
+  const liLen = op.leadIn  && op.leadIn.type  !== "none" ? (op.leadIn.length  ?? 2) : 0;
+  const loLen = op.leadOut && op.leadOut.type !== "none" ? (op.leadOut.length ?? 2) : 0;
+
+  for (const rawPath of paths) {
+    if (rawPath.length < 2) continue;
+    // Mirror the G-code: start at the longest-edge midpoint (mid-side lead/plunge).
+    const path = startAtLongestEdgeMid(rawPath);
+    const np = path.length;
+
+    const unit = (a: Vec2, b: Vec2): Vec2 => {
+      const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+      return { x: dx / L, y: dy / L };
+    };
+    const tIn = unit(path[0], path[1]);            // entry tangent
+    const tOut = unit(path[np - 1], path[0]);      // exit (arrival) tangent
+    const leadInP  = liLen > 0 ? { x: path[0].x - tIn.x * liLen, y: path[0].y - tIn.y * liLen } : null;
+    const leadOutP = loLen > 0 ? { x: path[0].x + tOut.x * loLen, y: path[0].y + tOut.y * loLen } : null;
 
     for (const z of depthPasses(op)) {
       const depth              = stockT + z;
       const useTabsThisPass    = hasTabs && z < tabZOff;
 
+      if (leadInP) walkSegment(leadInP, path[0], stepR, depth, stamp);
+
       if (!useTabsThisPass) {
-        const np = path.length;
         for (let i = 0; i < np; i++)
           walkSegment(path[i], path[(i + 1) % np], stepR, depth, stamp);
       } else {
@@ -413,6 +431,8 @@ function rasProfilePolygon(
         for (const seg of segs)
           walkSegment(seg.p0, seg.p1, stepR, seg.isTab ? tabDepth : depth, stamp);
       }
+
+      if (leadOutP) walkSegment(path[0], leadOutP, stepR, depth, stamp);
     }
   }
 }

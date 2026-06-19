@@ -239,3 +239,53 @@ const p3 = { x: 100, y: 104 };
     offset.some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l)), "");
 }
 
+// 12) Finishing pass: profile gets one extra full-depth spring lap ------------
+{
+  console.log("\n12) Profile finishing pass");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 70, y: 50 })) as RectEntity;
+  const base: CAMOperation = {
+    ...OP, id: "pr", type: "profile", side: "outside", toolType: "end-mill",
+    stepover: 0.4, diameter: 6, depth: -3, stepdown: 1.5, entityIds: [rect.id],
+  };
+  const fullDepthPlunges = (op: CAMOperation) =>
+    generateGCode([op], doc).split("\n").filter(l => /^G1 Z-3\b/.test(l)).length;
+
+  const without = fullDepthPlunges(base);
+  const withFin = fullDepthPlunges({ ...base, finishPass: true });
+  check("finishing pass adds exactly one extra full-depth lap",
+    withFin === without + 1, `without=${without}, with=${withFin}`);
+}
+
+// 13) Finishing pass: pocket gets a full-depth wall lap -----------------------
+{
+  console.log("\n13) Pocket finishing pass");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 70 })) as RectEntity;
+  const op: CAMOperation = {
+    ...OP, id: "pk", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 6, depth: -2, stepdown: 2, entityIds: [rect.id],
+    pocketStrategy: "offset", finishPass: true,
+  };
+  const out = generateGCode([op], doc);
+  check("pocket finishing pass emits a full-depth wall lap",
+    /finishing pass \(full-depth wall\)/.test(out), "");
+}
+
+// 14) Circular pocket uses a helical entry (not a straight plunge) ------------
+{
+  console.log("\n14) Circular pocket helical boring");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const circ = doc.add(new CircleEntity({ x: 100, y: 100 }, 20)) as CircleEntity;
+  const op: CAMOperation = {
+    ...OP, id: "cp", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 6, depth: -3, stepdown: 1.5, entityIds: [circ.id],
+  };
+  const all = generateGCode([op], doc).split("\n");
+  // Helical descent = a single feed move that changes X/Y and Z together.
+  const hasHelix = all.some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l));
+  check("circular pocket descends helically (combined XYZ feed move)", hasHelix,
+    all.find(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l)) ?? "(no helix move)");
+  check("circular pocket reaches full depth Z-3", all.some(l => l.includes("Z-3")), "");
+}
+

@@ -3,7 +3,7 @@ import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
 import { type CAMOperation, type CoolantMode, resolveOpTool } from "./types";
-import { offsetPolygon, signedArea } from "./offset";
+import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
@@ -64,13 +64,19 @@ function profilePolygon(
   const liLen  = op.leadIn?.length  ?? 2;
   const loLen  = op.leadOut?.length ?? 2;
 
+  // A finishing pass is one extra lap at full depth (a spring pass): it cleans
+  // the ridges the stepdown levels leave on the wall. Tabs are still honoured.
+  const passes = op.finishPass ? [...depthPasses(op), op.depth] : depthPasses(op);
+
   const lines: string[] = [];
-  for (const path of paths) {
-    if (path.length < 2) continue;
+  for (const rawPath of paths) {
+    if (rawPath.length < 2) continue;
+    // Anchor the lead/plunge at a mid-edge rather than a corner.
+    const path = startAtLongestEdgeMid(rawPath);
     const s = path[0];
     const geo = (liType !== "none" || loType !== "none") ? leadInGeo(path, Math.max(liLen, loLen), op.side) : null;
 
-    for (const z of depthPasses(op)) {
+    for (const z of passes) {
       const useTabsThisPass = hasTabs && z < tabZOff;
 
       // ---- approach / plunge ----
@@ -266,9 +272,37 @@ function pocketPolygon(
   verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
-  return (op.pocketStrategy ?? "offset") === "raster"
+  const lines = (op.pocketStrategy ?? "offset") === "raster"
     ? pocketPolygonRaster(verts, islands, op, ox, oy, zOff)
     : pocketPolygonOffset(verts, islands, op, ox, oy, zOff);
+  if (op.finishPass) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
+  return lines;
+}
+
+/**
+ * Final full-depth finishing lap around a pocket's walls (boundary + island
+ * walls), to clean the ridges left by stepdown roughing. Independent of the
+ * clearing strategy.
+ */
+function pocketWallFinish(
+  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const toolR = op.diameter / 2;
+  const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  const walls = offsetPolygon(ccw, -toolR);
+  if (walls.length === 0) return [];
+
+  const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
+  for (const w of walls)
+    lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));
+  for (const isl of islands) {
+    const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
+    for (const k of offsetPolygon(pts, toolR))
+      lines.push(...finishContour(k, op.depth, op.depth, op, ox, oy, zOff));
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
 }
 
 /**
@@ -390,59 +424,17 @@ function pocketCircle(
   cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
-  const toolR = op.diameter / 2;
-  const cutR  = r - toolR;
-  if (cutR <= 0)
-    return [`; NOTE: pocket circle too small for ⌀${op.diameter}mm tool — skipped`];
-
-  if (islands.length > 0) {
-    // Tessellate the inset circle and delegate to pocketPolygon for island subtraction.
-    const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
-    const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
-      const a = (i / nSegs) * 2 * Math.PI;
-      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-    });
-    return pocketPolygon(verts, islands, op, ox, oy, zOff);
-  }
-
-  const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
-  const nSegs    = Math.max(64, Math.ceil(2 * Math.PI * cutR / 0.5));
+  // Tessellate and clear through the contour-parallel polygon clearer, which
+  // descends with a helical entry and wraps concentric loops (helical boring) —
+  // the same path for round pockets with or without islands, and it respects the
+  // chosen strategy and the finishing pass. (Replaces the old straight-plunge
+  // raster + G2 special case, which had no helical entry.)
+  const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
   const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
     const a = (i / nSegs) * 2 * Math.PI;
-    return { x: cx + cutR * Math.cos(a), y: cy + cutR * Math.sin(a) };
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
   });
-
-  const rows  = rasterRows(verts, stepover);
-  const lines: string[] = [];
-
-  for (const z of depthPasses(op)) {
-    if (rows.length > 0) {
-      const entry = rows[0][0];
-      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-      lines.push(`G0 X${X(entry.x, ox)} Y${Y(entry.y, oy)}`);
-      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      let first = true;
-      for (const row of rows) {
-        for (const pt of row) {
-          const f = first ? ` F${n(op.feedrate)}` : "";
-          lines.push(`G1 X${X(pt.x, ox)} Y${Y(pt.y, oy)}${f}`);
-          first = false;
-        }
-      }
-    }
-  }
-
-  // Finish pass: smooth G2 arc around boundary.
-  const sx = cx + cutR;
-  for (const z of depthPasses(op)) {
-    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-    lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
-    lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-    lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-cutR)} J0 F${n(op.feedrate)}`);
-  }
-  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-
-  return lines;
+  return pocketPolygon(verts, islands, op, ox, oy, zOff);
 }
 
 function profileCircle(
@@ -456,7 +448,8 @@ function profileCircle(
 
   const lines: string[] = [];
   const sx = cx + cutR;
-  for (const z of depthPasses(op)) {
+  const passes = op.finishPass ? [...depthPasses(op), op.depth] : depthPasses(op);
+  for (const z of passes) {
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
     lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
     lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);

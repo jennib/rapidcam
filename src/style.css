@@ -1045,6 +1045,11 @@ button.cbtn.solve {
 .tp-op-item.tp-dragging { opacity: 0.4; }
 .tp-op-item.tp-drag-over-top    { border-top:    2px solid var(--accent); }
 .tp-op-item.tp-drag-over-bottom { border-bottom: 2px solid var(--accent); }
+.tp-select {
+  flex: 0 0 auto;
+  margin: 0 1px 0 0;
+  cursor: pointer;
+}
 .tp-drag-handle {
   cursor: grab;
   flex: 0 0 auto;

@@ -2,6 +2,29 @@ import type { Vec2 } from "../core/vec2";
 import { inflatePathsD, JoinType, EndType, differenceD, FillRule } from "clipper2-ts";
 
 /**
+ * Re-start a closed path at the midpoint of its longest edge, so a profile's
+ * lead-in/out and plunge happen mid-side rather than at a corner. Splits the
+ * longest edge: the path begins at its midpoint and the closing move completes
+ * that edge. Used by both the G-code generator and the stock-sim preview so they
+ * agree on where the cut starts.
+ */
+export function startAtLongestEdgeMid(path: Vec2[]): Vec2[] {
+  const n = path.length;
+  if (n < 3) return path;
+  let k = 0, best = -1;
+  for (let i = 0; i < n; i++) {
+    const a = path[i], b = path[(i + 1) % n];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (d > best) { best = d; k = i; }
+  }
+  const a = path[k], b = path[(k + 1) % n];
+  const mid: Vec2 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const out: Vec2[] = [mid];
+  for (let i = 1; i <= n; i++) out.push(path[(k + i) % n]); // b … a, closing back to mid
+  return out;
+}
+
+/**
  * Returns true if the closed polygon has at least one reflex (concave) vertex.
  * Triangles are always convex. Uses the sign of consecutive cross products.
  */

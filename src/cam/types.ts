@@ -93,6 +93,12 @@ export interface CAMOperation {
    * capability, see core/prefs); otherwise suppressed regardless of this value.
    */
   coolant?: CoolantMode;
+  /**
+   * Profile/pocket: when true, add a final full-depth finishing pass that
+   * re-traces the wall after the stepdown roughing, to clean the ridges left
+   * between depth levels. Default false.
+   */
+  finishPass?: boolean;
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
