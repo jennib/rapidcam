@@ -7,6 +7,7 @@
 
 const START_KEY = "rapidcam:gcode:customStart";
 const END_KEY = "rapidcam:gcode:customEnd";
+const HAS_COOLANT_KEY = "rapidcam:machine:hasCoolant";
 
 export interface CustomGcode {
   /** Lines injected once near the top of the program (after G21/G90/G17). */
@@ -23,6 +24,29 @@ export function getCustomGcode(): CustomGcode {
     };
   } catch {
     return { start: "", end: "" };
+  }
+}
+
+/**
+ * Whether this machine has coolant. A machine capability (not a per-design
+ * setting), so it lives here, not in the .rcam file. Default false — assume no
+ * coolant unless the operator says otherwise, so non-coolant machines are never
+ * prompted with coolant options. Gates both the coolant UI and G-code emission.
+ */
+export function getMachineHasCoolant(): boolean {
+  try {
+    return localStorage.getItem(HAS_COOLANT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setMachineHasCoolant(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(HAS_COOLANT_KEY, "1");
+    else localStorage.removeItem(HAS_COOLANT_KEY);
+  } catch {
+    /* private mode / storage disabled — preference simply doesn't persist */
   }
 }
 

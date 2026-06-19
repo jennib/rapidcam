@@ -1,6 +1,7 @@
 import { Unit, parseLength, formatLength } from "../core/units";
 import { type CADDocument, type OriginX, type OriginY, type OriginZ, type CoolantMode } from "../model/document";
-import { showPostSettingsDialog } from "./postSettingsDialog";
+import { showMachineSettingsDialog } from "./postSettingsDialog";
+import { getMachineHasCoolant } from "../core/prefs";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
@@ -12,6 +13,7 @@ export class SettingsBar {
   private toolChangerCheck!: HTMLInputElement;
   private postProcessorSelect!: HTMLSelectElement;
   private coolantSelect!: HTMLSelectElement;
+  private coolantField!: HTMLElement;
   private endReturnCheck!: HTMLInputElement;
   private endXInput!: HTMLInputElement;
   private endYInput!: HTMLInputElement;
@@ -106,12 +108,13 @@ export class SettingsBar {
       ["mist",  "Mist (M7)"],
       ["flood", "Flood (M8)"],
     ]);
-    machineGroup.appendChild(this.field("Coolant", this.coolantSelect));
+    this.coolantField = this.field("Coolant", this.coolantSelect);
+    machineGroup.appendChild(this.coolantField);
     const customBtn = document.createElement("button");
     customBtn.className = "btn settings-fullwidth-btn";
-    customBtn.textContent = "Custom start/end G-code…";
-    customBtn.title = "Edit machine-wide G-code injected at program start/end (all projects)";
-    customBtn.addEventListener("click", () => showPostSettingsDialog());
+    customBtn.textContent = "Machine settings…";
+    customBtn.title = "Machine-wide settings (all projects): coolant capability + custom program start/end G-code";
+    customBtn.addEventListener("click", () => showMachineSettingsDialog(() => this.refresh()));
     machineGroup.appendChild(customBtn);
     this.content.appendChild(machineGroup);
 
@@ -301,6 +304,8 @@ export class SettingsBar {
     this.originZSelect.value = this.doc.origin.z;
     this.toolChangerCheck.checked = this.doc.hasToolChanger;
     this.postProcessorSelect.value = this.doc.postProcessor;
+    // Coolant options only appear when the machine is flagged as having coolant.
+    this.coolantField.style.display = getMachineHasCoolant() ? "" : "none";
     this.coolantSelect.value = this.doc.coolant ?? "off";
     const ep = this.doc.endPosition;
     this.endReturnCheck.checked = !!ep;

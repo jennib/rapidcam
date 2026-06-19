@@ -1,11 +1,14 @@
-import { getCustomGcode, setCustomGcode } from "../core/prefs";
+import {
+  getCustomGcode, setCustomGcode,
+  getMachineHasCoolant, setMachineHasCoolant,
+} from "../core/prefs";
 
 /**
- * Modal for editing the machine-wide custom program start/end G-code. These are
- * stored in localStorage (see core/prefs) and injected into every generated
- * program, so the dialog is explicit that it applies to all projects.
+ * Modal for machine-wide settings stored in localStorage (see core/prefs): the
+ * coolant capability and the custom program start/end G-code. These describe
+ * the operator's machine/shop, not the design, so they apply to all projects.
  */
-export function showPostSettingsDialog(onSaved?: () => void): void {
+export function showMachineSettingsDialog(onSaved?: () => void): void {
   const current = getCustomGcode();
 
   const backdrop = document.createElement("div");
@@ -22,13 +25,28 @@ export function showPostSettingsDialog(onSaved?: () => void): void {
 
   const title = document.createElement("h2");
   title.className = "post-settings-title";
-  title.textContent = "Custom Program G-code";
+  title.textContent = "Machine Settings";
 
   const note = document.createElement("p");
   note.className = "post-settings-note";
   note.textContent =
-    "Injected into every generated program on this computer (start: after the " +
-    "G21/G90/G17 setup; end: after the spindle stop, before M30). Applies to all projects.";
+    "These describe your machine and apply to all projects on this computer.";
+
+  // Coolant capability.
+  const coolantRow = document.createElement("label");
+  coolantRow.className = "post-settings-check";
+  const coolantCheck = document.createElement("input");
+  coolantCheck.type = "checkbox";
+  coolantCheck.checked = getMachineHasCoolant();
+  const coolantText = document.createElement("span");
+  coolantText.textContent = "Machine has coolant (show coolant options & emit M7/M8/M9)";
+  coolantRow.append(coolantCheck, coolantText);
+
+  const note2 = document.createElement("p");
+  note2.className = "post-settings-note";
+  note2.textContent =
+    "Custom G-code injected into every program — start: after the G21/G90/G17 " +
+    "setup; end: after the spindle stop, before M30.";
 
   const startArea = textareaField("Program start", current.start,
     "e.g. G54 ; work offset");
@@ -45,6 +63,7 @@ export function showPostSettingsDialog(onSaved?: () => void): void {
   save.className = "btn btn-primary";
   save.textContent = "Save";
   save.addEventListener("click", () => {
+    setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
     backdrop.remove();
     onSaved?.();
@@ -52,17 +71,19 @@ export function showPostSettingsDialog(onSaved?: () => void): void {
   buttons.appendChild(cancel);
   buttons.appendChild(save);
 
-  container.append(closeBtn, title, note, startArea.field, endArea.field, buttons);
+  container.append(
+    closeBtn, title, note, coolantRow, note2,
+    startArea.field, endArea.field, buttons,
+  );
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) backdrop.remove();
   });
   document.body.appendChild(backdrop);
-  startArea.focus();
 }
 
 function textareaField(label: string, value: string, placeholder: string): {
-  field: HTMLElement; value: string; focus: () => void;
+  field: HTMLElement; value: string;
 } {
   const field = document.createElement("div");
   field.className = "post-settings-field";
@@ -75,5 +96,5 @@ function textareaField(label: string, value: string, placeholder: string): {
   ta.value = value;
   ta.placeholder = placeholder;
   field.append(lab, ta);
-  return { field, get value() { return ta.value; }, focus: () => ta.focus() };
+  return { field, get value() { return ta.value; } };
 }

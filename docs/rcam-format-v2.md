@@ -107,9 +107,12 @@ Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → fal
 
 `coolant` emits a coolant command after each spindle start (`"mist"` → `M7`,
 `"flood"` → `M8`) and turns it off (`M9`) before each spindle stop and at
-program end. Custom program start/end G-code is **not** stored here — it is a
-machine-wide (localStorage) preference, since it describes the operator's shop,
-not the design.
+program end — but **only if the machine is flagged as having coolant** (a
+machine-wide preference, see below); otherwise no coolant codes are emitted
+regardless of this field. Custom program start/end G-code and the
+"machine has coolant" capability are **not** stored here — they are machine-wide
+(localStorage) preferences, since they describe the operator's shop, not the
+design.
 
 `endPosition` is an optional `{ "x", "y" }` (work coordinates, mm) the spindle
 rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS

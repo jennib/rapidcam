@@ -14,7 +14,7 @@ import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type Lea
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
-import { getCustomGcode } from "../core/prefs";
+import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -634,7 +634,7 @@ export class CamBar {
   /** Map the machine-wide custom-G-code preference into generator options. */
   private gcodeOpts() {
     const g = getCustomGcode();
-    return { customStart: g.start, customEnd: g.end };
+    return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
   }
 
   private generate(): void {

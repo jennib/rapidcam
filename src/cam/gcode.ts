@@ -708,6 +708,12 @@ export interface GCodeOptions {
   customStart?: string;
   /** Machine-wide custom lines injected after the final M5, before M30. */
   customEnd?: string;
+  /**
+   * Whether the machine has coolant. When explicitly false, no M7/M8/M9 is
+   * emitted even if the document requests a coolant mode. Undefined = assume
+   * supported (so the document's `coolant` drives emission).
+   */
+  coolantSupported?: boolean;
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
@@ -769,8 +775,9 @@ export function generateGCode(
   }
 
   // Coolant: M7 (mist) / M8 (flood) turned on after each spindle start, M9 off
-  // before each spindle stop and at program end.
-  const coolant = doc.coolant ?? "off";
+  // before each spindle stop and at program end. Suppressed when the machine
+  // has no coolant, regardless of what the document requests.
+  const coolant = opts.coolantSupported === false ? "off" : (doc.coolant ?? "off");
   const coolantOn = coolant === "mist" ? "M7 ; mist coolant on"
                   : coolant === "flood" ? "M8 ; flood coolant on"
                   : null;

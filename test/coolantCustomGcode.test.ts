@@ -42,6 +42,14 @@ test("mist coolant cycles around a tool change", () => {
   expect(lines.filter((l) => l === "M9 ; coolant off").length).toBe(2);
 });
 
+test("coolantSupported:false suppresses coolant even if the document requests it", () => {
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.coolant = "flood";
+  const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
+  const g = generateGCode([drillOp([a.id])], doc, { coolantSupported: false });
+  expect(g).not.toMatch(/\bM7\b|\bM8\b|\bM9\b/);
+});
+
 test("custom start/end blocks are injected at the right spots", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
