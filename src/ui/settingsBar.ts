@@ -1,7 +1,6 @@
 import { Unit, parseLength, formatLength } from "../core/units";
-import { type CADDocument, type OriginX, type OriginY, type OriginZ, type CoolantMode } from "../model/document";
+import { type CADDocument, type OriginX, type OriginY, type OriginZ } from "../model/document";
 import { showMachineSettingsDialog } from "./postSettingsDialog";
-import { getMachineHasCoolant } from "../core/prefs";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
@@ -12,8 +11,6 @@ export class SettingsBar {
   private originZSelect!: HTMLSelectElement;
   private toolChangerCheck!: HTMLInputElement;
   private postProcessorSelect!: HTMLSelectElement;
-  private coolantSelect!: HTMLSelectElement;
-  private coolantField!: HTMLElement;
   private endReturnCheck!: HTMLInputElement;
   private endXInput!: HTMLInputElement;
   private endYInput!: HTMLInputElement;
@@ -103,13 +100,6 @@ export class SettingsBar {
       ["grbl",     "GRBL / FluidNC"],
     ]);
     machineGroup.appendChild(this.field("Post-processor", this.postProcessorSelect));
-    this.coolantSelect = this.makeSelect([
-      ["off",   "Off"],
-      ["mist",  "Mist (M7)"],
-      ["flood", "Flood (M8)"],
-    ]);
-    this.coolantField = this.field("Coolant", this.coolantSelect);
-    machineGroup.appendChild(this.coolantField);
     const customBtn = document.createElement("button");
     customBtn.className = "btn settings-fullwidth-btn";
     customBtn.textContent = "Machine settings…";
@@ -169,10 +159,6 @@ export class SettingsBar {
     });
     this.postProcessorSelect.addEventListener("change", () => {
       this.doc.postProcessor = this.postProcessorSelect.value;
-      this.doc.emitChange();
-    });
-    this.coolantSelect.addEventListener("change", () => {
-      this.doc.coolant = this.coolantSelect.value as CoolantMode;
       this.doc.emitChange();
     });
     this.endReturnCheck.addEventListener("change", () => {
@@ -304,9 +290,6 @@ export class SettingsBar {
     this.originZSelect.value = this.doc.origin.z;
     this.toolChangerCheck.checked = this.doc.hasToolChanger;
     this.postProcessorSelect.value = this.doc.postProcessor;
-    // Coolant options only appear when the machine is flagged as having coolant.
-    this.coolantField.style.display = getMachineHasCoolant() ? "" : "none";
-    this.coolantSelect.value = this.doc.coolant ?? "off";
     const ep = this.doc.endPosition;
     this.endReturnCheck.checked = !!ep;
     this.endXInput.disabled = !ep;

@@ -9,9 +9,6 @@ export type OriginX = "left" | "center" | "right";
 export type OriginY = "front" | "center" | "back";
 export type OriginZ = "top" | "bed";
 
-/** Coolant mode emitted in G-code: off (none), mist (M7), or flood (M8). M9 turns it off. */
-export type CoolantMode = "off" | "mist" | "flood";
-
 export interface OriginDef {
   x: OriginX;
   y: OriginY;
@@ -101,7 +98,6 @@ export interface DocSnapshot {
   hasToolChanger?: boolean;
   origin?: OriginDef;
   postProcessor?: string;
-  coolant?: CoolantMode;
   endPosition?: EndPosition | null;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -132,8 +128,6 @@ export class CADDocument {
   origin: OriginDef = { x: "left", y: "front", z: "top" };
   /** Post-processor to use when generating G-code. */
   postProcessor = "linuxcnc";
-  /** Coolant mode emitted around spindle on/off in G-code. Default off. */
-  coolant: CoolantMode = "off";
   /**
    * Optional end-of-program park position (work coords, mm). When set, the
    * G-code rapids here at safe Z before M30; `null` leaves the tool where the
@@ -544,7 +538,6 @@ export class CADDocument {
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
-      coolant: this.coolant,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -626,7 +619,6 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
-    this.coolant = s.coolant ?? "off";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];

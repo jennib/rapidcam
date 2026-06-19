@@ -10,7 +10,7 @@ import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
@@ -358,6 +358,7 @@ export class CamBar {
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
+      coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
       regionSeeds:  existing?.regions?.length
@@ -497,6 +498,23 @@ export class CamBar {
     const strategyRow = this.dField("Clearing", strategySelect);
     cutSec.appendChild(strategyRow);
 
+    // Coolant — per operation, shown only when the machine has coolant (a
+    // machine-wide capability). Off/Mist (M7)/Flood (M8).
+    if (getMachineHasCoolant()) {
+      const coolantSelect = document.createElement("select");
+      coolantSelect.className = "unit";
+      for (const [v, l] of [["off", "Off"], ["mist", "Mist (M7)"], ["flood", "Flood (M8)"]] as const) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = l;
+        coolantSelect.appendChild(o);
+      }
+      coolantSelect.value = state.coolant;
+      coolantSelect.addEventListener("change", () => {
+        state.coolant = coolantSelect.value as CoolantMode;
+      });
+      cutSec.appendChild(this.dField("Coolant", coolantSelect));
+    }
+
     body.appendChild(cutSec);
 
     // tabs section — profile ops only
@@ -597,6 +615,7 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
+        coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"
           ? refsFromSeeds(this.doc, state.regionSeeds)
