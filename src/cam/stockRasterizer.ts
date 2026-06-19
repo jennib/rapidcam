@@ -398,10 +398,11 @@ function rasProfilePolygon(
   const liLen = op.leadIn  && op.leadIn.type  !== "none" ? (op.leadIn.length  ?? 2) : 0;
   const loLen = op.leadOut && op.leadOut.type !== "none" ? (op.leadOut.length ?? 2) : 0;
 
+  const useLead = liLen > 0 || loLen > 0;
   for (const rawPath of paths) {
     if (rawPath.length < 2) continue;
-    // Mirror the G-code: start at the longest-edge midpoint (mid-side lead/plunge).
-    const path = startAtLongestEdgeMid(rawPath);
+    // Mirror the G-code: mid-side start only when a lead is used.
+    const path = useLead ? startAtLongestEdgeMid(rawPath) : rawPath;
     const np = path.length;
 
     const unit = (a: Vec2, b: Vec2): Vec2 => {

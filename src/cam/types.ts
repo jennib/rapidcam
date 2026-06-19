@@ -94,11 +94,17 @@ export interface CAMOperation {
    */
   coolant?: CoolantMode;
   /**
-   * Profile/pocket: when true, add a final full-depth finishing pass that
-   * re-traces the wall after the stepdown roughing, to clean the ridges left
+   * Profile/pocket: when true, leave a thin radial skin during stepdown roughing
+   * and remove it in a final full-depth wall pass — cleaning the ridges left
    * between depth levels. Default false.
    */
   finishPass?: boolean;
+  /**
+   * Radial stock (mm) left on the walls during roughing and removed by the
+   * finishing pass. Only used when `finishPass` is true; default 0.2. Clamped
+   * below the tool radius so the finish lap still enters through cleared stock.
+   */
+  finishAllowance?: number;
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
@@ -137,6 +143,7 @@ export const DEFAULTS = {
   stepover: 0.4,
   coolant: "off" as CoolantMode,
   peckDepth: 0,
+  finishAllowance: 0.2,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

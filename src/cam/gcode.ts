@@ -44,6 +44,20 @@ function leadInGeo(path: Vec2[], leadR: number, side: "outside" | "inside") {
   return { tx, ty, nx, ny, arcStart, arcCmd, etx, ety, enx, eny, arcOut };
 }
 
+/** Default radial finishing allowance (mm) when finishPass is on without an explicit value. */
+const FINISH_ALLOWANCE_DEFAULT = 0.2;
+
+/**
+ * Effective finishing allowance for an op: 0 when off, otherwise the requested
+ * value clamped below the tool radius so the finish lap still plunges through
+ * already-cleared stock (its centre stays inside the rough kerf).
+ */
+function finishAllowance(op: CAMOperation): number {
+  if (!op.finishPass) return 0;
+  const a = op.finishAllowance ?? FINISH_ALLOWANCE_DEFAULT;
+  return Math.max(0, Math.min(a, (op.diameter / 2) * 0.8));
+}
+
 function profilePolygon(
   verts: Vec2[], op: CAMOperation,
   ox: number, oy: number, zOff: number,
@@ -52,8 +66,17 @@ function profilePolygon(
   // Normalise winding to CCW so "outside" (+toolR) always expands and "inside"
   // (-toolR) always shrinks, regardless of how the source geometry was wound.
   const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
-  const paths = offsetPolygon(ccw, op.side === "outside" ? toolR : -toolR);
-  if (paths.length === 0) return [];
+  const sideSign = op.side === "outside" ? 1 : -1;
+
+  // Roughing leaves `allowance` of stock on the wall; the finishing lap then cuts
+  // at the true offset to remove it. With no allowance the finish lap coincides
+  // with roughing — a spring pass.
+  const allowance   = finishAllowance(op);
+  const roughPaths  = offsetPolygon(ccw, sideSign * (toolR + allowance));
+  if (roughPaths.length === 0) return [];
+  const finishPaths = op.finishPass
+    ? (allowance > 0 ? offsetPolygon(ccw, sideSign * toolR) : roughPaths)
+    : [];
 
   const tabs      = op.tabs;
   const hasTabs   = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
@@ -63,80 +86,88 @@ function profilePolygon(
   const loType = op.leadOut?.type ?? "none";
   const liLen  = op.leadIn?.length  ?? 2;
   const loLen  = op.leadOut?.length ?? 2;
-
-  // A finishing pass is one extra lap at full depth (a spring pass): it cleans
-  // the ridges the stepdown levels leave on the wall. Tabs are still honoured.
-  const passes = op.finishPass ? [...depthPasses(op), op.depth] : depthPasses(op);
+  const useLead = liType !== "none" || loType !== "none";
 
   const lines: string[] = [];
-  for (const rawPath of paths) {
-    if (rawPath.length < 2) continue;
-    // Anchor the lead/plunge at a mid-edge rather than a corner.
-    const path = startAtLongestEdgeMid(rawPath);
+
+  // Trace one closed lap of `path` at depth `z` (approach/plunge, body with
+  // optional tabs, lead-out).
+  const tracePass = (path: Vec2[], z: number): void => {
     const s = path[0];
-    const geo = (liType !== "none" || loType !== "none") ? leadInGeo(path, Math.max(liLen, loLen), op.side) : null;
+    const geo = useLead ? leadInGeo(path, Math.max(liLen, loLen), op.side) : null;
+    const useTabsThisPass = hasTabs && z < tabZOff;
 
-    for (const z of passes) {
-      const useTabsThisPass = hasTabs && z < tabZOff;
-
-      // ---- approach / plunge ----
-      if (liType === "none" || !geo) {
-        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-        lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      } else if (liType === "linear") {
-        const { tx, ty } = geo;
-        const lx = s.x - tx * liLen, ly = s.y - ty * liLen;
-        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-        lines.push(`G0 X${X(lx, ox)} Y${Y(ly, oy)}`);
-        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-        lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)} F${n(op.feedrate)}`);
-      } else { // arc
-        const { arcStart, arcCmd, tx, ty } = leadInGeo(path, liLen, op.side)!;
-        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-        lines.push(`G0 X${X(arcStart.x, ox)} Y${Y(arcStart.y, oy)}`);
-        lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-        lines.push(`${arcCmd} X${X(s.x, ox)} Y${Y(s.y, oy)} I${n(tx * liLen)} J${n(ty * liLen)} F${n(op.feedrate)}`);
-      }
-
-      // ---- main loop ----
-      if (!useTabsThisPass) {
-        for (let i = 1; i < path.length; i++) {
-          const f = (i === 1 && liType === "none") ? ` F${n(op.feedrate)}` : "";
-          lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
-        }
-        lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-      } else {
-        const cumLens  = pathLengths(path);
-        const totalLen = cumLens[path.length];
-        const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
-        const segs     = splitPathForTabs(path, cumLens, regions);
-
-        let currentZ = z;
-        let first    = liType === "none";
-        for (const seg of segs) {
-          const targetZ = seg.isTab ? tabZOff : z;
-          if (targetZ !== currentZ) {
-            lines.push(`G1 Z${Z(targetZ, zOff)} F${n(op.plungeRate)}`);
-            currentZ = targetZ;
-          }
-          const feedStr = first ? ` F${n(op.feedrate)}` : "";
-          lines.push(`G1 X${X(seg.p1.x, ox)} Y${Y(seg.p1.y, oy)}${feedStr}`);
-          first = false;
-        }
-        if (currentZ !== z) lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      }
-
-      // ---- lead-out ----
-      if (loType === "linear" && geo) {
-        const { etx, ety } = geo;
-        lines.push(`G1 X${X(s.x + etx * loLen, ox)} Y${Y(s.y + ety * loLen, oy)}`);
-      } else if (loType === "arc" && geo) {
-        const loGeo = leadInGeo(path, loLen, op.side)!;
-        lines.push(`${loGeo.arcCmd} X${X(loGeo.arcOut.x, ox)} Y${Y(loGeo.arcOut.y, oy)} I${n(loGeo.enx * loLen)} J${n(loGeo.eny * loLen)}`);
-      }
+    if (liType === "none" || !geo) {
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+    } else if (liType === "linear") {
+      const { tx, ty } = geo;
+      const lx = s.x - tx * liLen, ly = s.y - ty * liLen;
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(lx, ox)} Y${Y(ly, oy)}`);
+      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)} F${n(op.feedrate)}`);
+    } else { // arc
+      const { arcStart, arcCmd, tx, ty } = leadInGeo(path, liLen, op.side)!;
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(arcStart.x, ox)} Y${Y(arcStart.y, oy)}`);
+      lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+      lines.push(`${arcCmd} X${X(s.x, ox)} Y${Y(s.y, oy)} I${n(tx * liLen)} J${n(ty * liLen)} F${n(op.feedrate)}`);
     }
+
+    if (!useTabsThisPass) {
+      for (let i = 1; i < path.length; i++) {
+        const f = (i === 1 && liType === "none") ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+      }
+      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+    } else {
+      const cumLens  = pathLengths(path);
+      const totalLen = cumLens[path.length];
+      const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
+      const segs     = splitPathForTabs(path, cumLens, regions);
+
+      let currentZ = z;
+      let first    = liType === "none";
+      for (const seg of segs) {
+        const targetZ = seg.isTab ? tabZOff : z;
+        if (targetZ !== currentZ) {
+          lines.push(`G1 Z${Z(targetZ, zOff)} F${n(op.plungeRate)}`);
+          currentZ = targetZ;
+        }
+        const feedStr = first ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(seg.p1.x, ox)} Y${Y(seg.p1.y, oy)}${feedStr}`);
+        first = false;
+      }
+      if (currentZ !== z) lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+    }
+
+    if (loType === "linear" && geo) {
+      const { etx, ety } = geo;
+      lines.push(`G1 X${X(s.x + etx * loLen, ox)} Y${Y(s.y + ety * loLen, oy)}`);
+    } else if (loType === "arc" && geo) {
+      const loGeo = leadInGeo(path, loLen, op.side)!;
+      lines.push(`${loGeo.arcCmd} X${X(loGeo.arcOut.x, ox)} Y${Y(loGeo.arcOut.y, oy)} I${n(loGeo.enx * loLen)} J${n(loGeo.eny * loLen)}`);
+    }
+  };
+
+  // Anchor the lead/plunge mid-edge only when a lead is used (otherwise leave the
+  // start at the natural corner — no silent change to plain profiles).
+  const prep = (raw: Vec2[]): Vec2[] => (useLead ? startAtLongestEdgeMid(raw) : raw);
+
+  for (const rawPath of roughPaths) {
+    if (rawPath.length < 2) continue;
+    const path = prep(rawPath);
+    for (const z of depthPasses(op)) tracePass(path, z);
   }
+  // Finishing lap at the true wall, full depth (its centre sits in the rough
+  // kerf, so the plunge enters cleared stock).
+  for (const rawPath of finishPaths) {
+    if (rawPath.length < 2) continue;
+    tracePass(prep(rawPath), op.depth);
+  }
+
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;
 }
@@ -272,9 +303,28 @@ function pocketPolygon(
   verts: Vec2[], islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
-  const lines = (op.pocketStrategy ?? "offset") === "raster"
-    ? pocketPolygonRaster(verts, islands, op, ox, oy, zOff)
-    : pocketPolygonOffset(verts, islands, op, ox, oy, zOff);
+  const clear = (v: Vec2[], isl: Vec2[][]): string[] =>
+    (op.pocketStrategy ?? "offset") === "raster"
+      ? pocketPolygonRaster(v, isl, op, ox, oy, zOff)
+      : pocketPolygonOffset(v, isl, op, ox, oy, zOff);
+
+  const allowance = finishAllowance(op);
+  const lines: string[] = [];
+  if (allowance > 0) {
+    // Shrink the region (and grow islands) by the allowance so clearing leaves a
+    // skin on the true walls, which the finishing lap then removes.
+    const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+    const innerRegions = offsetPolygon(ccw, -allowance);
+    const grownIslands = islands.flatMap((isl) => {
+      const p = signedArea(isl) >= 0 ? isl : [...isl].reverse();
+      const ex = offsetPolygon(p, allowance);
+      return ex.length ? ex : [p];
+    });
+    for (const region of innerRegions) lines.push(...clear(region, grownIslands));
+  } else {
+    lines.push(...clear(verts, islands));
+  }
+
   if (op.finishPass) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
   return lines;
 }
@@ -420,21 +470,90 @@ function pocketPolygonRaster(
   return lines;
 }
 
+/**
+ * Helically bore a circle of radius `rad` about (cx,cy) from `zStart` down to
+ * `zTarget` using G2 + Z (real helical interpolation), one revolution per turn
+ * kept under HELIX_ANGLE_MAX_DEG, then one flat lap to level the floor. Leaves
+ * the tool at (cx+rad, cy, zTarget).
+ */
+function helicalBore(
+  cx: number, cy: number, rad: number, zStart: number, zTarget: number,
+  op: CAMOperation, ox: number, oy: number, zOff: number,
+): string[] {
+  const sx = cx + rad;
+  const out: string[] = [
+    `G0 Z${Z(op.safeZ, zOff)}`,
+    `G0 X${X(sx, ox)} Y${Y(cy, oy)}`,
+    `G0 Z${Z(zStart + RAMP_CLEAR, zOff)}`,
+    `G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`,
+  ];
+  const depth = zStart - zTarget;
+  const turns = depth < 1e-9 ? 0
+    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+  for (let i = 1; i <= turns; i++) {
+    const zc = zStart - depth * (i / turns);
+    out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 Z${Z(zc, zOff)} F${n(op.feedrate)}`);
+  }
+  out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 F${n(op.feedrate)}`); // flat floor lap
+  return out;
+}
+
 function pocketCircle(
   cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
-  // Tessellate and clear through the contour-parallel polygon clearer, which
-  // descends with a helical entry and wraps concentric loops (helical boring) —
-  // the same path for round pockets with or without islands, and it respects the
-  // chosen strategy and the finishing pass. (Replaces the old straight-plunge
-  // raster + G2 special case, which had no helical entry.)
-  const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
-  const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
-    const a = (i / nSegs) * 2 * Math.PI;
-    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-  });
-  return pocketPolygon(verts, islands, op, ox, oy, zOff);
+  // Islands make smooth concentric arcs impossible — fall back to the general
+  // polygon clearer (tessellated), which handles arbitrary islands.
+  if (islands.length > 0) {
+    const nSegs = Math.max(64, Math.ceil((2 * Math.PI * r) / 0.5));
+    const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
+      const a = (i / nSegs) * 2 * Math.PI;
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    });
+    return pocketPolygon(verts, islands, op, ox, oy, zOff);
+  }
+
+  const toolR = op.diameter / 2;
+  const cutR  = r - toolR;
+  if (cutR <= 0)
+    return [`; NOTE: pocket circle too small for ⌀${op.diameter}mm tool — skipped`];
+
+  const so        = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const allowance = finishAllowance(op);
+  // Rough out to the wall less the allowance; the finishing lap takes the wall.
+  const roughR    = allowance > 0 ? Math.max(0.01, cutR - allowance) : cutR;
+  // Helix radius small enough that the tool covers the centre (≤ toolR).
+  const helixR    = Math.min(roughR, toolR * 0.9);
+
+  // Concentric tool-centre radii: helixR, helixR+so, … up to roughR.
+  const radii: number[] = [];
+  for (let rr = helixR; rr < roughR - 1e-6; rr += so) radii.push(rr);
+  radii.push(roughR);
+
+  const lines: string[] = [];
+  let prevZ = 0;
+  for (const z of depthPasses(op)) {
+    lines.push(...helicalBore(cx, cy, helixR, prevZ, z, op, ox, oy, zOff));
+    // Clear outward with concentric full circles at this depth.
+    for (const rr of radii) {
+      lines.push(`G1 X${X(cx + rr, ox)} Y${Y(cy, oy)} F${n(op.feedrate)}`);   // step out
+      lines.push(`G2 X${X(cx + rr, ox)} Y${Y(cy, oy)} I${n(-rr)} J0 F${n(op.feedrate)}`);
+    }
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    prevZ = z;
+  }
+
+  // Finishing lap: a smooth full-depth wall circle at the true radius.
+  if (op.finishPass) {
+    const sx = cx + cutR;
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
+    lines.push(`G1 Z${Z(op.depth, zOff)} F${n(op.plungeRate)}`);
+    lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-cutR)} J0 F${n(op.feedrate)}`);
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  }
+
+  return lines;
 }
 
 function profileCircle(
@@ -446,15 +565,22 @@ function profileCircle(
   if (cutR <= 0)
     return [`; WARNING: tool ⌀${op.diameter}mm too large for inside circle r=${r}mm — skipped`];
 
+  // Roughing leaves `allowance` on the wall; the finishing lap cuts at the true
+  // radius. (Spring pass when allowance is 0.)
+  const allowance = finishAllowance(op);
+  let cutRrough = op.side === "outside" ? cutR + allowance : cutR - allowance;
+  if (cutRrough <= 0) cutRrough = cutR; // too small to leave a skin
+
   const lines: string[] = [];
-  const sx = cx + cutR;
-  const passes = op.finishPass ? [...depthPasses(op), op.depth] : depthPasses(op);
-  for (const z of passes) {
+  const circleAt = (radius: number, z: number): void => {
+    const sx = cx + radius;
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
     lines.push(`G0 X${X(sx, ox)} Y${Y(cy, oy)}`);
     lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-    lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-cutR)} J0 F${n(op.feedrate)}`);
-  }
+    lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-radius)} J0 F${n(op.feedrate)}`);
+  };
+  for (const z of depthPasses(op)) circleAt(cutRrough, z);
+  if (op.finishPass) circleAt(cutR, op.depth);
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;
 }

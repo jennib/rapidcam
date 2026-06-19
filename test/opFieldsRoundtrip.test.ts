@@ -13,7 +13,7 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
     id: "op1", name: "Profile", type: "profile", entityIds: [a.id], side: "outside",
     toolType: "end-mill", toolNumber: 1, diameter: 6, feedrate: 900, plungeRate: 250,
     spindleSpeed: 18000, safeZ: 5, depth: -10, stepdown: 2, stepover: 0.4,
-    finishPass: true,
+    finishPass: true, finishAllowance: 0.3,
   };
   const drill: CAMOperation = {
     id: "op2", name: "Drill", type: "drill", entityIds: [a.id], side: "outside",
@@ -27,5 +27,6 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
   applyFile(reloaded, parseRcam(JSON.stringify(serializeDoc(doc, "t"))));
 
   expect(reloaded.operations.find((o) => o.id === "op1")?.finishPass).toBe(true);
+  expect(reloaded.operations.find((o) => o.id === "op1")?.finishAllowance).toBe(0.3);
   expect(reloaded.operations.find((o) => o.id === "op2")?.peckDepth).toBe(2);
 });

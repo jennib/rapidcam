@@ -407,6 +407,7 @@ export class CamBar {
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
       finishPass: existing?.finishPass ?? false,
+      finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -557,14 +558,28 @@ export class CamBar {
     const strategyRow = this.dField("Clearing", strategySelect);
     cutSec.appendChild(strategyRow);
 
-    // Finishing pass — profile + pocket only. A final full-depth wall lap.
+    // Finishing pass — profile + pocket only. Leaves an allowance during
+    // roughing and removes it in a final full-depth wall lap.
     const finishChk = document.createElement("input");
     finishChk.type = "checkbox";
     finishChk.className = "settings-checkbox";
     finishChk.checked = state.finishPass;
-    finishChk.addEventListener("change", () => { state.finishPass = finishChk.checked; });
     const finishRow = this.dField("Finishing pass", finishChk);
     cutSec.appendChild(finishRow);
+
+    const finishAllowInp = document.createElement("input");
+    finishAllowInp.type = "number"; finishAllowInp.className = "dim"; finishAllowInp.step = "any"; finishAllowInp.min = "0";
+    finishAllowInp.value = String(state.finishAllowance);
+    finishAllowInp.addEventListener("change", () => {
+      const v = parseFloat(finishAllowInp.value); state.finishAllowance = isFinite(v) && v >= 0 ? v : 0;
+    });
+    const finishAllowRow = this.dField("Finish allowance (mm)", finishAllowInp);
+    cutSec.appendChild(finishAllowRow);
+
+    finishChk.addEventListener("change", () => {
+      state.finishPass = finishChk.checked;
+      finishAllowRow.style.display = finishChk.checked ? "" : "none";
+    });
 
     // Coolant — per operation, shown only when the machine has coolant (a
     // machine-wide capability). Off/Mist (M7)/Flood (M8).
@@ -614,7 +629,9 @@ export class CamBar {
       peckRow.style.display     = state.combo === "drill"   ? "" : "none";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
-      finishRow.style.display   = (state.combo.startsWith("profile") || state.combo === "pocket") ? "" : "none";
+      const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
+      finishRow.style.display      = showFinish ? "" : "none";
+      finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -628,7 +645,11 @@ export class CamBar {
     peckRow.style.display     = state.combo === "drill"   ? "" : "none";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
-    finishRow.style.display   = (state.combo.startsWith("profile") || state.combo === "pocket") ? "" : "none";
+    {
+      const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
+      finishRow.style.display      = showFinish ? "" : "none";
+      finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
+    }
     updateTabsVisibility();
     updateLeadVisibility();
     if (state.combo === "pocket") {
@@ -689,6 +710,7 @@ export class CamBar {
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+        finishAllowance: (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"
