@@ -325,7 +325,10 @@ function pocketPolygon(
     lines.push(...clear(verts, islands));
   }
 
-  if (op.finishPass) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
+  // Only add a finishing wall lap if clearing actually cut something — a pocket
+  // too small for the tool emits just a `; NOTE:` and has no wall to finish.
+  const cleared = lines.some((l) => /^G[0-3]\b/.test(l));
+  if (op.finishPass && cleared) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
   return lines;
 }
 

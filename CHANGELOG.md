@@ -26,6 +26,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CAM: Tabs / bridges** — automatic tab insertion to hold parts during cutting.
 - **CAM: Tool Library Manager** — named tool definitions with diameter, flute count, feed/speed presets.
 - **CAM: WebGL toolpath preview** — 3D preview of generated cut paths.
+- **CAM: Finishing pass** — optional per-operation finishing pass (profile + pocket) leaves a thin radial allowance (`finishAllowance`, default 0.2 mm) on the walls during stepdown roughing and removes it in a final full-depth wall lap, cleaning the ridges left between depth levels.
+- **CAM: Drill pecking** — optional `peckDepth` drills holes in increments with full retract between pecks (G83-style) to clear chips.
+- **CAM: Coolant** — per-operation coolant (off / mist `M7` / flood `M8`, `M9` off), gated behind a machine-wide "has coolant" capability so non-coolant machines are never prompted.
+- **CAM: End-of-program park** — optional `endPosition` rapids the tool to a work-coordinate position (e.g. 0,0) at safe Z before `M30`.
+- **CAM: Export selected toolpaths** — tick a subset of toolpaths and export them to a single G-code file (e.g. all the operations that share a tool).
 - **Toolpath dialog placement** — the Add/Edit Toolpath dialog opens on the right side of the screen and remembers its last dragged position across sessions.
 - **Privacy-respecting analytics** — usage analytics are sent only after explicit consent (banner), Do-Not-Track is honoured, and nothing is captured otherwise.
 - **SVG export improvements** — exports clean paths with layer colour preservation.
@@ -33,6 +38,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Test suite unified under Vitest (`npm test`) and run in CI; three known solver drag-drift cases are documented as expected failures.
 - CamBar's monolithic `openDialog` split into focused section builders; pure CAM helpers extracted to `camBarHelpers.ts`.
+- **CAM: Profile lead entry point** — when a lead-in/out is configured, profiles now anchor the lead (and plunge) at the **midpoint of the longest edge** instead of a corner, for a gentler entry and a witness mark on a flat run. Plain profiles with no lead are unchanged (still start at the natural corner).
+- **CAM: Circular pockets** now clear with smooth concentric `G2` arcs and a true **helical (`G2`+Z) entry**, replacing the old straight-plunge raster — smoother walls and a gentler descent.
+- **CAM: 3D preview fidelity** — the stock simulation now mirrors lead-in/out moves (and the mid-side start), so the preview matches the generated G-code; tabs were already shown. Machine configuration (post-processor, tool changer, coolant capability, custom start/end G-code) is consolidated into a single top-bar **Settings** dialog instead of being split across panels.
 
 ### Fixed
 - Constraint solver: under-constrained geometry no longer rotates unexpectedly when a driving dimension value is changed. Non-pinned DOFs are always anchored (Tikhonov regularisation, weight 1e-3) so the solver picks the minimum-displacement solution in all situations, not just during drag.

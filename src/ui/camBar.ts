@@ -10,7 +10,7 @@ import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type CAMOpType, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
@@ -173,8 +173,7 @@ export class CamBar {
   }
 
   private exportSelected(): void {
-    // Preserve document order so the combined file runs ops top-to-bottom.
-    const ops = this.doc.operations.filter((o) => this.selectedOpIds.has(o.id));
+    const ops = selectedOpsInOrder(this.doc.operations, this.selectedOpIds);
     if (ops.length === 0) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
     this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");

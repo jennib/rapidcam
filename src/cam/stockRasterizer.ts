@@ -399,16 +399,16 @@ function rasProfilePolygon(
   const loLen = op.leadOut && op.leadOut.type !== "none" ? (op.leadOut.length ?? 2) : 0;
 
   const useLead = liLen > 0 || loLen > 0;
+  const unit = (a: Vec2, b: Vec2): Vec2 => {
+    const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+    return { x: dx / L, y: dy / L };
+  };
   for (const rawPath of paths) {
     if (rawPath.length < 2) continue;
     // Mirror the G-code: mid-side start only when a lead is used.
     const path = useLead ? startAtLongestEdgeMid(rawPath) : rawPath;
     const np = path.length;
 
-    const unit = (a: Vec2, b: Vec2): Vec2 => {
-      const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
-      return { x: dx / L, y: dy / L };
-    };
     const tIn = unit(path[0], path[1]);            // entry tangent
     const tOut = unit(path[np - 1], path[0]);      // exit (arrival) tangent
     const leadInP  = liLen > 0 ? { x: path[0].x - tIn.x * liLen, y: path[0].y - tIn.y * liLen } : null;

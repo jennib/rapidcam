@@ -161,6 +161,14 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
  * fields stay authoritative. `toolNumber`/`depth`/`stepdown`/`stepover` and other
  * per-op cut settings are never overridden — they belong to the operation.
  */
+/**
+ * The operations selected for a combined export, in **document order** (so the
+ * single file runs them top-to-bottom regardless of the order they were ticked).
+ */
+export function selectedOpsInOrder(operations: CAMOperation[], ids: Set<string>): CAMOperation[] {
+  return operations.filter((op) => ids.has(op.id));
+}
+
 export function resolveOpTool(op: CAMOperation, tools?: ToolDef[]): CAMOperation {
   if (!op.toolId || !tools || tools.length === 0) return op;
   const t = tools.find((td) => td.id === op.toolId);
