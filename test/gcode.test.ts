@@ -239,3 +239,94 @@ const p3 = { x: 100, y: 104 };
     offset.some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/.test(l)), "");
 }
 
+// 12) Finishing pass: profile gets one extra full-depth spring lap ------------
+{
+  console.log("\n12) Profile finishing pass");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 70, y: 50 })) as RectEntity;
+  const base: CAMOperation = {
+    ...OP, id: "pr", type: "profile", side: "outside", toolType: "end-mill",
+    stepover: 0.4, diameter: 6, depth: -3, stepdown: 1.5, entityIds: [rect.id],
+  };
+  const fullDepthPlunges = (op: CAMOperation) =>
+    generateGCode([op], doc).split("\n").filter(l => /^G1 Z-3\b/.test(l)).length;
+
+  const without = fullDepthPlunges(base);
+  const withFin = fullDepthPlunges({ ...base, finishPass: true });
+  check("finishing pass adds exactly one extra full-depth lap",
+    withFin === without + 1, `without=${without}, with=${withFin}`);
+}
+
+// 13) Finishing pass: pocket gets a full-depth wall lap -----------------------
+{
+  console.log("\n13) Pocket finishing pass");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 70 })) as RectEntity;
+  const op: CAMOperation = {
+    ...OP, id: "pk", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 6, depth: -2, stepdown: 2, entityIds: [rect.id],
+    pocketStrategy: "offset", finishPass: true,
+  };
+  const out = generateGCode([op], doc);
+  check("pocket finishing pass emits a full-depth wall lap",
+    /finishing pass \(full-depth wall\)/.test(out), "");
+}
+
+// 14) Circular pocket: helical G2 entry + smooth G2 walls --------------------
+{
+  console.log("\n14) Circular pocket helical boring");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const circ = doc.add(new CircleEntity({ x: 100, y: 100 }, 20)) as CircleEntity;
+  const op: CAMOperation = {
+    ...OP, id: "cp", type: "pocket", toolType: "end-mill", stepover: 0.4,
+    diameter: 6, depth: -3, stepdown: 1.5, entityIds: [circ.id],
+  };
+  const all = generateGCode([op], doc).split("\n");
+  // Real helical interpolation = a G2 arc carrying a Z descent.
+  check("circular pocket descends with a helical G2 (arc + Z)",
+    all.some(l => /^G2 .*\bZ-/.test(l)),
+    all.find(l => /^G2 /.test(l)) ?? "(no G2)");
+  // Walls are smooth arcs, not a faceted polyline.
+  check("circular pocket clears with G2 arcs", all.some(l => /^G2 /.test(l)), "");
+  check("circular pocket reaches full depth Z-3", all.some(l => l.includes("Z-3")), "");
+  // No straight vertical plunge to full depth at the start.
+  check("no straight plunge to full depth", !all.some(l => /^G1 Z-3\b/.test(l)),
+    all.find(l => /^G1 Z-3\b/.test(l)) ?? "");
+}
+
+// 15) Profile lead anchors mid-side only when a lead is configured -----------
+{
+  console.log("\n15) Lead mid-side placement");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 70, y: 50 })) as RectEntity;
+  // Offset (outside, ⌀6 → +3) rect is 7..73 × 7..53; longest edges are the 66mm
+  // horizontals, whose midpoint is X40 (Y7 or Y53).
+  const base: CAMOperation = {
+    ...OP, id: "pr", type: "profile", side: "outside", toolType: "end-mill",
+    stepover: 0.4, diameter: 6, depth: -3, stepdown: 3, entityIds: [rect.id],
+  };
+  const noLead = generateGCode([base], doc);
+  const withLead = generateGCode([{ ...base, leadIn: { type: "linear", length: 2 } }], doc);
+
+  check("mid-side start (X40) used when a lead is configured",
+    /X40 Y(7|53)\b/.test(withLead), withLead.split("\n").find(l => /X40/.test(l)) ?? "(no X40)");
+  check("no mid-side start for a plain no-lead profile",
+    !/X40 Y(7|53)\b/.test(noLead), noLead.split("\n").find(l => /X40/.test(l)) ?? "");
+}
+
+// 16) Finish allowance: roughing and finishing cut at different radii --------
+{
+  console.log("\n16) Finish allowance");
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const circ = doc.add(new CircleEntity({ x: 100, y: 100 }, 10)) as CircleEntity;
+  // Outside profile, ⌀6 → cutR = 13; allowance 0.5 → rough at 13.5, finish at 13.
+  const op: CAMOperation = {
+    ...OP, id: "pc", type: "profile", side: "outside", toolType: "end-mill",
+    stepover: 0.4, diameter: 6, depth: -3, stepdown: 3, entityIds: [circ.id],
+    finishPass: true, finishAllowance: 0.5,
+  };
+  const out = generateGCode([op], doc);
+  check("roughing pass cuts at the allowance-offset radius (I-13.5)", /I-13\.5 J0/.test(out), "");
+  check("finishing pass cuts at the true radius (I-13)", /I-13 J0/.test(out), "");
+}
+
