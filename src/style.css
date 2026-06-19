@@ -1516,7 +1516,6 @@ button.cbtn.solve {
 .post-settings-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 button.btn.btn-primary { background: var(--accent-dim); border-color: var(--accent); }
 button.btn.btn-primary:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.settings-fullwidth-btn { width: 100%; margin-top: 6px; }
 .about-desc {
   font-size: 13px;
   color: var(--text-dim);

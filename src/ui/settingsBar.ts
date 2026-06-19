@@ -1,6 +1,5 @@
 import { Unit, parseLength, formatLength } from "../core/units";
 import { type CADDocument, type OriginX, type OriginY, type OriginZ } from "../model/document";
-import { showMachineSettingsDialog } from "./postSettingsDialog";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
@@ -100,12 +99,6 @@ export class SettingsBar {
       ["grbl",     "GRBL / FluidNC"],
     ]);
     machineGroup.appendChild(this.field("Post-processor", this.postProcessorSelect));
-    const customBtn = document.createElement("button");
-    customBtn.className = "btn settings-fullwidth-btn";
-    customBtn.textContent = "Machine settings…";
-    customBtn.title = "Machine-wide settings (all projects): coolant capability + custom program start/end G-code";
-    customBtn.addEventListener("click", () => showMachineSettingsDialog(() => this.refresh()));
-    machineGroup.appendChild(customBtn);
     this.content.appendChild(machineGroup);
 
     // Program end — optional park position at program end (before M30).

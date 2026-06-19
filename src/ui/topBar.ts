@@ -3,6 +3,7 @@ import { FileMenu, FileMenuCallbacks } from "./fileMenu";
 import { EditMenu, EditMenuCallbacks } from "./editMenu";
 import { ViewMenu, ViewMenuCallbacks } from "./viewMenu";
 import { HelpMenu } from "./helpMenu";
+import { showMachineSettingsDialog } from "./postSettingsDialog";
 
 export interface TopBarCallbacks {
   onUndo: () => void;
@@ -37,6 +38,14 @@ export class TopBar {
     new EditMenu(this.host, this.cb.edit);
     new ViewMenu(this.host, this.cb.view);
     new HelpMenu(this.host);
+
+    // Machine-wide settings (all projects): coolant capability + custom program
+    // G-code. Lives here, not in the per-project settings panel, since it
+    // describes the operator's machine rather than the design.
+    const settingsBtn = button("Settings", () =>
+      showMachineSettingsDialog(() => this.doc.emitChange()));
+    settingsBtn.title = "Machine settings (all projects): coolant capability + custom program G-code";
+    this.host.appendChild(settingsBtn);
 
     this.undoBtn = button("↩", () => this.cb.onUndo());
     this.undoBtn.title = "Undo (Ctrl+Z)";
