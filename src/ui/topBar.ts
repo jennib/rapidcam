@@ -3,13 +3,13 @@ import { FileMenu, FileMenuCallbacks } from "./fileMenu";
 import { EditMenu, EditMenuCallbacks } from "./editMenu";
 import { ViewMenu, ViewMenuCallbacks } from "./viewMenu";
 import { HelpMenu } from "./helpMenu";
-import { showMachineSettingsDialog } from "./postSettingsDialog";
 
 export interface TopBarCallbacks {
   onUndo: () => void;
   onRedo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
+  onSettings: () => void;
   file: FileMenuCallbacks;
   edit: EditMenuCallbacks;
   view: ViewMenuCallbacks;
@@ -37,15 +37,15 @@ export class TopBar {
     new FileMenu(this.host, this.cb.file);
     new EditMenu(this.host, this.cb.edit);
     new ViewMenu(this.host, this.cb.view);
-    new HelpMenu(this.host);
 
-    // Machine-wide settings (all projects): coolant capability + custom program
-    // G-code. Lives here, not in the per-project settings panel, since it
-    // describes the operator's machine rather than the design.
-    const settingsBtn = button("Settings", () =>
-      showMachineSettingsDialog(() => this.doc.emitChange()));
-    settingsBtn.title = "Machine settings (all projects): coolant capability + custom program G-code";
+    // Machine configuration (post-processor, tool changer, coolant capability,
+    // custom program G-code) — the single home, kept out of the per-project
+    // settings panel. Sits before Help, which stays last by convention.
+    const settingsBtn = button("Settings", () => this.cb.onSettings());
+    settingsBtn.title = "Machine settings: controller, coolant, custom program G-code";
     this.host.appendChild(settingsBtn);
+
+    new HelpMenu(this.host);
 
     this.undoBtn = button("↩", () => this.cb.onUndo());
     this.undoBtn.title = "Undo (Ctrl+Z)";

@@ -1500,6 +1500,13 @@ button.cbtn.solve {
   color: var(--text);
   cursor: pointer;
 }
+.post-settings-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.post-settings-row label { font-size: 13px; color: var(--text); }
+.post-settings-select { min-width: 160px; }
 .post-settings-textarea {
   width: 100%;
   box-sizing: border-box;
