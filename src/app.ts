@@ -41,6 +41,7 @@ import { openLinearPatternDialog, openCircularPatternDialog, regenerateAllStaleP
 import { computeSourceSnapshot } from "./model/patterns";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
+import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
 import { SettingsBar } from "./ui/settingsBar";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
@@ -185,6 +186,10 @@ export class App {
       onRedo: () => this.project.undoRedo("redo"),
       canUndo: () => this.project.history.canUndo,
       canRedo: () => this.project.history.canRedo,
+      onSettings: () => showMachineSettingsDialog({
+        doc: this.doc,
+        pushHistory: this.project.pushHistory,
+      }),
       file: {
         onNew: () => this.project.fileNew(),
         onOpen: () => this.project.fileOpen(),

@@ -8,8 +8,6 @@ export class SettingsBar {
   private originXSelect!: HTMLSelectElement;
   private originYSelect!: HTMLSelectElement;
   private originZSelect!: HTMLSelectElement;
-  private toolChangerCheck!: HTMLInputElement;
-  private postProcessorSelect!: HTMLSelectElement;
   private endReturnCheck!: HTMLInputElement;
   private endXInput!: HTMLInputElement;
   private endYInput!: HTMLInputElement;
@@ -88,18 +86,8 @@ export class SettingsBar {
 
     this.content.appendChild(originGroup);
 
-    // Machine
-    const machineGroup = this.group("Machine");
-    this.toolChangerCheck = document.createElement("input");
-    this.toolChangerCheck.type = "checkbox";
-    this.toolChangerCheck.className = "settings-checkbox";
-    machineGroup.appendChild(this.field("Tool changer", this.toolChangerCheck));
-    this.postProcessorSelect = this.makeSelect([
-      ["linuxcnc", "LinuxCNC"],
-      ["grbl",     "GRBL / FluidNC"],
-    ]);
-    machineGroup.appendChild(this.field("Post-processor", this.postProcessorSelect));
-    this.content.appendChild(machineGroup);
+    // (Machine config — post-processor, tool changer — lives in the top-bar
+    // Settings dialog, not this per-project panel.)
 
     // Program end — optional park position at program end (before M30).
     const endGroup = this.group("Program End");
@@ -143,15 +131,6 @@ export class SettingsBar {
     this.originZSelect.addEventListener("change", () => {
       this.pushHistory();
       this.doc.origin.z = this.originZSelect.value as OriginZ;
-      this.doc.emitChange();
-    });
-    this.toolChangerCheck.addEventListener("change", () => {
-      this.pushHistory();
-      this.doc.hasToolChanger = this.toolChangerCheck.checked;
-      this.doc.emitChange();
-    });
-    this.postProcessorSelect.addEventListener("change", () => {
-      this.doc.postProcessor = this.postProcessorSelect.value;
       this.doc.emitChange();
     });
     this.endReturnCheck.addEventListener("change", () => {
@@ -281,8 +260,6 @@ export class SettingsBar {
     this.originXSelect.value = this.doc.origin.x;
     this.originYSelect.value = this.doc.origin.y;
     this.originZSelect.value = this.doc.origin.z;
-    this.toolChangerCheck.checked = this.doc.hasToolChanger;
-    this.postProcessorSelect.value = this.doc.postProcessor;
     const ep = this.doc.endPosition;
     this.endReturnCheck.checked = !!ep;
     this.endXInput.disabled = !ep;
