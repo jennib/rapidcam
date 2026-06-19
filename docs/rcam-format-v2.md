@@ -274,7 +274,7 @@ Operations with no `toolId` use their inline fields directly.
 | `type` | Notes |
 |--------|-------|
 | `profile` | contours a closed shape; uses `side` (`"outside"`/`"inside"`), optional `tabs`, `leadIn`, `leadOut` |
-| `drill` | plunges at each entity (e.g. circle centres); `stepdown` ignored |
+| `drill` | plunges at each entity (e.g. circle centres); `stepdown` ignored. Optional `peckDepth` (mm) drills in increments, fully retracting between pecks (G83-style) to clear chips |
 | `engrave` | follows geometry at depth |
 | `pocket` | clears an area; `pocketStrategy` (`"offset"`/`"raster"`), and `regions` |
 

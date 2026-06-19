@@ -358,6 +358,7 @@ export class CamBar {
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
+      peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -474,6 +475,16 @@ export class CamBar {
     const stepRow = this.dField("Stepdown (mm)", stepInp);
     cutSec.appendChild(stepRow);
 
+    // Peck depth — drill ops only. 0 = single full-depth plunge.
+    const peckInp = document.createElement("input");
+    peckInp.type = "number"; peckInp.className = "dim"; peckInp.step = "any"; peckInp.min = "0";
+    peckInp.value = String(state.peckDepth);
+    peckInp.addEventListener("change", () => {
+      const v = parseFloat(peckInp.value); state.peckDepth = isFinite(v) && v > 0 ? v : 0;
+    });
+    const peckRow = this.dField("Peck depth (mm, 0=off)", peckInp);
+    cutSec.appendChild(peckRow);
+
     const stepoverInp = document.createElement("input");
     stepoverInp.type = "number"; stepoverInp.className = "dim"; stepoverInp.step = "any";
     stepoverInp.min = "0.01"; stepoverInp.max = "1";
@@ -543,6 +554,7 @@ export class CamBar {
       }
       if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
       stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+      peckRow.style.display     = state.combo === "drill"   ? "" : "none";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
       hooks.updateVBitHint();
@@ -555,6 +567,7 @@ export class CamBar {
       renderEntities();
     });
     stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+    peckRow.style.display     = state.combo === "drill"   ? "" : "none";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
     updateTabsVisibility();
@@ -615,6 +628,7 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
+        peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"

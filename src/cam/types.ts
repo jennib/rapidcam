@@ -82,6 +82,12 @@ export interface CAMOperation {
   depth: number;              // mm below surface (negative)
   stepdown: number;           // mm per depth pass (ignored for drill)
   /**
+   * Drill only: peck increment in mm. When > 0, the hole is drilled in steps of
+   * this depth, fully retracting to safe Z between pecks to clear chips
+   * (G83-style). Omitted/0 = a single full-depth plunge.
+   */
+  peckDepth?: number;
+  /**
    * Coolant for this operation: off | mist (M7) | flood (M8). Default off.
    * Only emitted when the machine is flagged as having coolant (a machine-wide
    * capability, see core/prefs); otherwise suppressed regardless of this value.
@@ -124,6 +130,7 @@ export const DEFAULTS = {
   stepdown: 1.5,
   stepover: 0.4,
   coolant: "off" as CoolantMode,
+  peckDepth: 0,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

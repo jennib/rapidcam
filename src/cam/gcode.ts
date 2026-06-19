@@ -534,19 +534,41 @@ function engraveArc(
 
 // --- drill -------------------------------------------------------------------
 
-// One peck cycle: rapid to the hole, plunge, retract to safe Z. The tool is
-// assumed already at safe Z (the caller emits a single retract before the first
-// hole), so we don't re-retract on entry — that produced a redundant duplicate
-// `G0 Z<safe>` between every pair of holes.
+/** Re-entry clearance above the previous peck bottom before feeding again, mm. */
+const PECK_CLEAR = 0.5;
+
+// Drill one hole. The tool is assumed already at safe Z (the caller emits a
+// single retract before the first hole), so we don't re-retract on entry — that
+// produced a redundant duplicate `G0 Z<safe>` between holes. With a peck depth
+// the hole is cut in increments, fully retracting to safe Z between pecks to
+// clear chips (G83-style); otherwise it's a single full-depth plunge.
 function drillPoint(
   cx: number, cy: number, op: CAMOperation,
   ox: number, oy: number, zOff: number,
 ): string[] {
-  return [
-    `G0 X${X(cx, ox)} Y${Y(cy, oy)}`,
-    `G1 Z${Z(op.depth, zOff)} F${n(op.plungeRate)}`,
-    `G0 Z${Z(op.safeZ, zOff)}`,
-  ];
+  const lines = [`G0 X${X(cx, ox)} Y${Y(cy, oy)}`];
+  const peck = op.peckDepth ?? 0;
+
+  if (peck <= 0 || peck >= Math.abs(op.depth)) {
+    // Single plunge to full depth.
+    lines.push(`G1 Z${Z(op.depth, zOff)} F${n(op.plungeRate)}`);
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    return lines;
+  }
+
+  // Peck: feed one increment, full-retract to safe Z to clear chips, rapid back
+  // to just above the last bottom, repeat until full depth.
+  let z = 0; // current bottom (descends toward op.depth, which is negative)
+  let first = true;
+  while (z > op.depth + 1e-9) {
+    const next = Math.max(op.depth, z - peck);
+    if (!first) lines.push(`G0 Z${Z(z + PECK_CLEAR, zOff)}`);
+    lines.push(`G1 Z${Z(next, zOff)} F${n(op.plungeRate)}`);
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    z = next;
+    first = false;
+  }
+  return lines;
 }
 
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
