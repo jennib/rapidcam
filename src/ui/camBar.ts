@@ -10,10 +10,11 @@ import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type LeadType, type ToolDef, type ToolType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, type CAMOperation, type CAMOpType, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
+import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -294,7 +295,7 @@ export class CamBar {
       `<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>` +
       `</svg>`;
     dlBtn.addEventListener("click", () => {
-      const code = generateGCode([op], this.doc);
+      const code = generateGCode([op], this.doc, this.gcodeOpts());
       this.download(code, op.name);
     });
     item.appendChild(dlBtn);
@@ -357,6 +358,7 @@ export class CamBar {
       safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
+      coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
       regionSeeds:  existing?.regions?.length
@@ -496,6 +498,23 @@ export class CamBar {
     const strategyRow = this.dField("Clearing", strategySelect);
     cutSec.appendChild(strategyRow);
 
+    // Coolant — per operation, shown only when the machine has coolant (a
+    // machine-wide capability). Off/Mist (M7)/Flood (M8).
+    if (getMachineHasCoolant()) {
+      const coolantSelect = document.createElement("select");
+      coolantSelect.className = "unit";
+      for (const [v, l] of [["off", "Off"], ["mist", "Mist (M7)"], ["flood", "Flood (M8)"]] as const) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = l;
+        coolantSelect.appendChild(o);
+      }
+      coolantSelect.value = state.coolant;
+      coolantSelect.addEventListener("change", () => {
+        state.coolant = coolantSelect.value as CoolantMode;
+      });
+      cutSec.appendChild(this.dField("Coolant", coolantSelect));
+    }
+
     body.appendChild(cutSec);
 
     // tabs section — profile ops only
@@ -596,6 +615,7 @@ export class CamBar {
         plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
         safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
         stepover: state.stepover,
+        coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"
           ? refsFromSeeds(this.doc, state.regionSeeds)
@@ -630,6 +650,12 @@ export class CamBar {
 
   // --- G-code generation -----------------------------------------------------
 
+  /** Map the machine-wide custom-G-code preference into generator options. */
+  private gcodeOpts() {
+    const g = getCustomGcode();
+    return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
+  }
+
   private generate(): void {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     // Text whose font can't be resolved produces no toolpath geometry. Surface
@@ -644,7 +670,7 @@ export class CamBar {
       if (!ok) return;
     }
     track("gcode_generated", { operation_count: this.doc.operations.length });
-    this.download(generateGCode(this.doc.operations, this.doc), "toolpaths");
+    this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */

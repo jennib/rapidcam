@@ -1,5 +1,6 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
 import { type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
+import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 
 export interface NewProjectConfig {
   name: string;
@@ -114,6 +115,13 @@ export function openNewProjectDialog(
   tcChk.className = "settings-checkbox";
   tcChk.checked = initial.hasToolChanger ?? defaults.hasToolChanger ?? false;
   macSec.appendChild(row("Auto tool changer", tcChk));
+  // Coolant is a machine capability (global preference), not a per-project
+  // setting, so it's read/written directly to prefs rather than NewProjectConfig.
+  const coolantChk = document.createElement("input");
+  coolantChk.type = "checkbox";
+  coolantChk.className = "settings-checkbox";
+  coolantChk.checked = getMachineHasCoolant();
+  macSec.appendChild(row("Machine has coolant", coolantChk));
   body.appendChild(macSec);
 
   // footer
@@ -179,6 +187,9 @@ export function openNewProjectDialog(
         console.error("Failed to save default project settings:", e);
       }
     }
+
+    // Persist the machine coolant capability (global, applies to all projects).
+    setMachineHasCoolant(coolantChk.checked);
 
     backdrop.remove();
     onConfirm(cfg);

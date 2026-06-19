@@ -4,6 +4,9 @@ export type CAMOpType = "profile" | "engrave" | "drill" | "pocket";
 
 export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill";
 
+/** Coolant mode emitted around an operation: off (none), mist (M7), or flood (M8). M9 turns it off. */
+export type CoolantMode = "off" | "mist" | "flood";
+
 export interface ToolDef {
   id: string;
   name: string;
@@ -78,6 +81,12 @@ export interface CAMOperation {
   // cut
   depth: number;              // mm below surface (negative)
   stepdown: number;           // mm per depth pass (ignored for drill)
+  /**
+   * Coolant for this operation: off | mist (M7) | flood (M8). Default off.
+   * Only emitted when the machine is flagged as having coolant (a machine-wide
+   * capability, see core/prefs); otherwise suppressed regardless of this value.
+   */
+  coolant?: CoolantMode;
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
@@ -114,6 +123,7 @@ export const DEFAULTS = {
   depth: -3,
   stepdown: 1.5,
   stepover: 0.4,
+  coolant: "off" as CoolantMode,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

@@ -100,9 +100,14 @@ that loads cleanly and draws a circle:
 ```
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
-`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `endPosition` → `null`,
-`layers` → one `"layer-0"` "Default" layer,
+`origin` → front-left-top, `postProcessor` → `"linuxcnc"`,
+`endPosition` → `null`, `layers` → one `"layer-0"` "Default" layer,
 `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
+
+Coolant is **per operation** (`operations[].coolant`), not a top-level field.
+Custom program start/end G-code and the "machine has coolant" capability are
+machine-wide (localStorage) preferences, since they describe the operator's
+shop, not the design — so they are not stored in the file either.
 
 `endPosition` is an optional `{ "x", "y" }` (work coordinates, mm) the spindle
 rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS
@@ -253,6 +258,10 @@ it does not generate geometry on load.
 Each operation is a toolpath over some `entityIds`. Required fields cover the tool
 and cut; several are type-specific and optional. `depth` is mm below the surface
 and is **negative** for cuts. `stepover` is a fraction of tool diameter (0–1).
+Optional `coolant` (`"off"` | `"mist"` | `"flood"`, default `"off"`) emits `M7`/`M8`
+around the operation and `M9` when it changes / at program end — but only if the
+machine is flagged as having coolant (a machine-wide app preference); otherwise
+it is suppressed.
 
 An operation may carry an optional **`toolId`** referencing an entry in the
 top-level [`tools`](#tools) array (see below). When `toolId` resolves, that tool's

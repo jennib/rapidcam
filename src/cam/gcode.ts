@@ -2,7 +2,7 @@ import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, resolveOpTool } from "./types";
+import { type CAMOperation, type CoolantMode, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -703,7 +703,28 @@ function toolpathBody(
 
 // --- main entry --------------------------------------------------------------
 
-export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string {
+export interface GCodeOptions {
+  /** Machine-wide custom lines injected after the G21/G90/G17 setup block. */
+  customStart?: string;
+  /** Machine-wide custom lines injected after the final M5, before M30. */
+  customEnd?: string;
+  /**
+   * Whether the machine has coolant. When explicitly false, no M7/M8/M9 is
+   * emitted even if the document requests a coolant mode. Undefined = assume
+   * supported (so the document's `coolant` drives emission).
+   */
+  coolantSupported?: boolean;
+}
+
+/** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
+function customLines(block: string | undefined): string[] {
+  if (!block || !block.trim()) return [];
+  return block.replace(/\s+$/, "").split(/\r?\n/);
+}
+
+export function generateGCode(
+  rawOps: CAMOperation[], doc: CADDocument, opts: GCodeOptions = {},
+): string {
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
   // Resolve each op's tool reference up front so every downstream read of
@@ -747,6 +768,22 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     "",
   ];
 
+  // Machine-wide custom program start (e.g. a shop's safe-start block).
+  const startLines = customLines(opts.customStart);
+  if (startLines.length > 0) {
+    lines.push("; --- custom start ---", ...startLines, "");
+  }
+
+  // Coolant is per-operation: each op's mode is turned on after its spindle is
+  // running and turned off (M9) when it changes, at a tool change, and at
+  // program end. Suppressed entirely when the machine has no coolant.
+  const coolantSupported = opts.coolantSupported !== false;
+  const coolantOnCode = (m: CoolantMode): string | null =>
+    m === "mist"  ? "M7 ; mist coolant on"
+    : m === "flood" ? "M8 ; flood coolant on"
+    : null;
+  let currentCoolant: CoolantMode = "off";
+
   let currentTool: number | null = null;
   let currentSpeed: number | null = null;
 
@@ -758,6 +795,7 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     if (toolChanged || isFirst) {
       if (!isFirst) {
         lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
+        if (currentCoolant !== "off") { lines.push("M9 ; coolant off"); currentCoolant = "off"; }
         lines.push("M5 ; spindle stop");
       }
 
@@ -776,6 +814,15 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
 
     currentTool = op.toolNumber;
     currentSpeed = op.spindleSpeed;
+
+    // Per-op coolant: switch to this op's mode (spindle is now running). A tool
+    // change above already reset it to off, so this re-establishes it; ops that
+    // share a tool only emit a command when the mode actually changes.
+    const opCoolant: CoolantMode = coolantSupported ? (op.coolant ?? "off") : "off";
+    if (opCoolant !== currentCoolant) {
+      lines.push(opCoolant === "off" ? "M9 ; coolant off" : coolantOnCode(opCoolant)!);
+      currentCoolant = opCoolant;
+    }
 
     const typeLabel =
       op.type === "profile" ? `Profile (${op.side})`
@@ -807,7 +854,15 @@ export function generateGCode(rawOps: CAMOperation[], doc: CADDocument): string 
     lines.push(`G0 X${n(ep.x)} Y${n(ep.y)} ; return to end position`);
   }
 
+  if (currentCoolant !== "off") lines.push("M9 ; coolant off");
   lines.push("M5 ; spindle stop");
+
+  // Machine-wide custom program end (after spindle stop, before M30).
+  const endLines = customLines(opts.customEnd);
+  if (endLines.length > 0) {
+    lines.push("; --- custom end ---", ...endLines);
+  }
+
   lines.push("M30 ; end program");
   return lines.join("\n");
 }
