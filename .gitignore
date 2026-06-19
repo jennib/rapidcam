@@ -18,5 +18,8 @@ Thumbs.db
 # Editor
 .idea/
 
+# Claude Code local settings
+.claude/
+
 # Test scratch files (local experiments, not part of the test suite)
 test_*.ts
