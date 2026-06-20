@@ -376,5 +376,14 @@ const p3 = { x: 100, y: 104 };
   // A sane chamfer (depth < stock) does not.
   check("normal chamfer depth emits no over-stock NOTE",
     !/exceeds stock thickness/.test(out), "");
+
+  // A V-bit can't cut a face wider than its cutting radius (cutting ⌀ / 2). The
+  // test bit is ⌀3 → cutting radius 1.5mm, so the 3mm face is impossible.
+  check("over-wide chamfer face emits a cutting-radius NOTE",
+    /NOTE: chamfer face .* exceeds the V-bit's cutting radius/.test(out), "");
+  // A face within the cutting radius does not (⌀8 bit → radius 4 > 3mm face).
+  const wideBit = generateGCode([{ ...cham, diameter: 8 }], doc);
+  check("chamfer within the cutting radius emits no cutting-radius NOTE",
+    !/exceeds the V-bit's cutting radius/.test(wideBit), "");
 }
 

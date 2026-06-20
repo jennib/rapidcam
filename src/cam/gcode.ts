@@ -775,6 +775,12 @@ function toolpathBody(
       return [`; NOTE: chamfer requires a V-bit tool — skipped`];
     if ((op.chamferWidth ?? 0) <= 0)
       return [`; NOTE: chamfer width is 0 — skipped`];
+    // A V-bit can only cut a face as wide as its cutting radius (the half of the
+    // cutting diameter at the top of the V); past that the requested bevel runs
+    // off the cutting edge into the shank.
+    const cuttingR = op.diameter / 2;
+    if ((op.chamferWidth ?? 0) > cuttingR)
+      lines.push(`; NOTE: chamfer face ${op.chamferWidth}mm exceeds the V-bit's cutting radius ${n(cuttingR)}mm (⌀${op.diameter}mm cutting diameter) — the bit can't cut a face this wide; use a larger-diameter bit or reduce the width`);
     const d = chamferDepth(op);
     if (-d > doc.stockThickness)
       lines.push(`; NOTE: chamfer depth ${n(-d)}mm exceeds stock thickness ${n(doc.stockThickness)}mm — reduce the chamfer width or use a wider-angle bit`);
