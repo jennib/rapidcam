@@ -6,6 +6,7 @@ import {
   registerEmbeddedFont,
   type EmbeddedFont,
 } from "../core/fontManager";
+import { StorageKeys } from "../core/storageKeys";
 
 export const RCAM_VERSION = 2 as const;
 
@@ -76,7 +77,7 @@ export interface RecentEntry {
   data: RcamFile;
 }
 
-const RECENTS_KEY = "rcam-recents";
+const RECENTS_KEY = StorageKeys.recents;
 const MAX_RECENTS = 5;
 
 export function getRecents(): RecentEntry[] {

@@ -1,5 +1,6 @@
 import { getRecents, type RecentEntry } from "../io/fileio";
 import { getExamples, type ExampleEntry } from "../io/examples";
+import { StorageKeys } from "../core/storageKeys";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -25,7 +26,7 @@ export function showWelcomeScreen(
   const recents = getRecents();
   const examples = getExamples();
 
-  const draftRaw = localStorage.getItem("rapidcam:autosave-draft");
+  const draftRaw = localStorage.getItem(StorageKeys.autosaveDraft);
   let draft: { name: string; savedAt: number } | null = null;
   try {
     if (draftRaw) {

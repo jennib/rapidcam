@@ -10,6 +10,7 @@ import { TextEntity } from "../model/entities";
 import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { track } from "../analytics";
+import { StorageKeys } from "../core/storageKeys";
 
 export interface ProjectManagerCallbacks {
   onDocumentChange: () => void;
@@ -93,7 +94,7 @@ export class ProjectManager {
         this.doc.postProcessor = cfg.postProcessor;
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
-        localStorage.removeItem("rapidcam:autosave-draft");
+        localStorage.removeItem(StorageKeys.autosaveDraft);
         this.doc.emitChange();
         this.cb.onFitView();
         this.isDocumentLoading = false;
@@ -116,7 +117,7 @@ export class ProjectManager {
         try {
           const data = await this.writeToHandle(this.currentFileHandle);
           pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-          localStorage.removeItem("rapidcam:autosave-draft");
+          localStorage.removeItem(StorageKeys.autosaveDraft);
           this.markClean();
           track("project_saved");
           return;
@@ -137,7 +138,7 @@ export class ProjectManager {
         this.currentFileName = handle.name.replace(/\.rcam$/i, "");
         const data = await this.writeToHandle(handle);
         pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-        localStorage.removeItem("rapidcam:autosave-draft");
+        localStorage.removeItem(StorageKeys.autosaveDraft);
         this.markClean();
         track("project_saved");
         return;
@@ -151,7 +152,7 @@ export class ProjectManager {
     this.currentFileName = name || "Untitled";
     this.currentFileHandle = null;
     saveFile(this.doc, this.currentFileName);
-    localStorage.removeItem("rapidcam:autosave-draft");
+    localStorage.removeItem(StorageKeys.autosaveDraft);
     this.markClean();
     track("project_saved");
   }
@@ -178,7 +179,7 @@ export class ProjectManager {
     applyFile(this.doc, file);
     this.currentFileName = name;
     this.currentFileHandle = handle;
-    if (clearDraft) localStorage.removeItem("rapidcam:autosave-draft");
+    if (clearDraft) localStorage.removeItem(StorageKeys.autosaveDraft);
     this.cb.onSolve();
     this.cb.onFitView();
     this.isDocumentLoading = false;
@@ -229,7 +230,7 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         const data = await this.writeToHandle(this.currentFileHandle);
-        trySetItem("rapidcam:autosave-draft", JSON.stringify({
+        trySetItem(StorageKeys.autosaveDraft, JSON.stringify({
           name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
         }));
         return;
@@ -239,7 +240,7 @@ export class ProjectManager {
     }
 
     const data = serializeDoc(this.doc, this.currentFileName);
-    trySetItem("rapidcam:autosave-draft", JSON.stringify({
+    trySetItem(StorageKeys.autosaveDraft, JSON.stringify({
       name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
     }));
   }
@@ -295,7 +296,7 @@ export class ProjectManager {
   }
 
   restoreDraft(): void {
-    const raw = localStorage.getItem("rapidcam:autosave-draft");
+    const raw = localStorage.getItem(StorageKeys.autosaveDraft);
     if (!raw) return;
     try {
       const draft = JSON.parse(raw);

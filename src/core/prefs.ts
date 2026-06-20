@@ -5,9 +5,11 @@
  * generated program (e.g. a shop's standard safe-start block or end ritual).
  */
 
-const START_KEY = "rapidcam:gcode:customStart";
-const END_KEY = "rapidcam:gcode:customEnd";
-const HAS_COOLANT_KEY = "rapidcam:machine:hasCoolant";
+import { StorageKeys } from "./storageKeys";
+
+const START_KEY = StorageKeys.gcodeCustomStart;
+const END_KEY = StorageKeys.gcodeCustomEnd;
+const HAS_COOLANT_KEY = StorageKeys.machineHasCoolant;
 
 export interface CustomGcode {
   /** Lines injected once near the top of the program (after G21/G90/G17). */

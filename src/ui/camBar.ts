@@ -20,6 +20,7 @@ import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
+import { StorageKeys } from "../core/storageKeys";
 import {
   type OpCombo,
   AUTO_NAME_RE,
@@ -940,7 +941,7 @@ export class CamBar {
     };
 
     let positioned = false;
-    const storedPos = localStorage.getItem("rapidcam:toolpath-dialog-position");
+    const storedPos = localStorage.getItem(StorageKeys.toolpathDialogPosition);
     if (storedPos) {
       try {
         const { left, top } = JSON.parse(storedPos);
@@ -957,6 +958,15 @@ export class CamBar {
       applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
     }
 
+    // Re-clamp on window resize so the dialog can't strand off-screen when the
+    // viewport shrinks. Self-removes on the first resize after any close path
+    // (the backdrop is gone), so it needs no explicit teardown hook.
+    const onResize = () => {
+      if (!backdrop.isConnected) { window.removeEventListener("resize", onResize); return; }
+      applyPos(parseFloat(dialog.style.left) || 0, parseFloat(dialog.style.top) || 0);
+    };
+    window.addEventListener("resize", onResize);
+
     const dheader = document.createElement("div");
     dheader.className = "tp-dialog-header";
     dheader.style.cursor = "move";
@@ -971,7 +981,7 @@ export class CamBar {
       isDragging = false;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      localStorage.setItem("rapidcam:toolpath-dialog-position", JSON.stringify({
+      localStorage.setItem(StorageKeys.toolpathDialogPosition, JSON.stringify({
         left: dialog.style.left,
         top: dialog.style.top
       }));

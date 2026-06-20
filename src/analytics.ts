@@ -14,8 +14,9 @@
  * can be revoked. Call `showConsentBannerIfNeeded()` once at startup.
  */
 import type { PostHog } from "posthog-js";
+import { StorageKeys } from "./core/storageKeys";
 
-const CONSENT_KEY = "rapidcam_analytics_consent";
+const CONSENT_KEY = StorageKeys.analyticsConsent;
 type Consent = "granted" | "denied";
 
 let initialised = false;

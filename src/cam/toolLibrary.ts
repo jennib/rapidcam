@@ -1,6 +1,7 @@
 import { type ToolDef } from "./types";
+import { StorageKeys } from "../core/storageKeys";
 
-const STORAGE_KEY = "rapidcam-tool-library";
+const STORAGE_KEY = StorageKeys.toolLibrary;
 
 // Stable IDs so saved toolpaths survive a localStorage clear / re-seed.
 const BUILTIN_DEFAULTS: ToolDef[] = [

@@ -1,6 +1,7 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
 import { type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
+import { StorageKeys } from "../core/storageKeys";
 
 export interface NewProjectConfig {
   name: string;
@@ -28,7 +29,7 @@ export function openNewProjectDialog(
   // Load defaults from localStorage if available
   let defaults: Partial<NewProjectConfig> = {};
   try {
-    const stored = localStorage.getItem("rapidcam:defaultProjectSettings");
+    const stored = localStorage.getItem(StorageKeys.defaultProjectSettings);
     if (stored) {
       defaults = JSON.parse(stored);
       // Explicitly delete name to ensure we never load or reuse a saved project name as a default
@@ -182,7 +183,7 @@ export function openNewProjectDialog(
         };
         // Explicitly ensure the project name is never saved with the default settings
         delete defaultsToSave.name;
-        localStorage.setItem("rapidcam:defaultProjectSettings", JSON.stringify(defaultsToSave));
+        localStorage.setItem(StorageKeys.defaultProjectSettings, JSON.stringify(defaultsToSave));
       } catch (e) {
         console.error("Failed to save default project settings:", e);
       }
