@@ -13,6 +13,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
+import { CADDocument } from "../src/model/document";
+import { CircleEntity, PolylineEntity } from "../src/model/entities";
+import { serializeDoc } from "../src/io/fileio";
+import type { CAMOperation, ToolDef } from "../src/cam/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -93,6 +97,96 @@ describe("rcam v2 schema", () => {
     expect(ok).toBe(true);
   });
 });
+
+/**
+ * The above guards hand-authored docs. This block guards the *real save path*:
+ * serializeDoc() emits doc.operations and doc.tools verbatim, and the schema is
+ * additionalProperties:false. So a document carrying one operation of every type
+ * — collectively setting every optional CAM field — serialized through the
+ * production path must still validate. If someone adds a field to CAMOperation
+ * (and sets it here) without declaring it in the schema, this fails.
+ *
+ * When you add a new optional field to CAMOperation, set it on the relevant op
+ * below so it stays covered.
+ */
+describe("rcam v2 schema — serialized real document", () => {
+  it("validates a serializeDoc() output covering every op type and optional field", () => {
+    const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink");
+    const ok = validate(data);
+    if (!ok) {
+      const msg = (validate.errors ?? [])
+        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+        .join("\n");
+      throw new Error(`serialized kitchen-sink doc does not match rcam-v2 schema:\n${msg}`);
+    }
+    expect(ok).toBe(true);
+  });
+
+  it("emits the tool referenced by toolId (and only referenced tools)", () => {
+    const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink") as { tools?: unknown[] };
+    expect((data.tools ?? []).map((t: any) => t.id)).toEqual(["tool1"]);
+  });
+});
+
+/**
+ * A document with one operation of every CAMOpType, between them setting every
+ * optional field in the format, built and serialized through the production path.
+ */
+function kitchenSinkDoc(): CADDocument {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const circle = doc.add(new CircleEntity({ x: 50, y: 50 }, 10));
+  const outer = doc.add(new PolylineEntity(
+    [{ x: 10, y: 10 }, { x: 90, y: 10 }, { x: 90, y: 90 }, { x: 10, y: 90 }], true));
+  const island = doc.add(new PolylineEntity(
+    [{ x: 40, y: 40 }, { x: 60, y: 40 }, { x: 60, y: 60 }, { x: 40, y: 60 }], true));
+
+  // A library tool referenced by one op's toolId — exercises the tools array
+  // (and the used-tools filter) in serializeDoc.
+  const tool: ToolDef = {
+    id: "tool1", name: "6mm flat", toolType: "end-mill", diameter: 6,
+    vAngle: 60, tipDiameter: 0.5, tipAngle: 118,
+    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5,
+  };
+  doc.tools.push(tool);
+
+  const base = {
+    toolNumber: 1, diameter: 6, feedrate: 1000, plungeRate: 300,
+    spindleSpeed: 18000, safeZ: 5, depth: -5, stepdown: 1.5, stepover: 0.4,
+  };
+
+  const ops: CAMOperation[] = [
+    { // profile: side, toolId, coolant, finishPass/allowance, tabs, leads
+      id: "op-profile", name: "Profile", type: "profile", entityIds: [outer.id],
+      side: "outside", toolId: "tool1", toolType: "end-mill", ...base,
+      coolant: "flood", finishPass: true, finishAllowance: 0.3,
+      tabs: { enabled: true, count: 4, width: 5, height: 1 },
+      leadIn: { type: "arc", length: 4 }, leadOut: { type: "linear", length: 4 },
+    },
+    { // engrave
+      id: "op-engrave", name: "Engrave", type: "engrave", entityIds: [outer.id],
+      side: "outside", toolType: "v-bit", vAngle: 30, ...base,
+    },
+    { // drill: peckDepth, tipAngle, coolant
+      id: "op-drill", name: "Drill", type: "drill", entityIds: [circle.id],
+      side: "outside", toolType: "drill", tipAngle: 118, ...base,
+      peckDepth: 2, coolant: "mist",
+    },
+    { // pocket: pocketStrategy, islandIds, regions
+      id: "op-pocket", name: "Pocket", type: "pocket", entityIds: [outer.id],
+      side: "inside", toolType: "end-mill", ...base,
+      pocketStrategy: "raster", islandIds: [island.id],
+      regions: [{ containingLoops: [[outer.id]] }],
+      finishPass: true, finishAllowance: 0.25,
+    },
+    { // chamfer: vAngle, tipDiameter, chamferWidth/Side, sharpenCorners
+      id: "op-chamfer", name: "Chamfer", type: "chamfer", entityIds: [outer.id],
+      side: "outside", toolType: "v-bit", vAngle: 60, tipDiameter: 0.5, ...base,
+      chamferWidth: 3, chamferSide: "inside", sharpenCorners: true,
+    },
+  ];
+  doc.operations.push(...ops);
+  return doc;
+}
 
 /** A schema-complete CAM operation with all required fields, plus `extra`. */
 function camOp(extra: Record<string, unknown>): any {
