@@ -6,16 +6,20 @@
  *   - `track()` is a no-op until consent is granted and PostHog is initialised.
  *   - Browsers with "Do Not Track" enabled are never tracked, and aren't even
  *     shown the consent banner.
+ *   - The PostHog library itself is loaded lazily (dynamic import) only once
+ *     consent is granted, so it never enters the bundle that decline/DNT users
+ *     download — it's a separate chunk fetched on demand.
  *
  * Consent is stored in localStorage so the choice persists across sessions and
  * can be revoked. Call `showConsentBannerIfNeeded()` once at startup.
  */
-import posthog from "posthog-js";
+import type { PostHog } from "posthog-js";
 
 const CONSENT_KEY = "rapidcam_analytics_consent";
 type Consent = "granted" | "denied";
 
 let initialised = false;
+let posthog: PostHog | null = null;
 
 function doNotTrack(): boolean {
   // navigator.doNotTrack === "1", or legacy window.doNotTrack / msDoNotTrack.
@@ -43,11 +47,20 @@ function setConsent(value: Consent): void {
   }
 }
 
-/** Initialise PostHog. Only ever runs once, and only with consent + no DNT. */
-export function initAnalytics(): void {
+/**
+ * Initialise PostHog. Only ever runs once, and only with consent + no DNT.
+ * The library is dynamically imported here so it's code-split out of the main
+ * bundle — decline/DNT users never download it.
+ */
+export async function initAnalytics(): Promise<void> {
   if (initialised) return;
   if (doNotTrack()) return;
   if (getConsent() !== "granted") return;
+
+  const { default: ph } = await import("posthog-js");
+  // A second caller may have initialised while the dynamic import was in flight.
+  if (initialised) return;
+  posthog = ph;
 
   posthog.init("phc_u9sEREoykrDKErEtysyiAiRTRAEDcfKxE5y6HQcFsWMn", {
     api_host: "https://us.i.posthog.com",
@@ -71,14 +84,14 @@ export function initAnalytics(): void {
 }
 
 export function track(event: string, props?: Record<string, unknown>): void {
-  if (!initialised) return;
+  if (!initialised || !posthog) return;
   posthog.capture(event, props);
 }
 
 /** Record the user's choice; initialise immediately if they accepted. */
 export function grantConsent(): void {
   setConsent("granted");
-  initAnalytics();
+  void initAnalytics();
 }
 
 export function denyConsent(): void {
@@ -95,7 +108,7 @@ export function showConsentBannerIfNeeded(): void {
 
   const existing = getConsent();
   if (existing === "granted") {
-    initAnalytics();
+    void initAnalytics();
     return;
   }
   if (existing === "denied") return;
