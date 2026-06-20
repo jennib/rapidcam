@@ -77,3 +77,23 @@ test("a pocket too small for the tool emits a NOTE and no finishing lap", () => 
   expect(out).toMatch(/NOTE:.*too small/);
   expect(out).not.toMatch(/finishing pass \(full-depth wall\)/);
 });
+
+// --- chamfer preview ---------------------------------------------------------
+
+test("chamfer preview carves the edge with a V-bit (and nothing without one)", () => {
+  const doc = new CADDocument({ width: 120, height: 120 });
+  const rect = doc.add(new RectEntity({ x: 30, y: 30 }, { x: 90, y: 90 }));
+  const cham = baseOp({
+    id: "c", type: "chamfer", toolType: "v-bit", vAngle: 60, entityIds: [rect.id],
+    depth: -3, stepdown: 10, chamferWidth: 3, chamferSide: "on",
+  });
+  const cutCells = (op: CAMOperation): number => {
+    const hm = rasterizeStock([op], doc);
+    let cut = 0;
+    for (let i = 0; i < hm.data.length; i++) if (hm.data[i] < hm.stockT - 1e-6) cut++;
+    return cut;
+  };
+  expect(cutCells(cham)).toBeGreaterThan(0);
+  // The rasterizer mirrors the g-code guard: a chamfer needs a V-bit.
+  expect(cutCells({ ...cham, toolType: "end-mill" })).toBe(0);
+});

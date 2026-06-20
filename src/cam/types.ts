@@ -1,6 +1,9 @@
 import type { EntityId } from "../model/entities";
 
-export type CAMOpType = "profile" | "engrave" | "drill" | "pocket";
+export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer";
+
+/** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
+export type ChamferSide = "on" | "outside" | "inside";
 
 export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill";
 
@@ -105,6 +108,13 @@ export interface CAMOperation {
    * below the tool radius so the finish lap still enters through cleared stock.
    */
   finishAllowance?: number;
+  /**
+   * Chamfer only: the horizontal width (mm) of the bevel face. The plunge depth
+   * is derived from this and the V-bit angle (`depth = width / tan(½·vAngle)`).
+   */
+  chamferWidth?: number;
+  /** Chamfer only: which side of the contour the bevel sits on. Default "on". */
+  chamferSide?: ChamferSide;
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
@@ -144,6 +154,8 @@ export const DEFAULTS = {
   coolant: "off" as CoolantMode,
   peckDepth: 0,
   finishAllowance: 0.2,
+  chamferWidth: 3,
+  chamferSide: "on" as ChamferSide,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
@@ -161,6 +173,17 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
  * fields stay authoritative. `toolNumber`/`depth`/`stepdown`/`stepover` and other
  * per-op cut settings are never overridden — they belong to the operation.
  */
+/**
+ * Plunge depth (negative, mm) for a V-bit chamfer of the given face width: the
+ * bit's flank reaches `chamferWidth` horizontally at `depth = width / tan(½·vAngle)`.
+ * Shared by the G-code generator and the preview rasterizer so they agree.
+ */
+export function chamferDepth(op: CAMOperation): number {
+  const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
+  const w = op.chamferWidth ?? 0;
+  return halfTan > 1e-6 ? -w / halfTan : 0;
+}
+
 /**
  * The operations selected for a combined export, in **document order** (so the
  * single file runs them top-to-bottom regardless of the order they were ticked).

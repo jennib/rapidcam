@@ -498,7 +498,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "type": { "enum": ["profile", "engrave", "drill", "pocket"] },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
         "toolId": { "type": "string", "description": "Optional reference to a tool id in the top-level \"tools\" array. When it resolves, that tool's geometry/feeds override the inline toolType/diameter/vAngle/tipAngle/feedrate/plungeRate/spindleSpeed/safeZ fields below (which remain as a fallback). toolNumber and the cut settings (depth/stepdown/stepover) always stay per-operation." },
@@ -517,6 +517,8 @@
         "peckDepth": { "type": "number", "exclusiveMinimum": 0, "description": "Drill only: peck increment (mm). Drills the hole in steps, fully retracting between pecks (G83-style). Omitted/0 = single full-depth plunge." },
         "finishPass": { "type": "boolean", "description": "Profile/pocket: leave a thin radial skin during roughing and remove it in a final full-depth wall pass, cleaning the ridges between depth levels. Default false." },
         "finishAllowance": { "type": "number", "minimum": 0, "description": "Radial stock (mm) left on the walls during roughing and removed by the finishing pass. Only used when finishPass is true; default 0.2, clamped below the tool radius." },
+        "chamferWidth": { "type": "number", "exclusiveMinimum": 0, "description": "Chamfer only: horizontal width (mm) of the bevel face. The plunge depth is derived from this and the V-bit angle (depth = width / tan(½·vAngle)). Requires a v-bit tool." },
+        "chamferSide": { "enum": ["on", "outside", "inside"], "description": "Chamfer only: which side of the contour the bevel sits on (\"on\" = centred on the edge). Default \"on\"." },
         "coolant": { "enum": ["off", "mist", "flood"], "description": "Coolant for this operation: \"mist\" → M7, \"flood\" → M8 (M9 off). Default \"off\". Only emitted if the machine is flagged as having coolant (a machine-wide app preference)." },
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter." },
         "pocketStrategy": { "enum": ["offset", "raster"], "description": "Pocket only; default \"offset\"." },

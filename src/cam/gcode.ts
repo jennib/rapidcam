@@ -2,7 +2,7 @@ import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, type CoolantMode, resolveOpTool } from "./types";
+import { type CAMOperation, type CoolantMode, chamferDepth, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -693,6 +693,41 @@ function drillPoint(
   return lines;
 }
 
+// --- chamfer (V-bevel along an edge) -----------------------------------------
+
+/** Offset a closed chamfer contour per `chamferSide` ("on" = centred, no offset). */
+function chamferOffsets(verts: Vec2[], op: CAMOperation): Vec2[][] {
+  const side = op.chamferSide ?? "on";
+  if (side === "on") return [verts];
+  const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  const d = side === "outside" ? (op.chamferWidth ?? 0) : -(op.chamferWidth ?? 0);
+  const offs = offsetPolygon(ccw, d);
+  return offs.length ? offs : [verts];
+}
+
+/** Chamfer a closed contour: trace the (optionally offset) edge at the derived depth. */
+function chamferPolygon(
+  verts: Vec2[], op: CAMOperation, ox: number, oy: number, zOff: number,
+): string[] {
+  const cop = { ...op, depth: chamferDepth(op) };
+  const lines: string[] = [];
+  for (const path of chamferOffsets(verts, op))
+    lines.push(...engravePoints(path, true, cop, ox, oy, zOff));
+  return lines;
+}
+
+/** Chamfer a circle: trace a circle shifted per side at the derived depth. */
+function chamferCircle(
+  cx: number, cy: number, r: number, op: CAMOperation, ox: number, oy: number, zOff: number,
+): string[] {
+  const cop = { ...op, depth: chamferDepth(op) };
+  const w = op.chamferWidth ?? 0;
+  const radius = op.chamferSide === "outside" ? r + w
+               : op.chamferSide === "inside"  ? Math.max(0.01, r - w)
+               : r;
+  return engraveCircle(cx, cy, radius, cop, ox, oy, zOff);
+}
+
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
 function toolpathBody(
@@ -702,6 +737,16 @@ function toolpathBody(
 ): string[] {
   const lines: string[] = [];
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+
+  // A chamfer needs a V-bit (the bevel angle comes from the tool) and a width.
+  if (op.type === "chamfer") {
+    if (op.toolType !== "v-bit")
+      return [`; NOTE: chamfer requires a V-bit tool — skipped`];
+    if ((op.chamferWidth ?? 0) <= 0)
+      return [`; NOTE: chamfer width is 0 — skipped`];
+    const d = chamferDepth(op);
+    lines.push(`; Chamfer: ⌀ V-bit ${op.vAngle ?? 60}° · face ${op.chamferWidth}mm → depth ${n(d)}mm (${op.chamferSide ?? "on"})`);
+  }
 
   // Region pockets: resolve each parametric region against live geometry and
   // pocket it (enclosed loops become islands). Supersedes the legacy
@@ -747,9 +792,9 @@ function toolpathBody(
     lines.push(`; islands: ${islands.length} polygon(s) from ${islandSet.size} entity id(s)`);
   }
 
-  // For profile/pocket ops, chain any selected LineEntity instances into closed polygons.
+  // For profile/pocket/chamfer ops, chain any selected LineEntity instances into closed polygons.
   const lineSegIds = new Set<string>();
-  if (op.type === "profile" || op.type === "pocket") {
+  if (op.type === "profile" || op.type === "pocket" || op.type === "chamfer") {
     const lineEnts = op.entityIds
       .filter(id => !islandSet.has(id))
       .map(id => entityMap.get(id))
@@ -758,6 +803,7 @@ function toolpathBody(
       const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
       for (const { verts } of polygons) {
         if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
+        else if (op.type === "chamfer") lines.push(...chamferPolygon(verts, op, ox, oy, zOff));
         else lines.push(...profilePolygon(verts, op, ox, oy, zOff));
       }
       if (leftover.length > 0)
@@ -791,11 +837,32 @@ function toolpathBody(
       for (const c of contours) {
         if (op.type === "engrave")
           lines.push(...engravePoints(c.points, c.closed, op, ox, oy, zOff));
+        else if (op.type === "chamfer" && c.closed)
+          lines.push(...chamferPolygon(c.points, op, ox, oy, zOff));
         else if (op.type === "pocket" && c.closed)
           lines.push(...pocketPolygon(c.points, islands, op, ox, oy, zOff));
         else if (op.type === "profile" && c.closed)
           lines.push(...profilePolygon(c.points, op, ox, oy, zOff));
       }
+      continue;
+    }
+
+    if (op.type === "chamfer") {
+      const cop = { ...op, depth: chamferDepth(op) };
+      if (ent instanceof CircleEntity)
+        lines.push(...chamferCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
+      else if (ent instanceof RectEntity)
+        lines.push(...chamferPolygon([...ent.corners()], op, ox, oy, zOff));
+      else if (ent instanceof PolylineEntity && ent.closed)
+        lines.push(...chamferPolygon(ent.points, op, ox, oy, zOff));
+      else if (ent instanceof PolylineEntity)
+        lines.push(...engravePoints(ent.points, false, cop, ox, oy, zOff)); // open edge, centred
+      else if (ent instanceof LineEntity)
+        lines.push(...engravePoints([ent.a, ent.b], false, cop, ox, oy, zOff));
+      else if (ent instanceof ArcEntity)
+        lines.push(...engraveArc(ent, cop, ox, oy, zOff));
+      else if (ent instanceof BezierEntity)
+        lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, cop, ox, oy, zOff));
       continue;
     }
 

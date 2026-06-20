@@ -330,3 +330,27 @@ const p3 = { x: 100, y: 104 };
   check("finishing pass cuts at the true radius (I-13)", /I-13 J0/.test(out), "");
 }
 
+// 17) Chamfer: V-bit edge bevel, depth derived from width --------------------
+{
+  console.log("\n17) Chamfer (V-bevel)");
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const rect = doc.add(new RectEntity({ x: 50, y: 50 }, { x: 150, y: 120 })) as RectEntity;
+  const cham: CAMOperation = {
+    ...OP, id: "ch", type: "chamfer", toolType: "v-bit", vAngle: 60,
+    stepover: 0.4, entityIds: [rect.id], depth: -3, stepdown: 10,
+    chamferWidth: 3, chamferSide: "on",
+  };
+  const out = generateGCode([cham], doc);
+  // depth = 3 / tan(30°) ≈ 5.196
+  check("chamfer derives depth from width (Z-5.196)", /Z-5\.196\b/.test(out),
+    out.split("\n").find(l => /^G1 Z-/.test(l)) ?? "");
+  check("chamfer traces the edge", out.split("\n").some(l => /^G1 X/.test(l)), "");
+
+  const endmill = generateGCode([{ ...cham, toolType: "end-mill" }], doc);
+  check("chamfer with a non-V-bit emits a NOTE", /chamfer requires a V-bit/.test(endmill), "");
+
+  const outside = generateGCode([{ ...cham, chamferSide: "outside" }], doc);
+  check("outside chamfer offsets the edge outward (X153)", /X153\b/.test(outside),
+    outside.split("\n").find(l => /X15\d/.test(l)) ?? "(no X153)");
+}
+

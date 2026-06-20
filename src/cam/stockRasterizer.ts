@@ -20,7 +20,7 @@ import {
   PolylineEntity, ArcEntity, BezierEntity, TextEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import type { CAMOperation } from "./types";
+import { type CAMOperation, chamferDepth } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
@@ -68,6 +68,11 @@ function rasterizeOp(
   gridH: number,
   stockT: number,
 ): void {
+  if (op.type === "chamfer") {
+    rasChamfer(op, entityMap, data, gridW, gridH, stockT);
+    return;
+  }
+
   const stamp  = makeStampFn(op, data, gridW, gridH, stockT);
   const stepR  = effectiveToolR(op);
   const lineSegIds = new Set<string>();
@@ -184,6 +189,67 @@ function rasterizeOp(
         rasProfilePolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
         rasProfilePolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
+    }
+  }
+}
+
+/**
+ * Chamfer preview: walk the (optionally offset) contour with the V-cone stamp at
+ * the derived depth — mirrors the chamfer G-code so the 3D preview matches.
+ */
+function rasChamfer(
+  op: CAMOperation,
+  entityMap: Map<string, unknown>,
+  data: Float32Array, gridW: number, gridH: number, stockT: number,
+): void {
+  if (op.toolType !== "v-bit" || (op.chamferWidth ?? 0) <= 0) return;
+  const cop = { ...op, depth: chamferDepth(op) };
+  const stamp = makeStampFn(cop, data, gridW, gridH, stockT);
+  const stepR = effectiveToolR(cop);
+  const side = op.chamferSide ?? "on";
+  const w = op.chamferWidth ?? 0;
+
+  const closed = (verts: Vec2[]): void => {
+    let paths = [verts];
+    if (side !== "on") {
+      const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+      const offs = offsetPolygon(ccw, side === "outside" ? w : -w);
+      if (offs.length) paths = offs;
+    }
+    for (const p of paths) sweepPolyline(cop, data, gridW, gridH, stockT, p, true, stamp, stepR);
+  };
+
+  const lineSegIds = new Set<string>();
+  const lineEnts = op.entityIds
+    .map((id) => entityMap.get(id))
+    .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
+  for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) closed(verts);
+  lineEnts.forEach((e) => lineSegIds.add(e.id));
+
+  for (const id of op.entityIds) {
+    if (lineSegIds.has(id)) continue;
+    const ent = entityMap.get(id) as any;
+    if (!ent || ent.isConstruction) continue;
+    if (ent instanceof TextEntity) {
+      for (const c of textToContours(ent)) if (c.closed) closed(c.points);
+    } else if (ent instanceof CircleEntity) {
+      const r = side === "outside" ? ent.radius + w
+              : side === "inside"  ? Math.max(0.01, ent.radius - w) : ent.radius;
+      sweepCircle(cop, data, gridW, gridH, stockT, ent.center.x, ent.center.y, r, stamp, stepR);
+    } else if (ent instanceof RectEntity) {
+      closed([...ent.corners()]);
+    } else if (ent instanceof PolylineEntity && ent.closed) {
+      closed(ent.points);
+    } else if (ent instanceof PolylineEntity) {
+      sweepPolyline(cop, data, gridW, gridH, stockT, ent.points, false, stamp, stepR);
+    } else if (ent instanceof LineEntity) {
+      sweepPolyline(cop, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
+    } else if (ent instanceof ArcEntity) {
+      sweepArc(cop, data, gridW, gridH, stockT,
+        ent.center.x, ent.center.y, ent.radius, ent.startAngle, ent.endAngle, stamp, stepR);
+    } else if (ent instanceof BezierEntity) {
+      sweepPolyline(cop, data, gridW, gridH, stockT,
+        flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
     }
   }
 }

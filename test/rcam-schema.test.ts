@@ -64,7 +64,45 @@ describe("rcam v2 schema", () => {
   it("accepts a minimal hand-authored document", () => {
     expect(validate(minimalDoc())).toBe(true);
   });
+
+  // The bundled examples don't exercise the newer per-op CAM fields, so guard
+  // them directly: an operation carrying every optional field added recently,
+  // plus a top-level endPosition, must validate.
+  it("accepts the optional CAM fields (peck, coolant, finishPass/allowance, endPosition)", () => {
+    const doc = minimalDoc();
+    doc.endPosition = { x: 0, y: 0 };
+    doc.operations = [camOp({
+      peckDepth: 2, coolant: "flood", finishPass: true, finishAllowance: 0.2,
+    })];
+    const ok = validate(doc);
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
+    expect(ok).toBe(true);
+  });
+
+  it("rejects an operation with an unknown field (schema drift guard)", () => {
+    const doc = minimalDoc();
+    doc.operations = [camOp({ bogusField: 1 })];
+    expect(validate(doc)).toBe(false);
+  });
+
+  it("accepts a chamfer operation with its fields", () => {
+    const doc = minimalDoc();
+    doc.operations = [camOp({ type: "chamfer", toolType: "v-bit", vAngle: 60, chamferWidth: 3, chamferSide: "outside" })];
+    const ok = validate(doc);
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
+    expect(ok).toBe(true);
+  });
 });
+
+/** A schema-complete CAM operation with all required fields, plus `extra`. */
+function camOp(extra: Record<string, unknown>): any {
+  return {
+    id: "op1", name: "Op", type: "profile", entityIds: ["ent1"], side: "outside",
+    toolType: "end-mill", toolNumber: 1, diameter: 6, feedrate: 900, plungeRate: 250,
+    spindleSpeed: 18000, safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
+    ...extra,
+  };
+}
 
 /** Smallest document an external author must emit for a valid v2 file. */
 function minimalDoc(): any {

@@ -10,7 +10,7 @@ import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type CAMOpType, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
+import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type CAMOpType, type ChamferSide, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
@@ -74,6 +74,8 @@ interface OpState {
  */
 interface DialogHooks {
   updateVBitHint(): void;
+  /** Set the tool type from outside the tool section (e.g. force V-bit for chamfer). */
+  setToolType(t: ToolType): void;
 }
 
 const TP_PALETTE = [
@@ -407,6 +409,8 @@ export class CamBar {
       peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
       finishPass: existing?.finishPass ?? false,
       finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
+      chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
+      chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -441,7 +445,7 @@ export class CamBar {
     };
 
     // Late-bound cross-section callbacks (see DialogHooks).
-    const hooks: DialogHooks = { updateVBitHint: () => {} };
+    const hooks: DialogHooks = { updateVBitHint: () => {}, setToolType: () => {} };
 
     // --- backdrop + draggable dialog shell ---
     const { backdrop, dialog, body } = this.buildDialogShell(isNew, closeDialog);
@@ -461,6 +465,7 @@ export class CamBar {
       ["profile-outside", "Profile (outside)"],
       ["profile-inside",  "Profile (inside)"],
       ["pocket",          "Pocket (interior clear)"],
+      ["chamfer",         "Chamfer (V-bevel edge)"],
       ["engrave",         "Engrave"],
       ["drill",           "Drill"],
     ];
@@ -580,6 +585,48 @@ export class CamBar {
       finishAllowRow.style.display = finishChk.checked ? "" : "none";
     });
 
+    // Chamfer — width (bevel face) + side. Depth is derived from the V-bit angle.
+    const chamWidthInp = document.createElement("input");
+    chamWidthInp.type = "number"; chamWidthInp.className = "dim"; chamWidthInp.step = "any"; chamWidthInp.min = "0";
+    chamWidthInp.value = String(state.chamferWidth);
+    const chamHint = document.createElement("div");
+    chamHint.className = "cam-vbit-hint";
+    const updateChamHint = () => {
+      const half = Math.tan(((state.vAngle ?? 60) / 2) * (Math.PI / 180));
+      const depth = half > 1e-6 ? state.chamferWidth / half : 0;
+      chamHint.textContent = `→ depth ${depth.toFixed(2)} mm · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
+    };
+    chamWidthInp.addEventListener("input", () => {
+      const v = parseFloat(chamWidthInp.value); if (isFinite(v) && v >= 0) state.chamferWidth = v;
+      updateChamHint();
+    });
+    const chamWidthRow = this.dField("Chamfer width (mm)", chamWidthInp);
+    cutSec.appendChild(chamWidthRow);
+    cutSec.appendChild(chamHint);
+
+    const chamSideSelect = document.createElement("select");
+    chamSideSelect.className = "unit";
+    for (const [v, l] of [["on", "On edge (centred)"], ["outside", "Outside"], ["inside", "Inside"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      chamSideSelect.appendChild(o);
+    }
+    chamSideSelect.value = state.chamferSide;
+    chamSideSelect.addEventListener("change", () => { state.chamferSide = chamSideSelect.value as ChamferSide; });
+    const chamSideRow = this.dField("Bevel side", chamSideSelect);
+    cutSec.appendChild(chamSideRow);
+    updateChamHint();
+    // Keep the chamfer depth readout in sync when the V-bit angle changes.
+    const baseVBitHint = hooks.updateVBitHint;
+    hooks.updateVBitHint = () => { baseVBitHint(); updateChamHint(); };
+
+    const updateChamferVisibility = () => {
+      const show = state.combo === "chamfer";
+      chamWidthRow.style.display = show ? "" : "none";
+      chamHint.style.display = show ? "" : "none";
+      chamSideRow.style.display = show ? "" : "none";
+    };
+
     // Coolant — per operation, shown only when the machine has coolant (a
     // machine-wide capability). Off/Mist (M7)/Flood (M8).
     if (getMachineHasCoolant()) {
@@ -631,6 +678,9 @@ export class CamBar {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
+      updateChamferVisibility();
+      // A chamfer needs a V-bit (the bevel angle comes from the tool).
+      if (state.combo === "chamfer" && state.toolType !== "v-bit") hooks.setToolType("v-bit");
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -649,6 +699,7 @@ export class CamBar {
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
     }
+    updateChamferVisibility();
     updateTabsVisibility();
     updateLeadVisibility();
     if (state.combo === "pocket") {
@@ -688,6 +739,7 @@ export class CamBar {
       if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
       else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
       else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
+      else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
 
@@ -710,6 +762,8 @@ export class CamBar {
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
         finishAllowance: (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
+        chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
+        chamferSide: type === "chamfer" ? state.chamferSide : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"
@@ -795,6 +849,7 @@ export class CamBar {
       combo === "profile-outside" ? "Profile (outside)"
       : combo === "profile-inside" ? "Profile (inside)"
       : combo === "pocket"  ? "Pocket"
+      : combo === "chamfer" ? "Chamfer"
       : combo === "engrave" ? "Engrave"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
@@ -1132,6 +1187,11 @@ export class CamBar {
       updateToolTypeVisibility();
       hooks.updateVBitHint();
     });
+    hooks.setToolType = (t: ToolType) => {
+      if (toolTypeSelect.value === t) return;
+      toolTypeSelect.value = t;
+      toolTypeSelect.dispatchEvent(new Event("change"));
+    };
 
     return toolSec;
   }

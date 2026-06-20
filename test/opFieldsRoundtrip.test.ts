@@ -21,7 +21,13 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
     spindleSpeed: 6000, safeZ: 5, depth: -10, stepdown: 3, stepover: 0.4,
     peckDepth: 2,
   };
-  doc.operations.push(op, drill);
+  const chamfer: CAMOperation = {
+    id: "op3", name: "Chamfer", type: "chamfer", entityIds: [a.id], side: "outside",
+    toolType: "v-bit", vAngle: 60, toolNumber: 3, diameter: 6, feedrate: 900, plungeRate: 250,
+    spindleSpeed: 18000, safeZ: 5, depth: -3, stepdown: 3, stepover: 0.4,
+    chamferWidth: 3, chamferSide: "outside",
+  };
+  doc.operations.push(op, drill, chamfer);
 
   const reloaded = new CADDocument({ width: 1, height: 1 });
   applyFile(reloaded, parseRcam(JSON.stringify(serializeDoc(doc, "t"))));
@@ -29,4 +35,8 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
   expect(reloaded.operations.find((o) => o.id === "op1")?.finishPass).toBe(true);
   expect(reloaded.operations.find((o) => o.id === "op1")?.finishAllowance).toBe(0.3);
   expect(reloaded.operations.find((o) => o.id === "op2")?.peckDepth).toBe(2);
+  const ch = reloaded.operations.find((o) => o.id === "op3");
+  expect(ch?.type).toBe("chamfer");
+  expect(ch?.chamferWidth).toBe(3);
+  expect(ch?.chamferSide).toBe("outside");
 });
