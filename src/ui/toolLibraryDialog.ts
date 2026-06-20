@@ -1,5 +1,6 @@
 import { loadLibrary, saveLibrary, removeTool } from "../cam/toolLibrary";
 import { ToolDef, ToolType, TOOL_TYPE_LABELS } from "../cam/types";
+import { buildToolDiagram } from "./toolDiagram";
 
 export function openToolLibraryDialog(): void {
   document.getElementById("tlib-backdrop")?.remove();
@@ -224,8 +225,21 @@ export function openToolLibraryDialog(): void {
     typeSel.addEventListener("change", () => { t.toolType = typeSel.value as ToolType; render(); });
     editorWrap.appendChild(makeField("Tool Type", typeSel));
 
-    // Numeric inputs helper
-    const numField = (label: string, get: () => number | undefined, set: (v: number) => void) => {
+    // Labelled diagram of the current tool. Rebuilt on type change (full
+    // re-render) and redrawn live as the geometry fields are typed.
+    const diagramBox = document.createElement("div");
+    diagramBox.className = "tlib-diagram";
+    diagramBox.style.cssText =
+      "background:var(--panel-2);border:1px solid var(--border);border-radius:6px;" +
+      "padding:6px 8px 4px;display:flex;flex-direction:column;align-items:center";
+    const caption = document.createElement("div");
+    caption.textContent = "Angle to scale · diameters labelled, not to scale";
+    caption.style.cssText = "font-size:10px;color:var(--text-dim);margin-top:2px;text-align:center";
+    const redrawDiagram = () => { diagramBox.replaceChildren(buildToolDiagram(t), caption); };
+    editorWrap.appendChild(diagramBox);
+
+    // Numeric inputs helper. `live` fields also redraw the diagram as you type.
+    const numField = (label: string, get: () => number | undefined, set: (v: number) => void, live = false) => {
       const inp = document.createElement("input");
       inp.type = "number"; inp.className = "dim"; inp.step = "any";
       inp.value = get() !== undefined ? String(get()) : "";
@@ -233,18 +247,24 @@ export function openToolLibraryDialog(): void {
         const v = parseFloat(inp.value);
         if (isFinite(v)) set(v);
       });
+      if (live) inp.addEventListener("input", () => {
+        const v = parseFloat(inp.value);
+        if (isFinite(v)) { set(v); redrawDiagram(); }
+      });
       return makeField(label, inp);
     };
 
-    editorWrap.appendChild(numField("Diameter (mm)", () => t.diameter, v => { t.diameter = v; renderList(); }));
-    
+    editorWrap.appendChild(numField("Diameter (mm)", () => t.diameter, v => { t.diameter = v; renderList(); }, true));
+
     if (t.toolType === "v-bit") {
-      editorWrap.appendChild(numField("V Angle (°)", () => t.vAngle, v => { t.vAngle = v; }));
-      editorWrap.appendChild(numField("Tip Diam (mm)", () => t.tipDiameter, v => { t.tipDiameter = v; }));
+      editorWrap.appendChild(numField("V Angle (°)", () => t.vAngle, v => { t.vAngle = v; }, true));
+      editorWrap.appendChild(numField("Tip Diam (mm)", () => t.tipDiameter, v => { t.tipDiameter = v; }, true));
     }
     if (t.toolType === "drill") {
-      editorWrap.appendChild(numField("Tip Angle (°)", () => t.tipAngle, v => { t.tipAngle = v; }));
+      editorWrap.appendChild(numField("Tip Angle (°)", () => t.tipAngle, v => { t.tipAngle = v; }, true));
     }
+
+    redrawDiagram();
 
     editorWrap.appendChild(numField("Spindle (rpm)", () => t.spindleSpeed, v => { t.spindleSpeed = Math.round(v); }));
     editorWrap.appendChild(numField("Feed (mm/min)", () => t.feedrate, v => { t.feedrate = v; }));
