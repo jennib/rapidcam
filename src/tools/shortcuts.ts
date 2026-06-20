@@ -15,7 +15,9 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
   b: "bezier",
   q: "rotate",
   s: "scale",
-  x: "text",
+  // NB: no "text" binding — "x" is the construction-geometry toggle (Fusion
+  // convention; see App.onKeyDown), which intercepts the key first. Pick a
+  // free key here if Text ever needs a shortcut.
   f: "fillet",
   t: "trim",
   m: "mirror",
