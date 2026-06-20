@@ -411,6 +411,7 @@ export class CamBar {
       finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
       chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
       chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
+      sharpenCorners: existing?.sharpenCorners ?? false,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -615,6 +616,14 @@ export class CamBar {
     chamSideSelect.addEventListener("change", () => { state.chamferSide = chamSideSelect.value as ChamferSide; });
     const chamSideRow = this.dField("Bevel side", chamSideSelect);
     cutSec.appendChild(chamSideRow);
+
+    const sharpenChk = document.createElement("input");
+    sharpenChk.type = "checkbox";
+    sharpenChk.className = "settings-checkbox";
+    sharpenChk.checked = state.sharpenCorners;
+    sharpenChk.addEventListener("change", () => { state.sharpenCorners = sharpenChk.checked; });
+    const sharpenRow = this.dField("Sharpen corners", sharpenChk);
+    cutSec.appendChild(sharpenRow);
     updateChamHint();
     // Keep the chamfer depth readout in sync when the V-bit angle changes.
     const baseVBitHint = hooks.updateVBitHint;
@@ -625,6 +634,7 @@ export class CamBar {
       chamWidthRow.style.display = show ? "" : "none";
       chamHint.style.display = show ? "" : "none";
       chamSideRow.style.display = show ? "" : "none";
+      sharpenRow.style.display = show ? "" : "none";
     };
 
     // Coolant — per operation, shown only when the machine has coolant (a
@@ -764,6 +774,7 @@ export class CamBar {
         finishAllowance: (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
         chamferSide: type === "chamfer" ? state.chamferSide : undefined,
+        sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"

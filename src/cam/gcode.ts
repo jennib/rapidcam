@@ -2,7 +2,7 @@ import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, type CoolantMode, chamferDepth, resolveOpTool } from "./types";
+import { type CAMOperation, type CoolantMode, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -705,6 +705,35 @@ function chamferOffsets(verts: Vec2[], op: CAMOperation): Vec2[][] {
   return offs.length ? offs : [verts];
 }
 
+/**
+ * Trace a closed contour at the derived depth, but taper the bevel to the surface
+ * at each sharp inside corner — the V-bit tip is pulled up into the corner so the
+ * two bevel faces meet at a crisp point instead of a rounded fillet.
+ */
+function chamferContourSharp(
+  verts: Vec2[], op: CAMOperation, ox: number, oy: number, zOff: number,
+): string[] {
+  const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  if (ccw.length < 3) return [];
+  const seq = chamferSharpSequence(ccw, op.chamferWidth ?? 0);
+  const cop = { ...op, depth: chamferDepth(op) };
+  const lines: string[] = [];
+
+  for (const z of depthPasses(cop)) {
+    const zOf = (p: { lift: boolean }) => (p.lift ? 0 : z); // lift = up to the surface
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    lines.push(`G0 X${X(seq[0].x, ox)} Y${Y(seq[0].y, oy)}`);
+    lines.push(`G1 Z${Z(zOf(seq[0]), zOff)} F${n(op.plungeRate)}`);
+    for (let i = 1; i < seq.length; i++) {
+      const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+      lines.push(`G1 X${X(seq[i].x, ox)} Y${Y(seq[i].y, oy)} Z${Z(zOf(seq[i]), zOff)}${f}`);
+    }
+    lines.push(`G1 X${X(seq[0].x, ox)} Y${Y(seq[0].y, oy)} Z${Z(zOf(seq[0]), zOff)}`); // close
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
 /** Chamfer a closed contour: trace the (optionally offset) edge at the derived depth. */
 function chamferPolygon(
   verts: Vec2[], op: CAMOperation, ox: number, oy: number, zOff: number,
@@ -712,7 +741,9 @@ function chamferPolygon(
   const cop = { ...op, depth: chamferDepth(op) };
   const lines: string[] = [];
   for (const path of chamferOffsets(verts, op))
-    lines.push(...engravePoints(path, true, cop, ox, oy, zOff));
+    lines.push(...(op.sharpenCorners
+      ? chamferContourSharp(path, op, ox, oy, zOff)
+      : engravePoints(path, true, cop, ox, oy, zOff)));
   return lines;
 }
 

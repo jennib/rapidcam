@@ -96,4 +96,12 @@ test("chamfer preview carves the edge with a V-bit (and nothing without one)", (
   expect(cutCells(cham)).toBeGreaterThan(0);
   // The rasterizer mirrors the g-code guard: a chamfer needs a V-bit.
   expect(cutCells({ ...cham, toolType: "end-mill" })).toBe(0);
+
+  // Sharpening tapers the bevel to the surface at the corners, so the preview
+  // heightmap differs from the plain chamfer (the corners change).
+  const plain = rasterizeStock([cham], doc).data;
+  const sharp = rasterizeStock([{ ...cham, sharpenCorners: true }], doc).data;
+  let differs = false;
+  for (let i = 0; i < plain.length; i++) if (Math.abs(plain[i] - sharp[i]) > 1e-3) { differs = true; break; }
+  expect(differs).toBe(true);
 });

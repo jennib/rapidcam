@@ -87,7 +87,7 @@ describe("rcam v2 schema", () => {
 
   it("accepts a chamfer operation with its fields", () => {
     const doc = minimalDoc();
-    doc.operations = [camOp({ type: "chamfer", toolType: "v-bit", vAngle: 60, chamferWidth: 3, chamferSide: "outside" })];
+    doc.operations = [camOp({ type: "chamfer", toolType: "v-bit", vAngle: 60, chamferWidth: 3, chamferSide: "outside", sharpenCorners: true })];
     const ok = validate(doc);
     if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
     expect(ok).toBe(true);

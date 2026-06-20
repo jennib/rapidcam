@@ -20,7 +20,7 @@ import {
   PolylineEntity, ArcEntity, BezierEntity, TextEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, chamferDepth } from "./types";
+import { type CAMOperation, chamferDepth, chamferSharpSequence } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
@@ -216,7 +216,26 @@ function rasChamfer(
       const offs = offsetPolygon(ccw, side === "outside" ? w : -w);
       if (offs.length) paths = offs;
     }
-    for (const p of paths) sweepPolyline(cop, data, gridW, gridH, stockT, p, true, stamp, stepR);
+    for (const p of paths) {
+      if (!op.sharpenCorners) {
+        sweepPolyline(cop, data, gridW, gridH, stockT, p, true, stamp, stepR);
+        continue;
+      }
+      // Sharpen: walk the tapered sequence, ramping the V-cone up to the surface
+      // at each sharp inside corner so it comes to a point.
+      const ccw = signedArea(p) >= 0 ? p : [...p].reverse();
+      const seq = chamferSharpSequence(ccw, w);
+      for (let k = 0; k < seq.length; k++) {
+        const a = seq[k], b = seq[(k + 1) % seq.length];
+        const za = a.lift ? 0 : cop.depth, zb = b.lift ? 0 : cop.depth;
+        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * RES));
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          stamp((a.x + (b.x - a.x) * t) * RES, (a.y + (b.y - a.y) * t) * RES,
+            stockT + za + (zb - za) * t);
+        }
+      }
+    }
   };
 
   const lineSegIds = new Set<string>();

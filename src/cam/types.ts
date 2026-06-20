@@ -1,4 +1,5 @@
 import type { EntityId } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
 
 export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer";
 
@@ -115,6 +116,11 @@ export interface CAMOperation {
   chamferWidth?: number;
   /** Chamfer only: which side of the contour the bevel sits on. Default "on". */
   chamferSide?: ChamferSide;
+  /**
+   * Chamfer only: lift the V-bit tip up into each sharp (convex) corner so the
+   * bevel comes to a crisp point instead of a rounded fillet. Default false.
+   */
+  sharpenCorners?: boolean;
   tabs?: TabDef;              // profile only
   // pocket
   stepover: number;           // fraction of tool diameter (default 0.4)
@@ -182,6 +188,42 @@ export function chamferDepth(op: CAMOperation): number {
   const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
   const w = op.chamferWidth ?? 0;
   return halfTan > 1e-6 ? -w / halfTan : 0;
+}
+
+/** A point on a chamfer toolpath; `lift` = ramp the tip up to the surface here. */
+export interface ChamferPathPt { x: number; y: number; lift: boolean; }
+
+/**
+ * Expand a closed CCW contour into a chamfer toolpath that sharpens its inside
+ * corners. At each sharp (convex) corner the bevel tapers to the surface right
+ * *at the corner vertex* — the V-bit tip is pulled up into the corner so the two
+ * bevel faces meet at a crisp point instead of a rounded fillet. The taper runs
+ * over `width` of travel on each side of the vertex; other vertices are emitted
+ * at full depth. Concave corners are left as-is (a V-bit can't sharpen them).
+ */
+export function chamferSharpSequence(ccw: Vec2[], width: number): ChamferPathPt[] {
+  const N = ccw.length;
+  if (N < 3) return ccw.map((v) => ({ x: v.x, y: v.y, lift: false }));
+  const seq: ChamferPathPt[] = [];
+  for (let i = 0; i < N; i++) {
+    const prev = ccw[(i - 1 + N) % N], v = ccw[i], next = ccw[(i + 1) % N];
+    const il = Math.hypot(v.x - prev.x, v.y - prev.y) || 1;
+    const dinx = (v.x - prev.x) / il, diny = (v.y - prev.y) / il;
+    const ol = Math.hypot(next.x - v.x, next.y - v.y) || 1;
+    const doutx = (next.x - v.x) / ol, douty = (next.y - v.y) / ol;
+    // cross = sin(deflection); > 0 = convex (inside corner) for a CCW contour.
+    // Only sharpen corners turning more than ~30°.
+    const cross = dinx * douty - diny * doutx;
+    if (width <= 0 || cross <= 0.5) {
+      seq.push({ x: v.x, y: v.y, lift: false });
+      continue;
+    }
+    const lin = Math.min(width, il * 0.45), lout = Math.min(width, ol * 0.45);
+    seq.push({ x: v.x - dinx * lin, y: v.y - diny * lin, lift: false }); // ramp up
+    seq.push({ x: v.x, y: v.y, lift: true });                            // tip at the corner
+    seq.push({ x: v.x + doutx * lout, y: v.y + douty * lout, lift: false }); // ramp down
+  }
+  return seq;
 }
 
 /**

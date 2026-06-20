@@ -25,7 +25,7 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
     id: "op3", name: "Chamfer", type: "chamfer", entityIds: [a.id], side: "outside",
     toolType: "v-bit", vAngle: 60, toolNumber: 3, diameter: 6, feedrate: 900, plungeRate: 250,
     spindleSpeed: 18000, safeZ: 5, depth: -3, stepdown: 3, stepover: 0.4,
-    chamferWidth: 3, chamferSide: "outside",
+    chamferWidth: 3, chamferSide: "outside", sharpenCorners: true,
   };
   doc.operations.push(op, drill, chamfer);
 
@@ -39,4 +39,5 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
   expect(ch?.type).toBe("chamfer");
   expect(ch?.chamferWidth).toBe(3);
   expect(ch?.chamferSide).toBe("outside");
+  expect(ch?.sharpenCorners).toBe(true);
 });

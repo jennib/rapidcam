@@ -352,5 +352,14 @@ const p3 = { x: 100, y: 104 };
   const outside = generateGCode([{ ...cham, chamferSide: "outside" }], doc);
   check("outside chamfer offsets the edge outward (X153)", /X153\b/.test(outside),
     outside.split("\n").find(l => /X15\d/.test(l)) ?? "(no X153)");
+
+  // Sharpen inside corners: the bevel tapers up to the surface (Z0) at each of
+  // the 4 rectangle corners (tip pulled up into the corner).
+  const sharp = generateGCode([{ ...cham, sharpenCorners: true }], doc).split("\n");
+  const liftMoves = sharp.filter(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z0\b/.test(l));
+  check("sharpen-corners tapers to the surface at each inside corner (4)",
+    liftMoves.length === 4, `got ${liftMoves.length}`);
+  check("plain chamfer has no mid-contour surface lifts",
+    !out.split("\n").some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z0\b/.test(l)), "");
 }
 
