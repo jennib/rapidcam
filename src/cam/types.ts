@@ -11,13 +11,31 @@ export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill";
 /** Coolant mode emitted around an operation: off (none), mist (M7), or flood (M8). M9 turns it off. */
 export type CoolantMode = "off" | "mist" | "flood";
 
+/**
+ * A cutting tool. Geometry fields vary by `toolType`; the V-bit is the one
+ * worth a picture, because `diameter` and `tipDiameter` measure OPPOSITE ends
+ * and are easy to confuse:
+ *
+ *        diameter Ø  (cutting/major diameter — the WIDEST part, at the
+ *        |<------->|  top of the flutes; this is the conventional "size")
+ *   ─────┴─────────┴─────   top of cutting flutes
+ *         \       /
+ *          \ vAngle (the INCLUDED angle across the point, e.g. 60° — not
+ *           \  ↕  /   the half-angle; code halves it as vAngle/2)
+ *            \   /
+ *           ┌─┴─┐
+ *           tipDiameter  (the small flat at the POINT; 0 = perfectly sharp)
+ *
+ * end-mill: flat, `diameter` only. ball-nose: round tip, radius = `diameter`/2.
+ * drill: `diameter` + `tipAngle` (conical point, e.g. 118°).
+ */
 export interface ToolDef {
   id: string;
   name: string;
   toolType: ToolType;
-  diameter: number;       // mm
-  vAngle?: number;        // V-bit included angle, degrees
-  tipDiameter?: number;   // V-bit flat tip diameter, mm (0 = sharp)
+  diameter: number;       // mm — cutting/major diameter (widest part; see diagram above)
+  vAngle?: number;        // V-bit included angle (total, not half), degrees
+  tipDiameter?: number;   // V-bit flat tip diameter, mm (0 = sharp); the narrow end, ≠ diameter
   tipAngle?: number;      // Drill tip angle, degrees
   feedrate: number;       // mm/min
   plungeRate: number;     // mm/min
@@ -183,6 +201,16 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
  * Plunge depth (negative, mm) for a V-bit chamfer of the given face width: the
  * bit's flank reaches `chamferWidth` horizontally at `depth = width / tan(½·vAngle)`.
  * Shared by the G-code generator and the preview rasterizer so they agree.
+ *
+ *   stock top (Z=0) ──────┬──────────────
+ *                         │\
+ *        chamferWidth     │ \   ← bevel face; slope set by vAngle
+ *        |<-------->|     │  \
+ *                  depth ─┴───● ← V tip plunged to here
+ *
+ * Assumes a sharp tip (tipDiameter is intentionally not folded in). The face
+ * can't be wider than the bit's cutting radius (`diameter`/2); the G-code
+ * generator warns when `chamferWidth` exceeds it.
  */
 export function chamferDepth(op: CAMOperation): number {
   const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
