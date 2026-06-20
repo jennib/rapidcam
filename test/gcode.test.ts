@@ -359,7 +359,22 @@ const p3 = { x: 100, y: 104 };
   const liftMoves = sharp.filter(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z0\b/.test(l));
   check("sharpen-corners tapers to the surface at each inside corner (4)",
     liftMoves.length === 4, `got ${liftMoves.length}`);
+  // The lift must land ON each corner vertex (not an offset miter point) — this
+  // is what distinguishes the inside-corner taper from the earlier wrong version.
+  const corners = ["X50 Y50", "X150 Y50", "X150 Y120", "X50 Y120"];
+  check("each surface lift is at a corner vertex",
+    corners.every(c => liftMoves.some(l => l.startsWith(`G1 ${c} Z0`))),
+    liftMoves.join(" | "));
   check("plain chamfer has no mid-contour surface lifts",
     !out.split("\n").some(l => /^G1 X-?[\d.]+ Y-?[\d.]+ Z0\b/.test(l)), "");
+
+  // Derived depth exceeding stock thickness is flagged. doc stock = 10mm;
+  // a 30° V-bit at width 8 → depth 8/tan(15°) ≈ 29.9mm > 10.
+  const deep = generateGCode([{ ...cham, vAngle: 30, chamferWidth: 8 }], doc);
+  check("over-stock chamfer depth emits a NOTE",
+    /NOTE: chamfer depth .* exceeds stock thickness/.test(deep), "");
+  // A sane chamfer (depth < stock) does not.
+  check("normal chamfer depth emits no over-stock NOTE",
+    !/exceeds stock thickness/.test(out), "");
 }
 

@@ -776,6 +776,8 @@ function toolpathBody(
     if ((op.chamferWidth ?? 0) <= 0)
       return [`; NOTE: chamfer width is 0 — skipped`];
     const d = chamferDepth(op);
+    if (-d > doc.stockThickness)
+      lines.push(`; NOTE: chamfer depth ${n(-d)}mm exceeds stock thickness ${n(doc.stockThickness)}mm — reduce the chamfer width or use a wider-angle bit`);
     lines.push(`; Chamfer: ⌀ V-bit ${op.vAngle ?? 60}° · face ${op.chamferWidth}mm → depth ${n(d)}mm (${op.chamferSide ?? "on"})`);
   }
 

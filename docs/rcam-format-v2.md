@@ -277,7 +277,7 @@ Operations with no `toolId` use their inline fields directly.
 | `drill` | plunges at each entity (e.g. circle centres); `stepdown` ignored. Optional `peckDepth` (mm) drills in increments, fully retracting between pecks (G83-style) to clear chips |
 | `engrave` | follows geometry at depth |
 | `pocket` | clears an area; `pocketStrategy` (`"offset"`/`"raster"`), and `regions`. Optional `finishPass`/`finishAllowance` leave a wall skin during roughing and clean it in a final full-depth lap (round pockets clear with smooth G2 arcs + a helical entry) |
-| `chamfer` | bevels an edge with a **v-bit**: traces the (optionally offset) contour at a depth derived from `chamferWidth` and the bit's `vAngle`. `chamferSide` (`"on"`/`"outside"`/`"inside"`) places the bevel relative to the edge; optional `sharpenCorners` lifts the tip up into sharp convex corners so they come to a point instead of a fillet. Used e.g. to chamfer a Shaker-pocket edge after clearing it with a pocket op |
+| `chamfer` | bevels an edge with a **v-bit**: traces the (optionally offset) contour at a depth derived from `chamferWidth` and the bit's `vAngle`. `chamferSide` (`"on"`/`"outside"`/`"inside"`) places the bevel relative to the edge; optional `sharpenCorners` pulls the tip up into sharp inside corners (tapering the bevel to the surface at the corner vertex) so they come to a point instead of a fillet. Used e.g. to chamfer a Shaker-pocket edge after clearing it with a pocket op |
 
 `regions` (pocket) is the subtle one. A pocket clears one or more **enclosed
 faces** of the drawing. Each region is identified *parametrically* — not by a
