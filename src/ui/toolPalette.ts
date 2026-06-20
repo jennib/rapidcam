@@ -1,6 +1,7 @@
 /** Left-hand tool palette. Builds a button per tool and reflects the active one. */
 
 import { ToolManager } from "../tools/tool";
+import { shortcutForTool } from "../tools/shortcuts";
 
 // Tool IDs after which a visual separator is inserted.
 const SEP_AFTER = new Set(["select", "text", "dimension"]);
@@ -13,7 +14,8 @@ export class ToolPalette {
     tools.forEach((tool) => {
       const btn = document.createElement("button");
       btn.className = "tool-btn";
-      btn.dataset.tip = tool.label;
+      const key = shortcutForTool(tool.id);
+      btn.dataset.tip = key ? `${tool.label} (${key})` : tool.label;
       btn.innerHTML = tool.icon;
       btn.addEventListener("click", () => manager.activate(tool.id));
       host.appendChild(btn);

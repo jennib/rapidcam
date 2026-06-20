@@ -82,7 +82,7 @@ function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
 
 export class MirrorTool implements Tool {
   readonly id    = "mirror";
-  readonly label = "Mirror (M)";
+  readonly label = "Mirror";
   readonly icon  = ICONS.mirror;
 
   private axisStart: Vec2 | null = null;

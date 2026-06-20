@@ -8,7 +8,7 @@ import { ICONS } from "./icons";
 
 export class CircleTool implements Tool {
   readonly id = "circle";
-  readonly label = "Circle (C)";
+  readonly label = "Circle";
   readonly icon = ICONS.circle;
 
   private center: Vec2 | null = null;

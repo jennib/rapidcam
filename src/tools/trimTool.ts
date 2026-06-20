@@ -562,7 +562,7 @@ function erasePreview(ent: Entity): PreviewShape | null {
 
 export class TrimTool implements Tool {
   readonly id    = "trim";
-  readonly label = "Trim (T)";
+  readonly label = "Trim";
   readonly icon  = ICONS.trim;
 
   private hover: PreviewShape | null = null;

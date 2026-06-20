@@ -12,7 +12,7 @@ import { ICONS } from "./icons";
 
 export class RectTool implements Tool {
   readonly id = "rect";
-  readonly label = "Rectangle (R)";
+  readonly label = "Rectangle";
   readonly icon = ICONS.rect;
 
   private corner: Vec2 | null = null;

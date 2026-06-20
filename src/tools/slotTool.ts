@@ -11,7 +11,7 @@ type Phase = "first" | "second" | "radius";
 
 export class SlotTool implements Tool {
   readonly id = "slot";
-  readonly label = "Slot (U)";
+  readonly label = "Slot";
   readonly icon = ICONS.slot;
 
   private phase: Phase = "first";

@@ -16,7 +16,7 @@ type Phase = "p0" | "p3" | "p1" | "p2";
 
 export class BezierTool implements Tool {
   readonly id = "bezier";
-  readonly label = "Bezier (B)";
+  readonly label = "Bezier";
   readonly icon = ICONS.bezier;
 
   private phase: Phase = "p0";

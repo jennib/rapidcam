@@ -15,7 +15,7 @@ import { orthoSnap } from "../input/snapping";
 
 export class PolylineTool implements Tool {
   readonly id = "polyline";
-  readonly label = "Polyline (P)";
+  readonly label = "Polyline";
   readonly icon = ICONS.polyline;
 
   private points: Vec2[] = [];

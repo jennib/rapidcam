@@ -17,6 +17,7 @@ import { Overlay } from "./view/overlay";
 import { SnapEngine, SnapResult } from "./input/snapping";
 import { solve, PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, ToolPointerEvent } from "./tools/tool";
+import { TOOL_SHORTCUTS } from "./tools/shortcuts";
 import { SelectTool, pickConstraintAt } from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
 import { RectTool } from "./tools/rectTool";
@@ -58,26 +59,6 @@ import { initBundledFonts } from "./core/fontManager";
 import { track } from "./analytics";
 
 const HOVER_TOLERANCE_PX = 8;
-
-const SHORTCUTS: Record<string, string> = {
-  v: "select",
-  l: "line",
-  r: "rect",
-  c: "circle",
-  a: "arc",
-  p: "polyline",
-  d: "dimension",
-  o: "offset",
-  b: "bezier",
-  q: "rotate",
-  s: "scale",
-  x: "text",
-  f: "fillet",
-  t: "trim",
-  m: "mirror",
-  u: "slot",
-  n: "polygon",
-};
 
 export class App {
   private doc: CADDocument;
@@ -784,7 +765,7 @@ export class App {
       return;
     }
 
-    const toolId = SHORTCUTS[ev.key.toLowerCase()];
+    const toolId = TOOL_SHORTCUTS[ev.key.toLowerCase()];
     if (toolId && !ev.ctrlKey && !ev.metaKey && !ev.defaultPrevented) {
       this.tools.activate(toolId);
     }

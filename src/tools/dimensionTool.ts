@@ -37,7 +37,7 @@ interface Pick {
 
 export class DimensionTool implements Tool {
   readonly id = "dimension";
-  readonly label = "Dimension (D)";
+  readonly label = "Dimension";
   readonly icon = ICONS.dimension;
 
   private phase: Phase = "first";

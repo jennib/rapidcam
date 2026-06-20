@@ -279,7 +279,7 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
 
 export class FilletTool implements Tool {
   readonly id    = "fillet";
-  readonly label = "Fillet (F)";
+  readonly label = "Fillet";
   readonly icon  = ICONS.fillet;
 
   private phase: Phase = "idle";

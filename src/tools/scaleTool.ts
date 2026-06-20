@@ -7,7 +7,7 @@ import { ICONS } from "./icons";
 
 export class ScaleTool implements Tool {
   readonly id = "scale";
-  readonly label = "Scale (S)";
+  readonly label = "Scale";
   readonly icon = ICONS.scale;
 
   private mode: "idle" | "maybeSelect" | "dragScale" | "marquee" = "idle";

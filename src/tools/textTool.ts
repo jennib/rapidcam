@@ -7,7 +7,7 @@ import { defaultFontId } from "../core/fontManager";
 
 export class TextTool implements Tool {
   readonly id = "text";
-  readonly label = "Text (T)";
+  readonly label = "Text";
   readonly icon = ICONS.text;
 
   private pendingText = "";

@@ -9,7 +9,7 @@ import { orthoSnap } from "../input/snapping";
 
 export class LineTool implements Tool {
   readonly id = "line";
-  readonly label = "Line (L)";
+  readonly label = "Line";
   readonly icon = ICONS.line;
 
   private start: Vec2 | null = null;

@@ -287,7 +287,7 @@ type Phase = "idle" | "placing";
 
 export class OffsetTool implements Tool {
   readonly id = "offset";
-  readonly label = "Offset (O)";
+  readonly label = "Offset";
   readonly icon = ICONS.offset;
 
   private phase: Phase = "idle";

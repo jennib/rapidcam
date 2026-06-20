@@ -12,7 +12,7 @@ type Phase = "center" | "start" | "end";
 
 export class ArcTool implements Tool {
   readonly id = "arc";
-  readonly label = "Arc (A)";
+  readonly label = "Arc";
   readonly icon = ICONS.arc;
 
   private phase: Phase = "center";

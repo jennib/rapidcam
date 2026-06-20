@@ -7,7 +7,7 @@ import { ICONS } from "./icons";
 
 export class RotateTool implements Tool {
   readonly id = "rotate";
-  readonly label = "Rotate (R)";
+  readonly label = "Rotate";
   readonly icon = ICONS.rotate;
 
   private mode: "idle" | "maybeSelect" | "dragRotate" | "marquee" = "idle";

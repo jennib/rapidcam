@@ -13,7 +13,7 @@ type Phase = "center" | "radius";
 
 export class PolygonTool implements Tool {
   readonly id = "polygon";
-  readonly label = "Polygon (N)";
+  readonly label = "Polygon";
   readonly icon = ICONS.polygon;
 
   private phase: Phase = "center";
