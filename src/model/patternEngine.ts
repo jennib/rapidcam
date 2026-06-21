@@ -164,6 +164,37 @@ export function regenerateParamStalePatterns(doc: CADDocument): boolean {
   return changed;
 }
 
+/**
+ * True if a pattern's source geometry has moved since the instances were last
+ * applied (its snapshot no longer matches). Patterns without a snapshot (legacy)
+ * are never source-stale.
+ */
+export function isSourceStale(doc: CADDocument, pat: PatternDef): boolean {
+  return pat.sourceSnapshot !== undefined
+    && computeSourceSnapshot(doc.entities, pat.sourceIds) !== pat.sourceSnapshot;
+}
+
+/**
+ * Regenerate every pattern that is stale for ANY reason — its count/spacing
+ * expression resolves differently (a variable changed) OR its source geometry
+ * moved. Used on a deliberate variable commit so the copies follow both the
+ * count and a variable-driven source move. Returns whether anything changed;
+ * the caller owns the history transaction and re-solves afterwards.
+ */
+export function regenerateStalePatterns(doc: CADDocument): boolean {
+  let changed = false;
+  for (const pat of [...doc.patterns]) {
+    if (!isParamStale(doc, pat) && !isSourceStale(doc, pat)) continue;
+    if (pat.kind === "linear") {
+      regenerateLinearPattern(doc, pat, pat.params as LinearPatternParams);
+    } else {
+      regenerateCircularPattern(doc, pat, pat.params as CircularPatternParams);
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------------------
 // Step builders (the source-of-truth for instance ordering & keys)
 

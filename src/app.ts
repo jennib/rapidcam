@@ -39,7 +39,7 @@ import { MirrorTool } from "./tools/mirrorTool";
 import { joinSelected } from "./tools/joinCommand";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
 import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
-import { regenerateAllStalePatterns, regenerateParamStalePatterns } from "./model/patternEngine";
+import { regenerateAllStalePatterns, regenerateStalePatterns } from "./model/patternEngine";
 import { computeSourceSnapshot } from "./model/patterns";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
@@ -344,23 +344,24 @@ export class App {
   private autoRegenerating = false;
 
   /**
-   * A variable was committed (name/value/delete). Re-evaluate variables, then
-   * regenerate any pattern whose expression-driven count/spacing changed, then
-   * solve — all inside the history transaction the VariablesBar already opened,
-   * so one undo reverts the edit and the regen together. The guard prevents a
-   * regen's emitChange from recursing back in.
+   * A variable was committed (name/value/delete). Re-evaluate variables and
+   * solve so any variable-driven dimensions move their geometry into place, then
+   * regenerate any pattern that became stale — whether its count/spacing
+   * expression changed or its source moved — and solve again to refresh. All
+   * inside the history transaction the VariablesBar already opened, so one undo
+   * reverts the edit and the regen together. The guard keeps a regen's
+   * emitChange from recursing back in.
    */
   private onVariablesChanged(): void {
     evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
-    if (!this.autoRegenerating) {
-      this.autoRegenerating = true;
-      try {
-        regenerateParamStalePatterns(this.doc);
-      } finally {
-        this.autoRegenerating = false;
-      }
+    this.runSolve(); // settle variable-driven geometry before reading staleness
+    if (this.autoRegenerating) return;
+    this.autoRegenerating = true;
+    try {
+      if (regenerateStalePatterns(this.doc)) this.runSolve();
+    } finally {
+      this.autoRegenerating = false;
     }
-    this.runSolve();
   }
 
   private runSolve(pins?: PinMap): void {

@@ -17,6 +17,8 @@ import {
   regenerateCircularPattern,
   isParamStale,
   regenerateParamStalePatterns,
+  isSourceStale,
+  regenerateStalePatterns,
 } from "../src/model/patternEngine";
 import type { LinearPatternParams, CircularPatternParams } from "../src/model/patterns";
 import { evaluateAll } from "../src/model/variables";
@@ -194,6 +196,45 @@ describe("auto-regen of param-stale patterns", () => {
     expect(regenerateParamStalePatterns(doc)).toBe(true); // ...then auto-regenerates
     expect(pat.params.countX).toBe(8);
     expect(pat.instanceIds.flat().length).toBe(7);
+  });
+});
+
+describe("regenerateStalePatterns (param OR source staleness)", () => {
+  it("regenerates a pattern whose source moved, following it with stable ids", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], lin(3, 1, 30, 0)); // copies at x=30,60
+    const id1 = pat.instanceIds[0][0];
+    expect(isSourceStale(doc, pat)).toBe(false);
+
+    // Move the source (as a variable-driven dimension would after solve).
+    src.translate({ x: 0, y: 100 });
+    expect(isSourceStale(doc, pat)).toBe(true);
+
+    expect(regenerateStalePatterns(doc)).toBe(true);
+    expect(isSourceStale(doc, pat)).toBe(false); // snapshot refreshed
+    expect(pat.instanceIds[0][0]).toBe(id1); // id preserved
+    const moved = doc.entities.find((e) => e.id === id1) as CircleEntity;
+    expect(moved.center.y).toBeCloseTo(100); // instance followed the source
+  });
+
+  it("also covers count-from-variable staleness in the same pass", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+    });
+    doc.variables[0].value = 5;
+    expect(regenerateStalePatterns(doc)).toBe(true);
+    expect(pat.params.countX).toBe(5);
+  });
+
+  it("is a no-op when nothing is stale", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    createLinearPattern(doc, [src.id], lin(3, 1));
+    expect(regenerateStalePatterns(doc)).toBe(false);
   });
 });
 

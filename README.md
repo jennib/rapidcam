@@ -79,7 +79,7 @@ Named variables (`pitch`, `diameter`, …) can be defined in the Variables panel
 
 - **Linear pattern** — copies geometry in an X/Y grid; **Circular pattern** — copies around a centre point over a total angle
 - **Count *and* spacing accept variable expressions** (e.g. a `tabs` variable, or `pitch * 2`), so a variable can drive how *many* copies exist, not just where they sit
-- Patterns **regenerate automatically** when a driving variable changes — bump `tabs` from 6 to 10 and the copies update in place, preserving existing copies' identity along with any constraints/dimensions on them (moved source geometry is re-applied from the dialog or **Edit → Regenerate Patterns**)
+- Patterns **regenerate automatically** when a driving variable changes — whether it changes the *count* (bump `tabs` from 6 to 10) or moves the *source* geometry (a `pcd` that drives the master's position) — preserving existing copies' identity along with any constraints/dimensions on them (dragging source geometry by hand instead flags the pattern for **Edit → Regenerate Patterns**)
 - **CAM toolpaths follow patterns** — assign a profile, drill, etc. to the master and every copy is cut, tracking the count as it changes
 
 ### Layers

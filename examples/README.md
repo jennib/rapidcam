@@ -22,7 +22,7 @@ at the top and work down.
 | File | What it shows |
 |------|---------------|
 | [bracket.rcam](bracket.rcam) | An L-shaped profile driven entirely to **"Fully constrained"** with per-segment horizontal/vertical constraints and four dimensions. Edit any dimension and the whole outline reflows while staying square. |
-| [bolt-circle.rcam](bolt-circle.rcam) | A 6-hole bolt flange driven by **variables**. The Variables panel defines `pcd` (pitch-circle diameter) and `holeDia`; the source hole's position and size reference them. The other five holes are a **circular pattern**. Change `pcd` in the Variables panel, then Edit → Regenerate Patterns to spread the bolt circle. The green hole is the parametric master; the blue ones are pattern copies (regenerated geometry, not constraint-solved — so they read as under-defined, which is expected). |
+| [bolt-circle.rcam](bolt-circle.rcam) | A 6-hole bolt flange driven by **variables**. The Variables panel defines `pcd` (pitch-circle diameter) and `holeDia`; the source hole's position and size reference them. The other five holes are a **circular pattern**. Change `pcd` in the Variables panel and the bolt circle re-spreads automatically (the pattern follows its variable-driven source). The green hole is the parametric master; the blue ones are pattern copies (regenerated geometry, not constraint-solved — so they read as under-defined, which is expected). |
 
 ### Bonus — the RapidCAM mark
 
