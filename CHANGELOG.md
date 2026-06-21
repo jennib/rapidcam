@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.0] — 2026-06-21
 
 ### Added
 - **`.rcam` v2 format** — a published [JSON Schema](public/schema/rcam-v2.schema.json) and [authoring guide](docs/rcam-format-v2.md) document the file format (entity point-key vocabularies, constraint/dimension semantics, CAM operations). A drift-guard test validates every bundled example against the schema. Lets external tools and AIs author `.rcam` files reliably. v2 drops transient editor/selection state from the file (a `.rcam` describes a design, not a session) and **embeds the fonts** used by text entities so a saved job reproduces its glyph outlines — and toolpaths — on any machine. Version-1 files open and are upgraded automatically.
@@ -32,6 +32,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CAM: End-of-program park** — optional `endPosition` rapids the tool to a work-coordinate position (e.g. 0,0) at safe Z before `M30`.
 - **CAM: Export selected toolpaths** — tick a subset of toolpaths and export them to a single G-code file (e.g. all the operations that share a tool).
 - **CAM: Chamfer (V-bevel) operation** — bevels an edge with a V-bit by specifying the bevel **width**; the plunge depth is derived from the bit angle (`depth = width / tan(½·vAngle)`), with a live depth/angle readout. `chamferSide` (`on`/`outside`/`inside`) places the bevel relative to the edge. Optional **Sharpen corners** pulls the tip up into each sharp inside corner (tapering the bevel to the surface at the vertex) so corners come to a crisp point instead of a rounded fillet. Targets closed contours (pocket boundaries, profiles) and open edges; mirrored in the 3D preview. Designed for Shaker-style pocket chamfers.
+- **CAM: V-carving** — variable-depth carving with a V-bit. The cut depth tracks each point's distance from the region wall (offset-peeling), so strokes taper to a sharp medial-axis spine and bottom out flat once they reach the set max depth. Carves text (letter counters are recognised as holes), directly-selected closed shapes, and **flood-fill-picked regions with islands**; the radial pass pitch (`vStep`) sets floor smoothness. Mirrored in the 3D preview.
 - **Toolpath dialog placement** — the Add/Edit Toolpath dialog opens on the right side of the screen and remembers its last dragged position across sessions.
 - **Privacy-respecting analytics** — usage analytics are sent only after explicit consent (banner), Do-Not-Track is honoured, and nothing is captured otherwise.
 - **SVG export improvements** — exports clean paths with layer colour preservation.
@@ -42,6 +43,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CAM: Profile lead entry point** — when a lead-in/out is configured, profiles now anchor the lead (and plunge) at the **midpoint of the longest edge** instead of a corner, for a gentler entry and a witness mark on a flat run. Plain profiles with no lead are unchanged (still start at the natural corner).
 - **CAM: Circular pockets** now clear with smooth concentric `G2` arcs and a true **helical (`G2`+Z) entry**, replacing the old straight-plunge raster — smoother walls and a gentler descent.
 - **CAM: 3D preview fidelity** — the stock simulation now mirrors lead-in/out moves (and the mid-side start), so the preview matches the generated G-code; tabs were already shown. Machine configuration (post-processor, tool changer, coolant capability, custom start/end G-code) is consolidated into a single top-bar **Settings** dialog instead of being split across panels.
+- **CAM: Profile arc-fitting** — tool-compensated profiles now post curved runs as smooth `G2`/`G3` arcs instead of many short `G1` facets (fitted within a 0.05 mm tolerance; swept-angle capped so a circle splits into a few well-conditioned arcs). Straight-edged profiles are byte-identical to before.
 
 ### Fixed
 - Constraint solver: under-constrained geometry no longer rotates unexpectedly when a driving dimension value is changed. Non-pinned DOFs are always anchored (Tikhonov regularisation, weight 1e-3) so the solver picks the minimum-displacement solution in all situations, not just during drag.

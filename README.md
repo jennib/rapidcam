@@ -4,7 +4,7 @@
 
 Draw geometry, add geometric constraints and driving dimensions, then generate G-code — all in the browser, no install required.
 
-**Live demo:** [https://rapidcam.mycnc.app](https://rapidcam.mycnc.app)
+**Live demo:** [https://rapidcam.app](https://rapidcam.app)
 
 ---
 
@@ -33,7 +33,7 @@ Draw geometry, add geometric constraints and driving dimensions, then generate G
 | Polygon | `N` | Click centre then a vertex; `[`/`]` change side count |
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
-| Text | `X` | Click to place; double-click to edit in place; text outlines are pocketable via region pick |
+| Text | — | Click to place; double-click to edit in place; outlines can be profiled, pocketed, engraved, or **v-carved** |
 | Dimension | `D` | Click an entity to annotate; drag the witness line |
 | Offset | `O` | Click an entity to offset inward or outward |
 | Fillet | `F` | Click a sharp corner to round it with a user-typed radius |
@@ -87,12 +87,16 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 
 | Feature | Details |
 |---------|---------|
-| Profile cut | Contour-follows any closed chain; lead-in / lead-out arcs |
-| Pocket clearing | Adaptive contour-parallel clearing (default) — concentric offset loops that wrap islands with helical entry and no per-row lifting — or classic zig-zag raster; both respect islands and flood-fill region picking |
+| Profile cut | Contour-follows any closed chain; inside/outside, tabs, lead-in / lead-out arcs, optional full-depth finishing pass. Curved profiles post as smooth `G2`/`G3` (arc-fitted) instead of faceted G1 |
+| Pocket clearing | Adaptive contour-parallel clearing (default) — concentric offset loops that wrap islands with helical entry and no per-row lifting — or classic zig-zag raster; both respect islands and flood-fill region picking; optional finishing pass |
+| Engrave | Follows geometry on its centreline at depth (lines, arcs, beziers, text); standalone arcs/beziers emit native `G2`/`G3` |
+| V-carve | Variable-depth carving with a V-bit — depth tracks distance from the wall so strokes taper to a sharp spine, clamped to a max depth. Carves text (counters become holes) and flood-fill regions (with islands); shown in the 3D preview |
+| Chamfer | Bevels an edge with a V-bit by **width**; plunge depth derived from the bit angle, with an optional sharp-corner lift |
+| Drill | Plunge at points / circle centres; optional G83-style peck retract |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
-| Tool library | Named tool definitions with diameter, flute count, feed/speed presets |
-| G-code export | GRBL and LinuxCNC post-processors |
-| WebGL toolpath preview | 3D preview of the cut paths |
+| Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
+| G-code export | GRBL and LinuxCNC post-processors; post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
+| WebGL toolpath preview | 3D stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill) |
 
 > **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
 
@@ -163,8 +167,11 @@ src/
 │   ├── loops.ts        # Closed-loop detection (lines/arcs/beziers → polygons)
 │   ├── regions.ts      # Flood-fill region picking (Clipper2 booleans)
 │   ├── offset.ts       # Contour offsetting (via Clipper2)
+│   ├── vcarve.ts       # V-carve offset-peeling solver (variable depth)
+│   ├── arcfit.ts       # Arc-fit profile polylines → G2/G3
 │   ├── tabs.ts         # Tab/bridge insertion
 │   ├── gcode.ts        # G-code builder
+│   ├── stockRasterizer.ts # Height-field stock sim for the 3D preview
 │   ├── toolLibrary.ts
 │   └── postprocessors/ # GRBL, LinuxCNC
 │

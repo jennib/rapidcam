@@ -1,6 +1,6 @@
 {
   "name": "rapidcam",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Web-based parametric 2D vector editor — foundation for a CNC CAM program",
   "license": "AGPL-3.0-only",
   "type": "module",
