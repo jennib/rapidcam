@@ -36,6 +36,7 @@ at the top and work down.
 |------|---------------|
 | [mounting-plate-cam.rcam](mounting-plate-cam.rcam) | The mounting plate with two ready-to-run toolpaths — drill the holes, profile-cut the outline with tabs. |
 | [enclosure-lid.rcam](enclosure-lid.rcam) | A pocketed lid: an **adaptive contour-parallel pocket** that clears a recess around a central boss (island), then a tabbed profile cut of the outline. Showcases flood-fill region picking and island handling. |
+| [box-joint-tab-slot.rcam](box-joint-tab-slot.rcam) | A **box-joint (finger-joint) panel**: a single closed polyline whose top edge alternates tabs and slots, with a tabbed profile cut ready to run. Shows how interlocking tab/slot geometry is represented — the fingers are explicit polyline vertices (a `.rcam` file is a static snapshot, so the count is fixed; to vary it, draw one finger and use the **Linear Pattern** tool, or edit the points). |
 
 ## mounting-plate.rcam — guided tour
 

@@ -28,6 +28,7 @@ const ORDER = [
   "bolt-circle.rcam",
   "mounting-plate-cam.rcam", // Tier 3 — full CAM pipeline
   "enclosure-lid.rcam",
+  "box-joint-tab-slot.rcam",
 ];
 
 let cache: ExampleEntry[] | null = null;

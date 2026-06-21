@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "name": "Box-Joint Tab & Slot Panel",
+  "canvas": { "width": 140, "height": 80 },
+  "displayUnit": "mm",
+  "stockThickness": 6,
+  "postProcessor": "grbl",
+  "variables": [
+    { "id": "var-tabwidth",   "name": "tabWidth",   "expr": "20", "value": 20 },
+    { "id": "var-fingerdepth","name": "fingerDepth","expr": "10", "value": 10 }
+  ],
+  "entities": [
+    {
+      "type": "polyline",
+      "id": "panel",
+      "closed": true,
+      "points": [
+        { "x": 0,   "y": 0 },
+        { "x": 120, "y": 0 },
+        { "x": 120, "y": 50 },
+        { "x": 100, "y": 50 },
+        { "x": 100, "y": 60 },
+        { "x": 80,  "y": 60 },
+        { "x": 80,  "y": 50 },
+        { "x": 60,  "y": 50 },
+        { "x": 60,  "y": 60 },
+        { "x": 40,  "y": 60 },
+        { "x": 40,  "y": 50 },
+        { "x": 20,  "y": 50 },
+        { "x": 20,  "y": 60 },
+        { "x": 0,   "y": 60 }
+      ]
+    }
+  ],
+  "constraints": [],
+  "dimensions": [
+    {
+      "id": "dim-tabwidth",
+      "type": "horizontal",
+      "points": [
+        { "entityId": "panel", "key": "v4" },
+        { "entityId": "panel", "key": "v5" }
+      ],
+      "value": 20,
+      "driving": false,
+      "offset": 12
+    }
+  ],
+  "operations": [
+    {
+      "id": "op-profile",
+      "name": "Cut panel outline",
+      "type": "profile",
+      "entityIds": ["panel"],
+      "side": "outside",
+      "toolType": "end-mill",
+      "toolNumber": 1,
+      "diameter": 3,
+      "feedrate": 800,
+      "plungeRate": 250,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -6.5,
+      "stepdown": 2,
+      "stepover": 0.4,
+      "tabs": { "enabled": true, "count": 4, "width": 5, "height": 1.5 }
+    }
+  ]
+}
