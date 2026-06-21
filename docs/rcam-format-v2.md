@@ -265,6 +265,11 @@ it does not generate geometry on load.
   variable can drive how *many* copies exist, not just their spacing. The
   `instanceIds` snapshot still must match the resolved count; regenerating in the
   app reconciles it.
+- **CAM follows patterns.** A toolpath whose `entityIds` reference any member of a
+  pattern (its source or any instance) is expanded at toolpath/preview time to
+  cover the whole pattern — so a profile/drill assigned to patterned geometry
+  cuts every copy and tracks the count as it grows or shrinks. You only need to
+  assign the op to the master; you don't have to list every copy in `entityIds`.
 
 ## CAM operations
 

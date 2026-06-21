@@ -277,6 +277,12 @@ export class CADDocument {
         .map((inst) => inst.filter((id) => ids.has(id)))
         .filter((inst) => inst.length > 0);
     }
+    // Drop dangling entity refs from CAM operations so a removed entity — e.g. a
+    // pattern instance when a count shrinks — leaves the toolpath consistent.
+    for (const op of this.operations) {
+      op.entityIds = op.entityIds.filter((id) => ids.has(id));
+      if (op.islandIds) op.islandIds = op.islandIds.filter((id) => ids.has(id));
+    }
   }
 
   // --- patterns ------------------------------------------------------------

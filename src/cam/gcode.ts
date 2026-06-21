@@ -12,6 +12,7 @@ import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
 import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
 import { fitArcs } from "./arcfit";
+import { expandOpPatternTargets } from "./patternExpand";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -1067,9 +1068,10 @@ export function generateGCode(
 ): string {
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
-  // Resolve each op's tool reference up front so every downstream read of
+  // Expand pattern targets (so a toolpath follows its pattern's count), then
+  // resolve each op's tool reference up front so every downstream read of
   // op.diameter/feedrate/etc. sees the embedded tool's values when toolId is set.
-  const ops = rawOps.map((op) => resolveOpTool(op, doc.tools));
+  const ops = rawOps.map((op) => resolveOpTool(expandOpPatternTargets(op, doc), doc.tools));
 
   const { ox, oy, zOffset } = resolveOrigin(doc);
   const pp = getPostProcessor(doc.postProcessor ?? "linuxcnc");

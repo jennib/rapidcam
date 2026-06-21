@@ -26,6 +26,7 @@ import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
+import { expandOpPatternTargets } from "./patternExpand";
 import { resolveRegion } from "./regions";
 import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
 import type { Entity } from "../model/entities";
@@ -53,7 +54,9 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   const data   = new Float32Array(gridW * gridH).fill(stockT);
 
   const entityMap = new Map(doc.entities.map(e => [e.id, e]));
-  for (const op of ops) rasterizeOp(op, entityMap, data, gridW, gridH, stockT);
+  // Expand pattern targets so the 3D preview matches the toolpath: an op on
+  // patterned geometry renders all instances and follows the count.
+  for (const op of ops) rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT);
 
   return { data, gridW, gridH, stockW, stockH, stockT };
 }
