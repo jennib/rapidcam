@@ -11,6 +11,7 @@ import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
 import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
+import { fitArcs } from "./arcfit";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -118,11 +119,22 @@ function profilePolygon(
     }
 
     if (!useTabsThisPass) {
-      for (let i = 1; i < path.length; i++) {
-        const f = (i === 1 && liType === "none") ? ` F${n(op.feedrate)}` : "";
-        lines.push(`G1 X${X(path[i].x, ox)} Y${Y(path[i].y, oy)}${f}`);
+      // Arc-fit the closed lap so curved profiles post as smooth G2/G3 instead of
+      // a run of G1 facets. Straight-edged profiles fit to all lines → identical
+      // output. I/J are the centre offset from each move's start point.
+      let cur = s;
+      let first = true;
+      for (const mv of fitArcs([...path, s])) {
+        const f = (first && liType === "none") ? ` F${n(op.feedrate)}` : "";
+        if (mv.kind === "line") {
+          lines.push(`G1 X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)}${f}`);
+        } else {
+          const cmd = mv.cw ? "G2" : "G3";
+          lines.push(`${cmd} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}${f}`);
+        }
+        cur = mv.to;
+        first = false;
       }
-      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
     } else {
       const cumLens  = pathLengths(path);
       const totalLen = cumLens[path.length];
