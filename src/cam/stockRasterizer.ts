@@ -27,6 +27,7 @@ import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
+import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
 import type { Entity } from "../model/entities";
 import { flattenBezier } from "../core/geom";
 
@@ -70,6 +71,11 @@ function rasterizeOp(
 ): void {
   if (op.type === "chamfer") {
     rasChamfer(op, entityMap, data, gridW, gridH, stockT);
+    return;
+  }
+
+  if (op.type === "vcarve") {
+    rasVcarve(op, entityMap, data, gridW, gridH, stockT);
     return;
   }
 
@@ -269,6 +275,65 @@ function rasChamfer(
     } else if (ent instanceof BezierEntity) {
       sweepPolyline(cop, data, gridW, gridH, stockT,
         flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
+    }
+  }
+}
+
+/**
+ * V-carve preview: peel each region into depth passes (same solver the G-code
+ * uses) and walk every pass contour with the V-cone stamp at its depth, so the
+ * height field shows the tapered, spine-sharpened cut. Resolves geometry the same
+ * three ways as the G-code: picked regions, text glyphs, and closed entities.
+ */
+function rasVcarve(
+  op: CAMOperation,
+  entityMap: Map<string, unknown>,
+  data: Float32Array, gridW: number, gridH: number, stockT: number,
+): void {
+  if (op.toolType !== "v-bit") return;
+  const stamp = makeStampFn(op, data, gridW, gridH, stockT);
+  const stepR = effectiveToolR(op);
+  const params = vcarveParamsForOp(op);
+
+  const carve = (region: CarveRegion): void => {
+    for (const pass of vcarveRegion(region.outer, region.holes, params)) {
+      const depth = stockT + pass.depth;
+      for (const loop of pass.loops) {
+        const np = loop.length;
+        if (np < 2) continue;
+        for (let i = 0; i < np; i++)
+          walkSegment(loop[i], loop[(i + 1) % np], stepR, depth, stamp);
+      }
+    }
+  };
+
+  // Picked regions take precedence (they carry counters as holes).
+  if (op.regions && op.regions.length > 0) {
+    const loops = collectClosedLoops(entityMap.values() as Iterable<Entity>);
+    for (const ref of op.regions) {
+      const region = resolveRegion(ref, loops);
+      if (region) carve({ outer: region.outer, holes: region.holes });
+    }
+    return;
+  }
+
+  for (const id of op.entityIds) {
+    const ent = entityMap.get(id) as any;
+    if (!ent || ent.isConstruction) continue;
+    if (ent instanceof TextEntity) {
+      for (const region of groupContoursIntoRegions(textToContours(ent).map((c) => c.points)))
+        carve(region);
+    } else if (ent instanceof RectEntity) {
+      carve({ outer: [...ent.corners()], holes: [] });
+    } else if (ent instanceof PolylineEntity && ent.closed) {
+      carve({ outer: ent.points, holes: [] });
+    } else if (ent instanceof CircleEntity) {
+      const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
+      const outer = Array.from({ length: nSegs }, (_, i) => {
+        const a = (i / nSegs) * 2 * Math.PI;
+        return { x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) };
+      });
+      carve({ outer, holes: [] });
     }
   }
 }

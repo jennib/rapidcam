@@ -316,6 +316,8 @@ export class CamBar {
       op.type === "profile" ? (op.side === "outside" ? "OUT" : "IN")
       : op.type === "pocket"  ? "PKT"
       : op.type === "engrave" ? "ENG"
+      : op.type === "chamfer" ? "CHM"
+      : op.type === "vcarve"  ? "VCV"
       : "DRL";
     item.appendChild(badge);
 
@@ -413,6 +415,7 @@ export class CamBar {
       chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
       chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
       sharpenCorners: existing?.sharpenCorners ?? false,
+      vStep: existing?.vStep ?? DEFAULTS.vStep,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -468,6 +471,7 @@ export class CamBar {
       ["profile-inside",  "Profile (inside)"],
       ["pocket",          "Pocket (interior clear)"],
       ["chamfer",         "Chamfer (V-bevel edge)"],
+      ["vcarve",          "V-Carve (text/shape)"],
       ["engrave",         "Engrave"],
       ["drill",           "Drill"],
     ];
@@ -549,6 +553,17 @@ export class CamBar {
     });
     const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
     cutSec.appendChild(stepoverRow);
+
+    // V-carve pitch — radial inset between offset-peel passes (mm). Smaller =
+    // smoother floor, more passes. Depth field acts as the max (floor) depth.
+    const vStepInp = document.createElement("input");
+    vStepInp.type = "number"; vStepInp.className = "dim"; vStepInp.step = "any"; vStepInp.min = "0.01";
+    vStepInp.value = String(state.vStep);
+    vStepInp.addEventListener("change", () => {
+      const v = parseFloat(vStepInp.value); if (isFinite(v) && v > 0) state.vStep = v;
+    });
+    const vStepRow = this.dField("V-carve pitch (mm)", vStepInp);
+    cutSec.appendChild(vStepRow);
 
     const strategySelect = document.createElement("select");
     strategySelect.className = "unit";
@@ -682,16 +697,18 @@ export class CamBar {
         nameInput.value = state.name;
       }
       if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
-      stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+      stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
       peckRow.style.display     = state.combo === "drill"   ? "" : "none";
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+      vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
       updateChamferVisibility();
-      // A chamfer needs a V-bit (the bevel angle comes from the tool).
-      if (state.combo === "chamfer" && state.toolType !== "v-bit") hooks.setToolType("v-bit");
+      // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
+      if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit")
+        hooks.setToolType("v-bit");
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -701,10 +718,11 @@ export class CamBar {
       }
       renderEntities();
     });
-    stepRow.style.display     = state.combo === "drill"   ? "none" : "";
+    stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
     peckRow.style.display     = state.combo === "drill"   ? "" : "none";
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
+    vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
     {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
@@ -751,6 +769,7 @@ export class CamBar {
       else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
       else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
       else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
+      else if (state.combo === "vcarve") { type = "vcarve"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
 
@@ -776,6 +795,7 @@ export class CamBar {
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
         chamferSide: type === "chamfer" ? state.chamferSide : undefined,
         sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
+        vStep: type === "vcarve" ? state.vStep : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: type === "pocket"
@@ -862,6 +882,7 @@ export class CamBar {
       : combo === "profile-inside" ? "Profile (inside)"
       : combo === "pocket"  ? "Pocket"
       : combo === "chamfer" ? "Chamfer"
+      : combo === "vcarve"  ? "V-Carve"
       : combo === "engrave" ? "Engrave"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;

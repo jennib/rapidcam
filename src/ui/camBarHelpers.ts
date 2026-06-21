@@ -21,10 +21,10 @@ import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
 
-export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer";
+export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve";
 
 /** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer) \d+$/;
+export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve) \d+$/;
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -60,6 +60,14 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
     case "engrave":
     case "chamfer":
       return true;
+    case "vcarve":
+      // V-carve fills closed regions; text is the main use case.
+      return (
+        e instanceof TextEntity ||
+        e instanceof CircleEntity ||
+        e instanceof RectEntity ||
+        (e instanceof PolylineEntity && e.closed)
+      );
     case "drill":
       return e instanceof CircleEntity;
   }

@@ -10,6 +10,7 @@ import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
+import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 
@@ -759,6 +760,38 @@ function chamferCircle(
   return engraveCircle(cx, cy, radius, cop, ox, oy, zOff);
 }
 
+// --- v-carve -----------------------------------------------------------------
+
+/**
+ * Emit G-code for one carved region: peel it into depth passes (shallow→deep)
+ * and follow each pass's contours at its depth. Every contour gets its own
+ * retract/plunge — simple and correct; pass-ordering optimisation can come later.
+ */
+function vcarveRegionGcode(
+  region: CarveRegion, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const passes = vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op));
+  if (passes.length === 0) return [];
+  const lines: string[] = [];
+  for (const pass of passes) {
+    for (const loop of pass.loops) {
+      if (loop.length < 2) continue;
+      const s = loop[0];
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+      lines.push(`G1 Z${Z(pass.depth, zOff)} F${n(op.plungeRate)}`);
+      for (let i = 1; i < loop.length; i++) {
+        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(loop[i].x, ox)} Y${Y(loop[i].y, oy)}${f}`);
+      }
+      lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`); // close the ring
+    }
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
 function toolpathBody(
@@ -785,6 +818,26 @@ function toolpathBody(
     if (-d > doc.stockThickness)
       lines.push(`; NOTE: chamfer depth ${n(-d)}mm exceeds stock thickness ${n(doc.stockThickness)}mm — reduce the chamfer width or use a wider-angle bit`);
     lines.push(`; Chamfer: ⌀ V-bit ${op.vAngle ?? 60}° · face ${op.chamferWidth}mm → depth ${n(d)}mm (${op.chamferSide ?? "on"})`);
+  }
+
+  // A v-carve needs a V-bit — the slope of the cut comes from the bit's angle.
+  if (op.type === "vcarve" && op.toolType !== "v-bit")
+    return [`; NOTE: v-carve requires a V-bit tool — skipped`];
+
+  // Region v-carves: resolve each parametric region against live geometry (its
+  // enclosed loops become counters/holes) and peel-carve it. Mirrors region
+  // pockets and supersedes any entity-based fallback for picked regions.
+  if (op.type === "vcarve" && op.regions && op.regions.length > 0) {
+    const loops = collectClosedLoops(doc.entities);
+    for (const ref of op.regions) {
+      const region = resolveRegion(ref, loops);
+      if (!region) {
+        lines.push(`; NOTE: a v-carve region could not be resolved — its boundary geometry changed or was removed — skipped`);
+        continue;
+      }
+      lines.push(...vcarveRegionGcode({ outer: region.outer, holes: region.holes }, op, ox, oy, zOff));
+    }
+    return lines;
   }
 
   // Region pockets: resolve each parametric region against live geometry and
@@ -873,6 +926,13 @@ function toolpathBody(
         lines.push(`; NOTE: text "${ent.text}" — font not loaded or no glyphs`);
         continue;
       }
+      // V-carve needs the glyphs grouped into solids-with-counters so the holes
+      // (e.g. the centre of an "O") are carved as holes, not filled.
+      if (op.type === "vcarve") {
+        for (const region of groupContoursIntoRegions(contours.map((c) => c.points)))
+          lines.push(...vcarveRegionGcode(region, op, ox, oy, zOff));
+        continue;
+      }
       for (const c of contours) {
         if (op.type === "engrave")
           lines.push(...engravePoints(c.points, c.closed, op, ox, oy, zOff));
@@ -883,6 +943,24 @@ function toolpathBody(
         else if (op.type === "profile" && c.closed)
           lines.push(...profilePolygon(c.points, op, ox, oy, zOff));
       }
+      continue;
+    }
+
+    // V-carve a directly-selected closed shape as a region with no holes. (Picked
+    // regions with counters go through the region block above.)
+    if (op.type === "vcarve") {
+      let outer: Vec2[] | null = null;
+      if (ent instanceof RectEntity) outer = [...ent.corners()];
+      else if (ent instanceof PolylineEntity && ent.closed) outer = ent.points;
+      else if (ent instanceof CircleEntity) {
+        const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
+        outer = Array.from({ length: nSegs }, (_, i) => {
+          const a = (i / nSegs) * 2 * Math.PI;
+          return { x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) };
+        });
+      }
+      if (outer) lines.push(...vcarveRegionGcode({ outer, holes: [] }, op, ox, oy, zOff));
+      else lines.push(`; NOTE: v-carve needs a closed shape (rect, circle, closed polyline, text, or a picked region) — entity ${ent.id} skipped`);
       continue;
     }
 
@@ -1078,6 +1156,8 @@ export function generateGCode(
       op.type === "profile" ? `Profile (${op.side})`
       : op.type === "pocket"  ? "Pocket"
       : op.type === "engrave" ? "Engrave"
+      : op.type === "vcarve"  ? "V-Carve"
+      : op.type === "chamfer" ? "Chamfer"
       : "Drill";
     const toolLabel = op.toolType === "v-bit"     ? `V-Bit(${op.vAngle ?? 60}°)`
                     : op.toolType === "ball-nose"  ? "Ball Nose"

@@ -1,7 +1,7 @@
 import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 
-export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer";
+export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve";
 
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";
@@ -135,6 +135,13 @@ export interface CAMOperation {
   /** Chamfer only: which side of the contour the bevel sits on. Default "on". */
   chamferSide?: ChamferSide;
   /**
+   * V-carve only: radial inset (mm) between successive offset-peel passes — the
+   * pitch that sets how smooth the sloped/flat floor is. Smaller = finer finish,
+   * more passes. Default 0.4. The carve uses the V-bit `vAngle` for the slope and
+   * `|depth|` as the maximum depth (wide areas bottom out flat at that depth).
+   */
+  vStep?: number;
+  /**
    * Chamfer only: lift the V-bit tip up into each sharp (convex) corner so the
    * bevel comes to a crisp point instead of a rounded fillet. Default false.
    */
@@ -180,6 +187,7 @@ export const DEFAULTS = {
   finishAllowance: 0.2,
   chamferWidth: 3,
   chamferSide: "on" as ChamferSide,
+  vStep: 0.4,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

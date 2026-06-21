@@ -498,7 +498,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer"] },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
         "toolId": { "type": "string", "description": "Optional reference to a tool id in the top-level \"tools\" array. When it resolves, that tool's geometry/feeds override the inline toolType/diameter/vAngle/tipAngle/feedrate/plungeRate/spindleSpeed/safeZ fields below (which remain as a fallback). toolNumber and the cut settings (depth/stepdown/stepover) always stay per-operation." },
@@ -520,6 +520,7 @@
         "chamferWidth": { "type": "number", "exclusiveMinimum": 0, "description": "Chamfer only: horizontal width (mm) of the bevel face. The plunge depth is derived from this and the V-bit angle (depth = width / tan(½·vAngle)). Requires a v-bit tool." },
         "chamferSide": { "enum": ["on", "outside", "inside"], "description": "Chamfer only: which side of the contour the bevel sits on (\"on\" = centred on the edge). Default \"on\"." },
         "sharpenCorners": { "type": "boolean", "description": "Chamfer only: pull the V-bit tip up into each sharp inside (convex) corner — the bevel tapers to the surface at the corner vertex — so corners come to a crisp point instead of a rounded fillet. Concave corners are left rounded (a V-bit can't reach them). Default false." },
+        "vStep": { "type": "number", "exclusiveMinimum": 0, "description": "V-carve only: radial inset (mm) between offset-peel passes — the pitch that sets floor smoothness. Requires a v-bit tool; uses vAngle for the slope and |depth| as the max (floor) depth. Default 0.4." },
         "coolant": { "enum": ["off", "mist", "flood"], "description": "Coolant for this operation: \"mist\" → M7, \"flood\" → M8 (M9 off). Default \"off\". Only emitted if the machine is flagged as having coolant (a machine-wide app preference)." },
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter." },
         "pocketStrategy": { "enum": ["offset", "raster"], "description": "Pocket only; default \"offset\"." },
