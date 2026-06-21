@@ -56,26 +56,32 @@ function buildLinearDialog(doc: CADDocument, pushHistory: () => void, existing: 
   const dialog   = makeDialog(backdrop, editing ? "Edit Linear Pattern" : "Linear Pattern");
   const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
-  const cxInp = addNumberField(body, "Count X",        String(p?.countX   ?? 3),   "1");
-  const sxInp = addTextField  (body, "Spacing X",      p?.spacingXExpr ?? String(p?.spacingX ?? 20), "(mm or variable)");
-  const cyInp = addNumberField(body, "Count Y",        String(p?.countY   ?? 1),   "1");
-  const syInp = addTextField  (body, "Spacing Y",      p?.spacingYExpr ?? String(p?.spacingY ?? 20), "(mm or variable)");
+  const cxInp = addTextField(body, "Count X",   p?.countXExpr   ?? String(p?.countX   ?? 3),  "(count or variable)");
+  const sxInp = addTextField(body, "Spacing X", p?.spacingXExpr ?? String(p?.spacingX ?? 20), "(mm or variable)");
+  const cyInp = addTextField(body, "Count Y",   p?.countYExpr   ?? String(p?.countY   ?? 1),  "(count or variable)");
+  const syInp = addTextField(body, "Spacing Y", p?.spacingYExpr ?? String(p?.spacingY ?? 20), "(mm or variable)");
 
   const infoEl = addInfo(body, "");
   const updateInfo = () => {
-    const cx = Math.max(1, parseInt(cxInp.value) || 1);
-    const cy = Math.max(1, parseInt(cyInp.value) || 1);
-    infoEl.textContent = `${cx * cy} total instances (${cx} × ${cy} grid)`;
+    const cx = resolveCount(cxInp.value, doc, 1);
+    const cy = resolveCount(cyInp.value, doc, 1);
+    infoEl.textContent =
+      cx === null || cy === null
+        ? "Invalid count — enter a whole number or a variable."
+        : `${cx * cy} total instances (${cx} × ${cy} grid)`;
   };
   cxInp.addEventListener("input", updateInfo);
   cyInp.addEventListener("input", updateInfo);
   updateInfo();
 
   addFooter(dialog, backdrop, editing ? "Re-apply" : "Create", () => {
-    const countX  = Math.max(1, parseInt(cxInp.value)  || 1);
-    const countY  = Math.max(1, parseInt(cyInp.value)  || 1);
+    const countX  = resolveCount(cxInp.value, doc, 1);
+    const countY  = resolveCount(cyInp.value, doc, 1);
     const spacingX = resolveSpacing(sxInp.value, doc);
     const spacingY = resolveSpacing(syInp.value, doc);
+    if (countX === null || countY === null) {
+      alert("Invalid count — enter a whole number or a variable name."); return;
+    }
     if (spacingX === null || spacingY === null) {
       alert("Invalid spacing — enter a number or a variable name."); return;
     }
@@ -83,6 +89,8 @@ function buildLinearDialog(doc: CADDocument, pushHistory: () => void, existing: 
 
     const params: LinearPatternParams = {
       countX, countY, spacingX, spacingY,
+      countXExpr: isPlainNumber(cxInp.value) ? undefined : cxInp.value.trim(),
+      countYExpr: isPlainNumber(cyInp.value) ? undefined : cyInp.value.trim(),
       spacingXExpr: isPlainNumber(sxInp.value) ? undefined : sxInp.value.trim(),
       spacingYExpr: isPlainNumber(syInp.value) ? undefined : syInp.value.trim(),
     };
@@ -125,32 +133,41 @@ function buildCircularDialog(doc: CADDocument, pushHistory: () => void, existing
   const dialog   = makeDialog(backdrop, editing ? "Edit Circular Pattern" : "Circular Pattern");
   const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
-  const cntInp   = addNumberField(body, "Count",           String(p?.count ?? 6),              "1");
+  const cntInp   = addTextField  (body, "Count",           p?.countExpr ?? String(p?.count ?? 6), "(count or variable)");
   const cxInp2   = addTextField  (body, "Centre X (mm)",   String((p?.cx   ?? defCx).toFixed(3)), "");
   const cyInp2   = addTextField  (body, "Centre Y (mm)",   String((p?.cy   ?? defCy).toFixed(3)), "");
   const angInp   = addTextField  (body, "Total angle (°)", String(Math.round(((p?.totalAngle ?? Math.PI * 2) / Math.PI) * 180)), "");
 
   const infoEl = addInfo(body, "");
   const updateInfo = () => {
-    const n = Math.max(2, parseInt(cntInp.value) || 2);
+    const n = resolveCount(cntInp.value, doc, 2);
     const deg = parseFloat(angInp.value);
     const full = Math.abs(deg - 360) < 0.1;
-    infoEl.textContent = `${n} instances${full ? ", full circle" : `, ${deg}° arc`}`;
+    infoEl.textContent =
+      n === null
+        ? "Invalid count — enter a whole number or a variable."
+        : `${n} instances${full ? ", full circle" : `, ${deg}° arc`}`;
   };
   cntInp.addEventListener("input", updateInfo);
   angInp.addEventListener("input", updateInfo);
   updateInfo();
 
   addFooter(dialog, backdrop, editing ? "Re-apply" : "Create", () => {
-    const count      = Math.max(2, parseInt(cntInp.value) || 2);
+    const count      = resolveCount(cntInp.value, doc, 2);
     const cx         = parseFloat(cxInp2.value);
     const cy         = parseFloat(cyInp2.value);
     const totalAngle = (parseFloat(angInp.value) || 360) * (Math.PI / 180);
+    if (count === null) {
+      alert("Invalid count — enter a whole number or a variable name."); return;
+    }
     if (!isFinite(cx) || !isFinite(cy) || !isFinite(totalAngle)) {
       alert("Invalid values."); return;
     }
 
-    const params: CircularPatternParams = { count, cx, cy, totalAngle };
+    const params: CircularPatternParams = {
+      count, cx, cy, totalAngle,
+      countExpr: isPlainNumber(cntInp.value) ? undefined : cntInp.value.trim(),
+    };
 
     pushHistory();
 
@@ -188,6 +205,12 @@ function resolveSpacing(raw: string, doc: CADDocument): number | null {
   return isFinite(num) ? num : null;
 }
 
+/** Resolve a count field value to a whole number ≥ min (expression or literal). */
+function resolveCount(raw: string, doc: CADDocument, min: number): number | null {
+  const n = resolveSpacing(raw, doc);
+  return n === null ? null : Math.max(min, Math.round(n));
+}
+
 function isPlainNumber(s: string): boolean {
   return isFinite(parseFloat(s.trim())) && isNaN(Number(s.trim())) === false;
 }
@@ -221,24 +244,6 @@ function makeDialog(backdrop: HTMLElement, title: string): HTMLElement {
 
   backdrop.appendChild(dialog);
   return dialog;
-}
-
-function addNumberField(body: HTMLElement, label: string, value: string, step: string): HTMLInputElement {
-  const g = document.createElement("div");
-  g.className = "tp-field";
-  const l = document.createElement("label");
-  l.textContent = label;
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.className = "dim";
-  inp.value = value;
-  inp.step = step;
-  inp.min = step; // enforce min=1 for counts
-  inp.style.width = "90px";
-  g.appendChild(l);
-  g.appendChild(inp);
-  body.appendChild(g);
-  return inp;
 }
 
 function addTextField(body: HTMLElement, label: string, value: string, placeholder: string): HTMLInputElement {

@@ -255,9 +255,16 @@ it does not generate geometry on load.
 ```
 
 - Linear params: `countX`, `countY`, `spacingX`, `spacingY` (mm), optional
-  `spacingXExpr` / `spacingYExpr` (variable expressions).
+  `countXExpr` / `countYExpr` and `spacingXExpr` / `spacingYExpr` (variable
+  expressions).
 - Circular params: `count`, `cx`, `cy` (centre, mm), `totalAngle` (radians; `2π`
-  = full circle).
+  = full circle), optional `countExpr`.
+- `count*` and `spacing*` are resolved caches; when an `*Expr` is present it is the
+  source of truth — re-evaluated against `variables` (counts rounded, clamped to
+  ≥1 linear / ≥2 circular) when the pattern is created or regenerated. So a
+  variable can drive how *many* copies exist, not just their spacing. The
+  `instanceIds` snapshot still must match the resolved count; regenerating in the
+  app reconciles it.
 
 ## CAM operations
 

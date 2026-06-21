@@ -59,6 +59,19 @@ describe("rcam v2 schema", () => {
     expect(validate(doc)).toBe(false);
   });
 
+  it("accepts pattern params carrying a count expression", () => {
+    const doc = minimalDoc();
+    doc.variables = [{ id: "v", name: "n", expr: "3", value: 3 }];
+    doc.entities.push({ type: "line", id: "l", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    doc.patterns = [{
+      id: "pat1", kind: "linear", sourceIds: ["l"], instanceIds: [["l-c1"], ["l-c2"]],
+      params: { countX: 3, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
+    }];
+    const ok = validate(doc);
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
+    expect(ok).toBe(true);
+  });
+
   it("rejects an unknown entity type", () => {
     const doc = minimalDoc();
     doc.entities = [{ type: "spline", id: "ent1" }];

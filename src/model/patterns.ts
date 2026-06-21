@@ -15,19 +15,22 @@ import { EntityId, Entity } from "./entities";
 import { nextId } from "./ids";
 
 export interface LinearPatternParams {
-  countX: number;
+  countX: number; // resolved cache of countXExpr (whole number, ≥1)
   countY: number;
   spacingX: number; // mm
   spacingY: number; // mm
+  countXExpr?: string; // optional variable expression, e.g. "tabs" or "n + 1"
+  countYExpr?: string;
   spacingXExpr?: string; // optional variable expression, e.g. "pitch"
   spacingYExpr?: string;
 }
 
 export interface CircularPatternParams {
-  count: number;
+  count: number; // resolved cache of countExpr (whole number, ≥2)
   cx: number; // rotation centre X (mm)
   cy: number; // rotation centre Y (mm)
   totalAngle: number; // radians — 2π means full circle
+  countExpr?: string; // optional variable expression
 }
 
 export interface PatternDef {

@@ -102,6 +102,49 @@ describe("stable circular pattern regeneration", () => {
   });
 });
 
+describe("variable-driven count", () => {
+  it("resolves count from a variable expression and updates on a variable change", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    // countX cache is intentionally stale (0); the expression "n" is the truth.
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+    });
+    expect(pat.params.countX).toBe(3); // resolved from n=3
+    const before = pat.instanceIds.flat();
+    expect(before.length).toBe(2); // 3 columns → 2 copies
+
+    doc.variables[0].value = 5; // bump the variable, then regenerate
+    regenerateLinearPattern(doc, pat, pat.params);
+    expect(pat.params.countX).toBe(5);
+    const after = pat.instanceIds.flat();
+    expect(after.length).toBe(4);
+    expect(after.slice(0, 2)).toEqual(before); // surviving ids stable
+  });
+
+  it("rounds and clamps a non-integer / sub-minimum count expression", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "0.4", value: 0.4 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 4, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "n",
+    });
+    expect(pat.params.countX).toBe(1); // round(0.4)=0 → clamped to ≥1
+    expect(pat.instanceIds.flat().length).toBe(0);
+  });
+
+  it("falls back to the cached count when the expression references an unknown variable", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 3, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "missing",
+    });
+    expect(pat.params.countX).toBe(3); // bad expr → keep last good cache
+    expect(pat.instanceIds.flat().length).toBe(2);
+  });
+});
+
 describe("reference integrity across regen", () => {
   it("keeps a dimension on a surviving copy and prunes it when the copy is removed", () => {
     const doc = freshDoc();

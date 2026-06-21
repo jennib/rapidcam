@@ -430,12 +430,14 @@
       "additionalProperties": false,
       "required": ["countX", "countY", "spacingX", "spacingY"],
       "properties": {
-        "countX": { "type": "integer", "minimum": 1 },
-        "countY": { "type": "integer", "minimum": 1 },
+        "countX": { "type": "integer", "minimum": 1, "description": "Resolved cache of countXExpr." },
+        "countY": { "type": "integer", "minimum": 1, "description": "Resolved cache of countYExpr." },
         "spacingX": { "type": "number", "description": "mm" },
         "spacingY": { "type": "number", "description": "mm" },
-        "spacingXExpr": { "type": "string" },
-        "spacingYExpr": { "type": "string" }
+        "countXExpr": { "type": "string", "description": "Optional variable expression driving countX, e.g. \"tabs\" or \"n + 1\"; re-evaluated against variables, rounded, clamped ≥1." },
+        "countYExpr": { "type": "string", "description": "Optional variable expression driving countY." },
+        "spacingXExpr": { "type": "string", "description": "Optional variable expression driving spacingX." },
+        "spacingYExpr": { "type": "string", "description": "Optional variable expression driving spacingY." }
       }
     },
 
@@ -444,10 +446,11 @@
       "additionalProperties": false,
       "required": ["count", "cx", "cy", "totalAngle"],
       "properties": {
-        "count": { "type": "integer", "minimum": 1 },
+        "count": { "type": "integer", "minimum": 1, "description": "Resolved cache of countExpr." },
         "cx": { "type": "number", "description": "rotation centre X, mm" },
         "cy": { "type": "number", "description": "rotation centre Y, mm" },
-        "totalAngle": { "type": "number", "description": "radians; 2π = full circle" }
+        "totalAngle": { "type": "number", "description": "radians; 2π = full circle" },
+        "countExpr": { "type": "string", "description": "Optional variable expression driving count; re-evaluated against variables, rounded, clamped ≥2." }
       }
     },
 

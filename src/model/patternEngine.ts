@@ -14,6 +14,8 @@
 import type { CADDocument } from "./document";
 import { Entity, EntityId } from "./entities";
 import { applyRotate } from "../core/transform";
+import { varMap } from "./variables";
+import { evalExpr } from "../core/expr";
 import {
   PatternDef,
   LinearPatternParams,
@@ -29,6 +31,34 @@ interface Step {
 }
 
 // ---------------------------------------------------------------------------
+// Expression resolution — refresh the numeric caches from *Expr fields against
+// the document's current variables. The engine is the source of truth at
+// create / regen / load time, so a pattern always reflects the latest variable
+// values (including its count).
+
+function resolveExpr(expr: string | undefined, cached: number, vm: ReadonlyMap<string, number>): number {
+  if (!expr) return cached;
+  const v = evalExpr(expr, vm);
+  return v !== null && isFinite(v) ? v : cached; // keep last good value on a bad/unknown expr
+}
+
+function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPatternParams {
+  const vm = varMap(doc.variables);
+  return {
+    ...p,
+    countX: Math.max(1, Math.round(resolveExpr(p.countXExpr, p.countX, vm))),
+    countY: Math.max(1, Math.round(resolveExpr(p.countYExpr, p.countY, vm))),
+    spacingX: resolveExpr(p.spacingXExpr, p.spacingX, vm),
+    spacingY: resolveExpr(p.spacingYExpr, p.spacingY, vm),
+  };
+}
+
+function resolveCircularParams(doc: CADDocument, p: CircularPatternParams): CircularPatternParams {
+  const vm = varMap(doc.variables);
+  return { ...p, count: Math.max(2, Math.round(resolveExpr(p.countExpr, p.count, vm))) };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 
 export function createLinearPattern(
@@ -36,10 +66,11 @@ export function createLinearPattern(
   sourceIds: EntityId[],
   params: LinearPatternParams,
 ): PatternDef {
+  const p = resolveLinearParams(doc, params);
   const sources = resolveSources(doc, sourceIds);
-  const instanceIds = linearSteps(sources, params).map((s) => addCopies(doc, s.copies));
+  const instanceIds = linearSteps(sources, p).map((s) => addCopies(doc, s.copies));
   const snap = computeSourceSnapshot(doc.entities, sourceIds);
-  return doc.addPattern(makeLinearPattern(sourceIds, instanceIds, params, snap));
+  return doc.addPattern(makeLinearPattern(sourceIds, instanceIds, p, snap));
 }
 
 export function regenerateLinearPattern(
@@ -49,10 +80,11 @@ export function regenerateLinearPattern(
 ): void {
   const sources = resolveSources(doc, pat.sourceIds);
   if (sources.length === 0) return;
+  const p = resolveLinearParams(doc, params);
   const oldMap = linearKeyMap(pat);
-  const instanceIds = reconcile(doc, oldMap, linearSteps(sources, params));
+  const instanceIds = reconcile(doc, oldMap, linearSteps(sources, p));
   const sourceSnapshot = computeSourceSnapshot(doc.entities, pat.sourceIds);
-  doc.updatePattern(pat.id, { instanceIds, params, sourceSnapshot });
+  doc.updatePattern(pat.id, { instanceIds, params: p, sourceSnapshot });
 }
 
 export function createCircularPattern(
@@ -60,10 +92,11 @@ export function createCircularPattern(
   sourceIds: EntityId[],
   params: CircularPatternParams,
 ): PatternDef {
+  const p = resolveCircularParams(doc, params);
   const sources = resolveSources(doc, sourceIds);
-  const instanceIds = circularSteps(sources, params).map((s) => addCopies(doc, s.copies));
+  const instanceIds = circularSteps(sources, p).map((s) => addCopies(doc, s.copies));
   const snap = computeSourceSnapshot(doc.entities, sourceIds);
-  return doc.addPattern(makeCircularPattern(sourceIds, instanceIds, params, snap));
+  return doc.addPattern(makeCircularPattern(sourceIds, instanceIds, p, snap));
 }
 
 export function regenerateCircularPattern(
@@ -73,10 +106,11 @@ export function regenerateCircularPattern(
 ): void {
   const sources = resolveSources(doc, pat.sourceIds);
   if (sources.length === 0) return;
+  const p = resolveCircularParams(doc, params);
   const oldMap = circularKeyMap(pat);
-  const instanceIds = reconcile(doc, oldMap, circularSteps(sources, params));
+  const instanceIds = reconcile(doc, oldMap, circularSteps(sources, p));
   const sourceSnapshot = computeSourceSnapshot(doc.entities, pat.sourceIds);
-  doc.updatePattern(pat.id, { instanceIds, params, sourceSnapshot });
+  doc.updatePattern(pat.id, { instanceIds, params: p, sourceSnapshot });
 }
 
 /**
