@@ -1,20 +1,22 @@
 # RapidCAM
 
-**A web-based parametric 2D CAD editor designed as the front-end for a CNC CAM pipeline.**
+**Open-source CAD/CAM for desktop CNC — right in your browser.**
 
-Draw geometry, add geometric constraints and driving dimensions, then generate G-code — all in the browser, no install required.
+Sketch a part, lock it down with real parametric constraints, generate toolpaths, and export GRBL or LinuxCNC G-code. No install, no account, no upload — your designs and G-code never leave your browser.
 
-**Live demo:** [https://rapidcam.app](https://rapidcam.app)
-
----
-
-## Screenshots
-
-<!-- To add screenshots: run `npm run dev`, capture the UI, and save to docs/screenshots/. -->
+### 👉 [Try it now at rapidcam.app](https://rapidcam.app) — nothing to install
 
 | Sketch editor | Constraint solver | CAM toolpaths |
 |---|---|---|
 | ![Sketch editor](docs/screenshots/editor.png) | ![Constraints](docs/screenshots/constraints.png) | ![CAM](docs/screenshots/cam.png) |
+
+**Why RapidCAM?**
+
+- **Runs anywhere** — it's a web app. Open it on any machine, no setup.
+- **Truly parametric** — a Levenberg-Marquardt constraint solver, driving dimensions, and variables, so edits stay consistent (not just a drawing program).
+- **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview.
+- **Private by default** — all processing is local; your files stay on your machine. Analytics is opt-in only.
+- **Open source** — AGPL-3.0, with a commercial license available.
 
 ---
 
