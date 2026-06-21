@@ -381,4 +381,4 @@ canonical, tested references:
 - `bracket.rcam` — L-profile driven to "fully constrained" with per-segment H/V constraints.
 - `bolt-circle.rcam` — `variables` + a circular `pattern`.
 - `mounting-plate-cam.rcam` — drill + tabbed profile `operations`.
-- `enclosure-lid.rcam` — pocket with flood-fill `regionSeeds` and an island.
+- `enclosure-lid.rcam` — pocket with parametric region `containingLoops` and an island.
