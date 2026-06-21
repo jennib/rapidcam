@@ -73,13 +73,14 @@ Driving dimensions change the geometry when edited (shown in cyan). Reference (d
 
 ### Variables
 
-Named variables (`pitch`, `diameter`, …) can be defined in the Variables panel and used in any dimension value field. Expressions like `pitch * 2` are evaluated at solve time.
+Named variables (`pitch`, `diameter`, …) can be defined in the Variables panel and used in any dimension value field — and in pattern count/spacing fields. Expressions like `pitch * 2` are evaluated at solve time.
 
 ### Parametric patterns
 
-- **Linear pattern** — copies geometry in an X/Y grid; spacing fields accept variable expressions
-- **Circular pattern** — copies geometry around a centre point; editable count and total angle
-- Both patterns store a regeneratable definition; re-opening the dialog lets you update the parameters and regenerate the copies
+- **Linear pattern** — copies geometry in an X/Y grid; **Circular pattern** — copies around a centre point over a total angle
+- **Count *and* spacing accept variable expressions** (e.g. a `tabs` variable, or `pitch * 2`), so a variable can drive how *many* copies exist, not just where they sit
+- Patterns **regenerate automatically** when a driving variable changes — bump `tabs` from 6 to 10 and the copies update in place, preserving existing copies' identity along with any constraints/dimensions on them (moved source geometry is re-applied from the dialog or **Edit → Regenerate Patterns**)
+- **CAM toolpaths follow patterns** — assign a profile, drill, etc. to the master and every copy is cut, tracking the count as it changes
 
 ### Layers
 
