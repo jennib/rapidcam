@@ -39,7 +39,7 @@ import { MirrorTool } from "./tools/mirrorTool";
 import { joinSelected } from "./tools/joinCommand";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
 import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
-import { regenerateAllStalePatterns } from "./model/patternEngine";
+import { regenerateAllStalePatterns, regenerateParamStalePatterns } from "./model/patternEngine";
 import { computeSourceSnapshot } from "./model/patterns";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
@@ -219,7 +219,7 @@ export class App {
       () => this.project.undoRedo("undo")
     );
     new CamBar(dom.cambar, this.doc, this.project.pushHistory);
-    new VariablesBar(dom.variablesbar, this.doc, () => this.runSolve(), this.project.pushHistory);
+    new VariablesBar(dom.variablesbar, this.doc, () => this.onVariablesChanged(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
     this.doc.onChange(() => this.schedulePreviewUpdate());
@@ -339,6 +339,28 @@ export class App {
   private currentDof(): number {
     if (!this.lastSolveResult) return Infinity;
     return this.lastSolveResult.variables - this.lastSolveResult.equations;
+  }
+
+  private autoRegenerating = false;
+
+  /**
+   * A variable was committed (name/value/delete). Re-evaluate variables, then
+   * regenerate any pattern whose expression-driven count/spacing changed, then
+   * solve — all inside the history transaction the VariablesBar already opened,
+   * so one undo reverts the edit and the regen together. The guard prevents a
+   * regen's emitChange from recursing back in.
+   */
+  private onVariablesChanged(): void {
+    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
+    if (!this.autoRegenerating) {
+      this.autoRegenerating = true;
+      try {
+        regenerateParamStalePatterns(this.doc);
+      } finally {
+        this.autoRegenerating = false;
+      }
+    }
+    this.runSolve();
   }
 
   private runSolve(pins?: PinMap): void {

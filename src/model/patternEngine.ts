@@ -129,6 +129,41 @@ export function regenerateAllStalePatterns(doc: CADDocument, staleIds: Set<strin
   }
 }
 
+/**
+ * True if a pattern's expression-driven params resolve to something other than
+ * its cached values — i.e. a referenced variable changed. Patterns with no
+ * `*Expr` are never param-stale (resolved === cached).
+ */
+export function isParamStale(doc: CADDocument, pat: PatternDef): boolean {
+  if (pat.kind === "linear") {
+    const p = pat.params as LinearPatternParams;
+    const r = resolveLinearParams(doc, p);
+    return r.countX !== p.countX || r.countY !== p.countY
+      || r.spacingX !== p.spacingX || r.spacingY !== p.spacingY;
+  }
+  const p = pat.params as CircularPatternParams;
+  return resolveCircularParams(doc, p).count !== p.count;
+}
+
+/**
+ * Regenerate every pattern whose expression-driven params have drifted from
+ * their cache (a variable changed). Returns whether anything changed. The
+ * caller owns the history transaction.
+ */
+export function regenerateParamStalePatterns(doc: CADDocument): boolean {
+  let changed = false;
+  for (const pat of [...doc.patterns]) {
+    if (!isParamStale(doc, pat)) continue;
+    if (pat.kind === "linear") {
+      regenerateLinearPattern(doc, pat, pat.params as LinearPatternParams);
+    } else {
+      regenerateCircularPattern(doc, pat, pat.params as CircularPatternParams);
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------------------
 // Step builders (the source-of-truth for instance ordering & keys)
 

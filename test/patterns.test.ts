@@ -15,8 +15,11 @@ import {
   regenerateLinearPattern,
   createCircularPattern,
   regenerateCircularPattern,
+  isParamStale,
+  regenerateParamStalePatterns,
 } from "../src/model/patternEngine";
 import type { LinearPatternParams, CircularPatternParams } from "../src/model/patterns";
+import { evaluateAll } from "../src/model/variables";
 
 function lin(countX: number, countY: number, sx = 20, sy = 20): LinearPatternParams {
   return { countX, countY, spacingX: sx, spacingY: sy };
@@ -142,6 +145,55 @@ describe("variable-driven count", () => {
     });
     expect(pat.params.countX).toBe(3); // bad expr → keep last good cache
     expect(pat.instanceIds.flat().length).toBe(2);
+  });
+});
+
+describe("auto-regen of param-stale patterns", () => {
+  it("regenerates only patterns whose resolved count drifted from a variable change", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+    });
+    const before = pat.instanceIds.flat();
+    // A non-parametric pattern (no expr) must be left untouched.
+    const src2 = doc.add(new CircleEntity({ x: 0, y: 200 }, 5));
+    const pat2 = createCircularPattern(doc, [src2.id], { count: 4, cx: 0, cy: 200, totalAngle: Math.PI * 2 });
+    const before2 = pat2.instanceIds.flat();
+
+    expect(regenerateParamStalePatterns(doc)).toBe(false); // nothing changed yet
+
+    doc.variables[0].value = 6;
+    expect(isParamStale(doc, pat)).toBe(true);
+    expect(isParamStale(doc, pat2)).toBe(false);
+
+    expect(regenerateParamStalePatterns(doc)).toBe(true);
+    expect(pat.params.countX).toBe(6);
+    expect(pat.instanceIds.flat().length).toBe(5);
+    expect(pat.instanceIds.flat().slice(0, 2)).toEqual(before); // surviving ids stable
+    expect(pat2.instanceIds.flat()).toEqual(before2); // untouched
+  });
+
+  it("mirrors the app commit flow: edit a variable expr -> evaluateAll -> regen", () => {
+    // Reproduces app.onVariablesChanged(): the variable's EXPR is updated and
+    // evaluateAll recomputes its .value before the pattern (which references the
+    // variable in its count expression) is regenerated.
+    const doc = freshDoc();
+    doc.variables.push({ id: "vt", name: "tabs", expr: "5", value: 5 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 0, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "tabs",
+    });
+    expect(pat.params.countX).toBe(5);
+
+    doc.variables[0].expr = "8"; // user edits the variable, app re-evaluates...
+    evaluateAll(doc.variables, doc.dimensions, "mm");
+    expect(doc.variables[0].value).toBe(8);
+
+    expect(regenerateParamStalePatterns(doc)).toBe(true); // ...then auto-regenerates
+    expect(pat.params.countX).toBe(8);
+    expect(pat.instanceIds.flat().length).toBe(7);
   });
 });
 
