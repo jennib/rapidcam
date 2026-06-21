@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity, PolylineEntity } from "../src/model/entities";
-import { serializeDoc } from "../src/io/fileio";
+import { serializeDoc, applyFile } from "../src/io/fileio";
 import type { CAMOperation, ToolDef } from "../src/cam/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +67,27 @@ describe("rcam v2 schema", () => {
 
   it("accepts a minimal hand-authored document", () => {
     expect(validate(minimalDoc())).toBe(true);
+  });
+
+  // points/entities are optional on constraints/dimensions: a type that uses
+  // only one operand kind may omit the other array entirely.
+  it("accepts a constraint that omits the unused operand array", () => {
+    const doc = minimalDoc();
+    doc.entities.push({ type: "line", id: "ent2", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    doc.constraints = [{ id: "c1", type: "horizontal", entities: ["ent2"] }]; // no `points`
+    const ok = validate(doc);
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
+    expect(ok).toBe(true);
+  });
+
+  it("accepts a dimension that omits the unused operand array", () => {
+    const doc = minimalDoc();
+    doc.dimensions = [ // radius dim uses only entities — no `points`
+      { id: "d1", type: "radius", entities: ["ent1"], value: 10, driving: true, offset: 5 },
+    ];
+    const ok = validate(doc);
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
+    expect(ok).toBe(true);
   });
 
   // The bundled examples don't exercise the newer per-op CAM fields, so guard
@@ -125,6 +146,24 @@ describe("rcam v2 schema — serialized real document", () => {
   it("emits the tool referenced by toolId (and only referenced tools)", () => {
     const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink") as { tools?: unknown[] };
     expect((data.tools ?? []).map((t: any) => t.id)).toEqual(["tool1"]);
+  });
+});
+
+/**
+ * The schema relaxation is only safe if the real loader matches it: a file whose
+ * constraints/dimensions omit the unused operand array must load without throwing
+ * (restore() reads points/entities directly).
+ */
+describe("rcam v2 loader tolerance", () => {
+  it("loads constraints/dimensions that omit the unused operand array", () => {
+    const file = minimalDoc();
+    file.entities.push({ type: "line", id: "ent2", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    file.constraints = [{ id: "c1", type: "horizontal", entities: ["ent2"] }];
+    file.dimensions = [{ id: "d1", type: "radius", entities: ["ent1"], value: 10, driving: true, offset: 5 }];
+    const doc = new CADDocument({ width: 100, height: 100 });
+    expect(() => applyFile(doc, file)).not.toThrow();
+    expect(doc.constraints[0].points).toEqual([]);
+    expect(doc.dimensions[0].points).toEqual([]);
   });
 });
 

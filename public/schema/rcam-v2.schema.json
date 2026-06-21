@@ -328,7 +328,7 @@
     "constraint": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "points", "entities"],
+      "required": ["id", "type"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
@@ -342,12 +342,12 @@
         "points": {
           "type": "array",
           "items": { "$ref": "#/$defs/pointRef" },
-          "description": "Point operands. Count/role depends on type (see docs)."
+          "description": "Point operands. Count/role depends on type (see docs). Optional — defaults to [] when the type uses only entities."
         },
         "entities": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Entity operands (entity ids, or polyline-segment refs \"<id>#<index>\"). Count/role depends on type."
+          "description": "Entity operands (entity ids, or polyline-segment refs \"<id>#<index>\"). Count/role depends on type. Optional — defaults to [] when the type uses only points."
         },
         "params": {
           "type": "array",
@@ -360,7 +360,7 @@
     "dimension": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "points", "entities", "value", "driving", "offset"],
+      "required": ["id", "type", "value", "driving", "offset"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
@@ -369,12 +369,12 @@
         "points": {
           "type": "array",
           "items": { "$ref": "#/$defs/pointRef" },
-          "description": "Linear dims: the 2 measured points."
+          "description": "Linear dims: the 2 measured points. Optional — defaults to [] for entity-based dims (radius/diameter/arclength)."
         },
         "entities": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids."
+          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids. Optional — defaults to [] for point-based dims."
         },
         "value": { "type": "number", "description": "mm, or radians for type \"angle\"." },
         "driving": { "type": "boolean", "description": "When true, also constrains the measurement to value." },

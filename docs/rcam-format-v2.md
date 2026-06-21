@@ -190,6 +190,12 @@ A constraint object is:
   "entities": [], "params": [15, 12] }
 ```
 
+`points`, `entities`, and `params` are each **optional and default to `[]`** — a
+type that uses only one of them may omit the others entirely (e.g. a `horizontal`
+constraint can be just `{ "id": "...", "type": "horizontal", "entities": ["line1"] }`).
+RapidCAM always writes the empty arrays out when saving, but you don't need to
+author them. The same applies to a dimension's `points`/`entities`.
+
 > **Authoring caution.** A syntactically valid constraint set can still be
 > over-constrained, under-constrained, or fail to converge — and that can only be
 > determined by running the solver, not by reading the JSON. If you are generating

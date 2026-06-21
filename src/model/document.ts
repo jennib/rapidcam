@@ -598,13 +598,16 @@ export class CADDocument {
     }
 
     this.constraints = (s.constraints || []).map((cs) => {
-      const c = { id: cs.id, type: cs.type, points: cs.points.map((p) => ({ ...p })), entities: [...cs.entities], params: cs.params ? [...cs.params] : undefined } as Constraint;
+      // points/entities default to [] so hand- or LLM-authored files can omit the
+      // array that a given constraint type doesn't use (e.g. "horizontal" needs
+      // only entities). serializeDoc always writes both, so round-trips are unaffected.
+      const c = { id: cs.id, type: cs.type, points: (cs.points ?? []).map((p) => ({ ...p })), entities: [...(cs.entities ?? [])], params: cs.params ? [...cs.params] : undefined } as Constraint;
       updateCounter(c.id);
       return c;
     });
 
     this.dimensions = (s.dimensions || []).map((ds) => {
-      const d = { ...ds, points: ds.points.map((p) => ({ ...p })), entities: [...ds.entities] } as Dimension;
+      const d = { ...ds, points: (ds.points ?? []).map((p) => ({ ...p })), entities: [...(ds.entities ?? [])] } as Dimension;
       updateCounter(d.id);
       return d;
     });
