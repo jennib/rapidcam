@@ -212,7 +212,7 @@ export class CamBar {
     const opIndex = id ? this.doc.operations.findIndex(o => o.id === id) : -1;
     const op = opIndex >= 0 ? this.doc.operations[opIndex] : null;
     this.doc.toolpathHighlightColor = op ? TP_PALETTE[opIndex % TP_PALETTE.length] : null;
-    if (op?.type === "pocket" && op.regions?.length) {
+    if (op?.regions?.length) {
       const loops = collectClosedLoops(this.doc.entities);
       const highlight = new Set<string>();
       const fills: Vec2[][][] = [];
@@ -747,8 +747,14 @@ export class CamBar {
     applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
     applyBtn.addEventListener("click", () => {
       let ids = [...state.entityIds];
-      if (state.combo === "pocket") {
-        if (state.regionSeeds.length === 0) { alert("Pick at least one enclosed area."); return; }
+      // Pocket must be region-picked. V-carve may be region-picked OR driven by
+      // selected entities (text/closed shapes); regions win when both exist.
+      if (state.combo === "pocket" && state.regionSeeds.length === 0) {
+        alert("Pick at least one enclosed area."); return;
+      }
+      const regionBased =
+        (state.combo === "pocket" || state.combo === "vcarve") && state.regionSeeds.length > 0;
+      if (regionBased) {
         // Store the bounding loops' ids for ops-list hover highlighting.
         const loops = collectClosedLoops(this.doc.entities);
         const hl = new Set<string>();
@@ -798,7 +804,7 @@ export class CamBar {
         vStep: type === "vcarve" ? state.vStep : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
-        regions: type === "pocket"
+        regions: regionBased
           ? refsFromSeeds(this.doc, state.regionSeeds)
           : undefined,
         tabs: isProfile ? {
@@ -1443,11 +1449,11 @@ export class CamBar {
       pickBtn.classList.add("active");
       pickHint.style.display = "block";
 
-      if (state.combo === "pocket") {
+      if (state.combo === "pocket" || state.combo === "vcarve") {
         // Flood-fill region pick: hover previews the enclosed face under the
         // cursor (any face of the planar arrangement, including those formed
         // by overlapping shapes); click toggles it.
-        pickHint.textContent = "Click an enclosed area to pocket it; click again to remove";
+        pickHint.textContent = "Click an enclosed area to add it; click again to remove";
         this.doc.regionPickHandler = (world) => {
           const loops = collectClosedLoops(this.doc.entities);
           // If the click lands inside an already-picked region, remove that seed.
@@ -1581,7 +1587,11 @@ export class CamBar {
     };
 
     renderEntities = () => {
-      if (state.combo === "pocket") {
+      // Pocket is always region-based. V-carve supports BOTH: show the region
+      // list once areas are picked (or while flood-fill picking), else fall
+      // through to the entity list so text/closed shapes can be selected.
+      if (state.combo === "pocket" ||
+          (state.combo === "vcarve" && (state.regionSeeds.length > 0 || pickModeActive))) {
         renderRegionList();
         return;
       }
