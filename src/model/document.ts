@@ -267,15 +267,16 @@ export class CADDocument {
     if (this.selectedDimensionId && !this.dimensions.find((d) => d.id === this.selectedDimensionId))
       this.selectedDimensionId = null;
     // Remove patterns whose source entities were deleted. Trim instance IDs that
-    // were manually deleted so the definition stays consistent.
-    this.patterns = this.patterns
-      .filter((p) => p.sourceIds.every((id) => ids.has(id)))
-      .map((p) => ({
-        ...p,
-        instanceIds: p.instanceIds
-          .map((inst) => inst.filter((id) => ids.has(id)))
-          .filter((inst) => inst.length > 0),
-      }));
+    // were manually deleted so the definition stays consistent. Mutate the
+    // surviving PatternDef objects in place (rather than replacing them) so a
+    // reference held across a removal — e.g. during pattern regeneration — stays
+    // live.
+    this.patterns = this.patterns.filter((p) => p.sourceIds.every((id) => ids.has(id)));
+    for (const p of this.patterns) {
+      p.instanceIds = p.instanceIds
+        .map((inst) => inst.filter((id) => ids.has(id)))
+        .filter((inst) => inst.length > 0);
+    }
   }
 
   // --- patterns ------------------------------------------------------------
@@ -292,6 +293,25 @@ export class CADDocument {
     const p = this.patterns.find((x) => x.id === id);
     if (p) Object.assign(p, patch);
     this.emitChange();
+  }
+  /**
+   * Swap an existing instance entity's geometry for `replacement` while keeping
+   * its id (and selection), without pruning references. Pattern regeneration
+   * uses this so constraints, dimensions, and CAM ops pointing at a surviving
+   * copy keep resolving across a regen — only genuinely removed instances are
+   * pruned (via batchRemove). Does not emit; the caller batches the change.
+   */
+  replaceInstanceEntity(id: EntityId, replacement: Entity): void {
+    // id is readonly at the type level; this is the one sanctioned place we
+    // reuse an id so references to a regenerated instance survive.
+    (replacement as { id: EntityId }).id = id;
+    const idx = this.entities.findIndex((e) => e.id === id);
+    if (idx === -1) {
+      this.entities.push(replacement);
+      return;
+    }
+    replacement.selected = this.entities[idx].selected;
+    this.entities[idx] = replacement;
   }
   /** Return the pattern that contains this entity (as source or instance), or null. */
   patternOf(entityId: EntityId): PatternDef | null {
