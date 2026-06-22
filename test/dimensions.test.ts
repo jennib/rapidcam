@@ -95,6 +95,24 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   check("circle-gap drives inner radius to 36", Math.abs(inner.radius - 36) < 1e-3, `r=${inner.radius.toFixed(4)}`);
 }
 
+// 5c) Linear dimension anchored to a circle edge ---------------------------
+{
+  const doc = new CADDocument({ width: 300, height: 200 });
+  const c = doc.add(new CircleEntity({ x: 0, y: 0 }, 10)) as CircleEntity;
+  const l = doc.add(new LineEntity({ x: 30, y: 0 }, { x: 40, y: 0 })) as LineEntity;
+  // Edge point at θ=0 is (10,0); distance from line endpoint a (30,0) is 20.
+  const edgeRef = { entityId: c.id, key: "edge@0" };
+  const dim = makeDimension("distance", { points: [pr(l, "a"), edgeRef], value: 0, offset: 5 });
+  check("circle-edge anchor measures to the rim", Math.abs((dimensionMeasure(dim, geoOf(doc)) ?? 0) - 20) < 1e-6);
+
+  // Drive it to 8: the solver must satisfy the rim-to-point distance.
+  doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), edgeRef], value: 8, offset: 5 }));
+  const r = solve(doc);
+  check("circle-edge dim converged", r.converged);
+  check("circle-edge dim drives distance to 8",
+    Math.abs((dimensionMeasure(doc.dimensions[doc.dimensions.length - 1], geoOf(doc)) ?? 0) - 8) < 1e-3);
+}
+
 // 6) Measure correctness --------------------------------------------------
 {
   const doc = new CADDocument({ width: 300, height: 200 });

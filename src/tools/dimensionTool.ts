@@ -8,9 +8,9 @@
  */
 
 import { Vec2, dist, mid, normalize, sub, cross, dot } from "../core/vec2";
-import { distToSegment } from "../core/geom";
+import { distToSegment, angleInArc } from "../core/geom";
 import { Unit } from "../core/units";
-import { Entity, LineEntity, RectEntity } from "../model/entities";
+import { Entity, LineEntity, RectEntity, CircleEntity, ArcEntity } from "../model/entities";
 import { CADDocument } from "../model/document";
 import { Geo, PointRef } from "../model/constraints";
 import {
@@ -539,8 +539,27 @@ function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;
 }
 
+/** Circle/arc rim anchor at the clicked angle, or null when the click is nearer
+ *  the centre (or off an arc's span). The key encodes the angle so the point is
+ *  recomputed live from the circle as it resizes/moves. */
+function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2): Pick | null {
+  const c = ent.center, r = ent.radius;
+  const dCenter = dist(c, p);
+  if (Math.abs(dCenter - r) >= dCenter) return null; // nearer the centre → let it win
+  const theta = Math.atan2(p.y - c.y, p.x - c.x);
+  if (ent instanceof ArcEntity && !angleInArc(theta, ent.startAngle, ent.endAngle)) return null;
+  return {
+    ref: { entityId: ent.id, key: `edge@${theta}` },
+    pos: { x: c.x + r * Math.cos(theta), y: c.y + r * Math.sin(theta) },
+  };
+}
+
 /** Nearest point on an entity for use as a dimension anchor (pickable points). */
 function pickNearestEntityPoint(ent: Entity, p: Vec2): Pick | null {
+  if (ent instanceof CircleEntity || ent instanceof ArcEntity) {
+    const edge = circleEdgePick(ent, p);
+    if (edge) return edge;
+  }
   let best: Pick | null = null;
   let bestD = Infinity;
   for (const dp of ent.pickablePoints()) {

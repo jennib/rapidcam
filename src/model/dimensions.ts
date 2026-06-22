@@ -81,6 +81,16 @@ function readPoint(geo: Geo, ref: PointRef | undefined): Vec2 | null {
   if (!ref) return null;
   const e = geo(ref.entityId);
   if (!e) return null;
+  // Circle/arc boundary anchor: key "edge@<angleRadians>" resolves to a point on
+  // the rim (centre + R·dir). Handled here, not via Entity.getPoint, so the
+  // constraint system never sees these synthetic, non-DOF refs.
+  if (ref.key.startsWith("edge@")) {
+    const g = circularGeom(geo, ref.entityId);
+    if (!g) return null;
+    const theta = parseFloat(ref.key.slice(5));
+    if (!Number.isFinite(theta)) return null;
+    return { x: g.center.x + g.radius * Math.cos(theta), y: g.center.y + g.radius * Math.sin(theta) };
+  }
   try {
     return e.getPoint(ref.key);
   } catch {
