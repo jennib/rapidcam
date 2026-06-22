@@ -33,7 +33,7 @@ import { EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
 import { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
-export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength" | "line-distance";
+export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength" | "line-distance" | "circle-gap";
 export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
@@ -105,6 +105,27 @@ function circularGeom(geo: Geo, id: EntityId | undefined): { center: Vec2; radiu
   if (a) return { center: a.center, radius: a.radius };
   return null;
 }
+/**
+ * Geometry for a gap dimension between two circles/arcs.
+ * `nested` is true when one boundary lies inside the other (the concentric
+ * inner/outer-offset case), in which case the measured gap is radial.
+ */
+function gapGeom(geo: Geo, id1: EntityId | undefined, id2: EntityId | undefined):
+  { cInner: Vec2; rInner: number; cOuter: Vec2; rOuter: number; d: number; nested: boolean } | null {
+  const a = circularGeom(geo, id1);
+  const b = circularGeom(geo, id2);
+  if (!a || !b) return null;
+  const inner = a.radius <= b.radius ? a : b;
+  const outer = a.radius <= b.radius ? b : a;
+  const d = dist(inner.center, outer.center);
+  const nested = d <= outer.radius - inner.radius + 1e-6;
+  return {
+    cInner: inner.center, rInner: inner.radius,
+    cOuter: outer.center, rOuter: outer.radius,
+    d, nested,
+  };
+}
+
 function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
   if (!id) return null;
   const e = geo(id);
@@ -190,6 +211,16 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       const m1 = mid(l1.a, l1.b);
       return Math.abs(dot(sub(m1, l2.a), normal2));
     }
+    case "circle-gap": {
+      const g = gapGeom(geo, dim.entities[0], dim.entities[1]);
+      if (!g) return null;
+      // Nested (incl. concentric, the inner/outer-offset case): the radial gap
+      // is the difference of radii. We deliberately ignore any centre offset —
+      // it keeps the measure smooth (the centre-distance term has a gradient
+      // kink at d=0 that wrecks solver convergence for concentric rings).
+      // External (separate) circles: edge-to-edge distance along the centres.
+      return g.nested ? g.rOuter - g.rInner : g.d - g.rOuter - g.rInner;
+    }
   }
 }
 
@@ -237,6 +268,10 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   if (dim.type === "radius" || dim.type === "diameter") {
     const g = circularGeom(geo, dim.entities[0]);
     return g ? vecAngle(sub(cursor, g.center)) : dim.offset;
+  }
+  if (dim.type === "circle-gap") {
+    const g = gapGeom(geo, dim.entities[0], dim.entities[1]);
+    return g ? vecAngle(sub(cursor, g.cInner)) : dim.offset;
   }
   if (dim.type === "arclength") {
     const a = readArc(geo, dim.entities[0]);
@@ -299,6 +334,25 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
         : [{ tip: edge, dir: u }, { tip: e2, dir: scale(u, -1) }],
       textPos: end,
       label: "⌀" + formatLengthWithUnit(displayVal, unit),
+    };
+  }
+
+  if (dim.type === "circle-gap") {
+    const g = gapGeom(geo, dim.entities[0], dim.entities[1]);
+    if (!g) return null;
+    const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
+    const pInner = add(g.cInner, scale(u, g.rInner));
+    const pOuter = add(g.cOuter, scale(u, g.rOuter));
+    const end = add(g.cOuter, scale(u, g.rOuter + LEADER_MM));
+    return {
+      // Span the gap between the two boundaries, then lead out to the label.
+      segments: [[pInner, pOuter], [pOuter, end]],
+      arrows: [
+        { tip: pInner, dir: u },           // points outward across the gap
+        { tip: pOuter, dir: scale(u, -1) }, // points inward across the gap
+      ],
+      textPos: end,
+      label: formatLengthWithUnit(displayVal, unit),
     };
   }
 

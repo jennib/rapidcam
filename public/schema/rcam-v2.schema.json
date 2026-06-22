@@ -364,17 +364,17 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance"]
+          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance", "circle-gap"]
         },
         "points": {
           "type": "array",
           "items": { "$ref": "#/$defs/pointRef" },
-          "description": "Linear dims: the 2 measured points. Optional — defaults to [] for entity-based dims (radius/diameter/arclength)."
+          "description": "Linear dims: the 2 measured points. Optional — defaults to [] for entity-based dims (radius/diameter/arclength/circle-gap)."
         },
         "entities": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids. Optional — defaults to [] for point-based dims."
+          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids. circle-gap: 2 circle/arc ids (the boundary-to-boundary distance, e.g. an inner/outer offset). Optional — defaults to [] for point-based dims."
         },
         "value": { "type": "number", "description": "mm, or radians for type \"angle\"." },
         "driving": { "type": "boolean", "description": "When true, also constrains the measurement to value." },

@@ -77,6 +77,24 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   check("diameter dim drives radius to 25", Math.abs(c.radius - 25) < 1e-3, `r=${c.radius.toFixed(4)}`);
 }
 
+// 5b) Circle-gap dimension (inner/outer offset) ----------------------------
+{
+  const doc = new CADDocument({ width: 300, height: 200 });
+  const outer = doc.add(new CircleEntity({ x: 50, y: 50 }, 40)) as CircleEntity;
+  const inner = doc.add(new CircleEntity({ x: 50, y: 50 }, 30)) as CircleEntity;
+  // Concentric gap is the radial difference: 40 − 30 = 10.
+  const gap = makeDimension("circle-gap", { entities: [outer.id, inner.id], value: 0, offset: 0 });
+  check("circle-gap measures radial gap", Math.abs((dimensionMeasure(gap, geoOf(doc)) ?? 0) - 10) < 1e-6);
+
+  // With the circles held concentric and the outer radius pinned, driving the
+  // gap to 4 must come out of the inner radius → 36.
+  doc.constraints.push(makeConstraint("concentric", { entities: [outer.id, inner.id] }));
+  doc.addDimension(makeDimension("radius", { entities: [outer.id], value: 40, offset: 0.7 }));
+  doc.addDimension(makeDimension("circle-gap", { entities: [outer.id, inner.id], value: 4, offset: 0 }));
+  solve(doc);
+  check("circle-gap drives inner radius to 36", Math.abs(inner.radius - 36) < 1e-3, `r=${inner.radius.toFixed(4)}`);
+}
+
 // 6) Measure correctness --------------------------------------------------
 {
   const doc = new CADDocument({ width: 300, height: 200 });

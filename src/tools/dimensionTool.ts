@@ -23,6 +23,11 @@ import {
   dimensionOffsetFromCursor,
   chooseLinearType,
 } from "../model/dimensions";
+
+/** True when an entity can carry a radius / gap dimension. */
+function isCircular(e: Entity | null): e is Entity {
+  return !!e && (e.type === "circle" || e.type === "arc");
+}
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
@@ -45,6 +50,9 @@ export class DimensionTool implements Tool {
   private p2: Pick | null = null;
   private circleId: string | null = null;
   private circleKind: DimensionType = "radius";
+  // When hovering a second circle/arc while placing a circle dim, switch to a
+  // gap dimension between the two (e.g. inner/outer offset). null = radius/⌀.
+  private gapTargetId: string | null = null;
   private line1Id: string | null = null;
   private line2Id: string | null = null;
   private firstMid: Pick | null = null;
@@ -215,7 +223,8 @@ export class DimensionTool implements Tool {
         break;
       }
       case "placeCircle":
-        this.commitCircle(ctx);
+        if (this.gapTargetId) this.commitGap(ctx);
+        else this.commitCircle(ctx);
         break;
       case "placeAngle":
         this.commitAngle(ctx);
@@ -277,6 +286,13 @@ export class DimensionTool implements Tool {
       }
     }
 
+    if (this.phase === "placeCircle") {
+      // Hovering a different circle/arc → preview a gap dim between the two.
+      const tol = ctx.view.toWorldLen(POINT_PICK_PX);
+      const hit = ctx.doc.hitTest(e.worldRaw, tol);
+      this.gapTargetId = isCircular(hit) && hit.id !== this.circleId ? hit.id : null;
+    }
+
     this.recompute(ctx);
     if (this.phase !== "first") ctx.requestRender();
   }
@@ -318,6 +334,7 @@ export class DimensionTool implements Tool {
     this.secondRaw = null;
     this.hoverRaw = null;
     this.circleId = null;
+    this.gapTargetId = null;
     this.line1Id = null;
     this.line2Id = null;
     this.forcedLinearType = null;
@@ -356,7 +373,7 @@ export class DimensionTool implements Tool {
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
     } else if (this.phase === "placeCircle" && this.circleId) {
-      const dim = this.circleDim(0);
+      const dim = this.gapTargetId ? this.gapDim(0) : this.circleDim(0);
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
@@ -453,6 +470,13 @@ export class DimensionTool implements Tool {
       offset,
     });
   }
+  private gapDim(offset: number): Dimension {
+    return makeDimension("circle-gap", {
+      entities: [this.circleId!, this.gapTargetId!],
+      value: 0,
+      offset,
+    });
+  }
 
   private commitLinear(ctx: ToolContext): void {
     ctx.pushHistory();
@@ -477,6 +501,17 @@ export class DimensionTool implements Tool {
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     this.phase = "first";
     this.circleId = null;
+    this.gapTargetId = null;
+    this.finaliseDim(dim, ctx);
+  }
+  private commitGap(ctx: ToolContext): void {
+    ctx.pushHistory();
+    const geo = geoOf(ctx.doc.entities);
+    const dim = this.gapDim(this.curOffset);
+    dim.value = dimensionMeasure(dim, geo) ?? 0;
+    this.phase = "first";
+    this.circleId = null;
+    this.gapTargetId = null;
     this.finaliseDim(dim, ctx);
   }
 }
