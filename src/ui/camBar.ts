@@ -14,6 +14,7 @@ import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { generateGCode } from "../cam/gcode";
+import { opPatternTargetCount } from "../cam/patternExpand";
 import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
@@ -335,6 +336,17 @@ export class CamBar {
     params.textContent = `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
     info.appendChild(nameEl);
     info.appendChild(params);
+
+    // Hint when the op targets a pattern: it cuts every copy and follows the count.
+    const patternN = opPatternTargetCount(op, this.doc);
+    if (patternN > 0) {
+      const follows = document.createElement("div");
+      follows.className = "tp-op-params";
+      follows.style.opacity = "0.8";
+      follows.textContent = `↳ follows pattern · cuts ${patternN}`;
+      follows.title = "This toolpath covers the whole pattern and tracks its count as it changes.";
+      info.appendChild(follows);
+    }
     item.appendChild(info);
 
     const dlBtn = document.createElement("button");

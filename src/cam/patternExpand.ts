@@ -12,6 +12,22 @@ import type { CAMOperation } from "./types";
  * keeping the pattern the single source of truth; the op's stored `entityIds`
  * stay as authored. Returns the op unchanged when nothing is added.
  */
+/**
+ * How many pattern member entities (source + instances) an op will cut once
+ * expanded — i.e. the size of the pattern(s) it targets. 0 if the op touches no
+ * pattern. Used by the UI to show a "follows pattern" hint.
+ */
+export function opPatternTargetCount(op: CAMOperation, doc: CADDocument): number {
+  if (doc.patterns.length === 0 || op.entityIds.length === 0) return 0;
+  const ids = new Set(op.entityIds);
+  const members = new Set<string>();
+  for (const pat of doc.patterns) {
+    const m = [...pat.sourceIds, ...pat.instanceIds.flat()];
+    if (m.some((x) => ids.has(x))) for (const x of m) members.add(x);
+  }
+  return members.size;
+}
+
 export function expandOpPatternTargets(op: CAMOperation, doc: CADDocument): CAMOperation {
   if (doc.patterns.length === 0 || op.entityIds.length === 0) return op;
   const ids = new Set(op.entityIds);

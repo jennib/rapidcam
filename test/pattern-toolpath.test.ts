@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity } from "../src/model/entities";
 import { createLinearPattern, regenerateLinearPattern } from "../src/model/patternEngine";
-import { expandOpPatternTargets } from "../src/cam/patternExpand";
+import { expandOpPatternTargets, opPatternTargetCount } from "../src/cam/patternExpand";
 import { generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
 import type { LinearPatternParams } from "../src/model/patterns";
@@ -75,6 +75,14 @@ describe("CAM ops follow patterns", () => {
     regenerateLinearPattern(doc, pat, lin(6)); // holes at x = 0..150
     const g6 = generateGCode(doc.operations, doc);
     expect(g6).toContain("X150"); // the new holes are drilled automatically
+  });
+
+  it("reports the pattern member count for the UI hint", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    createLinearPattern(doc, [src.id], lin(3)); // source + 2 instances = 3 members
+    expect(opPatternTargetCount(drillOp([src.id]), doc)).toBe(3);
+    expect(opPatternTargetCount(drillOp(["nope"]), doc)).toBe(0);
   });
 
   it("leaves an op that references no pattern member unchanged", () => {
