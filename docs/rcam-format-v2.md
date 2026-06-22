@@ -247,6 +247,17 @@ holds one sub-array of entity ids per generated step. **The copy entities listed
 `instanceIds` must also appear in `entities`** — a pattern records the relationship;
 it does not generate geometry on load.
 
+> **Generating a file by hand or with an LLM?** Patterns are the easy thing to get
+> wrong, because you must materialise every copy as a real entity *and* keep
+> `instanceIds` consistent with the count. Two safe options: **(a)** the simplest —
+> just emit all the copies as ordinary `entities` and omit the `pattern` block
+> entirely (you lose the live link, but the geometry is correct and machinable);
+> or **(b)** author the `pattern` *and* list one `instanceIds` sub-array per copy.
+> If you do author a pattern, RapidCAM self-heals a count mismatch on open
+> (it regenerates the instances to match the resolved count), but the file is
+> cleanest when they already agree. `count*` is a cache; if you also set a
+> `*Expr`, the expression wins on the next regenerate.
+
 ```jsonc
 { "id": "pat1", "kind": "circular",
   "sourceIds": ["ent2"],

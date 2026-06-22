@@ -7,6 +7,7 @@ import {
   type EmbeddedFont,
 } from "../core/fontManager";
 import { StorageKeys } from "../core/storageKeys";
+import { reconcileLoadedPatterns } from "../model/patternEngine";
 
 export const RCAM_VERSION = 2 as const;
 
@@ -211,6 +212,11 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     selectedDimensionId: null,
   };
   doc.restore(snap);
+  // Reconcile any pattern whose stored instances don't match the count its
+  // (expression-driven) params resolve to — so a hand- or AI-authored file with
+  // mismatched instanceIds self-corrects on open. Resolution reads the loaded
+  // variable values (no re-evaluation, so stored dimension values are preserved).
+  reconcileLoadedPatterns(doc);
 }
 
 export async function openFile(): Promise<{ name: string; file: RcamFile; handle?: FileSystemFileHandle } | null> {

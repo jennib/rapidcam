@@ -195,6 +195,38 @@ export function regenerateStalePatterns(doc: CADDocument): boolean {
   return changed;
 }
 
+/** Number of instance steps a pattern should have for the given resolved params. */
+function expectedStepCount(pat: PatternDef, resolved: LinearPatternParams | CircularPatternParams): number {
+  if (pat.kind === "linear") {
+    const p = resolved as LinearPatternParams;
+    return Math.max(0, p.countX * p.countY - 1);
+  }
+  return Math.max(0, (resolved as CircularPatternParams).count - 1);
+}
+
+/**
+ * Reconcile patterns right after a file loads: if a pattern's stored
+ * `instanceIds` don't match the count its (expression-driven) params resolve to —
+ * the classic hand- or AI-authored mismatch — regenerate it so the document is
+ * self-consistent. Well-formed files (RapidCAM's own output) are untouched: the
+ * count already matches, so nothing regenerates. Source staleness is NOT checked
+ * here (geometry loads as-saved), preserving any deliberately positioned copies.
+ */
+export function reconcileLoadedPatterns(doc: CADDocument): void {
+  for (const pat of [...doc.patterns]) {
+    const resolved = pat.kind === "linear"
+      ? resolveLinearParams(doc, pat.params as LinearPatternParams)
+      : resolveCircularParams(doc, pat.params as CircularPatternParams);
+    const mismatch = pat.instanceIds.length !== expectedStepCount(pat, resolved);
+    if (!mismatch && !isParamStale(doc, pat)) continue;
+    if (pat.kind === "linear") {
+      regenerateLinearPattern(doc, pat, pat.params as LinearPatternParams);
+    } else {
+      regenerateCircularPattern(doc, pat, pat.params as CircularPatternParams);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Step builders (the source-of-truth for instance ordering & keys)
 

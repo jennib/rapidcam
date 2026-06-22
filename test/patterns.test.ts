@@ -19,9 +19,11 @@ import {
   regenerateParamStalePatterns,
   isSourceStale,
   regenerateStalePatterns,
+  reconcileLoadedPatterns,
 } from "../src/model/patternEngine";
 import type { LinearPatternParams, CircularPatternParams } from "../src/model/patterns";
 import { evaluateAll } from "../src/model/variables";
+import { applyFile } from "../src/io/fileio";
 
 function lin(countX: number, countY: number, sx = 20, sy = 20): LinearPatternParams {
   return { countX, countY, spacingX: sx, spacingY: sy };
@@ -235,6 +237,53 @@ describe("regenerateStalePatterns (param OR source staleness)", () => {
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     createLinearPattern(doc, [src.id], lin(3, 1));
     expect(regenerateStalePatterns(doc)).toBe(false);
+  });
+});
+
+describe("reconcileLoadedPatterns (load-time self-correction)", () => {
+  it("fixes instanceIds that don't match the resolved count", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "4", value: 4 } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const i1 = doc.add(new CircleEntity({ x: 20, y: 0 }, 5));
+    // Hand-authored mismatch: countXExpr n=4 (wants 3 copies) but only 1 listed.
+    doc.patterns.push({
+      id: "pat", kind: "linear", sourceIds: [src.id], instanceIds: [[i1.id]],
+      params: { countX: 4, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
+    } as never);
+
+    reconcileLoadedPatterns(doc);
+
+    expect(doc.patterns[0].instanceIds.length).toBe(3); // 4 cols -> 3 copies
+    expect(doc.patterns[0].instanceIds[0][0]).toBe(i1.id); // existing copy kept
+  });
+
+  it("leaves a well-formed pattern untouched", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], lin(3, 1));
+    const before = pat.instanceIds.flat();
+    reconcileLoadedPatterns(doc);
+    expect(doc.patterns[0].instanceIds.flat()).toEqual(before); // no churn
+  });
+
+  it("applyFile reconciles a mismatched pattern on open (real load path)", () => {
+    const doc = freshDoc();
+    const file = {
+      version: 2, name: "t", canvas: { width: 500, height: 500 }, displayUnit: "mm",
+      variables: [{ id: "v", name: "n", expr: "4", value: 4 }],
+      entities: [
+        { type: "circle", id: "src", center: { x: 0, y: 0 }, radius: 5 },
+        { type: "circle", id: "i1", center: { x: 20, y: 0 }, radius: 5 },
+      ],
+      constraints: [], dimensions: [],
+      patterns: [{
+        id: "pat", kind: "linear", sourceIds: ["src"], instanceIds: [["i1"]],
+        params: { countX: 4, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
+      }],
+    };
+    applyFile(doc, file as never);
+    expect(doc.patterns[0].instanceIds.length).toBe(3); // self-corrected to n=4 -> 3 copies
   });
 });
 
