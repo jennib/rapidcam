@@ -21,7 +21,7 @@ export interface Bounds {
   max: Vec2;
 }
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "vertex";
+export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "vertex" | "intersection";
 
 export interface SnapPoint {
   pos: Vec2;

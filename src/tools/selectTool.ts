@@ -49,6 +49,13 @@ export class SelectTool implements Tool {
   private dragDimLabelId: string | null = null;
   private pickedEntId: string | null = null;
 
+  // Repeated-click cycling through overlapping entity bodies. When several
+  // entities sit under the cursor, clicking the same spot again advances to the
+  // next one so an entity hidden beneath another can still be reached.
+  private cycleScreen: Vec2 | null = null;
+  private cycleIds: string[] = [];
+  private cycleIndex = 0;
+
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return; // Left click only
 
@@ -174,16 +181,28 @@ export class SelectTool implements Tool {
       return;
     }
 
-    // 2) Entity bodies
+    // 2) Entity bodies. Gather every entity under the cursor (nearest first) so
+    //    that repeated clicks on the same spot can cycle through a stack.
+    const candidates = ctx.doc.entities
+      .map((ent) => ({ id: ent.id, px: ent.distanceTo(e.worldRaw) * ctx.view.scale }))
+      .filter((c) => c.px < 10)
+      .sort((a, b) => a.px - b.px)
+      .map((c) => c.id);
+
     let hitEntId: string | null = null;
-    let entDist = Infinity;
-    for (const ent of ctx.doc.entities) {
-      const d = ent.distanceTo(e.worldRaw);
-      const px = d * ctx.view.scale;
-      if (px < 10 && px < entDist) {
-        hitEntId = ent.id;
-        entDist = px;
-      }
+    if (candidates.length > 0) {
+      const sameSpot = this.cycleScreen !== null && dist(e.screen, this.cycleScreen) < DRAG_THRESHOLD_PX;
+      const sameStack = arraysEqual(candidates, this.cycleIds);
+      // Advance only on a genuine repeat click on an unchanged stack of 2+.
+      this.cycleIndex = sameSpot && sameStack && candidates.length > 1
+        ? (this.cycleIndex + 1) % candidates.length
+        : 0;
+      this.cycleScreen = e.screen;
+      this.cycleIds = candidates;
+      hitEntId = candidates[this.cycleIndex];
+    } else {
+      this.cycleScreen = null;
+      this.cycleIds = [];
     }
 
     if (hitEntId) {
@@ -627,6 +646,10 @@ function pinsForSelected(doc: CADDocument): PinMap {
     for (const p of ent.dofPoints()) m.set(`${ent.id}:${p.key}`, p.pos);
   }
   return m;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function boundsIntersect(a: Bounds, b: Bounds): boolean {

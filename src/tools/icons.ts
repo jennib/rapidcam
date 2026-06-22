@@ -41,6 +41,12 @@ export const ICONS = {
     '<line x1="14" y1="12" x2="21" y2="12"/>' +
     '<line x1="12" y1="5" x2="12" y2="19"/>',
   ),
+  // A line growing (dashed extension) to meet a wall on the right.
+  extend: wrap(
+    '<line x1="3" y1="12" x2="11" y2="12"/>' +
+    '<line x1="11" y1="12" x2="18" y2="12" stroke-dasharray="2 2"/>' +
+    '<line x1="18" y1="5" x2="18" y2="19"/>',
+  ),
   // Stadium / oblong: two semicircles joined by parallel lines.
   slot: wrap('<path d="M9 7 A5 5 0 0 0 9 17 H15 A5 5 0 0 0 15 7 Z"/>'),
   // Regular hexagon (flat-top orientation).

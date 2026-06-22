@@ -801,6 +801,14 @@ export class Renderer {
         ctx.closePath();
         ctx.stroke();
         break;
+      case "intersection": // X
+        ctx.beginPath();
+        ctx.moveTo(s.x - r, s.y - r);
+        ctx.lineTo(s.x + r, s.y + r);
+        ctx.moveTo(s.x + r, s.y - r);
+        ctx.lineTo(s.x - r, s.y + r);
+        ctx.stroke();
+        break;
       default: // endpoint / vertex / quadrant → square
         ctx.strokeRect(s.x - r, s.y - r, r * 2, r * 2);
         break;

@@ -35,8 +35,10 @@ import { TextTool } from "./tools/textTool";
 import { FilletTool } from "./tools/filletTool";
 import { ChamferTool } from "./tools/chamferTool";
 import { TrimTool } from "./tools/trimTool";
+import { ExtendTool } from "./tools/extendTool";
 import { MirrorTool } from "./tools/mirrorTool";
 import { joinSelected } from "./tools/joinCommand";
+import { explodeSelected } from "./tools/explodeCommand";
 import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
 import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
 import { regenerateAllStalePatterns, regenerateStalePatterns } from "./model/patternEngine";
@@ -149,6 +151,7 @@ export class App {
         new FilletTool(),
         new ChamferTool(),
         new TrimTool(),
+        new ExtendTool(),
         new MirrorTool(),
         new RotateTool(),
         new ScaleTool(),
@@ -184,6 +187,7 @@ export class App {
       edit: {
         onDelete: () => this.deleteSelected(),
         onJoin: () => this.joinSelectedEntities(),
+        onExplode: () => this.explodeSelectedEntities(),
         onLinearPattern:      () => openLinearPatternDialog(this.doc, this.project.pushHistory),
         onCircularPattern:    () => openCircularPatternDialog(this.doc, this.project.pushHistory),
         onRegeneratePatterns: () => this.doRegeneratePatterns(),
@@ -676,6 +680,13 @@ export class App {
     else this.runSolve();
   }
 
+  private explodeSelectedEntities(): void {
+    if (this.doc.selected.length === 0) return;
+    this.project.pushHistory();
+    if (!explodeSelected(this.doc)) this.project.undoRedo("undo");
+    else this.runSolve();
+  }
+
   private deleteSelected(): void {
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();
@@ -735,7 +746,8 @@ export class App {
     }
     
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "j") {
-      this.joinSelectedEntities();
+      if (ev.shiftKey) this.explodeSelectedEntities();
+      else this.joinSelectedEntities();
       ev.preventDefault();
       return;
     }

@@ -20,6 +20,7 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
   // free key here if Text ever needs a shortcut.
   f: "fillet",
   t: "trim",
+  e: "extend",
   m: "mirror",
   u: "slot",
   n: "polygon",

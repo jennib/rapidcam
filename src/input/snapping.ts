@@ -12,6 +12,7 @@ import { SnapPoint, EntityId } from "../model/entities";
 import { CADDocument } from "../model/document";
 import { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
+import { intersectionsNear } from "../core/intersect";
 
 /** Clamp `raw` to the nearest cardinal axis (H or V) through `start`. */
 export function orthoSnap(start: Vec2, raw: Vec2): Vec2 {
@@ -54,6 +55,16 @@ export class SnapEngine {
           best = sp;
         }
       }
+      // Intersection snaps rank just below exact points: a real vertex on/near
+      // the crossing keeps priority (strict <), but otherwise the crossing wins.
+      const tolWorld = view.toWorldLen(this.pixelTolerance);
+      for (const p of intersectionsNear(this.snappableEntities(doc, exclude), rawWorld, tolWorld)) {
+        const d = dist(view.worldToScreen(p), screen);
+        if (d < bestPx) {
+          bestPx = d;
+          best = { pos: { ...p }, kind: "intersection", entityId: "" };
+        }
+      }
       if (best) return { world: { ...best.pos }, snap: best };
     }
 
@@ -70,5 +81,14 @@ export class SnapEngine {
     }
 
     return { world: rawWorld, snap: null };
+  }
+
+  /** Entities eligible for intersection snapping: visible layers, not excluded. */
+  private snappableEntities(doc: CADDocument, exclude?: Set<EntityId>) {
+    return doc.entities.filter((e) => {
+      if (exclude?.has(e.id)) return false;
+      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+      return layer.visible;
+    });
   }
 }
