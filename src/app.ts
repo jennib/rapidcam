@@ -353,8 +353,7 @@ export class App {
    * emitChange from recursing back in.
    */
   private onVariablesChanged(): void {
-    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
-    this.runSolve(); // settle variable-driven geometry before reading staleness
+    this.runSolve(); // re-evaluates variables/dimensions and settles geometry
     if (this.autoRegenerating) return;
     this.autoRegenerating = true;
     try {

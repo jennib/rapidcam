@@ -238,6 +238,36 @@ describe("regenerateStalePatterns (param OR source staleness)", () => {
   });
 });
 
+describe("variable rename rewrites references", () => {
+  it("rewrites dimension and pattern expressions to the new name", () => {
+    const doc = freshDoc();
+    doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
+    doc.dimensions.push({
+      id: "d", type: "radius", entities: ["x"], points: [],
+      value: 6, driving: true, offset: 5, expr: "n * 2",
+    } as never);
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    const pat = createLinearPattern(doc, [src.id], {
+      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+    });
+
+    doc.renameVariableRefs("n", "holes");
+
+    expect(doc.dimensions[0].expr).toBe("holes * 2");
+    expect((pat.params as LinearPatternParams).countXExpr).toBe("holes");
+  });
+
+  it("does not touch a similarly-named token (word boundary)", () => {
+    const doc = freshDoc();
+    doc.dimensions.push({
+      id: "d", type: "radius", entities: ["x"], points: [],
+      value: 6, driving: true, offset: 5, expr: "nn + n",
+    } as never);
+    doc.renameVariableRefs("n", "m");
+    expect(doc.dimensions[0].expr).toBe("nn + m"); // only the standalone n
+  });
+});
+
 describe("reference integrity across regen", () => {
   it("keeps a dimension on a surviving copy and prunes it when the copy is removed", () => {
     const doc = freshDoc();

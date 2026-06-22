@@ -111,17 +111,16 @@ export class VariablesBar {
       // Commit name change on blur
       nameInput.addEventListener("blur", () => {
         const newName = nameInput.value.trim();
-        if (newName === v.name) return;
+        const oldName = v.name; // capture before updateVariable mutates v
+        if (newName === oldName) return;
         if (!isValidName(newName)) { showErr("Invalid name"); nameInput.value = v.name; return; }
         if (isDuplicateName(newName, this.doc.variables, v.id)) { showErr("Duplicate"); nameInput.value = v.name; return; }
-        
+
         setTimeout(() => {
           this.pushHistory();
           this.doc.updateVariable(v.id, { name: newName });
-          // Update any dimension expressions that reference the old name
-          for (const d of this.doc.dimensions) {
-            if (d.expr) d.expr = d.expr.replace(new RegExp(`\\b${v.name}\\b`, "g"), newName);
-          }
+          // Rewrite dimension + pattern expressions referencing the old name.
+          this.doc.renameVariableRefs(oldName, newName);
           this.runSolve();
         }, 0);
       });

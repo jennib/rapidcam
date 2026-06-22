@@ -389,6 +389,24 @@ export class CADDocument {
     Object.assign(v, patch);
     this.emitChange();
   }
+  /**
+   * Rewrite expression references to a renamed variable, in dimension formulas
+   * and in pattern count/spacing expressions. Call with the OLD name *before*
+   * (or just after) updateVariable; variable names are validated identifiers, so
+   * the word-boundary regex is safe. No-op when the name is unchanged.
+   */
+  renameVariableRefs(oldName: string, newName: string): void {
+    if (oldName === newName) return;
+    const re = new RegExp(`\\b${oldName}\\b`, "g");
+    for (const d of this.dimensions) if (d.expr) d.expr = d.expr.replace(re, newName);
+    for (const pat of this.patterns) {
+      const p = pat.params as unknown as Record<string, string | number | undefined>;
+      for (const key of ["countXExpr", "countYExpr", "spacingXExpr", "spacingYExpr", "countExpr"] as const) {
+        const e = p[key];
+        if (typeof e === "string") p[key] = e.replace(re, newName);
+      }
+    }
+  }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
     return (id) => m.get(id);
