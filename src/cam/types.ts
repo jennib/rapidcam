@@ -80,6 +80,12 @@ export interface CAMOperation {
   type: CAMOpType;
   entityIds: EntityId[];
   side: "outside" | "inside"; // profile only
+  /**
+   * When the op's geometry belongs to a pattern, the toolpath covers the whole
+   * pattern and follows its count (resolved at toolpath time). Set false to opt
+   * out and cut only the literal `entityIds`. Default (undefined) = follow.
+   */
+  followPattern?: boolean;
   // tool
   /**
    * Optional reference into the document's `tools` library. When set and it

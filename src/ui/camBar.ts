@@ -57,6 +57,7 @@ interface OpState {
   entityIds: Set<string>;
   islandIds: Set<string>;
   regionSeeds: Vec2[];
+  followPattern: boolean;
   tabsEnabled: boolean;
   tabCount: number;
   tabWidth: number;
@@ -337,9 +338,10 @@ export class CamBar {
     info.appendChild(nameEl);
     info.appendChild(params);
 
-    // Hint when the op targets a pattern: it cuts every copy and follows the count.
+    // Hint when the op targets a pattern: it cuts every copy and follows the count
+    // (unless the op opted out via followPattern:false).
     const patternN = opPatternTargetCount(op, this.doc);
-    if (patternN > 0) {
+    if (patternN > 0 && op.followPattern !== false) {
       const follows = document.createElement("div");
       follows.className = "tp-op-params";
       follows.style.opacity = "0.8";
@@ -431,6 +433,7 @@ export class CamBar {
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
+      followPattern: existing?.followPattern ?? true,
       regionSeeds:  existing?.regions?.length
         ? seedsFromRegions(this.doc, existing.regions)
         : existing && comboOf(existing) === "pocket"
@@ -700,6 +703,21 @@ export class CamBar {
     const { renderEntities, ensurePocketSeeds, startPickMode, stopPickMode, getPickActive } = geom;
     geomCleanup = geom.cleanup;
 
+    // "Follow pattern" opt-out — shown only when the op's geometry belongs to a
+    // pattern. Default on; unchecking cuts only the literal selection. (Computed
+    // once at open from the initial selection — the common create-from-selection case.)
+    const touchesPattern = [...state.entityIds].some((id) =>
+      this.doc.patterns.some((p) => p.sourceIds.includes(id) || p.instanceIds.flat().includes(id)),
+    );
+    if (touchesPattern) {
+      const followChk = document.createElement("input");
+      followChk.type = "checkbox";
+      followChk.className = "settings-checkbox";
+      followChk.checked = state.followPattern;
+      followChk.addEventListener("change", () => { state.followPattern = followChk.checked; });
+      body.appendChild(this.dField("Follow pattern (cut all copies)", followChk));
+    }
+
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
       // If the name is still an untouched auto-generated default, rename it
@@ -797,6 +815,7 @@ export class CamBar {
         id: existing?.id ?? nextId("cam"),
         name: state.name || this.autoName(state.combo),
         type, side, entityIds: ids,
+        followPattern: state.followPattern ? undefined : false, // omit when following (default)
         toolId: state.toolId,
         toolType: state.toolType,
         toolNumber: state.toolNumber,

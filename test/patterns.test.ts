@@ -16,7 +16,6 @@ import {
   createCircularPattern,
   regenerateCircularPattern,
   isParamStale,
-  regenerateParamStalePatterns,
   isSourceStale,
   regenerateStalePatterns,
   reconcileLoadedPatterns,
@@ -166,13 +165,13 @@ describe("auto-regen of param-stale patterns", () => {
     const pat2 = createCircularPattern(doc, [src2.id], { count: 4, cx: 0, cy: 200, totalAngle: Math.PI * 2 });
     const before2 = pat2.instanceIds.flat();
 
-    expect(regenerateParamStalePatterns(doc)).toBe(false); // nothing changed yet
+    expect(regenerateStalePatterns(doc)).toBe(false); // nothing changed yet
 
     doc.variables[0].value = 6;
     expect(isParamStale(doc, pat)).toBe(true);
     expect(isParamStale(doc, pat2)).toBe(false);
 
-    expect(regenerateParamStalePatterns(doc)).toBe(true);
+    expect(regenerateStalePatterns(doc)).toBe(true);
     expect(pat.params.countX).toBe(6);
     expect(pat.instanceIds.flat().length).toBe(5);
     expect(pat.instanceIds.flat().slice(0, 2)).toEqual(before); // surviving ids stable
@@ -195,7 +194,7 @@ describe("auto-regen of param-stale patterns", () => {
     evaluateAll(doc.variables, doc.dimensions, "mm");
     expect(doc.variables[0].value).toBe(8);
 
-    expect(regenerateParamStalePatterns(doc)).toBe(true); // ...then auto-regenerates
+    expect(regenerateStalePatterns(doc)).toBe(true); // ...then auto-regenerates
     expect(pat.params.countX).toBe(8);
     expect(pat.instanceIds.flat().length).toBe(7);
   });

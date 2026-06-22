@@ -146,25 +146,6 @@ export function isParamStale(doc: CADDocument, pat: PatternDef): boolean {
 }
 
 /**
- * Regenerate every pattern whose expression-driven params have drifted from
- * their cache (a variable changed). Returns whether anything changed. The
- * caller owns the history transaction.
- */
-export function regenerateParamStalePatterns(doc: CADDocument): boolean {
-  let changed = false;
-  for (const pat of [...doc.patterns]) {
-    if (!isParamStale(doc, pat)) continue;
-    if (pat.kind === "linear") {
-      regenerateLinearPattern(doc, pat, pat.params as LinearPatternParams);
-    } else {
-      regenerateCircularPattern(doc, pat, pat.params as CircularPatternParams);
-    }
-    changed = true;
-  }
-  return changed;
-}
-
-/**
  * True if a pattern's source geometry has moved since the instances were last
  * applied (its snapshot no longer matches). Patterns without a snapshot (legacy)
  * are never source-stale.

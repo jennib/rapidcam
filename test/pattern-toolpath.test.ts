@@ -77,6 +77,14 @@ describe("CAM ops follow patterns", () => {
     expect(g6).toContain("X150"); // the new holes are drilled automatically
   });
 
+  it("does not expand an op that opted out with followPattern:false", () => {
+    const doc = freshDoc();
+    const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
+    createLinearPattern(doc, [src.id], lin(3));
+    const op = { ...drillOp([src.id]), followPattern: false as const };
+    expect(expandOpPatternTargets(op, doc)).toBe(op); // unchanged — cuts only the master
+  });
+
   it("reports the pattern member count for the UI hint", () => {
     const doc = freshDoc();
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));

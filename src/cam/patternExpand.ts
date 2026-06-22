@@ -29,6 +29,7 @@ export function opPatternTargetCount(op: CAMOperation, doc: CADDocument): number
 }
 
 export function expandOpPatternTargets(op: CAMOperation, doc: CADDocument): CAMOperation {
+  if (op.followPattern === false) return op; // opted out: cut only literal entityIds
   if (doc.patterns.length === 0 || op.entityIds.length === 0) return op;
   const ids = new Set(op.entityIds);
   let added = false;

@@ -281,6 +281,11 @@ it does not generate geometry on load.
   cover the whole pattern — so a profile/drill assigned to patterned geometry
   cuts every copy and tracks the count as it grows or shrinks. You only need to
   assign the op to the master; you don't have to list every copy in `entityIds`.
+  Set the op's `followPattern` to `false` to opt out (cut only the literal
+  `entityIds`).
+- **Instances are owned by the pattern.** Editing a single copy — moving or
+  re-layering it — is overwritten the next time the pattern regenerates. Edit the
+  source (or the pattern params/variables) instead; the copies follow.
 
 ## CAM operations
 

@@ -504,6 +504,7 @@
         "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
+        "followPattern": { "type": "boolean", "description": "When the op's geometry belongs to a pattern, the toolpath covers the whole pattern and follows its count. Set false to cut only the literal entityIds. Default (omitted) = follow." },
         "toolId": { "type": "string", "description": "Optional reference to a tool id in the top-level \"tools\" array. When it resolves, that tool's geometry/feeds override the inline toolType/diameter/vAngle/tipAngle/feedrate/plungeRate/spindleSpeed/safeZ fields below (which remain as a fallback). toolNumber and the cut settings (depth/stepdown/stepover) always stay per-operation." },
         "toolType": { "enum": ["end-mill", "ball-nose", "v-bit", "drill"] },
         "toolNumber": { "type": "integer", "minimum": 1, "description": "T-number (1-based)." },
