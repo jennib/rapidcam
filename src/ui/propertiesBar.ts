@@ -10,6 +10,7 @@ import { Constraint, ConstraintType } from "../model/constraints";
 import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
 import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
+import { regularPolygonPoints } from "../core/geom";
 
 const DIM_LABELS: Record<DimensionType, string> = {
   distance: "Distance",
@@ -511,6 +512,34 @@ export class PropertiesBar {
   }
 
   private buildPolylineProperties(entity: PolylineEntity): void {
+    // A pristine regular polygon stays editable by sides / across-flats Ø. The
+    // metadata is dropped the moment it no longer matches the actual vertices
+    // (a vertex was dragged, a constraint moved it, etc.) or once the shape is
+    // referenced by a constraint/dimension (which pins its vertex topology).
+    const asPolygon = entity.polygon
+      && !this.isEntityReferenced(entity.id)
+      && this.polygonMatches(entity)
+      ? entity.polygon
+      : null;
+    if (entity.polygon && !asPolygon && !this.isEntityReferenced(entity.id)) {
+      entity.polygon = undefined; // self-heal stale metadata
+    }
+
+    if (asPolygon) {
+      const sec = this.createSection("POLYGON");
+      this.numRow(sec, "Sides", asPolygon.sides, null, (v) => {
+        const n = Math.round(v);
+        if (n < 3 || n > 64) return;
+        this.regenPolygon(entity, { sides: n }); // keep across-flats Ø
+      }, 0);
+      const af = 2 * asPolygon.radius * Math.cos(Math.PI / asPolygon.sides);
+      this.numRow(sec, "Ø (AF)", af, "mm", (v) => {
+        if (v <= 0) return;
+        this.regenPolygon(entity, { diameter: v });
+      });
+      this.content.appendChild(sec);
+    }
+
     const sec = this.createSection("POLYLINE");
     const row = document.createElement("div");
     row.className = "props-row";
@@ -534,12 +563,39 @@ export class PropertiesBar {
     list.className = "props-vertex-list";
     entity.points.forEach((p, i) => {
       this.coordRow(list, `${i} X`, p.x, "Y", p.y, (x, y) => {
-        this.applyEdit(() => { entity.points[i] = { x, y }; });
+        // Hand-editing a vertex breaks regularity — forget the polygon params.
+        this.applyEdit(() => { entity.points[i] = { x, y }; entity.polygon = undefined; });
       });
     });
     sec.appendChild(list);
 
     this.content.appendChild(sec);
+  }
+
+  /** True if any constraint or dimension references this entity (pins its topology). */
+  private isEntityReferenced(id: string): boolean {
+    return this.doc.constraints.some(c => c.entities.includes(id) || c.points.some(p => p.entityId === id))
+      || this.doc.dimensions.some(d => d.entities.includes(id) || d.points.some(p => p.entityId === id));
+  }
+
+  /** True while the polygon params still reproduce the actual vertices (≤1e-3 mm). */
+  private polygonMatches(entity: PolylineEntity): boolean {
+    const p = entity.polygon!;
+    if (entity.points.length !== p.sides) return false;
+    const expected = regularPolygonPoints(p.center, p.radius, p.sides, p.rotation);
+    return entity.points.every((q, i) => Math.hypot(q.x - expected[i].x, q.y - expected[i].y) < 1e-3);
+  }
+
+  /** Regenerate a polygon's vertices from edited params, holding across-flats Ø by default. */
+  private regenPolygon(entity: PolylineEntity, change: { sides?: number; diameter?: number }): void {
+    const p = entity.polygon!;
+    const sides = change.sides ?? p.sides;
+    const af = change.diameter ?? 2 * p.radius * Math.cos(Math.PI / p.sides);
+    const radius = (af / 2) / Math.cos(Math.PI / sides);
+    this.applyEdit(() => {
+      entity.points = regularPolygonPoints(p.center, radius, sides, p.rotation);
+      entity.polygon = { sides, center: { ...p.center }, radius, rotation: p.rotation };
+    });
   }
 
   // ---------------------------------------------------------------------------

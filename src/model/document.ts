@@ -46,7 +46,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 
   return { ox, oy, zOffset };
 }
-import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, PointEntity, TextEntity } from "./entities";
+import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity } from "./entities";
 import type { CAMOperation, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
@@ -74,7 +74,7 @@ type EntitySnapshot =
   | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; selected: boolean; isConstruction: boolean; layerId?: string }
+  | { type: "polyline"; id: string; points: Vec2[]; closed: boolean; polygon?: PolygonParams; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "text"; id: string; text: string; fontId: string; sizeMM: number; position: Vec2; angle: number; selected: boolean; isConstruction: boolean; layerId?: string };
@@ -559,7 +559,9 @@ export class CADDocument {
         if (e instanceof TextEntity)
           return { type: "text", id: e.id, text: e.text, fontId: e.fontId, sizeMM: e.sizeMM, position: { ...e.position }, angle: e.angle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         const pe = e as PolylineEntity;
-        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed, selected: pe.selected, isConstruction: pe.isConstruction, layerId: pe.layerId };
+        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), closed: pe.closed,
+          ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
+          selected: pe.selected, isConstruction: pe.isConstruction, layerId: pe.layerId };
       }),
       constraints: this.constraints.map((c) => ({
         id: c.id, type: c.type,
@@ -612,7 +614,9 @@ export class CADDocument {
           break;
         }
         case "polyline": {
-          e = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id);
+          const pl = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id);
+          if (es.polygon) pl.polygon = { ...es.polygon, center: { ...es.polygon.center } };
+          e = pl;
           break;
         }
         case "arc": {

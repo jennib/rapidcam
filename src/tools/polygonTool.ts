@@ -5,6 +5,7 @@
 
 import { Vec2, dist, sub, angle as vecAngle } from "../core/vec2";
 import { PolylineEntity } from "../model/entities";
+import { regularPolygonPoints } from "../core/geom";
 import { parseLength } from "../core/units";
 import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -58,7 +59,7 @@ export class PolygonTool implements Tool {
     if (r < 1e-6) return { previews: [{ kind: "point", pos: center }], selectionRect: null };
 
     const startAngle = vecAngle(sub(this.cursor, center));
-    const pts = polygonPoints(center, r, this.sides, startAngle);
+    const pts = regularPolygonPoints(center, r, this.sides, startAngle);
 
     return {
       previews: [
@@ -118,10 +119,14 @@ export class PolygonTool implements Tool {
   }
 
   private commit(r: number, startAngle: number, ctx: ToolContext): void {
-    const pts = polygonPoints(this.center!, r, this.sides, startAngle);
+    const center = this.center!;
+    const pts = regularPolygonPoints(center, r, this.sides, startAngle);
     ctx.pushHistory();
     const ent = new PolylineEntity(pts, true);
     ent.isConstruction = ctx.doc.isConstructionMode;
+    // Remember the construction params so the polygon stays editable by
+    // sides / across-flats Ø until a vertex is hand-edited (see propertiesBar).
+    ent.polygon = { sides: this.sides, center: { ...center }, radius: r, rotation: startAngle };
     ctx.doc.addSelected(ent);
     ctx.solve();
     this.reset();
@@ -131,13 +136,4 @@ export class PolygonTool implements Tool {
     this.phase = "center";
     this.center = null;
   }
-}
-
-export function polygonPoints(center: Vec2, r: number, n: number, startAngle: number): Vec2[] {
-  const pts: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = startAngle + (i * 2 * Math.PI) / n;
-    pts.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
-  }
-  return pts;
 }

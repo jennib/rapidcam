@@ -374,10 +374,26 @@ export class RectEntity extends Entity {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Construction parameters for a closed polyline that was generated as a regular
+ * polygon. Kept as optional metadata so the properties bar can keep the shape
+ * editable by side count / across-flats Ø — dropped once a vertex is hand-edited,
+ * because the polyline is then no longer guaranteed regular. `radius` is the
+ * circumradius (centre → vertex); `rotation` is the angle (rad) of vertex 0.
+ */
+export interface PolygonParams {
+  sides: number;
+  center: Vec2;
+  radius: number;
+  rotation: number;
+}
+
 export class PolylineEntity extends Entity {
   readonly type = "polyline" as const;
   points: Vec2[];
   closed: boolean;
+  /** Present only while this closed polyline is still a pristine regular polygon. */
+  polygon?: PolygonParams;
 
   constructor(points: Vec2[], closed = false, id?: EntityId) {
     super(id);
@@ -432,11 +448,15 @@ export class PolylineEntity extends Entity {
   }
   override translate(d: Vec2): void {
     this.points = this.points.map((p) => add(p, d));
+    // Translation preserves regularity — shift the polygon centre so the params
+    // stay consistent with the moved vertices.
+    if (this.polygon) this.polygon.center = add(this.polygon.center, d);
   }
   override duplicate(): PolylineEntity {
     const e = new PolylineEntity(this.points, this.closed);
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
+    if (this.polygon) e.polygon = { ...this.polygon, center: { ...this.polygon.center } };
     return e;
   }
   override dofPoints(): DofPoint[] {

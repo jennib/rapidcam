@@ -5,6 +5,17 @@ import { Vec2, sub, dot, lenSq, dist, scale, add } from "./vec2";
 export const clamp = (v: number, lo: number, hi: number): number =>
   v < lo ? lo : v > hi ? hi : v;
 
+/** Vertices of a regular n-gon: `n` points on the circumradius `r` about `center`,
+ *  the first at angle `startAngle` (rad), proceeding CCW. */
+export function regularPolygonPoints(center: Vec2, r: number, n: number, startAngle: number): Vec2[] {
+  const pts: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = startAngle + (i * 2 * Math.PI) / n;
+    pts.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
+  }
+  return pts;
+}
+
 /** Closest point on the segment a→b to point p, plus the param t in [0,1]. */
 export function closestPointOnSegment(p: Vec2, a: Vec2, b: Vec2): { point: Vec2; t: number } {
   const ab = sub(b, a);

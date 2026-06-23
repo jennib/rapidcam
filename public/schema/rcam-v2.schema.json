@@ -230,6 +230,18 @@
         "id": { "type": "string", "minLength": 1 },
         "points": { "type": "array", "items": { "$ref": "#/$defs/vec2" }, "minItems": 2 },
         "closed": { "type": "boolean" },
+        "polygon": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Present only for a pristine regular polygon: lets editors regenerate it by side count / across-flats Ø. Dropped once a vertex is hand-edited. radius = circumradius (centre→vertex); rotation = angle (rad) of vertex 0.",
+          "required": ["sides", "center", "radius", "rotation"],
+          "properties": {
+            "sides": { "type": "integer", "minimum": 3, "maximum": 64 },
+            "center": { "$ref": "#/$defs/vec2" },
+            "radius": { "type": "number", "exclusiveMinimum": 0 },
+            "rotation": { "type": "number", "description": "radians" }
+          }
+        },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
