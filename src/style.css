@@ -921,6 +921,15 @@ button.cbtn.solve {
   background: var(--accent-dim);
   color: #fff;
 }
+.fmenu-item.disabled {
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.5;
+}
+.fmenu-item.disabled:hover {
+  background: transparent;
+  color: var(--text-dim);
+}
 
 .fmenu-kbd {
   font-family: var(--mono);

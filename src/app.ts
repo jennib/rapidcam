@@ -54,6 +54,7 @@ import { LayersBar } from "./ui/layersBar";
 import { CamBar } from "./ui/camBar";
 import { DimEditor } from "./ui/dimEditor";
 import { VariablesBar } from "./ui/variablesBar";
+import { ContextMenu, ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { WebGLPreview } from "./cam/webglPreview";
@@ -70,6 +71,7 @@ export class App {
   private snapEngine = new SnapEngine();
   private tools: ToolManager;
   private statusBar: StatusBar;
+  private contextMenu = new ContextMenu();
 
   private currentSnap: SnapResult["snap"] = null;
   private currentHover: EntityId | null = null;
@@ -463,7 +465,7 @@ export class App {
     c.addEventListener("wheel", this.onWheel, { passive: false });
     c.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      this.tools.cancelActive();
+      this.onContextMenu(e);
     });
 
     window.addEventListener("keydown", this.onKeyDown);
@@ -701,6 +703,79 @@ export class App {
       this.doc.removeSelected();
       this.runSolve();
     }
+  }
+
+  // --- context menu --------------------------------------------------------
+  private onContextMenu(ev: MouseEvent): void {
+    // For drawing tools, right-click cancels/finishes the current operation
+    // (its long-standing behavior) rather than popping a menu.
+    if (this.tools.active.id !== "select") {
+      this.tools.cancelActive();
+      this.requestRender();
+      return;
+    }
+
+    const screen = this.screenOf(ev);
+    const world = this.view.screenToWorld(screen);
+
+    // Right-clicking an unselected entity selects it (with its group) so the
+    // menu acts on a sensible target. Right-clicking empty space keeps the
+    // current selection.
+    const hitId = this.pickEntityAt(world);
+    if (hitId) {
+      const ent = this.doc.entities.find((e) => e.id === hitId)!;
+      if (!ent.selected) {
+        this.doc.clearSelection();
+        const group = this.doc.groupOf(ent.id);
+        if (group) {
+          for (const id of group.entityIds) {
+            const ge = this.doc.entities.find((x) => x.id === id);
+            if (ge) ge.selected = true;
+          }
+        } else {
+          ent.selected = true;
+        }
+        this.doc.emitChange();
+      }
+    }
+
+    const sel = this.doc.selected;
+    const entries: ContextMenuEntry[] = [];
+
+    if (sel.length > 0) {
+      const allConstruction = sel.every((e) => e.isConstruction);
+      entries.push({ label: "Delete", shortcut: "Del", onClick: () => this.deleteSelected() });
+      entries.push({ label: "Join", shortcut: "^J", enabled: sel.length >= 2, onClick: () => this.joinSelectedEntities() });
+      entries.push({ label: "Explode", shortcut: "^⇧J", onClick: () => this.explodeSelectedEntities() });
+      entries.push({ label: allConstruction ? "Make Normal" : "Make Construction", shortcut: "X", onClick: () => this.toggleConstruction() });
+      entries.push("sep");
+      entries.push({ label: "Linear Pattern…", onClick: () => openLinearPatternDialog(this.doc, this.project.pushHistory) });
+      entries.push({ label: "Circular Pattern…", onClick: () => openCircularPatternDialog(this.doc, this.project.pushHistory) });
+      entries.push({ label: "Rectangular Array…", onClick: () => openRectArrayDialog(this.doc, this.project.pushHistory) });
+      entries.push({ label: "Circular Array…", onClick: () => openCircArrayDialog(this.doc, this.project.pushHistory) });
+      entries.push("sep");
+    }
+
+    if (this.stalePatternIds.size > 0) {
+      entries.push({ label: "Regenerate Patterns", shortcut: "^⇧P", onClick: () => this.doRegeneratePatterns() });
+    }
+    entries.push({ label: "Fit View", onClick: () => this.fitView() });
+
+    this.contextMenu.show(ev.clientX, ev.clientY, entries);
+  }
+
+  /** Nearest entity body under a world point (within 10px on screen), or null. */
+  private pickEntityAt(world: Vec2): EntityId | null {
+    let hitId: EntityId | null = null;
+    let best = Infinity;
+    for (const ent of this.doc.entities) {
+      const px = ent.distanceTo(world) * this.view.scale;
+      if (px < 10 && px < best) {
+        best = px;
+        hitId = ent.id;
+      }
+    }
+    return hitId;
   }
 
   // --- keyboard ------------------------------------------------------------
