@@ -29,8 +29,8 @@ export class PolygonTool implements Tool {
       this.phase = "radius";
       ctx.openValueEditor(
         e.world,
-        `circumradius (${ctx.doc.displayUnit})`,
-        (raw) => this.commitByRadius(raw, ctx),
+        `sides × Ø  e.g. 6×50 (${ctx.doc.displayUnit})`,
+        (raw) => this.commitByText(raw, ctx),
         () => this.cancel(ctx),
       );
     } else {
@@ -47,7 +47,7 @@ export class PolygonTool implements Tool {
   }
 
   getOverlay(): ToolOverlay {
-    const hint = `${this.sides} sides  ([ / ])`;
+    const hint = `${this.sides} sides  ([ / ] or type N×Ø)`;
 
     if (this.phase === "center") {
       return { previews: [], selectionRect: null };
@@ -88,9 +88,28 @@ export class PolygonTool implements Tool {
     ctx.requestRender();
   }
 
-  private commitByRadius(raw: string, ctx: ToolContext): boolean {
-    const r = parseLength(raw, ctx.doc.displayUnit);
-    if (!r || r <= 0) return false;
+  /**
+   * Parse the value editor. Accepts "N × D" (sides and across-flats diameter),
+   * or just "D" to keep the current side count. Separators: × x or comma.
+   * Diameter is across-flats (inscribed-circle Ø), the machinist convention, so
+   * the circumradius is (D/2) / cos(π/n).
+   */
+  private commitByText(raw: string, ctx: ToolContext): boolean {
+    const parts = raw.split(/[x×,]/i).map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length === 0) return false;
+
+    let diaStr = parts[0];
+    if (parts.length >= 2) {
+      const n = parseInt(parts[0], 10);
+      if (!Number.isFinite(n) || n < 3 || n > 64) return false;
+      this.sides = n;
+      diaStr = parts[1];
+    }
+
+    const d = parseLength(diaStr, ctx.doc.displayUnit);
+    if (!d || d <= 0) return false;
+    const r = (d / 2) / Math.cos(Math.PI / this.sides);
+
     const startAngle = this.center && dist(this.center, this.cursor) > 1e-6
       ? vecAngle(sub(this.cursor, this.center))
       : 0;
@@ -114,7 +133,7 @@ export class PolygonTool implements Tool {
   }
 }
 
-function polygonPoints(center: Vec2, r: number, n: number, startAngle: number): Vec2[] {
+export function polygonPoints(center: Vec2, r: number, n: number, startAngle: number): Vec2[] {
   const pts: Vec2[] = [];
   for (let i = 0; i < n; i++) {
     const a = startAngle + (i * 2 * Math.PI) / n;
