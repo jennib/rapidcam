@@ -215,6 +215,7 @@ export class App {
       this.project.pushHistory,
       () => this.runSolve(),
       () => this.toggleConstruction(),
+      (dim, v, expr) => this.commitDimValue(dim, v, expr),
     );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     new ConstraintBar(

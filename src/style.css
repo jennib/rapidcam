@@ -693,6 +693,14 @@ button.cbtn.solve {
   gap: 4px;
 }
 
+.props-vertex-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 .props-row span {
   color: var(--text-dim);
   font-size: 11px;

@@ -5,6 +5,43 @@ import { listFonts } from "../core/fontManager";
 import {
   Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, Bounds,
 } from "../model/entities";
+import { Dimension, DimensionType } from "../model/dimensions";
+import { Constraint, ConstraintType } from "../model/constraints";
+import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
+import { evalExpr } from "../core/expr";
+import { varMap } from "../model/variables";
+
+const DIM_LABELS: Record<DimensionType, string> = {
+  distance: "Distance",
+  horizontal: "Horizontal",
+  vertical: "Vertical",
+  radius: "Radius",
+  diameter: "Diameter",
+  angle: "Angle",
+  arclength: "Arc Length",
+  "line-distance": "Point to Line",
+  "circle-gap": "Circle Gap",
+};
+
+const CON_LABELS: Record<ConstraintType, string> = {
+  coincident: "Coincident",
+  horizontal: "Horizontal",
+  vertical: "Vertical",
+  parallel: "Parallel",
+  perpendicular: "Perpendicular",
+  equal: "Equal",
+  concentric: "Concentric",
+  pointOnLine: "Point on Line",
+  tangent: "Tangent",
+  pointOnArc: "Point on Arc",
+  pointOnCircle: "Point on Circle",
+  symmetric: "Symmetric",
+  collinear: "Collinear",
+  midpoint: "Midpoint",
+  angle: "Angle",
+  fixedPoint: "Fixed Point",
+  fixed: "Fixed",
+};
 
 export class PropertiesBar {
   private content!: HTMLElement;
@@ -19,6 +56,7 @@ export class PropertiesBar {
     private pushHistory: () => void,
     private solve: () => void,
     private onConstructionToggle: () => void,
+    private commitDimValue: (dim: Dimension, v: number, expr?: string) => boolean,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -79,13 +117,25 @@ export class PropertiesBar {
       : this.doc.isConstructionMode;
     this.constructionBtn.classList.toggle("active", cmActive);
 
-    if (selected.length === 0) {
+    const selDim = this.doc.selectedDimensionId
+      ? this.doc.dimensions.find(d => d.id === this.doc.selectedDimensionId) ?? null
+      : null;
+    const selCon = this.doc.selectedConstraintId
+      ? this.doc.constraints.find(c => c.id === this.doc.selectedConstraintId) ?? null
+      : null;
+
+    if (selected.length === 0 && !selDim && !selCon) {
       const empty = document.createElement("div");
       empty.className = "props-empty";
       empty.textContent = "No selection";
       this.content.appendChild(empty);
       return;
     }
+
+    // A dimension or constraint is selected (entities are cleared in that case).
+    if (selDim) this.buildDimensionSection(selDim);
+    if (selCon) this.buildConstraintSection(selCon);
+    if (selected.length === 0) return;
 
     const bounds = selectionBounds(selected);
     if (!bounds) return;
@@ -133,6 +183,151 @@ export class PropertiesBar {
     } else if (entity instanceof PolylineEntity) {
       this.buildPolylineProperties(entity);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dimension / constraint properties
+
+  private buildDimensionSection(dim: Dimension): void {
+    const sec = this.createSection(`DIMENSION · ${DIM_LABELS[dim.type]}`);
+    const isAngle = dim.type === "angle";
+
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = "Value";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.style.flex = "1";
+    inp.value = (!isAngle && dim.expr)
+      ? dim.expr
+      : isAngle ? formatAngle(dim.value) : formatLength(dim.value, this.doc.displayUnit);
+    inp.addEventListener("change", () => {
+      const raw = inp.value.trim();
+      let v: number | null = null;
+      let expr: string | undefined;
+      if (isAngle) {
+        v = parseAngle(raw);
+      } else {
+        v = parseLength(raw, this.doc.displayUnit);
+        if (v === null) {
+          const ev = evalExpr(raw, varMap(this.doc.variables));
+          if (ev !== null) { v = ev; expr = raw; }
+        }
+      }
+      if (v === null || v <= 0) { this.flashInput(inp); return; }
+      if (!this.commitDimValue(dim, v, expr)) this.flashInput(inp);
+    });
+    row.append(lbl, inp);
+    sec.appendChild(row);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:4px;margin-top:4px;";
+
+    const drivingBtn = document.createElement("button");
+    drivingBtn.className = dim.driving ? "btn active" : "btn";
+    drivingBtn.style.flex = "1";
+    drivingBtn.textContent = dim.driving ? "Driving" : "Reference";
+    drivingBtn.title = "Driving dimensions force the geometry; reference dimensions only measure it";
+    drivingBtn.addEventListener("click", () => {
+      this.applyEdit(() => { dim.driving = !dim.driving; });
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn";
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", () => {
+      this.pushHistory();
+      this.doc.removeDimension(dim.id);
+      this.solve();
+    });
+
+    btnRow.append(drivingBtn, delBtn);
+    sec.appendChild(btnRow);
+    this.content.appendChild(sec);
+  }
+
+  private buildConstraintSection(con: Constraint): void {
+    const sec = this.createSection("CONSTRAINT");
+
+    const typeRow = document.createElement("div");
+    typeRow.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = "Type";
+    const val = document.createElement("input");
+    val.type = "text"; val.disabled = true; val.style.flex = "1";
+    val.value = CON_LABELS[con.type] ?? con.type;
+    typeRow.append(lbl, val);
+    sec.appendChild(typeRow);
+
+    // The angle constraint carries an editable target (radians in params[0]).
+    if (con.type === "angle" && con.params && con.params.length > 0) {
+      this.numRow(sec, "Angle", con.params[0] * 180 / Math.PI, "°", (v) => {
+        this.applyEdit(() => { con.params![0] = v * Math.PI / 180; });
+      }, 1);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn";
+    delBtn.style.cssText = "width:100%;margin-top:4px;";
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", () => {
+      this.pushHistory();
+      this.doc.removeConstraint(con.id);
+      this.solve();
+    });
+    sec.appendChild(delBtn);
+    this.content.appendChild(sec);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Small editable-field helpers
+
+  /** Push history, mutate geometry, re-solve, and refresh. */
+  private applyEdit(mutate: () => void): void {
+    this.pushHistory();
+    mutate();
+    this.solve();
+    this.doc.emitChange();
+  }
+
+  /** A "Label [input] unit" row whose input commits a parsed number on change. */
+  private numRow(parent: HTMLElement, label: string, value: number, unit: string | null, onCommit: (v: number) => void, decimals = 3): void {
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.style.flex = "1"; inp.value = value.toFixed(decimals);
+    inp.addEventListener("change", () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v)) { inp.value = value.toFixed(decimals); return; }
+      onCommit(v);
+    });
+    row.append(lbl, inp);
+    if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
+    parent.appendChild(row);
+  }
+
+  /** A two-field "Lx [x] Ly [y]" coordinate row committing both values together. */
+  private coordRow(parent: HTMLElement, labelA: string, a: number, labelB: string, b: number, onCommit: (a: number, b: number) => void): void {
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lblA = document.createElement("span"); lblA.textContent = labelA;
+    const inA = document.createElement("input"); inA.type = "text"; inA.value = a.toFixed(2);
+    const lblB = document.createElement("span"); lblB.textContent = labelB;
+    const inB = document.createElement("input"); inB.type = "text"; inB.value = b.toFixed(2);
+    const apply = () => {
+      const va = parseFloat(inA.value), vb = parseFloat(inB.value);
+      if (isNaN(va) || isNaN(vb)) { inA.value = a.toFixed(2); inB.value = b.toFixed(2); return; }
+      onCommit(va, vb);
+    };
+    inA.addEventListener("change", apply);
+    inB.addEventListener("change", apply);
+    row.append(lblA, inA, lblB, inB);
+    parent.appendChild(row);
+  }
+
+  private flashInput(inp: HTMLInputElement): void {
+    inp.style.borderColor = "#e05555";
+    setTimeout(() => { inp.style.borderColor = ""; }, 600);
   }
 
   private buildTextProperties(entity: TextEntity): void {
@@ -223,94 +418,95 @@ export class PropertiesBar {
 
   private buildCircleProperties(entity: CircleEntity): void {
     const sec = this.createSection("CIRCLE");
-    const row = document.createElement("div");
-    row.className = "props-row";
-    const lbl = document.createElement("span"); lbl.textContent = "Radius";
-    const inp = document.createElement("input"); inp.type = "text"; inp.value = entity.radius.toFixed(3);
-    const unit = document.createElement("span"); unit.textContent = "mm";
-    inp.addEventListener("change", () => {
-      const v = parseFloat(inp.value);
-      if (isNaN(v) || v <= 0) return;
-      this.pushHistory();
-      entity.radius = v;
-      this.solve();
-      this.doc.emitChange();
+    this.numRow(sec, "Radius", entity.radius, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => { entity.radius = v; });
     });
-    row.append(lbl, inp, unit);
-    sec.appendChild(row);
+    this.coordRow(sec, "Cx", entity.center.x, "Cy", entity.center.y, (x, y) => {
+      this.applyEdit(() => { entity.center = { x, y }; });
+    });
     this.content.appendChild(sec);
   }
 
   private buildArcProperties(entity: ArcEntity): void {
     const sec = this.createSection("ARC");
-    const toDeg = (r: number) => (r * 180 / Math.PI).toFixed(1) + "°";
     const TAU = Math.PI * 2;
     const span = ((entity.endAngle - entity.startAngle) % TAU + TAU) % TAU;
+    const toDeg = (r: number) => r * 180 / Math.PI;
 
-    const rRow = document.createElement("div");
-    rRow.className = "props-row";
-    const rLbl = document.createElement("span"); rLbl.textContent = "Radius";
-    const rIn = document.createElement("input"); rIn.type = "text"; rIn.value = entity.radius.toFixed(3);
-    const rUnit = document.createElement("span"); rUnit.textContent = "mm";
-    rIn.addEventListener("change", () => {
-      const v = parseFloat(rIn.value);
-      if (isNaN(v) || v <= 0) return;
-      this.pushHistory();
-      entity.radius = v;
-      this.solve();
-      this.doc.emitChange();
+    this.numRow(sec, "Radius", entity.radius, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => { entity.radius = v; });
     });
-    rRow.append(rLbl, rIn, rUnit);
-    sec.appendChild(rRow);
-
-    const angRow = document.createElement("div");
-    angRow.className = "props-row";
-    const sLbl = document.createElement("span"); sLbl.textContent = "Start";
-    const sVal = document.createElement("input"); sVal.type = "text"; sVal.value = toDeg(entity.startAngle); sVal.disabled = true;
-    const eLbl = document.createElement("span"); eLbl.textContent = "End";
-    const eVal = document.createElement("input"); eVal.type = "text"; eVal.value = toDeg(entity.endAngle); eVal.disabled = true;
-    angRow.append(sLbl, sVal, eLbl, eVal);
-    sec.appendChild(angRow);
+    this.numRow(sec, "Start", toDeg(entity.startAngle), "°", (v) => {
+      this.applyEdit(() => { entity.startAngle = v * Math.PI / 180; });
+    }, 1);
+    this.numRow(sec, "End", toDeg(entity.endAngle), "°", (v) => {
+      this.applyEdit(() => { entity.endAngle = v * Math.PI / 180; });
+    }, 1);
 
     const sweepRow = document.createElement("div");
     sweepRow.className = "props-row";
     const swLbl = document.createElement("span"); swLbl.textContent = "Sweep";
-    const swVal = document.createElement("input"); swVal.type = "text"; swVal.value = toDeg(span); swVal.disabled = true;
+    const swVal = document.createElement("input"); swVal.type = "text"; swVal.value = toDeg(span).toFixed(1) + "°"; swVal.disabled = true;
     sweepRow.append(swLbl, swVal);
     sec.appendChild(sweepRow);
 
+    this.coordRow(sec, "Cx", entity.center.x, "Cy", entity.center.y, (x, y) => {
+      this.applyEdit(() => { entity.center = { x, y }; });
+    });
     this.content.appendChild(sec);
   }
 
   private buildLineProperties(entity: LineEntity): void {
     const sec = this.createSection("LINE");
-    const dx = entity.b.x - entity.a.x;
-    const dy = entity.b.y - entity.a.y;
-    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+    const angleDeg = Math.atan2(entity.b.y - entity.a.y, entity.b.x - entity.a.x) * 180 / Math.PI;
 
-    const row = document.createElement("div");
-    row.className = "props-row";
-    const lenLbl = document.createElement("span"); lenLbl.textContent = "Length";
-    const lenVal = document.createElement("input"); lenVal.type = "text"; lenVal.value = entity.length.toFixed(3); lenVal.disabled = true;
-    const lenUnit = document.createElement("span"); lenUnit.textContent = "mm";
-    const angLbl = document.createElement("span"); angLbl.textContent = "Angle";
-    const angVal = document.createElement("input"); angVal.type = "text"; angVal.value = angleDeg.toFixed(1) + "°"; angVal.disabled = true;
-    row.append(lenLbl, lenVal, lenUnit, angLbl, angVal);
-    sec.appendChild(row);
+    // Length — resize along the current direction, anchoring endpoint A.
+    this.numRow(sec, "Length", entity.length, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => {
+        const dx = entity.b.x - entity.a.x, dy = entity.b.y - entity.a.y;
+        const L = Math.hypot(dx, dy) || 1;
+        entity.b = { x: entity.a.x + (dx / L) * v, y: entity.a.y + (dy / L) * v };
+      });
+    });
+    // Angle — rotate endpoint B about A, keeping the length.
+    this.numRow(sec, "Angle", angleDeg, "°", (v) => {
+      this.applyEdit(() => {
+        const L = entity.length;
+        const r = v * Math.PI / 180;
+        entity.b = { x: entity.a.x + L * Math.cos(r), y: entity.a.y + L * Math.sin(r) };
+      });
+    }, 1);
+    this.coordRow(sec, "Ax", entity.a.x, "Ay", entity.a.y, (x, y) => {
+      this.applyEdit(() => { entity.a = { x, y }; });
+    });
+    this.coordRow(sec, "Bx", entity.b.x, "By", entity.b.y, (x, y) => {
+      this.applyEdit(() => { entity.b = { x, y }; });
+    });
     this.content.appendChild(sec);
   }
 
   private buildRectProperties(entity: RectEntity): void {
     const sec = this.createSection("RECTANGLE");
-    const row = document.createElement("div");
-    row.className = "props-row";
-    const wLbl = document.createElement("span"); wLbl.textContent = "W";
-    const wVal = document.createElement("input"); wVal.type = "text"; wVal.value = entity.width.toFixed(3); wVal.disabled = true;
-    const hLbl = document.createElement("span"); hLbl.textContent = "H";
-    const hVal = document.createElement("input"); hVal.type = "text"; hVal.value = entity.height.toFixed(3); hVal.disabled = true;
-    const unit = document.createElement("span"); unit.textContent = "mm";
-    row.append(wLbl, wVal, hLbl, hVal, unit);
-    sec.appendChild(row);
+    // Resize anchored at the min (bottom-left) corner.
+    this.numRow(sec, "W", entity.width, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => {
+        const m = entity.minPt, h = entity.height;
+        entity.p0 = { x: m.x, y: m.y };
+        entity.p1 = { x: m.x + v, y: m.y + h };
+      });
+    });
+    this.numRow(sec, "H", entity.height, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => {
+        const m = entity.minPt, w = entity.width;
+        entity.p0 = { x: m.x, y: m.y };
+        entity.p1 = { x: m.x + w, y: m.y + v };
+      });
+    });
     this.content.appendChild(sec);
   }
 
@@ -331,6 +527,18 @@ export class PropertiesBar {
     });
     row.append(vLbl, vVal, closedBtn);
     sec.appendChild(row);
+
+    // Per-vertex coordinates. Scrolls when a shape (e.g. a polygon, which is a
+    // closed polyline) has many vertices.
+    const list = document.createElement("div");
+    list.className = "props-vertex-list";
+    entity.points.forEach((p, i) => {
+      this.coordRow(list, `${i} X`, p.x, "Y", p.y, (x, y) => {
+        this.applyEdit(() => { entity.points[i] = { x, y }; });
+      });
+    });
+    sec.appendChild(list);
+
     this.content.appendChild(sec);
   }
 
