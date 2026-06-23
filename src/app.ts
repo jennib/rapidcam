@@ -24,6 +24,7 @@ import { RectTool } from "./tools/rectTool";
 import { CircleTool } from "./tools/circleTool";
 import { PolylineTool } from "./tools/polylineTool";
 import { DimensionTool } from "./tools/dimensionTool";
+import { MeasureTool } from "./tools/measureTool";
 import { ArcTool } from "./tools/arcTool";
 import { SlotTool } from "./tools/slotTool";
 import { PolygonTool } from "./tools/polygonTool";
@@ -148,6 +149,7 @@ export class App {
         new TextTool(),
         // dimension
         new DimensionTool(),
+        new MeasureTool(),
         // modify
         new OffsetTool(),
         new FilletTool(),

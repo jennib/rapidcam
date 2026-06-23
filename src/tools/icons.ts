@@ -51,4 +51,12 @@ export const ICONS = {
   slot: wrap('<path d="M9 7 A5 5 0 0 0 9 17 H15 A5 5 0 0 0 15 7 Z"/>'),
   // Regular hexagon (flat-top orientation).
   polygon: wrap('<polygon points="12,4 18.9,8 18.9,16 12,20 5.1,16 5.1,8"/>'),
+  // A ruler with tick marks.
+  measure: wrap(
+    '<rect x="2" y="8" width="20" height="8" rx="1"/>' +
+    '<line x1="6" y1="8" x2="6" y2="12"/>' +
+    '<line x1="10" y1="8" x2="10" y2="12"/>' +
+    '<line x1="14" y1="8" x2="14" y2="12"/>' +
+    '<line x1="18" y1="8" x2="18" y2="12"/>',
+  ),
 } as const;

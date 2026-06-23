@@ -4,7 +4,7 @@ import { ToolManager } from "../tools/tool";
 import { shortcutForTool } from "../tools/shortcuts";
 
 // Tool IDs after which a visual separator is inserted.
-const SEP_AFTER = new Set(["select", "text", "dimension"]);
+const SEP_AFTER = new Set(["select", "text", "measure"]);
 
 export class ToolPalette {
   private buttons = new Map<string, HTMLButtonElement>();

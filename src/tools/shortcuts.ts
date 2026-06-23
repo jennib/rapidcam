@@ -11,6 +11,7 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
   a: "arc",
   p: "polyline",
   d: "dimension",
+  i: "measure",
   o: "offset",
   b: "bezier",
   q: "rotate",
