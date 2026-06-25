@@ -146,3 +146,32 @@ test("preview skips op types with no laser equivalent", () => {
 
   expect(laserPreviewPaths([op], doc)).toEqual([]);
 });
+
+// 9) Area-fill engrave --------------------------------------------------------
+test("fill engrave outlines and floods a closed rectangle", () => {
+  const doc = laserDoc();
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }, "R1"));
+  const op = baseOp({ type: "engrave", entityIds: ["R1"], laserFill: true, laserFillSpacing: 1 });
+
+  const g = generateLaserGCode([op], doc);
+  expect(g).toContain("Engrave (fill)");
+  expect(g).toContain("M4 S800");
+  // ~10mm tall / 1mm spacing → on the order of 10 interior scan rows; each row
+  // is a travel (G0) + a cut (G1). The outline alone would be a handful of moves.
+  const cuts = g.split("\n").filter((l) => l.startsWith("G1 "));
+  expect(cuts.length).toBeGreaterThan(8);
+
+  // Preview exposes the outline (closed) plus many open fill segments.
+  const paths = laserPreviewPaths([op], doc);
+  expect(paths.some((p) => p.closed)).toBe(true);
+  expect(paths.filter((p) => !p.closed).length).toBeGreaterThan(8);
+});
+
+test("fill skips an open shape with a note", () => {
+  const doc = laserDoc();
+  doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
+  const op = baseOp({ type: "engrave", entityIds: ["L1"], laserFill: true });
+
+  const g = generateLaserGCode([op], doc);
+  expect(g).toContain("fill needs a closed shape");
+});

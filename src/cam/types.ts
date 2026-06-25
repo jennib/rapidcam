@@ -192,6 +192,15 @@ export interface CAMOperation {
    * line (no compensation). Engrave ignores it (always centreline).
    */
   kerfWidth?: number;
+  /**
+   * Laser engrave only: fill the interior of closed shapes with parallel scan
+   * lines (area/solid engraving) in addition to outlining them, instead of
+   * tracing the centreline only. Closed contours are grouped even–odd so letter
+   * counters (the hole in "O") stay unfilled. Default false.
+   */
+  laserFill?: boolean;
+  /** Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2. */
+  laserFillSpacing?: number;
 }
 
 export const DEFAULTS = {
@@ -216,6 +225,7 @@ export const DEFAULTS = {
   laserPower: 80,
   laserPasses: 1,
   kerfWidth: 0,
+  laserFillSpacing: 0.2,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

@@ -15,6 +15,7 @@ import type { Vec2 } from "../core/vec2";
 import { flattenBezier } from "../core/geom";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import {
+  type Entity,
   LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
@@ -22,6 +23,8 @@ import type { CAMOperation } from "./types";
 import { DEFAULTS } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
 import { chainLinesIntoPolygons } from "./loops";
+import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { groupContoursIntoRegions } from "./vcarve";
 import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
 import { n, X, Y } from "./postprocessors/base";
@@ -163,6 +166,30 @@ function profileCircleRadius(r: number, op: CAMOperation, head: CuttingHead): nu
   return r + (op.side === "outside" ? 1 : -1) * (kerf / 2);
 }
 
+/** Closed contour rings of an entity for area fill, or null if it isn't closed. */
+function fillableContours(ent: Entity): Vec2[][] | null {
+  if (ent instanceof CircleEntity) return [circlePolyline(ent.center.x, ent.center.y, ent.radius)];
+  if (ent instanceof RectEntity) return [[...ent.corners()]];
+  if (ent instanceof PolylineEntity) return ent.closed ? [ent.points] : null;
+  if (ent instanceof TextEntity) {
+    const cs = textToContours(ent).filter((c) => c.closed).map((c) => c.points);
+    return cs.length ? cs : null;
+  }
+  return null; // line / arc / bezier are open — nothing to fill
+}
+
+/** Scan-line fill of a region as a list of beam-on segments (each [a, b]). */
+function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][] {
+  const rows = holes.length > 0
+    ? rasterRowsWithIslands(outer, holes, spacing)
+    : rasterRows(outer, spacing);
+  const segs: Vec2[][] = [];
+  for (const row of rows)
+    for (let i = 0; i + 1 < row.length; i += 2)
+      segs.push([row[i], row[i + 1]]);
+  return segs;
+}
+
 /**
  * Expand an operation's entities into ordered cut primitives (kerf applied for
  * closed profiles) plus any skip notes. Shared by the G-code emitter and the
@@ -176,6 +203,28 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, head: CuttingHead): La
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   const profile = op.type === "profile";
   const items: LaserItem[] = [];
+
+  // Area-fill engrave: gather every closed contour, group even–odd into solids
+  // with holes (so letter counters stay clear), outline each, then flood the
+  // interior with scan-line segments. Replaces the centreline dispatch below.
+  if (op.type === "engrave" && op.laserFill) {
+    const contours: Vec2[][] = [];
+    for (const id of op.entityIds) {
+      const ent = entityMap.get(id);
+      if (!ent || ent.isConstruction) continue;
+      const cs = fillableContours(ent);
+      if (cs) contours.push(...cs);
+      else items.push({ kind: "note", text: `${ent.id} skipped — fill needs a closed shape` });
+    }
+    const spacing = Math.max(0.01, op.laserFillSpacing ?? DEFAULTS.laserFillSpacing);
+    for (const region of groupContoursIntoRegions(contours)) {
+      items.push({ kind: "poly", pts: region.outer, closed: true });        // crisp edge
+      for (const h of region.holes) items.push({ kind: "poly", pts: h, closed: true });
+      for (const seg of fillSegments(region.outer, region.holes, spacing))
+        items.push({ kind: "poly", pts: seg, closed: false });
+    }
+    return items;
+  }
 
   // Chain selected line segments into closed polygons (profile only).
   const lineSegIds = new Set<string>();
@@ -373,7 +422,8 @@ export function generateLaserGCode(
   if (startLines.length > 0) lines.push("; --- custom start ---", ...startLines, "");
 
   for (const op of ops) {
-    const typeLabel = op.type === "profile" ? `Profile (${op.side})` : "Engrave";
+    const typeLabel = op.type === "profile" ? `Profile (${op.side})`
+      : op.laserFill ? "Engrave (fill)" : "Engrave";
     const pct = Math.max(0, Math.min(100, op.laserPower ?? DEFAULTS.laserPower));
     lines.push(
       `; --- ${typeLabel} "${op.name}"  power:${pct}% (S${powerToS(op, maxPower)})  ` +

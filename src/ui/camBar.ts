@@ -72,6 +72,8 @@ interface OpState {
   laserPower: number;
   laserPasses: number;
   kerfWidth: number;
+  laserFill: boolean;
+  laserFillSpacing: number;
 }
 
 /**
@@ -464,6 +466,8 @@ export class CamBar {
       laserPower:   existing?.laserPower  ?? DEFAULTS.laserPower,
       laserPasses:  existing?.laserPasses ?? DEFAULTS.laserPasses,
       kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
+      laserFill:    existing?.laserFill   ?? false,
+      laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
     };
 
     let geomCleanup: () => void = () => {};
@@ -886,6 +890,8 @@ export class CamBar {
         laserPower:  isLaser ? state.laserPower  : undefined,
         laserPasses: isLaser ? state.laserPasses : undefined,
         kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
+        laserFill:   isLaser && type === "engrave" && state.laserFill ? true : undefined,
+        laserFillSpacing: isLaser && type === "engrave" && state.laserFill ? state.laserFillSpacing : undefined,
       };
 
       if (existing) {
@@ -1374,10 +1380,24 @@ export class CamBar {
     sec.appendChild(passes.el);
     sec.appendChild(kerf.el);
 
+    // Fill (area engrave) — engrave only. Floods closed shapes with scan lines.
+    const fillChk = document.createElement("input");
+    fillChk.type = "checkbox";
+    fillChk.className = "settings-checkbox";
+    fillChk.checked = state.laserFill;
+    const fillRow = this.dField("Fill area (engrave solid)", fillChk);
+    const fillSpacing = this.numRow("Fill spacing (mm)", () => state.laserFillSpacing, (v) => { state.laserFillSpacing = Math.max(0.01, v); });
+    sec.appendChild(fillRow);
+    sec.appendChild(fillSpacing.el);
+
     const update = () => {
       const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
+      const isEngrave = state.combo === "engrave";
       kerf.el.style.display = isCut ? "" : "none";
+      fillRow.style.display = isEngrave ? "" : "none";
+      fillSpacing.el.style.display = isEngrave && state.laserFill ? "" : "none";
     };
+    fillChk.addEventListener("change", () => { state.laserFill = fillChk.checked; update(); });
     update();
     return { root: sec, update };
   }
