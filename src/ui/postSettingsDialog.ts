@@ -2,7 +2,7 @@ import {
   getCustomGcode, setCustomGcode,
   getMachineHasCoolant, setMachineHasCoolant,
 } from "../core/prefs";
-import type { CADDocument } from "../model/document";
+import type { CADDocument, MachineKind } from "../model/document";
 
 interface MachineSettingsOptions {
   doc: CADDocument;
@@ -36,6 +36,18 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   title.className = "post-settings-title";
   title.textContent = "Machine Settings";
 
+  // Machine type — mill (spindle + Z) vs laser (fixed-Z beam). Drives which
+  // G-code generator runs and which toolpath fields the CAM dialog shows.
+  const kindSelect = document.createElement("select");
+  kindSelect.className = "unit post-settings-select";
+  for (const [v, l] of [["mill", "CNC Mill / Router"], ["laser", "Laser"]] as const) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = l;
+    kindSelect.appendChild(o);
+  }
+  kindSelect.value = doc.machineKind;
+  const kindField = labeledRow("Machine type", kindSelect);
+
   // Controller (post-processor + tool changer).
   const ppSelect = document.createElement("select");
   ppSelect.className = "unit post-settings-select";
@@ -57,6 +69,16 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   coolantCheck.checked = getMachineHasCoolant();
   const coolantRow = checkRow("Machine has coolant (show coolant options & emit M7/M8/M9)", coolantCheck);
 
+  // Spindle/Z concepts don't apply to a laser; hide the tool-changer + coolant
+  // rows in laser mode so the dialog only offers relevant options. The
+  // post-processor still matters (GRBL emits the laser-mode reminder).
+  const applyKindVisibility = () => {
+    const laser = kindSelect.value === "laser";
+    tcRow.style.display = laser ? "none" : "";
+    coolantRow.style.display = laser ? "none" : "";
+  };
+  kindSelect.addEventListener("change", applyKindVisibility);
+
   const note = document.createElement("p");
   note.className = "post-settings-note";
   note.textContent =
@@ -77,10 +99,12 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   save.textContent = "Save";
   save.addEventListener("click", () => {
     // Controller fields live on the document — push history only if they change.
-    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked) {
+    const kind = kindSelect.value as MachineKind;
+    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind) {
       opts.pushHistory();
       doc.postProcessor = ppSelect.value;
       doc.hasToolChanger = tcCheck.checked;
+      doc.machineKind = kind;
     }
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
@@ -93,9 +117,10 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   buttons.appendChild(save);
 
   container.append(
-    closeBtn, title, ppField, tcRow, coolantRow,
+    closeBtn, title, kindField, ppField, tcRow, coolantRow,
     note, startArea.field, endArea.field, buttons,
   );
+  applyKindVisibility();
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) backdrop.remove();

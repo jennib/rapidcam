@@ -68,6 +68,10 @@ interface OpState {
   leadInLen: number;
   leadOutType: LeadType;
   leadOutLen: number;
+  // laser (machineKind === "laser")
+  laserPower: number;
+  laserPasses: number;
+  kerfWidth: number;
 }
 
 /**
@@ -403,11 +407,19 @@ export class CamBar {
     this.highlightOp(null); // dialog manages toolpathHighlightIds from here
 
     const isNew = existing === null;
+    // A laser document has no spindle/Z: the dialog hides the tool + cut/Z
+    // sections and shows a laser section (power/passes/feed) instead, and the
+    // op-type list narrows to the two that map to a beam (cut + engrave).
+    const isLaser = this.doc.machineKind === "laser";
     const preSelected = new Set(
       this.doc.entities.filter((e) => e.selected && !e.isConstruction).map((e) => e.id),
     );
 
-    const initialCombo: OpCombo = existing ? comboOf(existing) : "profile-outside";
+    let initialCombo: OpCombo = existing ? comboOf(existing) : "profile-outside";
+    // In a laser doc, coerce any non-laser op type to a beam-capable one so the
+    // narrowed type list always has a matching selection.
+    if (isLaser && initialCombo !== "profile-outside" && initialCombo !== "profile-inside" && initialCombo !== "engrave")
+      initialCombo = "profile-outside";
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
@@ -449,6 +461,9 @@ export class CamBar {
       leadInLen:    existing?.leadIn?.length  ?? 2,
       leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
       leadOutLen:   existing?.leadOut?.length ?? 2,
+      laserPower:   existing?.laserPower  ?? DEFAULTS.laserPower,
+      laserPasses:  existing?.laserPasses ?? DEFAULTS.laserPasses,
+      kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
     };
 
     let geomCleanup: () => void = () => {};
@@ -481,15 +496,21 @@ export class CamBar {
     // type
     const typeSelect = document.createElement("select");
     typeSelect.className = "unit";
-    const combos: [OpCombo, string][] = [
-      ["profile-outside", "Profile (outside)"],
-      ["profile-inside",  "Profile (inside)"],
-      ["pocket",          "Pocket (interior clear)"],
-      ["chamfer",         "Chamfer (V-bevel edge)"],
-      ["vcarve",          "V-Carve (text/shape)"],
-      ["engrave",         "Engrave"],
-      ["drill",           "Drill"],
-    ];
+    const combos: [OpCombo, string][] = isLaser
+      ? [
+          ["profile-outside", "Cut (outside)"],
+          ["profile-inside",  "Cut (inside)"],
+          ["engrave",         "Engrave (centreline)"],
+        ]
+      : [
+          ["profile-outside", "Profile (outside)"],
+          ["profile-inside",  "Profile (inside)"],
+          ["pocket",          "Pocket (interior clear)"],
+          ["chamfer",         "Chamfer (V-bevel edge)"],
+          ["vcarve",          "V-Carve (text/shape)"],
+          ["engrave",         "Engrave"],
+          ["drill",           "Drill"],
+        ];
     for (const [v, l] of combos) {
       const o = document.createElement("option");
       o.value = v; o.textContent = l;
@@ -498,8 +519,12 @@ export class CamBar {
     typeSelect.value = state.combo;
     body.appendChild(this.dField("Type", typeSelect));
 
-    // tool section (collapsible — starts collapsed when editing an existing op)
-    body.appendChild(this.buildToolSection(state, hooks, isNew));
+    // tool section (collapsible — starts collapsed when editing an existing op).
+    // Hidden for a laser (no spindle/Z/tool-library concept); the laser section
+    // below carries the feed instead.
+    const toolSec = this.buildToolSection(state, hooks, isNew);
+    if (isLaser) toolSec.style.display = "none";
+    body.appendChild(toolSec);
 
     // cut section
     const cutSec = this.dSection("Cut");
@@ -685,17 +710,27 @@ export class CamBar {
       cutSec.appendChild(this.dField("Coolant", coolantSelect));
     }
 
+    if (isLaser) cutSec.style.display = "none";
     body.appendChild(cutSec);
 
-    // tabs section — profile ops only
-    const tabs = this.buildTabsSection(state);
-    body.appendChild(tabs.root);
-    const updateTabsVisibility = tabs.update;
+    // laser section (machineKind === "laser") — feed/power/passes/kerf. Hidden
+    // (and its updater neutralised) for a mill.
+    const laser = this.buildLaserSection(state);
+    if (!isLaser) laser.root.style.display = "none";
+    body.appendChild(laser.root);
+    const updateLaserVisibility = isLaser ? laser.update : () => {};
 
-    // lead-in / lead-out section (profile ops only)
+    // tabs section — profile ops only (mill)
+    const tabs = this.buildTabsSection(state);
+    if (isLaser) tabs.root.style.display = "none";
+    body.appendChild(tabs.root);
+    const updateTabsVisibility = isLaser ? () => {} : tabs.update;
+
+    // lead-in / lead-out section (profile ops only, mill)
     const lead = this.buildLeadSection(state);
+    if (isLaser) lead.root.style.display = "none";
     body.appendChild(lead.root);
-    const updateLeadVisibility = lead.update;
+    const updateLeadVisibility = isLaser ? () => {} : lead.update;
 
     // geometry section
     const geom = this.buildGeometrySection(state);
@@ -742,6 +777,7 @@ export class CamBar {
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
+      updateLaserVisibility();
       if (state.combo === "pocket") {
         ensurePocketSeeds();
         startPickMode(); // pocket picking is canvas-driven — make it live immediately
@@ -761,6 +797,7 @@ export class CamBar {
     updateChamferVisibility();
     updateTabsVisibility();
     updateLeadVisibility();
+    updateLaserVisibility();
     if (state.combo === "pocket") {
       ensurePocketSeeds();
       startPickMode();
@@ -846,6 +883,9 @@ export class CamBar {
         } : undefined,
         leadIn:  isProfile && state.leadInType  !== "none" ? { type: state.leadInType,  length: state.leadInLen  } : undefined,
         leadOut: isProfile && state.leadOutType !== "none" ? { type: state.leadOutType, length: state.leadOutLen } : undefined,
+        laserPower:  isLaser ? state.laserPower  : undefined,
+        laserPasses: isLaser ? state.laserPasses : undefined,
+        kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
       };
 
       if (existing) {
@@ -1315,6 +1355,31 @@ export class CamBar {
     });
 
     return { root: tabsSec, update };
+  }
+
+  /**
+   * Laser section (machineKind === "laser"): feed, beam power (%), pass count,
+   * and kerf width. Replaces the tool + cut sections, which are spindle/Z
+   * concepts a laser has no use for. `update` toggles the kerf row (cut only —
+   * engrave is always on the centreline).
+   */
+  private buildLaserSection(state: OpState): { root: HTMLElement; update: () => void } {
+    const sec = this.dSection("Laser");
+    const feed   = this.numRow("Feed (mm/min)", () => state.feedrate,   (v) => { state.feedrate   = Math.max(1, v); });
+    const power  = this.numRow("Power (%)",     () => state.laserPower,  (v) => { state.laserPower  = Math.min(100, Math.max(0, v)); });
+    const passes = this.numRow("Passes",        () => state.laserPasses, (v) => { state.laserPasses = Math.max(1, Math.round(v)); });
+    const kerf   = this.numRow("Kerf width (mm)", () => state.kerfWidth, (v) => { state.kerfWidth   = Math.max(0, v); });
+    sec.appendChild(feed.el);
+    sec.appendChild(power.el);
+    sec.appendChild(passes.el);
+    sec.appendChild(kerf.el);
+
+    const update = () => {
+      const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
+      kerf.el.style.display = isCut ? "" : "none";
+    };
+    update();
+    return { root: sec, update };
   }
 
   /** Lead-in / lead-out section (profile ops only). Returns its visibility updater. */

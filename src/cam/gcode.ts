@@ -15,6 +15,7 @@ import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
+import { generateLaserGCode } from "./lasergcode";
 
 export function getPostProcessor(name: string): PostProcessor {
   switch (name) {
@@ -1055,6 +1056,8 @@ export interface GCodeOptions {
    * supported (so the document's `coolant` drives emission).
    */
   coolantSupported?: boolean;
+  /** Laser only: controller max power (GRBL `$30`) that 100% maps to. Default 1000. */
+  laserMaxPower?: number;
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
@@ -1066,6 +1069,16 @@ function customLines(block: string | undefined): string[] {
 export function generateGCode(
   rawOps: CAMOperation[], doc: CADDocument, opts: GCodeOptions = {},
 ): string {
+  // Laser machines have no spindle/Z — route to the fixed-Z beam generator,
+  // which reuses the same XY geometry but emits beam on/off instead.
+  if (doc.machineKind === "laser") {
+    return generateLaserGCode(rawOps, doc, {
+      customStart: opts.customStart,
+      customEnd: opts.customEnd,
+      laserMaxPower: opts.laserMaxPower,
+    });
+  }
+
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
   // Expand pattern targets (so a toolpath follows its pattern's count), then

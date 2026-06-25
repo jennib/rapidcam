@@ -9,6 +9,16 @@ export type OriginX = "left" | "center" | "right";
 export type OriginY = "front" | "center" | "back";
 export type OriginZ = "top" | "bed";
 
+/**
+ * The kind of machine the document outputs for. "mill" is the default 3-axis
+ * spindle path (G-code with Z plunge/retract); "laser" is a fixed-Z 2D cutting
+ * head (beam on/off, power + passes, no Z). Other fixed-Z cutters (waterjet,
+ * plasma) would join this union as additional cutting-head profiles — see
+ * cam/cuttingHead.ts. Gates which G-code generator runs and which op fields the
+ * UI shows.
+ */
+export type MachineKind = "mill" | "laser";
+
 export interface OriginDef {
   x: OriginX;
   y: OriginY;
@@ -98,6 +108,7 @@ export interface DocSnapshot {
   hasToolChanger?: boolean;
   origin?: OriginDef;
   postProcessor?: string;
+  machineKind?: MachineKind;
   endPosition?: EndPosition | null;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -128,6 +139,13 @@ export class CADDocument {
   origin: OriginDef = { x: "left", y: "front", z: "top" };
   /** Post-processor to use when generating G-code. */
   postProcessor = "linuxcnc";
+  /**
+   * Which machine the document outputs for. Default "mill" (spindle + Z). When
+   * "laser", export routes through the laser generator (beam on/off, no Z) and
+   * the toolpath UI shows power/passes instead of spindle/depth. See
+   * {@link MachineKind}.
+   */
+  machineKind: MachineKind = "mill";
   /**
    * Optional end-of-program park position (work coords, mm). When set, the
    * G-code rapids here at safe Z before M30; `null` leaves the tool where the
@@ -584,6 +602,7 @@ export class CADDocument {
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
+      machineKind: this.machineKind,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -670,6 +689,7 @@ export class CADDocument {
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
+    this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
