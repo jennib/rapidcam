@@ -39,4 +39,8 @@ export const COLORS = {
   toolpathHighlight: "#f59e42",
   regionFill: "rgba(245,158,66,0.22)",
   regionFillHover: "rgba(245,158,66,0.42)",
+
+  // Flat laser toolpath preview (cut paths drawn over the 2D canvas).
+  laserCut: "#ff4d4d",
+  laserCutGlow: "rgba(255,77,77,0.35)",
 } as const;

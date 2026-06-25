@@ -146,27 +146,36 @@ function kerfPaths(verts: Vec2[], op: CAMOperation, head: CuttingHead): Vec2[][]
   return offs.length ? offs : [];
 }
 
-// --- per-operation body ------------------------------------------------------
+// --- per-operation geometry --------------------------------------------------
 
-function laserOpBody(
-  op: CAMOperation, doc: CADDocument, ox: number, oy: number,
-  head: CuttingHead, maxPower: number,
-): string[] {
-  // Laser only does flat XY cutting: profile (closed, optional kerf) and engrave
-  // (centreline). Volumetric ops have no fixed-Z meaning and are skipped loudly.
-  if (op.type !== "profile" && op.type !== "engrave") {
-    return [`; NOTE: ${op.type} has no laser equivalent — use Profile or Engrave; skipped`];
-  }
+/** A drawable/cuttable primitive produced by an op's geometry dispatch. */
+type LaserPrim =
+  | { kind: "poly"; pts: Vec2[]; closed: boolean }
+  | { kind: "circle"; cx: number; cy: number; r: number }
+  | { kind: "arc"; arc: ArcEntity };
+
+/** One dispatch result: a cut primitive or a skip note, kept in entity order. */
+type LaserItem = LaserPrim | { kind: "note"; text: string };
+
+/** Circle radius after profile kerf compensation (engrave = on the centreline). */
+function profileCircleRadius(r: number, op: CAMOperation, head: CuttingHead): number {
+  const kerf = head.kerfCompensated ? (op.kerfWidth ?? 0) : 0;
+  return r + (op.side === "outside" ? 1 : -1) * (kerf / 2);
+}
+
+/**
+ * Expand an operation's entities into ordered cut primitives (kerf applied for
+ * closed profiles) plus any skip notes. Shared by the G-code emitter and the
+ * flat preview so the two can never drift — see {@link laserOpBody} and
+ * {@link laserPreviewPaths}. Volumetric op types yield a single note.
+ */
+function laserOpItems(op: CAMOperation, doc: CADDocument, head: CuttingHead): LaserItem[] {
+  if (op.type !== "profile" && op.type !== "engrave")
+    return [{ kind: "note", text: `${op.type} has no laser equivalent — use Profile or Engrave; skipped` }];
 
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
-  const passes = passCount(op);
-  const feed = op.feedrate;
-  const lines: string[] = [];
-
-  lines.push(head.beamOn(powerToS(op, maxPower)));
-  if (head.pierce) lines.push(...head.pierce());
-
   const profile = op.type === "profile";
+  const items: LaserItem[] = [];
 
   // Chain selected line segments into closed polygons (profile only).
   const lineSegIds = new Set<string>();
@@ -178,9 +187,9 @@ function laserOpBody(
       const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
       for (const { verts } of polygons)
         for (const path of kerfPaths(verts, op, head))
-          lines.push(...traceClosed(path, passes, feed, ox, oy));
+          items.push({ kind: "poly", pts: path, closed: true });
       if (leftover.length > 0)
-        lines.push(`; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`);
+        items.push({ kind: "note", text: `${leftover.length} selected line(s) do not form a closed polygon — skipped` });
       for (const e of lineEnts) lineSegIds.add(e.id);
     }
   }
@@ -194,64 +203,140 @@ function laserOpBody(
     if (ent instanceof TextEntity) {
       const contours = textToContours(ent);
       if (contours.length === 0) {
-        lines.push(`; NOTE: text "${ent.text}" — font not loaded or no glyphs`);
+        items.push({ kind: "note", text: `text "${ent.text}" — font not loaded or no glyphs` });
         continue;
       }
       for (const c of contours) {
         if (profile && c.closed)
           for (const path of kerfPaths(c.points, op, head))
-            lines.push(...traceClosed(path, passes, feed, ox, oy));
+            items.push({ kind: "poly", pts: path, closed: true });
         else
-          lines.push(...(c.closed
-            ? traceClosed(c.points, passes, feed, ox, oy)
-            : traceOpen(c.points, passes, feed, ox, oy)));
+          items.push({ kind: "poly", pts: c.points, closed: c.closed });
       }
       continue;
     }
-
     if (ent instanceof CircleEntity) {
-      const r = profile
-        ? ent.radius + (op.kerfWidth ?? 0) / 2 * (op.side === "outside" ? 1 : -1)
-        : ent.radius;
-      lines.push(...traceCircle(ent.center.x, ent.center.y, r, passes, feed, ox, oy));
+      const r = profile ? profileCircleRadius(ent.radius, op, head) : ent.radius;
+      if (r > 0) items.push({ kind: "circle", cx: ent.center.x, cy: ent.center.y, r });
       continue;
     }
     if (ent instanceof RectEntity) {
-      for (const path of profile ? kerfPaths([...ent.corners()], op, head) : [[...ent.corners()]])
-        lines.push(...traceClosed(path, passes, feed, ox, oy));
+      const base = [...ent.corners()];
+      for (const path of profile ? kerfPaths(base, op, head) : [base])
+        items.push({ kind: "poly", pts: path, closed: true });
       continue;
     }
     if (ent instanceof PolylineEntity) {
       if (ent.closed) {
         for (const path of profile ? kerfPaths(ent.points, op, head) : [ent.points])
-          lines.push(...traceClosed(path, passes, feed, ox, oy));
+          items.push({ kind: "poly", pts: path, closed: true });
       } else if (profile) {
-        lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
+        items.push({ kind: "note", text: `open polyline (${ent.id}) skipped — profile requires closed geometry` });
       } else {
-        lines.push(...traceOpen(ent.points, passes, feed, ox, oy));
+        items.push({ kind: "poly", pts: ent.points, closed: false });
       }
       continue;
     }
     if (ent instanceof LineEntity) {
-      // Profile-chained lines already handled above; a leftover single line can
-      // only be engraved (it's an open path).
-      if (!profile) lines.push(...traceOpen([ent.a, ent.b], passes, feed, ox, oy));
+      // Profile-chained lines were handled above; a leftover single line can only
+      // be engraved (it's an open path).
+      if (!profile) items.push({ kind: "poly", pts: [ent.a, ent.b], closed: false });
       continue;
     }
     if (ent instanceof ArcEntity) {
-      if (profile) lines.push(`; NOTE: arc (${ent.id}) skipped — profile requires closed geometry (use Engrave for an open arc)`);
-      else lines.push(...traceArc(ent, passes, feed, ox, oy));
+      if (profile) items.push({ kind: "note", text: `arc (${ent.id}) skipped — profile requires closed geometry (use Engrave for an open arc)` });
+      else items.push({ kind: "arc", arc: ent });
       continue;
     }
     if (ent instanceof BezierEntity) {
-      if (profile) lines.push(`; NOTE: bezier (${ent.id}) skipped in profile — beziers are open paths`);
-      else lines.push(...traceOpen(flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), passes, feed, ox, oy));
+      if (profile) items.push({ kind: "note", text: `bezier (${ent.id}) skipped in profile — beziers are open paths` });
+      else items.push({ kind: "poly", pts: flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), closed: false });
       continue;
     }
   }
+  return items;
+}
 
+/** Emit the G-code trace for one cut primitive. */
+function emitPrim(prim: LaserPrim, passes: number, feed: number, ox: number, oy: number): string[] {
+  switch (prim.kind) {
+    case "poly":   return prim.closed
+      ? traceClosed(prim.pts, passes, feed, ox, oy)
+      : traceOpen(prim.pts, passes, feed, ox, oy);
+    case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, feed, ox, oy);
+    case "arc":    return traceArc(prim.arc, passes, feed, ox, oy);
+  }
+}
+
+// --- per-operation body ------------------------------------------------------
+
+function laserOpBody(
+  op: CAMOperation, doc: CADDocument, ox: number, oy: number,
+  head: CuttingHead, maxPower: number,
+): string[] {
+  const items = laserOpItems(op, doc, head);
+  // Nothing cuttable (only notes, e.g. a volumetric op type): surface the notes
+  // without firing the beam.
+  if (!items.some((it) => it.kind !== "note"))
+    return items.map((it) => `; NOTE: ${(it as { text: string }).text}`);
+
+  const passes = passCount(op);
+  const feed = op.feedrate;
+  const lines: string[] = [];
+  lines.push(head.beamOn(powerToS(op, maxPower)));
+  if (head.pierce) lines.push(...head.pierce());
+  for (const it of items) {
+    if (it.kind === "note") lines.push(`; NOTE: ${it.text}`);
+    else lines.push(...emitPrim(it, passes, feed, ox, oy));
+  }
   lines.push(head.beamOff());
   return lines;
+}
+
+// --- flat preview ------------------------------------------------------------
+
+/** Sample a circle into a closed polyline for the on-canvas preview. */
+function circlePolyline(cx: number, cy: number, r: number): Vec2[] {
+  const segs = Math.max(48, Math.ceil((2 * Math.PI * r) / 0.5));
+  return Array.from({ length: segs }, (_, i) => {
+    const a = (i / segs) * 2 * Math.PI;
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  });
+}
+
+/** Sample an arc into an open polyline for the on-canvas preview. */
+function arcPolyline(arc: ArcEntity): Vec2[] {
+  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const segs = Math.max(2, Math.ceil((arc.radius * span) / 0.5));
+  return Array.from({ length: segs + 1 }, (_, i) => {
+    const a = arc.startAngle + span * (i / segs);
+    return { x: arc.center.x + arc.radius * Math.cos(a), y: arc.center.y + arc.radius * Math.sin(a) };
+  });
+}
+
+/** A cut path for the flat preview, in model/world coordinates. */
+export interface LaserPreviewPath { pts: Vec2[]; closed: boolean; }
+
+/**
+ * Flatten the given laser ops into world-space cut polylines for an on-canvas
+ * preview (cut paths only — travel rapids aren't drawn). Reuses the same
+ * geometry dispatch as the G-code, so the preview shows exactly what the beam
+ * will trace. Coordinates are in model space (no WCS offset); the renderer maps
+ * them to screen.
+ */
+export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): LaserPreviewPath[] {
+  const head = LASER_HEAD;
+  const paths: LaserPreviewPath[] = [];
+  for (const raw of rawOps) {
+    const op = expandOpPatternTargets(raw, doc);
+    for (const it of laserOpItems(op, doc, head)) {
+      if (it.kind === "note") continue;
+      if (it.kind === "circle") paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
+      else if (it.kind === "arc") paths.push({ pts: arcPolyline(it.arc), closed: false });
+      else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
+    }
+  }
+  return paths;
 }
 
 // --- main entry --------------------------------------------------------------

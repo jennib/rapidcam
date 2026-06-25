@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from "vitest";
-import { generateLaserGCode } from "../src/cam/lasergcode";
+import { generateLaserGCode, laserPreviewPaths } from "../src/cam/lasergcode";
 import { generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
 import { CADDocument } from "../src/model/document";
@@ -111,4 +111,38 @@ test("a mill document still emits spindle G-code", () => {
   const g = generateGCode([op], doc);
   expect(g).toContain("M3 S18000");
   expect(g).not.toContain("M4 S");
+});
+
+// 8) Flat preview paths -------------------------------------------------------
+test("preview yields an open path for an engraved line", () => {
+  const doc = laserDoc();
+  doc.entities.push(new LineEntity({ x: 10, y: 10 }, { x: 50, y: 30 }, "L1"));
+  const op = baseOp({ type: "engrave", entityIds: ["L1"] });
+
+  const paths = laserPreviewPaths([op], doc);
+  expect(paths.length).toBe(1);
+  expect(paths[0].closed).toBe(false);
+  expect(paths[0].pts).toEqual([{ x: 10, y: 10 }, { x: 50, y: 30 }]);
+});
+
+test("preview reflects profile kerf — outside circle samples at the grown radius", () => {
+  const doc = laserDoc();
+  doc.entities.push(new CircleEntity({ x: 50, y: 50 }, 10, "C1"));
+  const op = baseOp({ type: "profile", side: "outside", entityIds: ["C1"], kerfWidth: 1 });
+
+  const paths = laserPreviewPaths([op], doc);
+  expect(paths.length).toBe(1);
+  expect(paths[0].closed).toBe(true);
+  // every sampled point sits on the kerf-compensated radius (10 + 0.5).
+  for (const p of paths[0].pts) {
+    expect(Math.hypot(p.x - 50, p.y - 50)).toBeCloseTo(10.5, 6);
+  }
+});
+
+test("preview skips op types with no laser equivalent", () => {
+  const doc = laserDoc();
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 20, y: 20 }, "R1"));
+  const op = baseOp({ type: "pocket", entityIds: ["R1"] });
+
+  expect(laserPreviewPaths([op], doc)).toEqual([]);
 });
