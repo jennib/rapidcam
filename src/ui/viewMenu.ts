@@ -2,6 +2,8 @@ export interface ViewMenuCallbacks {
   onFit: () => void;
   onToggle3D: () => void;
   is3DVisible: () => boolean;
+  /** Menu label for the preview toggle — varies by machine (3D mill vs laser). */
+  previewLabel: () => string;
   onToggleDimensions: () => void;
   areDimensionsVisible: () => boolean;
 }
@@ -59,7 +61,7 @@ export class ViewMenu {
     const dimsOn = this.cb.areDimensionsVisible();
     this.item((dimsOn ? "✓ " : "   ") + "Dimensions", "", () => { this.close(); this.cb.onToggleDimensions(); });
     const checked = this.cb.is3DVisible();
-    this.item((checked ? "✓ " : "   ") + "3D Preview", "", () => { this.close(); this.cb.onToggle3D(); });
+    this.item((checked ? "✓ " : "   ") + this.cb.previewLabel(), "", () => { this.close(); this.cb.onToggle3D(); });
   }
 
   private separator(): void {

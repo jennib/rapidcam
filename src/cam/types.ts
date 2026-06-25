@@ -173,6 +173,34 @@ export interface CAMOperation {
   // lead-in / lead-out (profile only)
   leadIn?: LeadDef;
   leadOut?: LeadDef;
+  // --- laser (machineKind === "laser") -------------------------------------
+  /**
+   * Laser/jet beam power as a percentage (0–100) of the machine's maximum. The
+   * generator scales it to an `S` word against the controller's max power
+   * (GRBL `$30`). Ignored when the document's machine is a mill.
+   */
+  laserPower?: number;
+  /**
+   * Number of times the beam re-traces each path (laser/jet). >1 cuts through
+   * thicker stock in repeated passes — the fixed-Z analogue of milling
+   * stepdown. Default 1.
+   */
+  laserPasses?: number;
+  /**
+   * Kerf width (mm) of the beam, used to compensate closed profiles: the path is
+   * offset outward ("outside") or inward ("inside") by half this. 0 = cut on the
+   * line (no compensation). Engrave ignores it (always centreline).
+   */
+  kerfWidth?: number;
+  /**
+   * Laser engrave only: fill the interior of closed shapes with parallel scan
+   * lines (area/solid engraving) in addition to outlining them, instead of
+   * tracing the centreline only. Closed contours are grouped even–odd so letter
+   * counters (the hole in "O") stay unfilled. Default false.
+   */
+  laserFill?: boolean;
+  /** Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2. */
+  laserFillSpacing?: number;
 }
 
 export const DEFAULTS = {
@@ -194,6 +222,10 @@ export const DEFAULTS = {
   chamferWidth: 3,
   chamferSide: "on" as ChamferSide,
   vStep: 0.4,
+  laserPower: 80,
+  laserPasses: 1,
+  kerfWidth: 0,
+  laserFillSpacing: 0.2,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

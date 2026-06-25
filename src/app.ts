@@ -60,6 +60,7 @@ import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
+import { laserPreviewPaths } from "./cam/lasergcode";
 import { initBundledFonts } from "./core/fontManager";
 import { track } from "./analytics";
 
@@ -92,6 +93,8 @@ export class App {
 
   private webglPreview: WebGLPreview | null = null;
   private preview3DVisible = false;
+  /** Flat laser-path preview (the laser machine's analogue of the 3D preview). */
+  private laserPreviewVisible = false;
   private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private canvas: HTMLCanvasElement, dom: {
@@ -201,7 +204,8 @@ export class App {
       view: {
         onFit: () => this.fitView(),
         onToggle3D: () => this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider),
-        is3DVisible: () => this.preview3DVisible,
+        is3DVisible: () => this.preview3DVisible || this.laserPreviewVisible,
+        previewLabel: () => (this.doc.machineKind === "laser" ? "Laser Preview" : "3D Preview"),
         onToggleDimensions: () => {
           this.renderer.showDimensions = !this.renderer.showDimensions;
           this.requestRender();
@@ -256,6 +260,16 @@ export class App {
     webglHost: HTMLElement,
     divider: HTMLElement,
   ): void {
+    // A laser has no Z — the 3D height-map preview is meaningless. Toggle a flat
+    // cut-path overlay on the 2D canvas instead of opening the WebGL split pane.
+    if (this.doc.machineKind === "laser") {
+      this.laserPreviewVisible = !this.laserPreviewVisible;
+      if (this.laserPreviewVisible) this.schedulePreviewUpdate();
+      else this.renderer.laserPreview = null;
+      this.requestRender();
+      return;
+    }
+
     this.preview3DVisible = !this.preview3DVisible;
 
     if (this.preview3DVisible) {
@@ -279,6 +293,17 @@ export class App {
   }
 
   private schedulePreviewUpdate(): void {
+    // Drop a stale laser overlay if the machine type was switched away from laser
+    // while it was showing.
+    if (this.laserPreviewVisible && this.doc.machineKind !== "laser") {
+      this.laserPreviewVisible = false;
+      this.renderer.laserPreview = null;
+    }
+    // Flat laser preview: recompute cut paths immediately (cheap — just geometry).
+    if (this.laserPreviewVisible) {
+      this.renderer.laserPreview = laserPreviewPaths(this.doc.operations, this.doc);
+      this.requestRender();
+    }
     if (!this.preview3DVisible || !this.webglPreview) return;
     if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);
     this.previewDebounceTimer = setTimeout(() => {

@@ -21,6 +21,7 @@ import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
 import { Overlay, PreviewShape } from "./overlay";
 import { EntityStatusMap } from "../solver/solver";
+import type { LaserPreviewPath } from "../cam/lasergcode";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -29,6 +30,11 @@ export class Renderer {
   stalePatternEntityIds: Set<string> = new Set();
   /** View preference (transient, not persisted): draw dimension annotations. */
   showDimensions = true;
+  /**
+   * Flat laser-toolpath preview: cut paths in world coords drawn over the canvas
+   * (the laser analogue of the mill's 3D height-map preview). Null = off.
+   */
+  laserPreview: LaserPreviewPath[] | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -60,6 +66,7 @@ export class Renderer {
     this.drawOrigin(doc, view);
     this.drawRegionFills(doc, view);
     this.drawEntities(doc, view, overlay);
+    if (this.laserPreview) this.drawLaserPreview(view);
     if (this.showDimensions) this.drawDimensions(doc, view);
     this.drawConstraints(doc, view, overlay);
     this.drawSelectedSegments(doc, view);
@@ -694,6 +701,41 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
     }
+  }
+
+  // --- laser preview -------------------------------------------------------
+  /**
+   * Draw the flat laser-toolpath preview: each cut path as a glowing red line in
+   * world coordinates. A wide translucent pass under a crisp core fakes the beam
+   * glow without a separate render target.
+   */
+  private drawLaserPreview(view: Viewport): void {
+    if (!this.laserPreview || this.laserPreview.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    const stroke = (width: number, color: string) => {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      for (const path of this.laserPreview!) {
+        if (path.pts.length < 2) continue;
+        const s = view.worldToScreen(path.pts[0]);
+        ctx.moveTo(s.x, s.y);
+        for (let i = 1; i < path.pts.length; i++) {
+          const p = view.worldToScreen(path.pts[i]);
+          ctx.lineTo(p.x, p.y);
+        }
+        if (path.closed) ctx.closePath();
+      }
+      ctx.stroke();
+    };
+
+    stroke(4, COLORS.laserCutGlow); // soft glow
+    stroke(1.25, COLORS.laserCut);  // crisp beam core
+    ctx.restore();
   }
 
   // --- overlays ------------------------------------------------------------
