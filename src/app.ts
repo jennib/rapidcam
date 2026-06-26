@@ -96,6 +96,7 @@ export class App {
   /** Flat laser-path preview (the laser machine's analogue of the 3D preview). */
   private laserPreviewVisible = false;
   private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private laserPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private canvas: HTMLCanvasElement, dom: {
     palette: HTMLElement;
@@ -264,7 +265,7 @@ export class App {
     // cut-path overlay on the 2D canvas instead of opening the WebGL split pane.
     if (this.doc.machineKind === "laser") {
       this.laserPreviewVisible = !this.laserPreviewVisible;
-      if (this.laserPreviewVisible) this.schedulePreviewUpdate();
+      if (this.laserPreviewVisible) this.computeLaserPreview(); // instant on toggle
       else this.renderer.laserPreview = null;
       this.requestRender();
       return;
@@ -292,6 +293,13 @@ export class App {
     }
   }
 
+  /** Recompute the flat laser overlay now (cut-path geometry → renderer). */
+  private computeLaserPreview(): void {
+    if (!this.laserPreviewVisible) return;
+    this.renderer.laserPreview = laserPreviewPaths(this.doc.operations, this.doc);
+    this.requestRender();
+  }
+
   private schedulePreviewUpdate(): void {
     // Drop a stale laser overlay if the machine type was switched away from laser
     // while it was showing.
@@ -299,10 +307,15 @@ export class App {
       this.laserPreviewVisible = false;
       this.renderer.laserPreview = null;
     }
-    // Flat laser preview: recompute cut paths immediately (cheap — just geometry).
+    // Flat laser preview: debounce the recompute. A large area-fill is thousands
+    // of scan segments; recomputing synchronously on every doc change (drag,
+    // keystroke) would stutter, so coalesce bursts like the 3D preview does.
     if (this.laserPreviewVisible) {
-      this.renderer.laserPreview = laserPreviewPaths(this.doc.operations, this.doc);
-      this.requestRender();
+      if (this.laserPreviewTimer !== null) clearTimeout(this.laserPreviewTimer);
+      this.laserPreviewTimer = setTimeout(() => {
+        this.laserPreviewTimer = null;
+        this.computeLaserPreview();
+      }, 200);
     }
     if (!this.preview3DVisible || !this.webglPreview) return;
     if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);

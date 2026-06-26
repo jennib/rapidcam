@@ -346,6 +346,14 @@ export class CamBar {
       ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min`
         + (op.laserFill ? " · fill" : op.type === "profile" && (op.kerfWidth ?? 0) > 0 ? ` · kerf ${op.kerfWidth}mm` : "")
       : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
+    // A laser only cuts/engraves: a milling-only op (pocket/drill/vcarve/chamfer)
+    // left in a laser document won't produce a toolpath — flag it here rather than
+    // letting it surface only as a "; NOTE:" buried in the exported G-code.
+    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave") {
+      params.textContent = "⚠ no laser equivalent — use Cut or Engrave";
+      params.style.color = "var(--warn, #e0a85a)";
+      item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
+    }
     info.appendChild(nameEl);
     info.appendChild(params);
 
