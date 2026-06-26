@@ -8,6 +8,7 @@
 import { test, expect } from "vitest";
 import { generateLaserGCode, laserPreviewPaths } from "../src/cam/lasergcode";
 import { generateGCode } from "../src/cam/gcode";
+import { serializeDoc, applyFile } from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
 import { CADDocument } from "../src/model/document";
 import { LineEntity, RectEntity, CircleEntity } from "../src/model/entities";
@@ -174,4 +175,43 @@ test("fill skips an open shape with a note", () => {
 
   const g = generateLaserGCode([op], doc);
   expect(g).toContain("fill needs a closed shape");
+});
+
+// 10) An over-large inside kerf warns instead of silently dropping the cut -----
+test("inside profile collapsed by kerf emits a note, not silence", () => {
+  const doc = laserDoc();
+  doc.entities.push(new CircleEntity({ x: 50, y: 50 }, 2, "C1"));
+  // kerf 10 → inside radius 2 - 5 = -3 ≤ 0, so nothing can be cut.
+  const op = baseOp({ type: "profile", side: "inside", entityIds: ["C1"], kerfWidth: 10 });
+
+  const g = generateLaserGCode([op], doc);
+  expect(g).toContain("vanished under inside kerf");
+  expect(g).not.toMatch(/^G2 /m); // no actual arc emitted
+});
+
+// 11) Laser settings survive a .rcam save/load round-trip ----------------------
+test("machineKind and laser op fields round-trip through serialize/apply", () => {
+  const doc = laserDoc();
+  doc.entities.push(new CircleEntity({ x: 50, y: 50 }, 10, "C1"));
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 20, y: 20 }, "R1"));
+  doc.operations.push(baseOp({ type: "profile", side: "outside", entityIds: ["C1"],
+    laserPower: 90, laserPasses: 3, kerfWidth: 0.25 }));
+  doc.operations.push(baseOp({ type: "engrave", entityIds: ["R1"],
+    laserFill: true, laserFillSpacing: 0.3 }));
+
+  // Serialize → JSON → parse → apply into a fresh document.
+  const file = JSON.parse(JSON.stringify(serializeDoc(doc, "Laser job")));
+  expect(file.machineKind).toBe("laser");
+
+  const loaded = new CADDocument({ width: 200, height: 100 });
+  applyFile(loaded, file);
+
+  expect(loaded.machineKind).toBe("laser");
+  const cut = loaded.operations.find((o) => o.type === "profile")!;
+  expect(cut.laserPower).toBe(90);
+  expect(cut.laserPasses).toBe(3);
+  expect(cut.kerfWidth).toBe(0.25);
+  const fill = loaded.operations.find((o) => o.type === "engrave")!;
+  expect(fill.laserFill).toBe(true);
+  expect(fill.laserFillSpacing).toBe(0.3);
 });

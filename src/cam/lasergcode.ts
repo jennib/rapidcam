@@ -191,6 +191,20 @@ function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][]
 }
 
 /**
+ * Push the kerf-compensated ring(s) of a closed profile contour. If an inside
+ * kerf is wider than the feature, the offset collapses to nothing — emit a note
+ * instead of silently dropping the cut (mirrors the mill path's warnings).
+ */
+function pushClosedProfile(items: LaserItem[], verts: Vec2[], op: CAMOperation, head: CuttingHead): void {
+  const paths = kerfPaths(verts, op, head);
+  if (paths.length === 0) {
+    items.push({ kind: "note", text: `a closed profile vanished under inside kerf ${op.kerfWidth}mm (wider than the feature) — skipped` });
+    return;
+  }
+  for (const p of paths) items.push({ kind: "poly", pts: p, closed: true });
+}
+
+/**
  * Expand an operation's entities into ordered cut primitives (kerf applied for
  * closed profiles) plus any skip notes. Shared by the G-code emitter and the
  * flat preview so the two can never drift — see {@link laserOpBody} and
@@ -234,9 +248,7 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, head: CuttingHead): La
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length > 0) {
       const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
-      for (const { verts } of polygons)
-        for (const path of kerfPaths(verts, op, head))
-          items.push({ kind: "poly", pts: path, closed: true });
+      for (const { verts } of polygons) pushClosedProfile(items, verts, op, head);
       if (leftover.length > 0)
         items.push({ kind: "note", text: `${leftover.length} selected line(s) do not form a closed polygon — skipped` });
       for (const e of lineEnts) lineSegIds.add(e.id);
@@ -257,8 +269,7 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, head: CuttingHead): La
       }
       for (const c of contours) {
         if (profile && c.closed)
-          for (const path of kerfPaths(c.points, op, head))
-            items.push({ kind: "poly", pts: path, closed: true });
+          pushClosedProfile(items, c.points, op, head);
         else
           items.push({ kind: "poly", pts: c.points, closed: c.closed });
       }
@@ -267,18 +278,19 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, head: CuttingHead): La
     if (ent instanceof CircleEntity) {
       const r = profile ? profileCircleRadius(ent.radius, op, head) : ent.radius;
       if (r > 0) items.push({ kind: "circle", cx: ent.center.x, cy: ent.center.y, r });
+      else items.push({ kind: "note", text: `circle (${ent.id}) vanished under inside kerf ${op.kerfWidth}mm (radius ≤ 0) — skipped` });
       continue;
     }
     if (ent instanceof RectEntity) {
       const base = [...ent.corners()];
-      for (const path of profile ? kerfPaths(base, op, head) : [base])
-        items.push({ kind: "poly", pts: path, closed: true });
+      if (profile) pushClosedProfile(items, base, op, head);
+      else items.push({ kind: "poly", pts: base, closed: true });
       continue;
     }
     if (ent instanceof PolylineEntity) {
       if (ent.closed) {
-        for (const path of profile ? kerfPaths(ent.points, op, head) : [ent.points])
-          items.push({ kind: "poly", pts: path, closed: true });
+        if (profile) pushClosedProfile(items, ent.points, op, head);
+        else items.push({ kind: "poly", pts: ent.points, closed: true });
       } else if (profile) {
         items.push({ kind: "note", text: `open polyline (${ent.id}) skipped — profile requires closed geometry` });
       } else {

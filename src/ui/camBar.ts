@@ -340,7 +340,12 @@ export class CamBar {
       : op.toolType === "drill" ? "Drill"
       : op.toolType === "ball-nose" ? "Ball Nose"
       : "End Mill";
-    params.textContent = `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
+    // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
+    // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
+    params.textContent = this.doc.machineKind === "laser"
+      ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min`
+        + (op.laserFill ? " · fill" : op.type === "profile" && (op.kerfWidth ?? 0) > 0 ? ` · kerf ${op.kerfWidth}mm` : "")
+      : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
     info.appendChild(nameEl);
     info.appendChild(params);
 
