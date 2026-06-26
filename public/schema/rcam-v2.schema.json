@@ -39,8 +39,8 @@
     },
     "origin": { "$ref": "#/$defs/origin" },
     "postProcessor": {
-      "enum": ["linuxcnc", "grbl"],
-      "description": "G-code dialect. Default \"linuxcnc\"."
+      "enum": ["linuxcnc", "grbl", "grbl-dynamic", "grbl-constant", "marlin", "smoothie", "linuxcnc-laser"],
+      "description": "Post-processor id. For a mill (machineKind \"mill\"): \"linuxcnc\" | \"grbl\" (default \"linuxcnc\"). For a laser (machineKind \"laser\"): a laser controller — \"grbl-dynamic\" (M4, default), \"grbl-constant\" (M3), \"marlin\" (0–255), \"smoothie\" (inline S 0–1), or \"linuxcnc-laser\" (PWM spindle). Legacy laser files may store \"grbl\", which maps to grbl-dynamic."
     },
     "machineKind": {
       "enum": ["mill", "laser"],

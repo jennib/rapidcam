@@ -1,7 +1,10 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
 import { type MachineKind, type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
+import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
+
+const MILL_POST_OPTIONS: [string, string][] = [["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]];
 
 export interface NewProjectConfig {
   name: string;
@@ -112,8 +115,7 @@ export function openNewProjectDialog(
   const mkSel = sel([["mill", "CNC Mill / Router"], ["laser", "Laser"]]);
   mkSel.value = initial.machineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
-  const ppSel = sel([["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]]);
-  ppSel.value = initial.postProcessor ?? defaults.postProcessor ?? "linuxcnc";
+  const ppSel = sel(MILL_POST_OPTIONS);
   const ppRow = row("Post-processor", ppSel);
   macSec.appendChild(ppRow);
   const tcChk = document.createElement("input");
@@ -132,16 +134,30 @@ export function openNewProjectDialog(
   macSec.appendChild(coolantRow);
   body.appendChild(macSec);
 
-  // A laser has no spindle/Z/tool-changer/coolant, and its output always posts
-  // as GRBL-style beam G-code — so lock the post-processor to GRBL and gray out
-  // the mill-only machine options when "Laser" is chosen.
+  // The post-processor dropdown swaps option sets by machine type: mill posts
+  // (LinuxCNC/GRBL) vs laser controllers (cam/laserposts). Remember each side's
+  // pick so toggling back and forth doesn't lose it. A laser has no spindle/Z, so
+  // the tool-changer and coolant toggles are grayed out.
+  const initialPP = initial.postProcessor ?? defaults.postProcessor;
+  let millPost  = (initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP)) ? initialPP : "linuxcnc";
+  let laserPost = (initialPP && laserPostOptions().some(([v]) => v === initialPP)) ? initialPP : DEFAULT_LASER_POST.id;
+  const fillOptions = (opts: [string, string][], value: string) => {
+    ppSel.innerHTML = "";
+    for (const [v, l] of opts) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l; ppSel.appendChild(o);
+    }
+    ppSel.value = value;
+  };
+  ppSel.addEventListener("change", () => {
+    if (mkSel.value === "laser") laserPost = ppSel.value; else millPost = ppSel.value;
+  });
   const applyMachineKind = () => {
     const laser = mkSel.value === "laser";
-    if (laser) ppSel.value = "grbl";
-    ppSel.disabled = laser;
+    fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcChk.disabled = laser;
     coolantChk.disabled = laser;
-    for (const r of [ppRow, tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
+    for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
   };
   mkSel.addEventListener("change", applyMachineKind);
   applyMachineKind();

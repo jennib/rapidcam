@@ -13,8 +13,8 @@ export type OriginZ = "top" | "bed";
  * The kind of machine the document outputs for. "mill" is the default 3-axis
  * spindle path (G-code with Z plunge/retract); "laser" is a fixed-Z 2D cutting
  * head (beam on/off, power + passes, no Z). Other fixed-Z cutters (waterjet,
- * plasma) would join this union as additional cutting-head profiles — see
- * cam/cuttingHead.ts. Gates which G-code generator runs and which op fields the
+ * plasma) would join this union as additional post-processors — see
+ * cam/laserposts/. Gates which G-code generator runs and which op fields the
  * UI shows.
  */
 export type MachineKind = "mill" | "laser";

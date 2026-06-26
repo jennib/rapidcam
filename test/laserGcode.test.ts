@@ -215,3 +215,40 @@ test("machineKind and laser op fields round-trip through serialize/apply", () =>
   expect(fill.laserFill).toBe(true);
   expect(fill.laserFillSpacing).toBe(0.3);
 });
+
+// 12) Selectable laser post-processors ----------------------------------------
+function engraveLine(postId?: string) {
+  const doc = laserDoc();
+  if (postId) doc.postProcessor = postId;
+  doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
+  return generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"], laserPower: 80 })], doc);
+}
+
+test("GRBL constant post emits M3 (not M4) at full scale", () => {
+  const g = engraveLine("grbl-constant");
+  expect(g).toContain("M3 S800");
+  expect(g).not.toContain("M4 S");
+});
+
+test("Marlin post scales power to 0–255", () => {
+  const g = engraveLine("marlin");
+  expect(g).toContain("M3 S204"); // round(0.8 * 255)
+});
+
+test("LinuxCNC laser post drives the beam as a PWM spindle (M3/M5)", () => {
+  const g = engraveLine("linuxcnc-laser");
+  expect(g).toContain("M3 S800");
+  expect(g).toContain("M5");
+});
+
+test("Smoothie post carries inline S (0–1) on each cut move, no modal M3/M4", () => {
+  const g = engraveLine("smoothie");
+  expect(g).not.toMatch(/M[34] S/);          // power is not modal
+  expect(g).toMatch(/G1 X10 Y0 F1200 S0\.8/); // it rides on the cut move
+  expect(g).toContain("M5 ; laser off");
+});
+
+test("a legacy laser doc with postProcessor 'grbl' maps to the GRBL dynamic head", () => {
+  const g = engraveLine("grbl"); // pre-variant laser files stored plain "grbl"
+  expect(g).toContain("M4 S800");
+});

@@ -3,6 +3,9 @@ import {
   getMachineHasCoolant, setMachineHasCoolant,
 } from "../core/prefs";
 import type { CADDocument, MachineKind } from "../model/document";
+import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+
+const MILL_POST_OPTIONS: [string, string][] = [["linuxcnc", "LinuxCNC"], ["grbl", "GRBL / FluidNC"]];
 
 interface MachineSettingsOptions {
   doc: CADDocument;
@@ -48,15 +51,11 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   kindSelect.value = doc.machineKind;
   const kindField = labeledRow("Machine type", kindSelect);
 
-  // Controller (post-processor + tool changer).
+  // Controller (post-processor + tool changer). The post-processor dropdown
+  // swaps between mill posts (LinuxCNC/GRBL) and laser controllers
+  // (cam/laserposts) by machine type.
   const ppSelect = document.createElement("select");
   ppSelect.className = "unit post-settings-select";
-  for (const [v, l] of [["linuxcnc", "LinuxCNC"], ["grbl", "GRBL / FluidNC"]] as const) {
-    const o = document.createElement("option");
-    o.value = v; o.textContent = l;
-    ppSelect.appendChild(o);
-  }
-  ppSelect.value = doc.postProcessor;
   const ppField = labeledRow("Post-processor", ppSelect);
 
   const tcCheck = document.createElement("input");
@@ -69,15 +68,31 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   coolantCheck.checked = getMachineHasCoolant();
   const coolantRow = checkRow("Machine has coolant (show coolant options & emit M7/M8/M9)", coolantCheck);
 
+  // Remember each machine type's post pick so toggling doesn't lose it.
+  let millPost  = MILL_POST_OPTIONS.some(([v]) => v === doc.postProcessor) ? doc.postProcessor : "linuxcnc";
+  let laserPost = laserPostOptions().some(([v]) => v === doc.postProcessor) ? doc.postProcessor : DEFAULT_LASER_POST.id;
+  const fillPosts = (opts: [string, string][], value: string) => {
+    ppSelect.innerHTML = "";
+    for (const [v, l] of opts) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l; ppSelect.appendChild(o);
+    }
+    ppSelect.value = value;
+  };
+  ppSelect.addEventListener("change", () => {
+    if (kindSelect.value === "laser") laserPost = ppSelect.value; else millPost = ppSelect.value;
+  });
+
   // Spindle/Z concepts don't apply to a laser; hide the tool-changer + coolant
-  // rows in laser mode so the dialog only offers relevant options. The
-  // post-processor still matters (GRBL emits the laser-mode reminder).
+  // rows in laser mode and swap the post-processor list to the laser controllers.
   const applyKindVisibility = () => {
     const laser = kindSelect.value === "laser";
+    fillPosts(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcRow.style.display = laser ? "none" : "";
     coolantRow.style.display = laser ? "none" : "";
   };
   kindSelect.addEventListener("change", applyKindVisibility);
+  applyKindVisibility();
 
   const note = document.createElement("p");
   note.className = "post-settings-note";
@@ -120,7 +135,6 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     closeBtn, title, kindField, ppField, tcRow, coolantRow,
     note, startArea.field, endArea.field, buttons,
   );
-  applyKindVisibility();
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) backdrop.remove();

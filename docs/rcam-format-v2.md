@@ -64,7 +64,7 @@ vocabularies is unchanged.
   "stockThickness": 10,                         // mm, default 10
   "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
-  "postProcessor": "linuxcnc",                  // "linuxcnc" | "grbl"
+  "postProcessor": "linuxcnc",                  // mill: "linuxcnc" | "grbl"; laser: see below
   "machineKind": "mill",                         // "mill" | "laser", default "mill"
   "endPosition": null,                          // optional park position; see below
   "groups": [],
@@ -109,6 +109,20 @@ Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → fal
 Z-axis G-code; `"laser"` posts fixed-Z beam G-code (beam on/off, power + passes,
 no Z) and the operations use the laser fields instead — see
 [CAM operations](#cam-operations).
+
+`postProcessor` names the controller. For a **mill** it's `"linuxcnc"` or
+`"grbl"`. For a **laser** it's one of the laser controllers, each a separate
+editable post in `src/cam/laserposts/`:
+
+| id | controller |
+|----|------------|
+| `grbl-dynamic` | GRBL / FluidNC, `M4` dynamic power (default) |
+| `grbl-constant` | GRBL / FluidNC, `M3` constant power |
+| `marlin` | Marlin, `M3`, power 0–255 |
+| `smoothie` | Smoothieware, inline `S` (0–1) per cut move |
+| `linuxcnc-laser` | LinuxCNC, PWM-spindle (`M3`/`M5` + `S`) |
+
+(Legacy laser files that stored `"grbl"` map to `grbl-dynamic`.)
 
 Coolant is **per operation** (`operations[].coolant`), not a top-level field.
 Custom program start/end G-code and the "machine has coolant" capability are
