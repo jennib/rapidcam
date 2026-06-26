@@ -201,6 +201,12 @@ export interface CAMOperation {
   laserFill?: boolean;
   /** Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2. */
   laserFillSpacing?: number;
+  /**
+   * Laser only: turn on air assist for this operation (the post's air command,
+   * `M8`/`M9` by default) — kept on across consecutive ops that request it and
+   * switched off when an op doesn't, or at program end. Default false.
+   */
+  airAssist?: boolean;
 }
 
 export const DEFAULTS = {

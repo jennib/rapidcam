@@ -29,6 +29,7 @@ import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
 import { n, X, Y } from "./postprocessors/base";
 import { type LaserPost, getLaserPost } from "./laserposts";
+import { AIR_ON_DEFAULT, AIR_OFF_DEFAULT } from "./laserposts/base";
 
 export interface LaserGCodeOptions {
   /** Machine-wide custom lines injected after the G21/G90/G17 setup block. */
@@ -434,6 +435,13 @@ export function generateLaserGCode(
   const startLines = customLines(opts.customStart);
   if (startLines.length > 0) lines.push("; --- custom start ---", ...startLines, "");
 
+  // Air assist is per-op: turn it on for the first op that wants it, leave it on
+  // across consecutive ops that do, and switch it off when one doesn't (or at
+  // program end). Only cuttable ops can request it.
+  const airOnLines = post.airOn?.() ?? AIR_ON_DEFAULT;
+  const airOffLines = post.airOff?.() ?? AIR_OFF_DEFAULT;
+  let airActive = false;
+
   for (const op of ops) {
     const typeLabel = op.type === "profile" ? `Profile (${op.side})`
       : op.laserFill ? "Engrave (fill)" : "Engrave";
@@ -442,9 +450,16 @@ export function generateLaserGCode(
       `; --- ${typeLabel} "${op.name}"  power:${pct}% (S${post.formatPower(pct, maxPower)})  ` +
       `passes:${passCount(op)}  feed:${op.feedrate}mm/min ---`,
     );
+    const wantAir = (op.type === "profile" || op.type === "engrave") && !!op.airAssist;
+    if (wantAir !== airActive) {
+      lines.push(...(wantAir ? airOnLines : airOffLines));
+      airActive = wantAir;
+    }
     lines.push(...laserOpBody(op, doc, ox, oy, post, maxPower));
     lines.push("");
   }
+
+  if (airActive) lines.push(...airOffLines);
 
   // Optional end-of-program park (work coords; already in the G-code frame).
   const ep = doc.endPosition;

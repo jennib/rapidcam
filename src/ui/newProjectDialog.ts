@@ -107,7 +107,8 @@ export function openNewProjectDialog(
   ozSel.value = initial.origin?.z ?? defaults.origin?.z ?? "top";
   originSec.appendChild(row("X", oxSel));
   originSec.appendChild(row("Y", oySel));
-  originSec.appendChild(row("Z", ozSel));
+  const ozRow = row("Z", ozSel);
+  originSec.appendChild(ozRow);
   body.appendChild(originSec);
 
   // -- machine --
@@ -157,7 +158,9 @@ export function openNewProjectDialog(
     fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcChk.disabled = laser;
     coolantChk.disabled = laser;
-    for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
+    // A laser has no Z, so the Z-origin choice is meaningless — gray it out.
+    ozSel.disabled = laser;
+    for (const r of [tcRow, coolantRow, ozRow]) r.style.opacity = laser ? "0.45" : "";
   };
   mkSel.addEventListener("change", applyMachineKind);
   applyMachineKind();

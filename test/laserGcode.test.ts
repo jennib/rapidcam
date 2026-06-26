@@ -252,3 +252,37 @@ test("a legacy laser doc with postProcessor 'grbl' maps to the GRBL dynamic head
   const g = engraveLine("grbl"); // pre-variant laser files stored plain "grbl"
   expect(g).toContain("M4 S800");
 });
+
+// 13) Air assist --------------------------------------------------------------
+test("air assist emits M8 before the cut and M9 by program end", () => {
+  const doc = laserDoc();
+  doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
+  const op = baseOp({ type: "engrave", entityIds: ["L1"], airAssist: true });
+
+  const lines = generateLaserGCode([op], doc).split("\n");
+  const air = lines.findIndex((l) => l.startsWith("M8"));
+  const cut = lines.findIndex((l) => /^G1 /.test(l));
+  const off = lines.findIndex((l) => l.startsWith("M9"));
+  expect(air).toBeGreaterThanOrEqual(0);
+  expect(air).toBeLessThan(cut);   // air on before the first cut
+  expect(off).toBeGreaterThan(cut); // and off after cutting
+});
+
+test("air assist stays on across consecutive ops that request it (no churn)", () => {
+  const doc = laserDoc();
+  doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
+  doc.entities.push(new LineEntity({ x: 0, y: 5 }, { x: 10, y: 5 }, "L2"));
+  const a = baseOp({ id: "a", type: "engrave", entityIds: ["L1"], airAssist: true });
+  const b = baseOp({ id: "b", type: "engrave", entityIds: ["L2"], airAssist: true });
+
+  const g = generateLaserGCode([a, b], doc);
+  expect((g.match(/^M8/gm) ?? []).length).toBe(1); // turned on once
+  expect((g.match(/^M9/gm) ?? []).length).toBe(1); // off once, at the end
+});
+
+test("no air-assist commands when the op doesn't request it", () => {
+  const doc = laserDoc();
+  doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
+  const g = generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"] })], doc);
+  expect(g).not.toMatch(/^M8/m);
+});

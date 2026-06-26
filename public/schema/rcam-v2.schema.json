@@ -557,7 +557,8 @@
         "laserPasses": { "type": "integer", "minimum": 1, "description": "Laser only: number of times the beam re-traces each path (the fixed-Z analogue of milling stepdown). Default 1." },
         "kerfWidth": { "type": "number", "minimum": 0, "description": "Laser profile only: beam kerf width (mm). Closed profiles are offset by half this — outward for side \"outside\", inward for \"inside\". 0 = cut on the line. Engrave ignores it." },
         "laserFill": { "type": "boolean", "description": "Laser engrave only: flood the interior of closed shapes with parallel scan lines (area/solid engraving) in addition to outlining them. Closed contours are grouped even–odd so letter counters stay unfilled. Default false." },
-        "laserFillSpacing": { "type": "number", "exclusiveMinimum": 0, "description": "Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2." }
+        "laserFillSpacing": { "type": "number", "exclusiveMinimum": 0, "description": "Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2." },
+        "airAssist": { "type": "boolean", "description": "Laser only: enable air assist for this operation (the post's air command, M8/M9 by default), kept on across consecutive ops that request it and off otherwise. Default false." }
       }
     },
     "tool": {

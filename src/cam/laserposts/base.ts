@@ -40,9 +40,21 @@ export interface LaserPost {
   beamOn(power: string): string[];
   /** Beam-disable lines (operation end / program end). */
   beamOff(): string[];
+  /**
+   * Air-assist on/off, emitted around operations that request it. Optional —
+   * the generator falls back to {@link AIR_ON_DEFAULT}/{@link AIR_OFF_DEFAULT}
+   * (`M8`/`M9`). Override in a controller's file if it drives air from a
+   * different output.
+   */
+  airOn?(): string[];
+  airOff?(): string[];
   /** Optional pierce step before a cut (waterjet/plasma); unused by lasers. */
   pierce?(): string[];
 }
+
+/** Default air-assist commands (a relay on the flood output) when a post doesn't override. */
+export const AIR_ON_DEFAULT = ["M8 ; air assist on"];
+export const AIR_OFF_DEFAULT = ["M9 ; air assist off"];
 
 /** Clamp a percentage into 0–100. */
 export function clampPercent(p: number): number {

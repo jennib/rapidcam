@@ -74,6 +74,7 @@ interface OpState {
   kerfWidth: number;
   laserFill: boolean;
   laserFillSpacing: number;
+  airAssist: boolean;
 }
 
 /**
@@ -101,6 +102,8 @@ export class CamBar {
   /** Transient (not persisted) selection of toolpaths for a combined export. */
   private selectedOpIds = new Set<string>();
   private exportSelBtn: HTMLButtonElement | null = null;
+  /** "Manage Tools" button — hidden in laser mode (tools are a mill concept). */
+  private libBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -152,6 +155,7 @@ export class CamBar {
     libBtn.textContent = "Manage Tools";
     libBtn.addEventListener("click", () => openToolLibraryDialog());
     btnRow.appendChild(libBtn);
+    this.libBtn = libBtn;
 
     this.content.appendChild(btnRow);
 
@@ -193,6 +197,10 @@ export class CamBar {
   // --- list rendering --------------------------------------------------------
 
   private renderOps(): void {
+    // Tools (end mills / V-bits) are a milling concept — hide "Manage Tools" for
+    // a laser. Re-evaluated here so it follows a machine-type change.
+    if (this.libBtn) this.libBtn.style.display = this.doc.machineKind === "laser" ? "none" : "";
+
     // Drop selections for ops that no longer exist (deleted).
     const live = new Set(this.doc.operations.map((o) => o.id));
     for (const id of [...this.selectedOpIds]) if (!live.has(id)) this.selectedOpIds.delete(id);
@@ -481,6 +489,7 @@ export class CamBar {
       kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
       laserFill:    existing?.laserFill   ?? false,
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
+      airAssist:    existing?.airAssist   ?? false,
     };
 
     let geomCleanup: () => void = () => {};
@@ -905,6 +914,7 @@ export class CamBar {
         kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
         laserFill:   isLaser && type === "engrave" && state.laserFill ? true : undefined,
         laserFillSpacing: isLaser && type === "engrave" && state.laserFill ? state.laserFillSpacing : undefined,
+        airAssist:   isLaser && state.airAssist ? true : undefined,
       };
 
       if (existing) {
@@ -1402,6 +1412,14 @@ export class CamBar {
     const fillSpacing = this.numRow("Fill spacing (mm)", () => state.laserFillSpacing, (v) => { state.laserFillSpacing = Math.max(0.01, v); });
     sec.appendChild(fillRow);
     sec.appendChild(fillSpacing.el);
+
+    // Air assist — emits the post's air command (M8/M9 by default) around this op.
+    const airChk = document.createElement("input");
+    airChk.type = "checkbox";
+    airChk.className = "settings-checkbox";
+    airChk.checked = state.airAssist;
+    airChk.addEventListener("change", () => { state.airAssist = airChk.checked; });
+    sec.appendChild(this.dField("Air assist (M8/M9)", airChk));
 
     const update = () => {
       const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
