@@ -17,6 +17,14 @@ import { nextId } from "../model/ids";
 import { type CAMOperation, DEFAULTS } from "./types";
 
 export interface MaterialTestParams {
+  /**
+   * What each cell does: "engrave" area-fills the square (find the cleanest
+   * mark), "cut" traces the square's outline (find the minimum that cuts
+   * through — cells that do drop out).
+   */
+  mode: "engrave" | "cut";
+  /** Cut mode only: passes per cell (cut tests often need more than one). */
+  cutPasses: number;
   /** Power axis (rows), percent. */
   powerMin: number;
   powerMax: number;
@@ -54,11 +62,14 @@ function lerp(min: number, max: number, i: number, steps: number): number {
 
 const round = (v: number) => Math.round(v);
 
-function baseLaserOp(name: string, entityIds: string[], power: number, feed: number): CAMOperation {
+function baseLaserOp(
+  name: string, type: "engrave" | "profile", entityIds: string[],
+  power: number, feed: number, passes: number,
+): CAMOperation {
   return {
     id: nextId("cam"),
     name,
-    type: "engrave",
+    type,
     entityIds,
     side: "outside",
     toolType: "end-mill", // irrelevant for a laser (no tool), but the field is required
@@ -72,7 +83,7 @@ function baseLaserOp(name: string, entityIds: string[], power: number, feed: num
     stepdown: DEFAULTS.stepdown,
     stepover: DEFAULTS.stepover,
     laserPower: power,
-    laserPasses: 1,
+    laserPasses: Math.max(1, Math.round(passes)),
   };
 }
 
@@ -100,10 +111,17 @@ export function generateMaterialTest(p: MaterialTestParams): MaterialTestResult 
       const x = p.origin.x + c * pitch;
       const rect = new RectEntity({ x, y }, { x: x + cell, y: y + cell });
       entities.push(rect);
-      const op = baseLaserOp(`P${round(power)}% F${round(feed)}`, [rect.id], power, feed);
-      op.laserFill = true;
-      op.laserFillSpacing = spacing;
-      operations.push(op);
+      if (p.mode === "cut") {
+        // Trace the square's outline — cells that cut through drop out.
+        const op = baseLaserOp(`P${round(power)}% F${round(feed)}`, "profile", [rect.id], power, feed, p.cutPasses);
+        op.kerfWidth = 0; // cut on the line
+        operations.push(op);
+      } else {
+        const op = baseLaserOp(`P${round(power)}% F${round(feed)}`, "engrave", [rect.id], power, feed, 1);
+        op.laserFill = true;
+        op.laserFillSpacing = spacing;
+        operations.push(op);
+      }
     }
   }
 
@@ -123,8 +141,8 @@ export function generateMaterialTest(p: MaterialTestParams): MaterialTestResult 
       labelEnts.push(new TextEntity(`${round(feed)}`, fontId, ts, { x, y: p.origin.y - ts - cell * 0.15 }, 0));
     }
     entities.push(...labelEnts);
-    // One engrave op cuts all labels at the fixed, legible reference settings.
-    operations.push(baseLaserOp("Labels", labelEnts.map((e) => e.id), p.labelPower, p.labelSpeed));
+    // One engrave op marks all labels at the fixed, legible reference settings.
+    operations.push(baseLaserOp("Labels", "engrave", labelEnts.map((e) => e.id), p.labelPower, p.labelSpeed, 1));
   }
 
   return { entities, operations };
@@ -132,6 +150,7 @@ export function generateMaterialTest(p: MaterialTestParams): MaterialTestResult 
 
 /** Sensible starting parameters for the dialog. */
 export const MATERIAL_TEST_DEFAULTS: Omit<MaterialTestParams, "origin"> = {
+  mode: "engrave", cutPasses: 1,
   powerMin: 20, powerMax: 100, powerSteps: 5,
   speedMin: 200, speedMax: 1200, speedSteps: 5,
   cellSize: 10, gap: 2, fillSpacing: 0.2,

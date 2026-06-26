@@ -34,17 +34,27 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   const note = document.createElement("p");
   note.className = "post-settings-note";
   note.textContent =
-    "Engraves a grid of squares sweeping power (rows) against speed (columns). " +
+    "A grid of squares sweeping power (rows) against speed (columns). " +
     "Run it on your material, then read the best cell's row/column.";
   body.appendChild(note);
 
-  const num = (label: string, get: () => number, set: (v: number) => void): HTMLInputElement => {
+  const num = (label: string, get: () => number, set: (v: number) => void): HTMLElement => {
     const inp = document.createElement("input");
     inp.type = "number"; inp.className = "dim"; inp.step = "any"; inp.value = String(get());
     inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
-    body.appendChild(row(label, inp));
-    return inp;
+    const el = row(label, inp);
+    body.appendChild(el);
+    return el;
   };
+
+  // Test type — engrave (fill squares) vs cut (trace outlines that drop out).
+  const modeSel = document.createElement("select");
+  modeSel.className = "unit";
+  for (const [v, l] of [["engrave", "Engrave (fill squares)"], ["cut", "Cut (square outlines)"]] as const) {
+    const o = document.createElement("option"); o.value = v; o.textContent = l; modeSel.appendChild(o);
+  }
+  modeSel.value = d.mode;
+  body.appendChild(row("Test type", modeSel));
 
   body.appendChild(sec("Power sweep (%) — rows"));
   num("Min power", () => d.powerMin, (v) => { d.powerMin = clamp(v, 0, 100); });
@@ -59,7 +69,17 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   body.appendChild(sec("Grid"));
   num("Cell size (mm)", () => d.cellSize, (v) => { d.cellSize = Math.max(1, v); });
   num("Gap (mm)", () => d.gap, (v) => { d.gap = Math.max(0, v); });
-  num("Fill spacing (mm)", () => d.fillSpacing, (v) => { d.fillSpacing = Math.max(0.01, v); });
+  const fillSpacingRow = num("Fill spacing (mm)", () => d.fillSpacing, (v) => { d.fillSpacing = Math.max(0.01, v); });
+  const passesRow = num("Passes per cell", () => d.cutPasses, (v) => { d.cutPasses = Math.max(1, Math.round(v)); });
+
+  // Fill spacing applies to engrave; passes applies to cut. Show the relevant one.
+  const applyMode = () => {
+    const cut = d.mode === "cut";
+    fillSpacingRow.style.display = cut ? "none" : "";
+    passesRow.style.display = cut ? "" : "none";
+  };
+  modeSel.addEventListener("change", () => { d.mode = modeSel.value as "engrave" | "cut"; applyMode(); });
+  applyMode();
 
   const labelsChk = document.createElement("input");
   labelsChk.type = "checkbox"; labelsChk.className = "settings-checkbox"; labelsChk.checked = d.labels;

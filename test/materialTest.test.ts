@@ -50,6 +50,19 @@ test("a single power/speed step collapses to the minimum", () => {
   expect(operations[0].feedrate).toBe(200);
 });
 
+test("cut mode makes profile (outline) cells with the chosen pass count", () => {
+  const { operations } = generateMaterialTest(params({ mode: "cut", cutPasses: 3 }));
+  const cells = operations.slice(0, 25);
+  for (const op of cells) {
+    expect(op.type).toBe("profile");
+    expect(op.laserFill).toBeUndefined();
+    expect(op.laserPasses).toBe(3);
+  }
+  // The labels op is still a (single-pass) engrave.
+  expect(operations[25].type).toBe("engrave");
+  expect(operations[25].laserPasses).toBe(1);
+});
+
 test("the generated grid posts to laser G-code with the swept powers", () => {
   const { entities, operations } = generateMaterialTest(params());
   const doc = new CADDocument({ width: 300, height: 300 });
