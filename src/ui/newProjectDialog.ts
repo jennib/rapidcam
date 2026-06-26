@@ -1,5 +1,5 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import { type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
+import { type MachineKind, type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { StorageKeys } from "../core/storageKeys";
 
@@ -12,6 +12,7 @@ export interface NewProjectConfig {
   origin: OriginDef;
   hasToolChanger: boolean;
   postProcessor: string;
+  machineKind: MachineKind;
 }
 
 /**
@@ -108,22 +109,42 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
+  const mkSel = sel([["mill", "CNC Mill / Router"], ["laser", "Laser"]]);
+  mkSel.value = initial.machineKind ?? defaults.machineKind ?? "mill";
+  macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel([["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]]);
   ppSel.value = initial.postProcessor ?? defaults.postProcessor ?? "linuxcnc";
-  macSec.appendChild(row("Post-processor", ppSel));
+  const ppRow = row("Post-processor", ppSel);
+  macSec.appendChild(ppRow);
   const tcChk = document.createElement("input");
   tcChk.type = "checkbox";
   tcChk.className = "settings-checkbox";
   tcChk.checked = initial.hasToolChanger ?? defaults.hasToolChanger ?? false;
-  macSec.appendChild(row("Auto tool changer", tcChk));
+  const tcRow = row("Auto tool changer", tcChk);
+  macSec.appendChild(tcRow);
   // Coolant is a machine capability (global preference), not a per-project
   // setting, so it's read/written directly to prefs rather than NewProjectConfig.
   const coolantChk = document.createElement("input");
   coolantChk.type = "checkbox";
   coolantChk.className = "settings-checkbox";
   coolantChk.checked = getMachineHasCoolant();
-  macSec.appendChild(row("Machine has coolant", coolantChk));
+  const coolantRow = row("Machine has coolant", coolantChk);
+  macSec.appendChild(coolantRow);
   body.appendChild(macSec);
+
+  // A laser has no spindle/Z/tool-changer/coolant, and its output always posts
+  // as GRBL-style beam G-code — so lock the post-processor to GRBL and gray out
+  // the mill-only machine options when "Laser" is chosen.
+  const applyMachineKind = () => {
+    const laser = mkSel.value === "laser";
+    if (laser) ppSel.value = "grbl";
+    ppSel.disabled = laser;
+    tcChk.disabled = laser;
+    coolantChk.disabled = laser;
+    for (const r of [ppRow, tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
+  };
+  mkSel.addEventListener("change", applyMachineKind);
+  applyMachineKind();
 
   // footer
   const ftr = document.createElement("div");
@@ -168,6 +189,7 @@ export function openNewProjectDialog(
       },
       hasToolChanger: tcChk.checked,
       postProcessor: ppSel.value,
+      machineKind: mkSel.value as MachineKind,
     };
 
     if (saveDefaultChk.checked) {
@@ -180,6 +202,7 @@ export function openNewProjectDialog(
           origin: cfg.origin,
           hasToolChanger: cfg.hasToolChanger,
           postProcessor: cfg.postProcessor,
+          machineKind: cfg.machineKind,
         };
         // Explicitly ensure the project name is never saved with the default settings
         delete defaultsToSave.name;
