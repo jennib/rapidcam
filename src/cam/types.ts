@@ -202,6 +202,13 @@ export interface CAMOperation {
   /** Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2. */
   laserFillSpacing?: number;
   /**
+   * Laser fill only: overscan distance (mm) — how far the head runs past each
+   * scan line's ends with the beam off, so it's already at full speed when the
+   * beam fires (and decelerates after it stops). Avoids darker over-burned edges,
+   * especially at constant power. 0 = off. Default 0.
+   */
+  laserOverscan?: number;
+  /**
    * Laser only: turn on air assist for this operation (the post's air command,
    * `M8`/`M9` by default) — kept on across consecutive ops that request it and
    * switched off when an op doesn't, or at program end. Default false.
@@ -232,6 +239,7 @@ export const DEFAULTS = {
   laserPasses: 1,
   kerfWidth: 0,
   laserFillSpacing: 0.2,
+  laserOverscan: 0,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

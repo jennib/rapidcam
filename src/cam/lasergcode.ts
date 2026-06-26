@@ -54,10 +54,12 @@ function passCount(op: CAMOperation): number {
 
 /**
  * The cut parameters threaded into every trace: the feed (on the first cut move
- * of each pass) and `sWord` — the inline ` S<power>` appended to each cut move
- * for controllers that carry power per move (Smoothie); `""` for modal heads.
+ * of each pass), `sWord` — the inline ` S<power>` appended to each cut move for
+ * controllers that carry power per move (Smoothie), `""` for modal heads — and
+ * `power`, the bare formatted S value (used by overscan, which sets power per
+ * block explicitly for every head).
  */
-interface CutCtx { feed: number; sWord: string; }
+interface CutCtx { feed: number; sWord: string; power: string; }
 
 /**
  * Trace a closed contour `passes` times. Each pass travels to the start with the
@@ -154,7 +156,8 @@ function kerfPaths(verts: Vec2[], op: CAMOperation, post: LaserPost): Vec2[][] {
 type LaserPrim =
   | { kind: "poly"; pts: Vec2[]; closed: boolean }
   | { kind: "circle"; cx: number; cy: number; r: number }
-  | { kind: "arc"; arc: ArcEntity };
+  | { kind: "arc"; arc: ArcEntity }
+  | { kind: "fill"; segs: Vec2[][]; overscan: number };
 
 /** One dispatch result: a cut primitive or a skip note, kept in entity order. */
 type LaserItem = LaserPrim | { kind: "note"; text: string };
@@ -230,12 +233,17 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       else items.push({ kind: "note", text: `${ent.id} skipped — fill needs a closed shape` });
     }
     const spacing = Math.max(0.01, op.laserFillSpacing ?? DEFAULTS.laserFillSpacing);
+    const overscan = Math.max(0, op.laserOverscan ?? 0);
+    // Outline every region first (crisp edges), then flood. Keeping the flood
+    // last matters for overscan on modal heads: its per-block S leaves power at 0,
+    // which is fine right before the op's beam-off but would starve a later cut.
+    const segs: Vec2[][] = [];
     for (const region of groupContoursIntoRegions(contours)) {
-      items.push({ kind: "poly", pts: region.outer, closed: true });        // crisp edge
+      items.push({ kind: "poly", pts: region.outer, closed: true });
       for (const h of region.holes) items.push({ kind: "poly", pts: h, closed: true });
-      for (const seg of fillSegments(region.outer, region.holes, spacing))
-        items.push({ kind: "poly", pts: seg, closed: false });
+      segs.push(...fillSegments(region.outer, region.holes, spacing));
     }
+    if (segs.length > 0) items.push({ kind: "fill", segs, overscan });
     return items;
   }
 
@@ -317,6 +325,33 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
   return items;
 }
 
+/**
+ * Trace area-fill scan segments `passes` times. With overscan, each lit run is
+ * bracketed by beam-off run-up / run-down moves (explicit `S0`/`S<power>`, which
+ * works for both modal and inline-power heads) so the head is already at feed
+ * when the beam fires and decelerates after it stops — no over-burned edges.
+ * Without overscan it's a plain travel + lit move per segment.
+ */
+function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx, ox: number, oy: number): string[] {
+  const lines: string[] = [];
+  for (let p = 0; p < passes; p++) {
+    for (const [a, b] of segs) {
+      if (overscan > 0) {
+        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+        const ux = (dx / len) * overscan, uy = (dy / len) * overscan;
+        lines.push(`G0 X${X(a.x - ux, ox)} Y${Y(a.y - uy, oy)}`);            // rapid before the start
+        lines.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)} F${n(cut.feed)} S0`);   // run-up, beam off
+        lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} S${cut.power}`);        // lit pass
+        lines.push(`G1 X${X(b.x + ux, ox)} Y${Y(b.y + uy, oy)} S0`);         // run-down, beam off
+      } else {
+        lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+        lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(cut.feed)}${cut.sWord}`);
+      }
+    }
+  }
+  return lines;
+}
+
 /** Emit the G-code trace for one cut primitive. */
 function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: number): string[] {
   switch (prim.kind) {
@@ -325,6 +360,7 @@ function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: 
       : traceOpen(prim.pts, passes, cut, ox, oy);
     case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
     case "arc":    return traceArc(prim.arc, passes, cut, ox, oy);
+    case "fill":   return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
   }
 }
 
@@ -344,7 +380,7 @@ function laserOpBody(
   const power = post.formatPower(op.laserPower ?? DEFAULTS.laserPower, maxPower);
   // Modal heads set power once in beamOn; inline-power heads (Smoothie) carry it
   // on every cut move instead.
-  const cut: CutCtx = { feed: op.feedrate, sWord: post.inlinePower ? ` S${power}` : "" };
+  const cut: CutCtx = { feed: op.feedrate, sWord: post.inlinePower ? ` S${power}` : "", power };
   const lines: string[] = [];
   lines.push(...post.beamOn(power));
   if (post.pierce) lines.push(...post.pierce());
@@ -396,6 +432,7 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
       if (it.kind === "note") continue;
       if (it.kind === "circle") paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
       else if (it.kind === "arc") paths.push({ pts: arcPolyline(it.arc), closed: false });
+      else if (it.kind === "fill") { for (const s of it.segs) if (s.length >= 2) paths.push({ pts: s, closed: false }); }
       else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }
   }

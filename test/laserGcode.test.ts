@@ -286,3 +286,28 @@ test("no air-assist commands when the op doesn't request it", () => {
   const g = generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"] })], doc);
   expect(g).not.toMatch(/^M8/m);
 });
+
+// 14) Fill overscan -----------------------------------------------------------
+test("overscan brackets each lit fill run with beam-off run-up/run-down", () => {
+  const doc = laserDoc();
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }, "R1"));
+  const op = baseOp({ type: "engrave", entityIds: ["R1"], laserPower: 80,
+    laserFill: true, laserFillSpacing: 2, laserOverscan: 3 });
+
+  const g = generateLaserGCode([op], doc);
+  // A scan row at y=1 runs 0→10 (rect inset by spacing/2). With 3mm overscan the
+  // beam-off run-up reaches X0 from X-3 at S0, fires across to X10 at S800, then
+  // overshoots to X13 at S0.
+  expect(g).toMatch(/G1 X0 Y1 F\d+ S0/);   // run-up, beam off
+  expect(g).toMatch(/G1 X10 Y1 S800/);     // lit pass
+  expect(g).toMatch(/G1 X13 Y1 S0/);       // run-down past the edge
+});
+
+test("fill without overscan emits no beam-off S0 modulation", () => {
+  const doc = laserDoc();
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }, "R1"));
+  const op = baseOp({ type: "engrave", entityIds: ["R1"], laserFill: true, laserFillSpacing: 2 });
+
+  const g = generateLaserGCode([op], doc);
+  expect(g).not.toMatch(/ S0$/m);
+});

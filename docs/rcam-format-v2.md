@@ -385,6 +385,8 @@ instead:
 | `kerfWidth` | `profile` | beam kerf (mm); the closed contour is offset outward (`side: "outside"`) or inward (`"inside"`) by half this. 0 = cut on the line |
 | `laserFill` | `engrave` | flood closed shapes with parallel scan lines (area/solid engraving) on top of the outline; counters (the hole in "O") stay clear. Default false |
 | `laserFillSpacing` | `engrave` | scan-line spacing (mm) when `laserFill` is on — roughly the beam width. Default 0.2 |
+| `laserOverscan` | `engrave` | fill only: distance (mm) the head runs past each scan line's ends with the beam off, so it's at full speed when the beam fires (avoids over-burned edges). 0 = off. Default 0 |
+| `airAssist` | both | turn on air assist (the post's air command, `M8`/`M9` by default), held across consecutive ops that request it. Default false |
 
 ```jsonc
 // Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.

@@ -74,6 +74,7 @@ interface OpState {
   kerfWidth: number;
   laserFill: boolean;
   laserFillSpacing: number;
+  laserOverscan: number;
   airAssist: boolean;
 }
 
@@ -489,6 +490,7 @@ export class CamBar {
       kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
       laserFill:    existing?.laserFill   ?? false,
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
+      laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
       airAssist:    existing?.airAssist   ?? false,
     };
 
@@ -914,6 +916,7 @@ export class CamBar {
         kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
         laserFill:   isLaser && type === "engrave" && state.laserFill ? true : undefined,
         laserFillSpacing: isLaser && type === "engrave" && state.laserFill ? state.laserFillSpacing : undefined,
+        laserOverscan: isLaser && type === "engrave" && state.laserFill && state.laserOverscan > 0 ? state.laserOverscan : undefined,
         airAssist:   isLaser && state.airAssist ? true : undefined,
       };
 
@@ -1410,8 +1413,10 @@ export class CamBar {
     fillChk.checked = state.laserFill;
     const fillRow = this.dField("Fill area (engrave solid)", fillChk);
     const fillSpacing = this.numRow("Fill spacing (mm)", () => state.laserFillSpacing, (v) => { state.laserFillSpacing = Math.max(0.01, v); });
+    const overscan = this.numRow("Fill overscan (mm, 0=off)", () => state.laserOverscan, (v) => { state.laserOverscan = Math.max(0, v); });
     sec.appendChild(fillRow);
     sec.appendChild(fillSpacing.el);
+    sec.appendChild(overscan.el);
 
     // Air assist — emits the post's air command (M8/M9 by default) around this op.
     const airChk = document.createElement("input");
@@ -1427,6 +1432,7 @@ export class CamBar {
       kerf.el.style.display = isCut ? "" : "none";
       fillRow.style.display = isEngrave ? "" : "none";
       fillSpacing.el.style.display = isEngrave && state.laserFill ? "" : "none";
+      overscan.el.style.display = isEngrave && state.laserFill ? "" : "none";
     };
     fillChk.addEventListener("change", () => { state.laserFill = fillChk.checked; update(); });
     update();
