@@ -13,6 +13,8 @@ import { formatLength } from "../core/units";
 import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type CAMOpType, type ChamferSide, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
+import { openMaterialTestDialog } from "./materialTestDialog";
+import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
 import { opPatternTargetCount } from "../cam/patternExpand";
 import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
@@ -105,6 +107,8 @@ export class CamBar {
   private exportSelBtn: HTMLButtonElement | null = null;
   /** "Manage Tools" button — hidden in laser mode (tools are a mill concept). */
   private libBtn: HTMLButtonElement | null = null;
+  /** "Material Test" button — shown only in laser mode. */
+  private testBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -158,6 +162,15 @@ export class CamBar {
     btnRow.appendChild(libBtn);
     this.libBtn = libBtn;
 
+    const testBtn = document.createElement("button");
+    testBtn.className = "cam-add-btn";
+    testBtn.style.flex = "1";
+    testBtn.textContent = "Material Test";
+    testBtn.title = "Generate a power×speed test grid to dial in laser settings";
+    testBtn.addEventListener("click", () => this.runMaterialTest());
+    btnRow.appendChild(testBtn);
+    this.testBtn = testBtn;
+
     this.content.appendChild(btnRow);
 
     const sep = document.createElement("div");
@@ -199,8 +212,11 @@ export class CamBar {
 
   private renderOps(): void {
     // Tools (end mills / V-bits) are a milling concept — hide "Manage Tools" for
-    // a laser. Re-evaluated here so it follows a machine-type change.
-    if (this.libBtn) this.libBtn.style.display = this.doc.machineKind === "laser" ? "none" : "";
+    // a laser and show "Material Test" instead. Re-evaluated here so it follows a
+    // machine-type change.
+    const laser = this.doc.machineKind === "laser";
+    if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
+    if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
 
     // Drop selections for ops that no longer exist (deleted).
     const live = new Set(this.doc.operations.map((o) => o.id));
@@ -936,6 +952,33 @@ export class CamBar {
 
     document.body.appendChild(backdrop);
     setTimeout(() => nameInput.select(), 40);
+  }
+
+  // --- material test ---------------------------------------------------------
+
+  /**
+   * Open the material-test dialog and, on confirm, drop the generated grid
+   * (geometry + one engrave op per cell) into the document in a single history
+   * step, grouped so it's easy to move or delete as a unit.
+   */
+  private runMaterialTest(): void {
+    openMaterialTestDialog((cfg) => {
+      // Place the grid so it (and its left/bottom labels) sit in positive space.
+      const ts = Math.max(2, Math.min(cfg.cellSize * 0.4, 6));
+      const origin = { x: ts * 3.2 + 5, y: ts + cfg.cellSize * 0.15 + 5 };
+      const { entities, operations } = generateMaterialTest({ ...cfg, origin });
+      if (entities.length === 0) return;
+
+      this.pushHistory?.();
+      for (const e of entities) {
+        e.layerId = this.doc.activeLayerId;
+        this.doc.entities.push(e);
+      }
+      this.doc.groups.push({ id: nextId("group"), name: "Material Test", entityIds: entities.map((e) => e.id) });
+      for (const op of operations) this.doc.operations.push(op);
+      this.doc.emitChange();
+      this.renderOps();
+    });
   }
 
   // --- G-code generation -----------------------------------------------------
