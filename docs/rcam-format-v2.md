@@ -65,6 +65,7 @@ vocabularies is unchanged.
   "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
   "postProcessor": "linuxcnc",                  // "linuxcnc" | "grbl"
+  "machineKind": "mill",                         // "mill" | "laser", default "mill"
   "endPosition": null,                          // optional park position; see below
   "groups": [],
   "layers": [ /* optional; a Default layer is created if omitted */ ],
@@ -100,9 +101,14 @@ that loads cleanly and draws a circle:
 ```
 
 Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
-`origin` → front-left-top, `postProcessor` → `"linuxcnc"`,
+`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `machineKind` → `"mill"`,
 `endPosition` → `null`, `layers` → one `"layer-0"` "Default" layer,
 `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
+
+`machineKind` selects the output path: `"mill"` (the default) posts spindle +
+Z-axis G-code; `"laser"` posts fixed-Z beam G-code (beam on/off, power + passes,
+no Z) and the operations use the laser fields instead — see
+[CAM operations](#cam-operations).
 
 Coolant is **per operation** (`operations[].coolant`), not a top-level field.
 Custom program start/end G-code and the "machine has coolant" capability are
@@ -349,6 +355,32 @@ loop, e.g. `{ "containingLoops": [ ["circle-7"] ] }`.
 > **Feeds & speeds are not a recipe.** Any numbers you emit are starting points
 > only and must be tuned for the actual material, tool, and machine. Always verify
 > `depth`, the chosen `origin`, and tool changes before cutting.
+
+### Laser operations
+
+When the document's `machineKind` is `"laser"`, the same operations are posted
+as fixed-Z beam moves (no spindle, no Z plunge) and only two `type`s apply:
+`profile` (cut) and `engrave`. The Z/spindle fields (`spindleSpeed`, `safeZ`,
+`depth`, `stepdown`, `plungeRate`) are ignored, and these fields drive the cut
+instead:
+
+| Field | Applies to | Meaning |
+|-------|-----------|---------|
+| `laserPower` | both | beam power as a percentage (0–100) of the controller's max (GRBL `$30`), scaled to an `S` word. Default 80 |
+| `laserPasses` | both | times the beam re-traces each path — the fixed-Z analogue of stepdown. Default 1 |
+| `kerfWidth` | `profile` | beam kerf (mm); the closed contour is offset outward (`side: "outside"`) or inward (`"inside"`) by half this. 0 = cut on the line |
+| `laserFill` | `engrave` | flood closed shapes with parallel scan lines (area/solid engraving) on top of the outline; counters (the hole in "O") stay clear. Default false |
+| `laserFillSpacing` | `engrave` | scan-line spacing (mm) when `laserFill` is on — roughly the beam width. Default 0.2 |
+
+```jsonc
+// Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.
+// (document-level: "machineKind": "laser")
+{ "id": "op1", "name": "Cut", "type": "profile", "entityIds": ["circle-1"],
+  "side": "outside", "toolType": "end-mill", "toolNumber": 1, "diameter": 0,
+  "feedrate": 1200, "plungeRate": 300, "spindleSpeed": 0, "safeZ": 5,
+  "depth": -3, "stepdown": 1.5, "stepover": 0.4,
+  "laserPower": 90, "laserPasses": 2, "kerfWidth": 0.2 }
+```
 
 ## Tools
 

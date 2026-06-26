@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **CAM: Laser output** — set the machine type to **laser** (Settings → Machine type) to post fixed-Z beam G-code instead of spindle/Z toolpaths. Supports vector **cut** (profile, with optional `kerfWidth` compensation), vector **engrave** (centreline), and **area-fill engrave** (`laserFill` floods closed shapes with scan lines at `laserFillSpacing`, with letter counters left clear). Beam control uses `M4` dynamic power with `laserPower` (0–100 %) scaled to an `S` word and `laserPasses` repeats in place of stepdown; `G0` travels keep the beam off. Reuses the existing XY geometry (kerf offset, arc-fitting, text outlines, region grouping), and is structured around a `CuttingHead` seam so waterjet/plasma can be added later as additional heads. The `.rcam` format gains a top-level `machineKind` (`"mill"` | `"laser"`, default `"mill"`) and the operation fields `laserPower`/`laserPasses`/`kerfWidth`/`laserFill`/`laserFillSpacing` (documented in the [authoring guide](docs/rcam-format-v2.md) and [schema](public/schema/rcam-v2.schema.json)).
+- **CAM: Flat laser preview** — laser documents draw the actual beam cut paths as a glowing overlay on the 2D canvas (the laser analogue of the mill's 3D stock preview); the View-menu toggle relabels to **Laser Preview**. The preview and the G-code share one geometry pass, so it shows exactly what will cut.
+
+---
+
 ## [1.0.0] — 2026-06-21
 
 ### Added

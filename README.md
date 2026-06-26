@@ -14,7 +14,7 @@ Sketch a part, lock it down with real parametric constraints, generate toolpaths
 
 - **Runs anywhere** — it's a web app. Open it on any machine, no setup.
 - **Truly parametric** — a Levenberg-Marquardt constraint solver, driving dimensions, and variables, so edits stay consistent (not just a drawing program).
-- **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview.
+- **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview — plus **laser** cut/engrave output with a flat path preview.
 - **Private by default** — all processing is local; your files stay on your machine. Analytics is opt-in only.
 - **Open source** — AGPL-3.0, with a commercial license available.
 
@@ -98,8 +98,9 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Drill | Plunge at points / circle centres; optional G83-style peck retract |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
+| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation) and vector **engrave**, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear). Beam on/off with `M4` dynamic power + a pass count instead of spindle/Z. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
 | G-code export | GRBL and LinuxCNC post-processors; post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
-| WebGL toolpath preview | 3D stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill) |
+| Toolpath preview | 3D WebGL stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill); laser documents instead show a flat on-canvas preview of the beam cut paths |
 
 > **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
 
@@ -173,7 +174,9 @@ src/
 │   ├── vcarve.ts       # V-carve offset-peeling solver (variable depth)
 │   ├── arcfit.ts       # Arc-fit profile polylines → G2/G3
 │   ├── tabs.ts         # Tab/bridge insertion
-│   ├── gcode.ts        # G-code builder
+│   ├── gcode.ts        # G-code builder (mill; dispatches to laser by machineKind)
+│   ├── lasergcode.ts   # Laser/fixed-Z beam G-code + flat preview paths
+│   ├── cuttingHead.ts  # Beam/jet "cutting head" seam (laser; waterjet/plasma-ready)
 │   ├── stockRasterizer.ts # Height-field stock sim for the 3D preview
 │   ├── toolLibrary.ts
 │   └── postprocessors/ # GRBL, LinuxCNC
