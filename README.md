@@ -98,8 +98,8 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Drill | Plunge at points / circle centres; optional G83-style peck retract |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
-| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation) and vector **engrave**, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear). Beam on/off with `M4` dynamic power + a pass count instead of spindle/Z. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
-| G-code export | GRBL and LinuxCNC post-processors; post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
+| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation) and vector **engrave**, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
+| G-code export | GRBL and LinuxCNC post-processors (mill) / selectable laser controllers (laser); post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
 | Toolpath preview | 3D WebGL stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill); laser documents instead show a flat on-canvas preview of the beam cut paths |
 
 > **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
@@ -176,7 +176,7 @@ src/
 │   ├── tabs.ts         # Tab/bridge insertion
 │   ├── gcode.ts        # G-code builder (mill; dispatches to laser by machineKind)
 │   ├── lasergcode.ts   # Laser/fixed-Z beam G-code + flat preview paths
-│   ├── cuttingHead.ts  # Beam/jet "cutting head" seam (laser; waterjet/plasma-ready)
+│   ├── laserposts/     # Per-controller laser post-processors (GRBL M4/M3, Marlin, Smoothie, LinuxCNC)
 │   ├── stockRasterizer.ts # Height-field stock sim for the 3D preview
 │   ├── toolLibrary.ts
 │   └── postprocessors/ # GRBL, LinuxCNC
