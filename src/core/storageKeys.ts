@@ -29,4 +29,6 @@ export const StorageKeys = {
   toolpathDialogPosition: "rapidcam:toolpath-dialog-position",
   /** Default canvas/stock settings for new projects. */
   defaultProjectSettings: "rapidcam:defaultProjectSettings",
+  /** Counter for share-prompt throttling (show every Nth export). */
+  sharePromptCounter: "rapidcam:sharePromptCounter",
 } as const;

@@ -1,5 +1,6 @@
 import { showAboutDialog } from "./aboutDialog";
 import { showFeedbackDialog } from "./feedbackDialog";
+import { showShareDialog } from "./shareDialog";
 
 const REPO_URL = "https://github.com/jennib/rapidcam";
 const FORMAT_DOC_URL = `${REPO_URL}/blob/main/docs/rcam-format-v2.md`;
@@ -57,6 +58,7 @@ export class HelpMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
+    this.item("Share RapidCAM…", () => { this.close(); showShareDialog(); });
     this.item("Send Feedback…", () => { this.close(); showFeedbackDialog(); });
     this.item("About RapidCAM…", () => { this.close(); showAboutDialog(); });
 

@@ -24,6 +24,7 @@ import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
+import { maybeShowSharePrompt } from "./sharePrompt";
 import {
   type OpCombo,
   AUTO_NAME_RE,
@@ -206,6 +207,7 @@ export class CamBar {
     if (ops.length === 0) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
     this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    maybeShowSharePrompt();
   }
 
   // --- list rendering --------------------------------------------------------
@@ -1004,6 +1006,7 @@ export class CamBar {
     }
     track("gcode_generated", { operation_count: this.doc.operations.length });
     this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    maybeShowSharePrompt();
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */
