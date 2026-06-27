@@ -457,7 +457,7 @@ export function generateLaserGCode(
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
 
   const lines: string[] = [
-    "; RapidCAM generated G-code",
+    "; RapidCAM generated G-code - https://rapidcam.app",
     `; Laser post-processor: ${post.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}`,

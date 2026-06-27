@@ -1111,7 +1111,7 @@ export function generateGCode(
     .join(", ");
 
   const lines: string[] = [
-    "; RapidCAM generated G-code",
+    "; RapidCAM generated G-code - https://rapidcam.app",
     `; Post-processor: ${pp.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}  Z: ${zLabel}`,

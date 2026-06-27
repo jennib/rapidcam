@@ -9,6 +9,9 @@ import { nextId } from "../model/ids";
 import { TextEntity } from "../model/entities";
 import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
+import { buildDesignLink } from "./shareLink";
+import { copyToClipboard } from "../ui/clipboard";
+import { toast } from "../ui/toast";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 
@@ -156,6 +159,21 @@ export class ProjectManager {
     localStorage.removeItem(StorageKeys.autosaveDraft);
     this.markClean();
     track("project_saved");
+  }
+
+  /** Copy a self-contained link to the current design to the clipboard. */
+  async copyShareLink(): Promise<void> {
+    const { url, tooLong } = await buildDesignLink(this.doc, this.currentFileName);
+    if (tooLong) {
+      alert(
+        "This design is too large to share as a link.\n\n" +
+        "Use File ▸ Save to share the .rcam file instead.",
+      );
+      return;
+    }
+    copyToClipboard(url);
+    track("design_link_created", { length: url.length });
+    toast("Design link copied — anyone with it can open this design.");
   }
 
   fileOpenRecent(entry: RecentEntry): void {

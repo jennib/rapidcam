@@ -58,6 +58,7 @@ import { VariablesBar } from "./ui/variablesBar";
 import { ContextMenu, ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
+import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
 import { laserPreviewPaths } from "./cam/lasergcode";
@@ -187,6 +188,7 @@ export class App {
         onNew: () => this.project.fileNew(),
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
+        onShareLink: () => { void this.project.copyShareLink(); },
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
         onImportSvg: () => this.project.svgImport(),
@@ -246,7 +248,18 @@ export class App {
     // Load bundled fonts in the background; re-render when they arrive
     void initBundledFonts(() => this.requestRender());
 
-    // Show welcome screen on startup for a fresh empty project
+    // A shared-design link (#d=…) takes over startup; otherwise show the welcome
+    // screen for a fresh empty project.
+    void this.openInitialContent();
+  }
+
+  private async openInitialContent(): Promise<void> {
+    const shared = await consumeSharedDesign();
+    if (shared) {
+      track("design_link_opened");
+      this.project.loadDocument(shared.file, shared.name);
+      return;
+    }
     showWelcomeScreen(
       () => this.project.openSetupDialog(),
       () => { void this.project.fileOpen(); },

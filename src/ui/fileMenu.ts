@@ -7,6 +7,7 @@ export interface FileMenuCallbacks {
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
+  onShareLink: () => void;
   onOpenRecent: (entry: RecentEntry) => void;
   onOpenExample: (entry: ExampleEntry) => void;
   onImportSvg: () => void;
@@ -65,6 +66,7 @@ export class FileMenu {
     this.sep();
     this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
     this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });
+    this.item("Copy Share Link", "", () => { this.close(); this.cb.onShareLink(); });
     this.sep();
     this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
     this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
