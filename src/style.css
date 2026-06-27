@@ -1714,6 +1714,72 @@ button.btn.btn-primary:hover:not(:disabled) { background: var(--accent); color: 
   justify-content: space-between;
 }
 
+.welcome-example-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.welcome-example-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.welcome-example-card:hover {
+  border-color: var(--accent);
+  background: rgba(74, 163, 255, 0.04);
+}
+
+.welcome-example-thumb {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  color: #7f8a9c;
+  transition: color 0.15s ease;
+}
+
+.welcome-example-card:hover .welcome-example-thumb {
+  color: var(--accent);
+}
+
+.welcome-example-thumb svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.welcome-example-info {
+  padding: 7px 9px;
+}
+
+.welcome-example-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.welcome-example-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
 .welcome-recents-empty {
   display: flex;
   flex-direction: column;

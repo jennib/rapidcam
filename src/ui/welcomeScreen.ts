@@ -1,5 +1,6 @@
 import { getRecents, type RecentEntry } from "../io/fileio";
 import { getExamples, type ExampleEntry } from "../io/examples";
+import { renderThumbnailSvg } from "./entityThumbnail";
 import { StorageKeys } from "../core/storageKeys";
 
 function formatRelativeTime(timestamp: number): string {
@@ -223,24 +224,29 @@ export function showWelcomeScreen(
     rightCol.appendChild(exTitle);
 
     const exContainer = document.createElement("div");
-    exContainer.className = "welcome-recents";
+    exContainer.className = "welcome-example-grid";
     for (const ex of examples) {
-      const item = document.createElement("div");
-      item.className = "welcome-recent-item";
+      const card = document.createElement("div");
+      card.className = "welcome-example-card";
 
-      const header = document.createElement("div");
-      header.className = "welcome-recent-header";
+      // Geometry preview — drops a first-time user straight into "I could make that".
+      const thumb = document.createElement("div");
+      thumb.className = "welcome-example-thumb";
+      const svg = renderThumbnailSvg(ex.file);
+      if (svg) thumb.innerHTML = svg;
+      card.appendChild(thumb);
 
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "welcome-recent-name";
+      const info = document.createElement("div");
+      info.className = "welcome-example-info";
+
+      const nameSpan = document.createElement("div");
+      nameSpan.className = "welcome-example-name";
       nameSpan.textContent = ex.name;
       nameSpan.title = ex.name;
-
-      header.appendChild(nameSpan);
-      item.appendChild(header);
+      info.appendChild(nameSpan);
 
       const meta = document.createElement("div");
-      meta.className = "welcome-recent-meta";
+      meta.className = "welcome-example-meta";
       const w = ex.file.canvas.width;
       const h = ex.file.canvas.height;
       const unit = ex.file.displayUnit || "mm";
@@ -248,14 +254,15 @@ export function showWelcomeScreen(
       meta.textContent = opCount > 0
         ? `${w} × ${h} ${unit} · ${opCount} toolpath${opCount !== 1 ? "s" : ""}`
         : `${w} × ${h} ${unit}`;
-      item.appendChild(meta);
+      info.appendChild(meta);
+      card.appendChild(info);
 
-      item.addEventListener("click", () => {
+      card.addEventListener("click", () => {
         backdrop.remove();
         onOpenExample(ex);
       });
 
-      exContainer.appendChild(item);
+      exContainer.appendChild(card);
     }
     rightCol.appendChild(exContainer);
   }
