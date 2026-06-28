@@ -26,6 +26,11 @@
  *              \                  /
  *               \________________/         ← medial axis: insets vanish (deepest)
  *
+ * A flat-tip (engraving) bit shifts this: its tip flat of radius `tipDiameter/2`
+ * rides the surface, so a point `r` from the wall only drops below the surface
+ * once `r` exceeds the flat radius — `depth(r) = max(0, r − tipR) / tan(½·vAngle)`.
+ * Insets within the flat radius score at the surface and are dropped.
+ *
  * `maxDepth` clamps the cut: once `depth(r)` reaches it, deeper insets are all
  * cut at `maxDepth`, leaving a flat floor cleared by the (now concentric) inset
  * contours — i.e. wide areas bottom out instead of running the bit ever deeper.
@@ -96,6 +101,13 @@ export interface VCarveParams {
   maxDepth: number;
   /** Radial inset between successive passes, mm. Smaller = smoother floor, more passes. */
   stepMM: number;
+  /**
+   * Flat-tip diameter of the V-bit, mm (0 = perfectly sharp). An engraving bit
+   * with a flat tip doesn't reach the surface at the wall: the flat (radius
+   * `tipDiameter/2`) carries the cut, so a point `r` from the wall only goes
+   * below the surface once `r` exceeds the flat radius. Default 0.
+   */
+  tipDiameter?: number;
   /** Miter limit passed to Clipper when insetting (keeps sharp corners sharp). */
   miterLimit?: number;
 }
@@ -111,6 +123,7 @@ export function vcarveParamsForOp(op: CAMOperation): VCarveParams {
     vAngle: op.vAngle ?? 60,
     maxDepth: Math.abs(op.depth),
     stepMM: op.vStep && op.vStep > 0 ? op.vStep : 0.4,
+    tipDiameter: op.tipDiameter,
   };
 }
 
@@ -159,6 +172,10 @@ export function vcarveRegion(outer: Vec2[], holes: Vec2[][] | Vec2[], params: VC
   const tanHalf = Math.tan((vAngle / 2) * (Math.PI / 180));
   if (tanHalf <= 1e-6) return []; // 0° (or 180°) — not a usable V-bit
 
+  // Flat-tip bit: the tip flat (radius tipR) rides the surface, so only the part
+  // of the radial distance beyond the flat goes below the surface.
+  const tipR = Math.max(0, (params.tipDiameter ?? 0) / 2);
+
   const passes: VCarvePass[] = [];
   // Inward offset of a bounded region must vanish within ~half the diagonal; cap
   // the loop generously so a degenerate offset can never spin forever.
@@ -168,8 +185,12 @@ export function vcarveRegion(outer: Vec2[], holes: Vec2[][] | Vec2[], params: VC
     const r = i * stepMM;
     const loops = insetRegion(outer, holeRings, r, miterLimit);
     if (loops.length === 0) break; // reached the medial axis — fully carved
-    let depth = r / tanHalf;
+    let depth = Math.max(0, r - tipR) / tanHalf;
     if (maxDepth > 0 && depth > maxDepth) depth = maxDepth;
+    // With a flat tip the shallowest insets (within the flat radius of the wall)
+    // sit at the surface — skip those zero-depth contours, but keep peeling so
+    // the deeper passes still get cut.
+    if (depth <= 1e-6) continue;
     passes.push({ depth: -depth, loops });
   }
   return passes;

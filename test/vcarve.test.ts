@@ -68,6 +68,29 @@ describe("vcarveRegion — offset peeling", () => {
     expect(a.length).toBe(b.length);
   });
 
+  it("folds a flat tip into the depth: the flat radius rides the surface", () => {
+    // 90° bit with a 2mm flat (tipR = 1): depth(r) = max(0, r − 1).
+    const passes = vcarveRegion(square(20), [], P90({ tipDiameter: 2 }));
+    expect(passes.length).toBeGreaterThan(0);
+
+    // The first inset is at r=1 (= tipR) ⇒ depth 0 ⇒ dropped; cutting starts at r=2.
+    expect(passes[0].depth).toBeCloseTo(-1, 6); // r=2 → max(0, 2−1) = 1
+    expect(passes[1].depth).toBeCloseTo(-2, 6); // r=3 → 2
+
+    // At the spine the flat-tip carve bottoms out shallower than the sharp one
+    // (the flat radius is subtracted from every cut depth).
+    const sharp = vcarveRegion(square(20), [], P90());
+    const deepest = (ps: typeof passes) => Math.min(...ps.map((p) => p.depth));
+    expect(deepest(passes)).toBeGreaterThan(deepest(sharp)); // less negative = shallower
+    expect(deepest(sharp) - deepest(passes)).toBeCloseTo(-1, 6); // exactly tipR shallower
+  });
+
+  it("treats tipDiameter 0 as a perfectly sharp bit (no change)", () => {
+    const sharp = vcarveRegion(square(20), [], P90());
+    const flat0 = vcarveRegion(square(20), [], P90({ tipDiameter: 0 }));
+    expect(flat0.map((p) => p.depth)).toEqual(sharp.map((p) => p.depth));
+  });
+
   it("returns nothing for degenerate inputs", () => {
     expect(vcarveRegion([{ x: 0, y: 0 }, { x: 1, y: 0 }], [], P90())).toEqual([]); // <3 verts
     expect(vcarveRegion(square(20), [], P90({ stepMM: 0 }))).toEqual([]);          // no step

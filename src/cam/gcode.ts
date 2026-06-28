@@ -778,8 +778,14 @@ function chamferCircle(
 
 /**
  * Emit G-code for one carved region: peel it into depth passes (shallow→deep)
- * and follow each pass's contours at its depth. Every contour gets its own
- * retract/plunge — simple and correct; pass-ordering optimisation can come later.
+ * and follow each pass's contours at its depth.
+ *
+ * The first contour is approached from `safeZ` (clears any clamps on the way in);
+ * every later contour only retracts to RAMP_CLEAR above the *stock surface*
+ * before rapiding to the next start. That's safe because all of a region's
+ * contours lie within the part footprint, over stock — never over a fixture — so
+ * a low hop can't collide, and it saves the full-height retract that used to run
+ * between every nested ring (a big air-time win on text and concentric peels).
  */
 function vcarveRegionGcode(
   region: CarveRegion, op: CAMOperation,
@@ -788,11 +794,15 @@ function vcarveRegionGcode(
   const passes = vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op));
   if (passes.length === 0) return [];
   const lines: string[] = [];
+  // Hop height between in-region contours: just above the uncut surface (Z=0),
+  // which is the highest material anywhere inside the region.
+  const hopZ = RAMP_CLEAR;
+  let first = true;
   for (const pass of passes) {
     for (const loop of pass.loops) {
       if (loop.length < 2) continue;
       const s = loop[0];
-      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 Z${Z(first ? op.safeZ : hopZ, zOff)}`);
       lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
       lines.push(`G1 Z${Z(pass.depth, zOff)} F${n(op.plungeRate)}`);
       for (let i = 1; i < loop.length; i++) {
@@ -800,6 +810,7 @@ function vcarveRegionGcode(
         lines.push(`G1 X${X(loop[i].x, ox)} Y${Y(loop[i].y, oy)}${f}`);
       }
       lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)}`); // close the ring
+      first = false;
     }
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);

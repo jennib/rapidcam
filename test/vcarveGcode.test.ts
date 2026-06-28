@@ -41,6 +41,22 @@ describe("v-carve G-code", () => {
     expect(Math.min(...depths)).toBeCloseTo(-3, 6);
   });
 
+  it("hops between contours at low clearance, not full safe-Z", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    const out = generateGCode([vcarveOp([poly.id])], doc);
+
+    const plunges = [...out.matchAll(/G1 Z-\d/g)].length; // one per carved contour
+    const hops    = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // low clearance (RAMP_CLEAR)
+    const safes   = [...out.matchAll(/^G0 Z5$/gm)].length;    // full safe-Z (safeZ=5)
+
+    expect(plunges).toBeGreaterThan(3);
+    // All but the first contour is reached by a cheap low hop…
+    expect(hops).toBe(plunges - 1);
+    // …so full safe-Z retracts collapse to the approach + final park only.
+    expect(safes).toBeLessThanOrEqual(2);
+  });
+
   it("requires a V-bit tool", () => {
     const doc = new CADDocument({ width: 100, height: 100 });
     const poly = doc.add(new PolylineEntity(square(20), true));

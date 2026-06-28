@@ -331,6 +331,7 @@ export function resolveOpTool(op: CAMOperation, tools?: ToolDef[]): CAMOperation
     toolType: t.toolType,
     diameter: t.diameter,
     vAngle: t.vAngle ?? op.vAngle,
+    tipDiameter: t.tipDiameter ?? op.tipDiameter,
     tipAngle: t.tipAngle ?? op.tipAngle,
     feedrate: t.feedrate,
     plungeRate: t.plungeRate,
