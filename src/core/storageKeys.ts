@@ -13,6 +13,13 @@
 export const StorageKeys = {
   /** Analytics consent choice ("granted" | "denied"). */
   analyticsConsent: "rapidcam_analytics_consent",
+  /**
+   * Session-replay consent choice ("granted" | "denied"). Separate from, and
+   * stricter than, `analyticsConsent`: replay records the actual on-screen
+   * drawing (canvas pixels), so it requires its own explicit opt-in and
+   * defaults off even when usage analytics is allowed.
+   */
+  analyticsReplayConsent: "rapidcam_analytics_replay_consent",
   /** Serialized user tool library. */
   toolLibrary: "rapidcam-tool-library",
   /** Custom G-code program-start snippet. */

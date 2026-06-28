@@ -245,8 +245,9 @@ RapidCAM can collect anonymous usage analytics (via PostHog) to help guide devel
 
 - On first visit you'll see a small banner; nothing is sent unless you choose **Allow analytics**.
 - Browsers with **Do Not Track** enabled are never tracked and never shown the banner.
-- Your choice is stored locally and can be cleared at any time (clear site data, or remove the `rapidcam_analytics_consent` localStorage key) to be asked again.
-- Your geometry, G-code, and project files never leave the browser — analytics only records coarse interaction events (e.g. "tool activated", "g-code generated").
+- Your choice is stored locally and can be changed at any time from **Help → Privacy & Analytics** (or cleared entirely via site data / the `rapidcam_analytics_consent` localStorage key to be asked again). Turning a consent off there takes effect immediately.
+- By default, analytics records only coarse interaction events (e.g. "tool activated", "g-code generated"). Your G-code and project files never leave the browser.
+- **Session replay is a separate, opt-in-only choice.** The banner has an extra checkbox — left **unchecked** by default — that, if you tick it, enables session replay. Because the drawing lives in a `<canvas>`, replay captures the **pixels of your on-screen drawing** (throttled, low-quality) so geometry is visible in replays. Leave it unchecked to keep your geometry off our servers. It's stored separately (`rapidcam_analytics_replay_consent`) and is never enabled just because you allowed usage analytics.
 
 The self-hosted build collects nothing unless you wire up your own PostHog key.
 

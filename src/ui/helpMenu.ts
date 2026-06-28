@@ -1,5 +1,6 @@
 import { showAboutDialog } from "./aboutDialog";
 import { showFeedbackDialog } from "./feedbackDialog";
+import { showPrivacyDialog } from "./privacyDialog";
 import { showShareDialog } from "./shareDialog";
 
 const REPO_URL = "https://github.com/jennib/rapidcam";
@@ -60,6 +61,7 @@ export class HelpMenu {
     this.dropdown.innerHTML = "";
     this.item("Share RapidCAM…", () => { this.close(); showShareDialog(); });
     this.item("Send Feedback…", () => { this.close(); showFeedbackDialog(); });
+    this.item("Privacy & Analytics…", () => { this.close(); showPrivacyDialog(); });
     this.item("About RapidCAM…", () => { this.close(); showAboutDialog(); });
 
     this.sep();

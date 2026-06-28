@@ -17,6 +17,7 @@ import type { PostHog } from "posthog-js";
 import { StorageKeys } from "./core/storageKeys";
 
 const CONSENT_KEY = StorageKeys.analyticsConsent;
+const REPLAY_CONSENT_KEY = StorageKeys.analyticsReplayConsent;
 type Consent = "granted" | "denied";
 
 let initialised = false;
@@ -31,21 +32,35 @@ function doNotTrack(): boolean {
   return dnt === "1" || dnt === "yes";
 }
 
-export function getConsent(): Consent | null {
+function readConsent(key: string): Consent | null {
   try {
-    const v = localStorage.getItem(CONSENT_KEY);
+    const v = localStorage.getItem(key);
     return v === "granted" || v === "denied" ? v : null;
   } catch {
     return null;
   }
 }
 
-function setConsent(value: Consent): void {
+function writeConsent(key: string, value: Consent): void {
   try {
-    localStorage.setItem(CONSENT_KEY, value);
+    localStorage.setItem(key, value);
   } catch {
     /* private mode / storage disabled — treat as session-only */
   }
+}
+
+export function getConsent(): Consent | null {
+  return readConsent(CONSENT_KEY);
+}
+
+/**
+ * Consent for session replay specifically. Replay captures the on-screen
+ * drawing (canvas pixels), which is not anonymous, so it is a separate, stricter
+ * opt-in: it is never "granted" unless the user explicitly asked for it, even if
+ * usage analytics is allowed.
+ */
+export function getReplayConsent(): Consent | null {
+  return readConsent(REPLAY_CONSENT_KEY);
 }
 
 /**
@@ -63,17 +78,24 @@ export async function initAnalytics(): Promise<void> {
   if (initialised) return;
   posthog = ph;
 
+  // Session replay records the actual on-screen drawing (canvas pixels), so it
+  // is gated behind its own explicit opt-in and stays off unless the user asked
+  // for it — even though they've allowed usage analytics.
+  const replay = getReplayConsent() === "granted";
+
   posthog.init("phc_u9sEREoykrDKErEtysyiAiRTRAEDcfKxE5y6HQcFsWMn", {
     api_host: "https://us.i.posthog.com",
     person_profiles: "identified_only",
     capture_pageview: true,
     capture_pageleave: true,
     respect_dnt: true,
+    disable_session_recording: !replay,
     session_recording: {
       // The drawing lives in a <canvas>, which rrweb does NOT capture from the
       // DOM — without this, replays show the cursor and dialogs but a blank
       // canvas. recordCanvas streams the pixels (at a throttled fps) so the
-      // geometry is visible in session replays.
+      // geometry is visible in session replays. Only takes effect when replay
+      // consent is granted (otherwise recording is disabled above).
       captureCanvas: {
         recordCanvas: true,
         canvasFps: 4,
@@ -89,14 +111,59 @@ export function track(event: string, props?: Record<string, unknown>): void {
   posthog.capture(event, props);
 }
 
-/** Record the user's choice; initialise immediately if they accepted. */
-export function grantConsent(): void {
-  setConsent("granted");
-  void initAnalytics();
+/** Whether the browser has Do Not Track set (exposed for the privacy dialog). */
+export function isDoNotTrack(): boolean {
+  return doNotTrack();
 }
 
-export function denyConsent(): void {
-  setConsent("denied");
+/**
+ * Apply a consent choice, persisting it and reconciling the live PostHog
+ * instance so the change takes effect without a reload:
+ *   - turning analytics off opts out of capture and stops any recording;
+ *   - turning it on initialises (first time) or opts back in;
+ *   - replay (canvas capture) is started/stopped to match, and is only ever on
+ *     when analytics is also on.
+ * Do Not Track always wins: the choice is stored, but nothing is captured.
+ */
+async function applyConsent(analytics: boolean, replay: boolean): Promise<void> {
+  writeConsent(CONSENT_KEY, analytics ? "granted" : "denied");
+  writeConsent(REPLAY_CONSENT_KEY, analytics && replay ? "granted" : "denied");
+
+  if (doNotTrack()) return;
+
+  if (!analytics) {
+    posthog?.stopSessionRecording?.();
+    posthog?.opt_out_capturing?.();
+    return;
+  }
+
+  if (!initialised) {
+    // First opt-in: init reads the consent we just wrote (incl. replay gate).
+    await initAnalytics();
+    return;
+  }
+
+  posthog?.opt_in_capturing?.();
+  if (replay) posthog?.startSessionRecording?.();
+  else posthog?.stopSessionRecording?.();
+}
+
+/**
+ * Record the user's choice; initialise immediately if they accepted.
+ * `replay` is the separate, stricter opt-in for session replay (canvas capture)
+ * and defaults to off — granting usage analytics never implies replay.
+ */
+export function grantConsent(replay = false): Promise<void> {
+  return applyConsent(true, replay);
+}
+
+export function denyConsent(): Promise<void> {
+  return applyConsent(false, false);
+}
+
+/** Set both consents at once (used by the Help → Privacy dialog). */
+export function setConsentChoices(analytics: boolean, replay: boolean): Promise<void> {
+  return applyConsent(analytics, replay);
 }
 
 /**
@@ -138,6 +205,23 @@ function renderBanner(): void {
     "RapidCAM can send anonymous usage analytics to help improve the app. " +
     "Nothing is collected unless you allow it.";
 
+  // Separate, opt-in-only checkbox for session replay. This records the actual
+  // on-screen drawing (canvas pixels), so it's clearly distinguished from the
+  // anonymous usage events above and left unchecked by default.
+  const replayLabel = document.createElement("label");
+  replayLabel.style.cssText = [
+    "flex:1 1 100%", "display:flex", "gap:8px", "align-items:flex-start",
+    "cursor:pointer", "color:#bbb", "font-size:12px",
+  ].join(";");
+  const replayCheck = document.createElement("input");
+  replayCheck.type = "checkbox";
+  replayCheck.style.marginTop = "2px";
+  const replayText = document.createElement("span");
+  replayText.textContent =
+    "Also allow session replay, which records my on-screen drawing to help " +
+    "debug issues. (Optional — leave unchecked to keep your geometry private.)";
+  replayLabel.append(replayCheck, replayText);
+
   const accept = document.createElement("button");
   accept.textContent = "Allow analytics";
   const decline = document.createElement("button");
@@ -156,9 +240,9 @@ function renderBanner(): void {
   decline.style.color = "#ddd";
 
   const close = () => banner.remove();
-  accept.addEventListener("click", () => { grantConsent(); close(); });
+  accept.addEventListener("click", () => { grantConsent(replayCheck.checked); close(); });
   decline.addEventListener("click", () => { denyConsent(); close(); });
 
-  banner.append(text, accept, decline);
+  banner.append(text, replayLabel, accept, decline);
   document.body.appendChild(banner);
 }
