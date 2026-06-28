@@ -14,7 +14,7 @@ import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flatten
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point" | "text";
+export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point" | "text" | "image";
 
 export interface Bounds {
   min: Vec2;
@@ -871,6 +871,90 @@ export class TextEntity extends Entity {
     return super.getPoint(key);
   }
 
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "pos") this.position = clone(v);
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * A placed raster image, for greyscale laser engraving. Holds only a reference
+ * (`imageId`) into the image registry — the pixels live there and are embedded in
+ * the .rcam file like fonts. The image occupies a `widthMM × heightMM` rectangle
+ * anchored at `position` (its bottom-left corner) and rotated `angle` radians CCW.
+ */
+export class RasterImageEntity extends Entity {
+  readonly type = "image" as const;
+  imageId: string;
+  position: Vec2;
+  widthMM: number;
+  heightMM: number;
+  angle: number;
+
+  constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, id?: EntityId) {
+    super(id);
+    this.imageId = imageId;
+    this.position = clone(position);
+    this.widthMM = widthMM;
+    this.heightMM = heightMM;
+    this.angle = angle;
+  }
+
+  /** The four corners in world space (CCW from the bottom-left anchor). */
+  corners(): Vec2[] {
+    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    return [
+      { x: 0, y: 0 }, { x: this.widthMM, y: 0 },
+      { x: this.widthMM, y: this.heightMM }, { x: 0, y: this.heightMM },
+    ].map((p) => ({
+      x: this.position.x + p.x * c - p.y * s,
+      y: this.position.y + p.x * s + p.y * c,
+    }));
+  }
+
+  override bounds(): Bounds {
+    const cs = this.corners();
+    return {
+      min: { x: Math.min(...cs.map((p) => p.x)), y: Math.min(...cs.map((p) => p.y)) },
+      max: { x: Math.max(...cs.map((p) => p.x)), y: Math.max(...cs.map((p) => p.y)) },
+    };
+  }
+
+  /** Zero anywhere on the image (so a click anywhere selects it), else the
+   *  distance to the rectangle — measured in the image's own (unrotated) frame. */
+  override distanceTo(p: Vec2): number {
+    const dx = p.x - this.position.x, dy = p.y - this.position.y;
+    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    const lx = c * dx + s * dy;       // R(-angle) · (p - position)
+    const ly = -s * dx + c * dy;
+    const ddx = lx < 0 ? -lx : lx > this.widthMM ? lx - this.widthMM : 0;
+    const ddy = ly < 0 ? -ly : ly > this.heightMM ? ly - this.heightMM : 0;
+    return Math.hypot(ddx, ddy);
+  }
+
+  override snapPoints(): SnapPoint[] {
+    return this.corners().map((pos) => ({ pos, kind: "endpoint" as const, entityId: this.id }));
+  }
+
+  override translate(d: Vec2): void {
+    this.position = add(this.position, d);
+  }
+
+  override duplicate(): RasterImageEntity {
+    const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle);
+    e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
+    return e;
+  }
+
+  override dofPoints(): DofPoint[] {
+    return [{ key: "pos", pos: clone(this.position) }];
+  }
+  override getPoint(key: string): Vec2 {
+    if (key === "pos") return clone(this.position);
+    return super.getPoint(key);
+  }
   override setPoint(key: string, v: Vec2): void {
     if (key === "pos") this.position = clone(v);
   }

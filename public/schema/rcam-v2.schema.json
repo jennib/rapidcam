@@ -106,6 +106,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/embeddedFont" },
       "description": "Non-bundled fonts referenced by text entities, embedded so glyph outlines — and therefore toolpaths — reproduce on any machine. Bundled fonts (e.g. \"roboto-regular\") resolve by id and are omitted."
+    },
+    "images": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/embeddedImage" },
+      "description": "Greyscale pixels for image entities, embedded so a raster engrave reproduces on any machine."
     }
   },
 
@@ -175,7 +180,8 @@
         { "$ref": "#/$defs/arcEntity" },
         { "$ref": "#/$defs/bezierEntity" },
         { "$ref": "#/$defs/pointEntity" },
-        { "$ref": "#/$defs/textEntity" }
+        { "$ref": "#/$defs/textEntity" },
+        { "$ref": "#/$defs/imageEntity" }
       ]
     },
 
@@ -322,6 +328,24 @@
       }
     },
 
+    "imageEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "imageId", "position", "widthMM", "heightMM", "angle"],
+      "description": "A placed raster image for greyscale laser engraving. position is the bottom-left anchor; the image fills widthMM × heightMM, rotated angle radians CCW. Point DOF key: pos. The greyscale pixels referenced by imageId must appear in the top-level \"images\" array. Engraving currently assumes angle 0 (axis-aligned).",
+      "properties": {
+        "type": { "const": "image" },
+        "id": { "type": "string", "minLength": 1 },
+        "imageId": { "type": "string", "description": "Id of the pixels in \"images\", e.g. \"img-1a2b3c4d\"." },
+        "position": { "$ref": "#/$defs/vec2" },
+        "widthMM": { "type": "number", "exclusiveMinimum": 0 },
+        "heightMM": { "type": "number", "exclusiveMinimum": 0 },
+        "angle": { "type": "number", "description": "radians" },
+        "isConstruction": { "type": "boolean" },
+        "layerId": { "type": "string" }
+      }
+    },
+
     "embeddedFont": {
       "type": "object",
       "additionalProperties": false,
@@ -332,6 +356,20 @@
         "name": { "type": "string", "description": "Human-readable font name." },
         "format": { "enum": ["ttf", "otf", "woff"], "description": "Container format of the embedded bytes." },
         "data": { "type": "string", "description": "Base64-encoded font bytes." }
+      }
+    },
+
+    "embeddedImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "width", "height", "data"],
+      "description": "A raster image embedded in the file, referenced by imageEntity.imageId. Stored as a downscaled GREYSCALE buffer (one byte per pixel, row-major, row 0 = top, 0 = black) — colour carries no machining information for a laser.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable content-addressed id, e.g. \"img-1a2b3c4d\"." },
+        "name": { "type": "string", "description": "Human-readable image name." },
+        "width": { "type": "integer", "minimum": 1, "description": "Pixel width of the greyscale buffer." },
+        "height": { "type": "integer", "minimum": 1, "description": "Pixel height of the greyscale buffer." },
+        "data": { "type": "string", "description": "Base64-encoded greyscale bytes (length = width × height)." }
       }
     },
 

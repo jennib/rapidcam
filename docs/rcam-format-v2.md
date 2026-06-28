@@ -163,6 +163,7 @@ these right is the single most important thing when authoring constraints.
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
 | `point` | `pos` (Vec2) | `p` | — |
 | `text` | `text`, `fontId`, `sizeMM`, `position`, `angle` (rad) | `pos` baseline-left anchor | — |
+| `image` | `imageId`, `position` (bottom-left), `widthMM`, `heightMM`, `angle` (rad) | `pos` bottom-left anchor | — |
 
 Notes:
 - A **Vec2** is `{ "x": number, "y": number }` in mm.
@@ -183,6 +184,12 @@ Notes:
 - `fontId` is either a bundled font (e.g. `"roboto-regular"`) or a `"font-XXXXXXXX"`
   id present in the top-level [`fonts`](#fonts) array. Text stays editable until CAM
   export, where it is expanded to glyph contours.
+- An **`image`** entity is a placed raster picture for greyscale laser engraving.
+  Its `imageId` (`"img-XXXXXXXX"`) must appear in the top-level `images` array,
+  which stores a downscaled **greyscale** buffer (one byte per pixel, row-major,
+  row 0 = top, 0 = black) — colour carries no machining information for a laser.
+  The engrave currently assumes `angle` 0 (axis-aligned); a non-zero angle is
+  shown on canvas but warned about at G-code time.
 
 ## Constraints
 

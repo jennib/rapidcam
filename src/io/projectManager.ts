@@ -6,7 +6,8 @@ import { importSvg } from "./svgImport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
-import { TextEntity } from "../model/entities";
+import { TextEntity, RasterImageEntity } from "../model/entities";
+import { loadImageFromFile } from "../core/imageManager";
 import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
@@ -262,6 +263,44 @@ export class ProjectManager {
     trySetItem(StorageKeys.autosaveDraft, JSON.stringify({
       name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
     }));
+  }
+
+  async imageImport(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp,image/bmp,image/gif";
+    const file = await new Promise<File | null>((resolve) => {
+      let settled = false;
+      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      input.addEventListener("cancel", () => settle(null));
+      input.addEventListener("change", () => settle(input.files?.[0] ?? null));
+      input.click();
+    });
+    if (!file) return;
+
+    let img: { id: string; name: string; width: number; height: number };
+    try {
+      img = await loadImageFromFile(file);
+    } catch {
+      alert("Could not read that image file.");
+      return;
+    }
+
+    // Size to fit within ~60% of the smaller work-area dimension, keeping aspect,
+    // and centre it on the canvas. The user can then resize/reposition or set an
+    // exact size in the properties panel.
+    const maxDim = Math.min(this.doc.canvas.width, this.doc.canvas.height) * 0.6;
+    const widthMM = img.width >= img.height ? maxDim : (maxDim * img.width) / img.height;
+    const heightMM = img.height >= img.width ? maxDim : (maxDim * img.height) / img.width;
+    const pos = {
+      x: this.doc.canvas.width / 2 - widthMM / 2,
+      y: this.doc.canvas.height / 2 - heightMM / 2,
+    };
+
+    this.pushHistory();
+    const ent = new RasterImageEntity(img.id, pos, widthMM, heightMM);
+    this.doc.addSelected(ent);
+    this.doc.emitChange();
   }
 
   async svgImport(): Promise<void> {

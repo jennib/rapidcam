@@ -12,8 +12,10 @@ import {
   ArcEntity,
   BezierEntity,
   TextEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import { getFont } from "../core/fontManager";
+import { getImageCanvas } from "../core/imageManager";
 import { constraintAnchors, CONSTRAINT_GLYPH, Geo, constraintEntityIds } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
 import { Viewport } from "./viewport";
@@ -417,6 +419,28 @@ export class Renderer {
         }
         ctx.restore();
         return; // already stroked, skip the outer stroke() call
+      }
+      case "image": {
+        const ie = e as RasterImageEntity;
+        const cs = ie.corners().map((p) => view.worldToScreen(p));
+        const cv = getImageCanvas(ie.imageId);
+        ctx.stroke(); // flush any pending path
+        if (cv) {
+          ctx.save();
+          const tl = cs[3]; // top-left world corner → image row 0 draws downward here
+          ctx.translate(tl.x, tl.y);
+          ctx.rotate(-ie.angle);
+          ctx.drawImage(cv, 0, 0, view.toScreenLen(ie.widthMM), view.toScreenLen(ie.heightMM));
+          ctx.restore();
+        }
+        // Outline the placement rect (dashed when the pixels aren't loaded).
+        ctx.beginPath();
+        ctx.moveTo(cs[0].x, cs[0].y);
+        for (let i = 1; i < 4; i++) ctx.lineTo(cs[i].x, cs[i].y);
+        ctx.closePath();
+        if (!cv) ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        return;
       }
     }
     ctx.stroke();

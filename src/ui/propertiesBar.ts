@@ -2,8 +2,9 @@ import { CADDocument, GroupDef } from "../model/document";
 import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../core/transform";
 import { nextId } from "../model/ids";
 import { listFonts } from "../core/fontManager";
+import { getImageEntry } from "../core/imageManager";
 import {
-  Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, Bounds,
+  Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, RasterImageEntity, Bounds,
 } from "../model/entities";
 import { Dimension, DimensionType } from "../model/dimensions";
 import { Constraint, ConstraintType } from "../model/constraints";
@@ -183,7 +184,55 @@ export class PropertiesBar {
       this.buildRectProperties(entity);
     } else if (entity instanceof PolylineEntity) {
       this.buildPolylineProperties(entity);
+    } else if (entity instanceof RasterImageEntity) {
+      this.buildImageProperties(entity);
     }
+  }
+
+  private imageAspectLocked = true;
+
+  private buildImageProperties(entity: RasterImageEntity): void {
+    const sec = this.createSection("IMAGE");
+
+    // Source pixels + effective DPI at the current physical width — the engrave
+    // resolution is bounded by this, so it tells the user how fine they can go.
+    const e = getImageEntry(entity.imageId);
+    const info = document.createElement("div");
+    info.className = "props-row";
+    const span = document.createElement("span");
+    span.style.cssText = "opacity:0.65;font-size:11px;";
+    span.textContent = e
+      ? `${e.width}×${e.height}px · ~${Math.round(e.width / (entity.widthMM / 25.4))} dpi`
+      : "⚠ image pixels not loaded";
+    info.appendChild(span);
+    sec.appendChild(info);
+
+    const aspect = entity.widthMM / entity.heightMM;
+    this.numRow(sec, "Width", entity.widthMM, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => { entity.widthMM = v; if (this.imageAspectLocked) entity.heightMM = v / aspect; });
+    });
+    this.numRow(sec, "Height", entity.heightMM, "mm", (v) => {
+      if (v <= 0) return;
+      this.applyEdit(() => { entity.heightMM = v; if (this.imageAspectLocked) entity.widthMM = v * aspect; });
+    });
+
+    const lockRow = document.createElement("div");
+    lockRow.className = "props-row";
+    const lockLbl = document.createElement("span"); lockLbl.textContent = "Lock aspect";
+    const lockCb = document.createElement("input"); lockCb.type = "checkbox"; lockCb.checked = this.imageAspectLocked;
+    lockCb.addEventListener("change", () => { this.imageAspectLocked = lockCb.checked; });
+    lockRow.append(lockLbl, lockCb);
+    sec.appendChild(lockRow);
+
+    this.numRow(sec, "Angle", entity.angle * 180 / Math.PI, "°", (v) => {
+      this.applyEdit(() => { entity.angle = v * Math.PI / 180; });
+    });
+    this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {
+      this.applyEdit(() => { entity.position = { x, y }; });
+    });
+
+    this.content.appendChild(sec);
   }
 
   // ---------------------------------------------------------------------------

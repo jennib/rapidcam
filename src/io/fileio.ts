@@ -1,11 +1,16 @@
 import type { Unit } from "../core/units";
 import type { CADDocument, DocSnapshot } from "../model/document";
-import { TextEntity } from "../model/entities";
+import { TextEntity, RasterImageEntity } from "../model/entities";
 import {
   collectEmbeddedFonts,
   registerEmbeddedFont,
   type EmbeddedFont,
 } from "../core/fontManager";
+import {
+  collectEmbeddedImages,
+  registerEmbeddedImage,
+  type EmbeddedImage,
+} from "../core/imageManager";
 import { StorageKeys } from "../core/storageKeys";
 import { reconcileLoadedPatterns } from "../model/patternEngine";
 
@@ -37,6 +42,9 @@ export interface RcamFile {
   /** Non-bundled fonts referenced by text entities, embedded so the file cuts
    *  identically on any machine. Bundled fonts resolve by id and are omitted. */
   fonts?: EmbeddedFont[];
+  /** Greyscale pixels for image entities, embedded so a raster engrave reproduces
+   *  anywhere. Stripped from the localStorage caches (recents/draft) — they're big. */
+  images?: EmbeddedImage[];
 }
 
 /**
@@ -115,8 +123,8 @@ export function trySetItem(key: string, value: string): boolean {
  * that surfaces as the missing-font warning rather than silent breakage.
  */
 export function stripEmbeddedFonts(file: RcamFile): RcamFile {
-  if (!file.fonts) return file;
-  const { fonts: _drop, ...rest } = file;
+  if (!file.fonts && !file.images) return file;
+  const { fonts: _drop, images: _drop2, ...rest } = file;
   return rest;
 }
 
@@ -144,6 +152,12 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     .filter((e): e is TextEntity => e instanceof TextEntity)
     .map((e) => e.fontId);
   const fonts = collectEmbeddedFonts(fontIds);
+  // Embed the greyscale pixels of any image entity so a raster engrave reproduces
+  // on another machine.
+  const imageIds = doc.entities
+    .filter((e): e is RasterImageEntity => e instanceof RasterImageEntity)
+    .map((e) => e.imageId);
+  const images = collectEmbeddedImages(imageIds);
   // The file describes a design, not an editor session: drop the transient
   // `selected` flag from every entity (selection/mode are not persisted).
   const entities = snap.entities.map(({ selected: _s, ...rest }) => rest);
@@ -169,6 +183,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     operations: snap.operations as unknown[],
     tools: tools as unknown[],
     ...(fonts.length ? { fonts } : {}),
+    ...(images.length ? { images } : {}),
   };
 }
 
@@ -187,8 +202,10 @@ export function saveFile(doc: CADDocument, name: string): void {
 export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
   // Tolerate legacy v1 files arriving via recents/autosave drafts.
   const file = normalizeRcam(fileIn);
-  // Register embedded fonts before restoring, so text entities resolve them.
+  // Register embedded fonts/images before restoring, so text & image entities
+  // resolve their glyphs/pixels.
   for (const f of file.fonts ?? []) registerEmbeddedFont(f);
+  for (const img of file.images ?? []) registerEmbeddedImage(img);
   doc.displayUnit = file.displayUnit as Unit;
   // Build a DocSnapshot from the file, injecting empty selection/mode state —
   // those are not persisted, but doc.restore() expects them present.

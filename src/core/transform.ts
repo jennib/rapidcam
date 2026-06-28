@@ -1,4 +1,4 @@
-import { Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "../model/entities";
+import { Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, RasterImageEntity } from "../model/entities";
 import type { Bounds } from "../model/entities";
 import { Vec2, dist } from "./vec2";
 
@@ -50,6 +50,10 @@ export function applyScale(entities: Entity[], cx: number, cy: number, sx: numbe
       const minY = Math.min(e.p0.y, e.p1.y), maxY = Math.max(e.p0.y, e.p1.y);
       e.p0 = { x: minX, y: minY };
       e.p1 = { x: maxX, y: maxY };
+    } else if (e instanceof RasterImageEntity) {
+      scalePt(e.position);
+      e.widthMM *= Math.abs(sx);
+      e.heightMM *= Math.abs(sy);
     }
   }
 }
@@ -72,6 +76,9 @@ export function applyRotate(entities: Entity[], cx: number, cy: number, angle: n
       rotPt(e.p0); rotPt(e.p1); rotPt(e.p2); rotPt(e.p3);
     } else if (e instanceof CircleEntity) {
       rotPt(e.center);
+    } else if (e instanceof RasterImageEntity) {
+      rotPt(e.position);
+      e.angle += angle;
     } else if (e instanceof ArcEntity) {
       rotPt(e.center);
       e.startAngle += angle;
