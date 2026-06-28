@@ -3,12 +3,19 @@
  *
  * A photo/greyscale engrave is fundamentally different from the vector laser
  * paths: instead of tracing outlines, the head sweeps the image in horizontal
- * scan rows and modulates the beam power per pixel — darker pixel ⇒ more power ⇒
+ * scan rows and modulates the beam power per dot — darker dot ⇒ more power ⇒
  * deeper/darker burn. This module is the algorithmic core: it turns a greyscale
  * pixel grid plus physical/engraving parameters into a list of {@link RasterScanRow}s,
  * each a set of beam-on power runs along that row. It is deliberately free of any
  * entity, document, or G-code concern so it can be unit-tested in isolation and
  * shared by the G-code emitter and the on-canvas preview.
+ *
+ * The engrave is done at a *physical dot resolution*, not at the source image's
+ * pixel resolution: rows are spaced `lineIntervalMM` apart and each row is divided
+ * into dots `dotPitchMM` wide. The source image is **box-averaged** down to that
+ * dot grid (so detail finer than the beam can resolve is averaged in, not aliased
+ * or point-sampled) — and the output size is bounded by the physical size and the
+ * dot pitch, independent of how many megapixels the source has.
  *
  * Coordinates are LOCAL to the image, in millimetres: the image occupies
  * `[0,widthMM] × [0,heightMM]` with (0,0) at the bottom-left and +Y up (the app's
@@ -35,19 +42,25 @@ export interface RasterEngraveParams {
   heightMM: number;
   /** Vertical pitch between scan rows, mm (e.g. 0.1mm ≈ 254 DPI). */
   lineIntervalMM: number;
-  /** Beam power (%) for a fully black pixel. */
+  /**
+   * Horizontal pitch between dots within a row, mm. Defaults to `lineIntervalMM`
+   * (square dots), which is what most engravers want; set it independently for a
+   * finer/coarser horizontal resolution than the line spacing.
+   */
+  dotPitchMM?: number;
+  /** Beam power (%) for a fully black dot. */
   maxPower: number;
-  /** Beam power (%) for the lightest engraved pixel (often 0). */
+  /** Beam power (%) for the lightest engraved dot (often 0). */
   minPower: number;
   /**
-   * Greyscale value at/above which a pixel is left blank (beam off) — keeps
+   * Greyscale value at/above which a dot is left blank (beam off) — keeps
    * near-white background from being scorched and saves travel. 0..1, default 0.96.
    */
   whiteThreshold?: number;
   /** Engrave the light areas instead of the dark ones (photo negative). Default false. */
   invert?: boolean;
   /**
-   * Quantise power to this step (%) so neighbouring pixels of nearly equal tone
+   * Quantise power to this step (%) so neighbouring dots of nearly equal tone
    * merge into one run — fewer, longer moves. Default 1 (whole-percent steps).
    */
   powerStep?: number;
@@ -69,6 +82,42 @@ export interface RasterScanRow {
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
+ * Box-average `grid` down (or sample up) to an `outW × outH` greyscale grid,
+ * row 0 = top. Each source pixel contributes to exactly one output cell, so
+ * downsampling is a true area average (anti-aliased); output cells that no source
+ * pixel lands in (when upsampling) fall back to the nearest source pixel.
+ */
+export function resampleGrid(grid: RasterGrid, outW: number, outH: number): Float32Array {
+  const { width: sw, height: sh, data } = grid;
+  const out = new Float32Array(outW * outH);
+  const sum = new Float64Array(outW * outH);
+  const cnt = new Uint32Array(outW * outH);
+  for (let py = 0; py < sh; py++) {
+    const oy = Math.min(outH - 1, Math.floor((py * outH) / sh));
+    for (let px = 0; px < sw; px++) {
+      const ox = Math.min(outW - 1, Math.floor((px * outW) / sw));
+      const i = oy * outW + ox;
+      sum[i] += clamp01(data[py * sw + px]);
+      cnt[i]++;
+    }
+  }
+  for (let oy = 0; oy < outH; oy++) {
+    for (let ox = 0; ox < outW; ox++) {
+      const i = oy * outW + ox;
+      if (cnt[i] > 0) {
+        out[i] = sum[i] / cnt[i];
+      } else {
+        // Upsampling: nearest source pixel at this cell's centre.
+        const px = Math.min(sw - 1, Math.floor(((ox + 0.5) * sw) / outW));
+        const py = Math.min(sh - 1, Math.floor(((oy + 0.5) * sh) / outH));
+        out[i] = clamp01(data[py * sw + px]);
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Build the scan rows for engraving `grid` at the given physical size and
  * parameters. Returns an empty array for degenerate inputs (non-positive size,
  * interval, or pixel dimensions). Rows with no burn (all blank) are omitted.
@@ -79,46 +128,45 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
   if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0) return [];
   if (data.length < pxW * pxH) return [];
 
+  const dotPitch = params.dotPitchMM && params.dotPitchMM > 0 ? params.dotPitchMM : lineIntervalMM;
   const whiteThreshold = params.whiteThreshold ?? 0.96;
   const invert = params.invert ?? false;
   const powerStep = params.powerStep && params.powerStep > 0 ? params.powerStep : 1;
 
-  // Whole rows that fit; each row is centred in its band so the engrave is
-  // vertically symmetric within the image height.
+  // Physical dot grid: whole rows/cols that fit, each centred in its band so the
+  // engrave is symmetric within the image. The source is averaged down to this.
   const rowCount = Math.max(1, Math.round(heightMM / lineIntervalMM));
+  const colCount = Math.max(1, Math.round(widthMM / dotPitch));
   const rowPitch = heightMM / rowCount;
-  const colPitch = widthMM / pxW;
+  const colPitch = widthMM / colCount;
+  const dots = resampleGrid(grid, colCount, rowCount); // row 0 = top
 
-  // Map a raw greyscale sample (0=black) to a quantised beam power (%), or null
-  // to leave the pixel blank. `invert` flips tone first so "engrave the light
-  // parts" reads white as dark.
+  // Map a resampled tone (0=black) to a quantised beam power (%), or null to leave
+  // the dot blank. `invert` flips tone first so "engrave the light parts" reads
+  // white as dark.
   const powerFor = (gray: number): number | null => {
     const g = clamp01(invert ? 1 - gray : gray);
     if (g >= whiteThreshold) return null; // background — beam off
-    // black (g=0) → maxPower, white (g→1) → minPower.
-    const p = maxPower + (minPower - maxPower) * g;
+    const p = maxPower + (minPower - maxPower) * g; // black→maxPower, white→minPower
     const q = Math.round(p / powerStep) * powerStep;
     return q > 0 ? q : null; // a 0% run is just travel — drop it
   };
 
   const rows: RasterScanRow[] = [];
   for (let r = 0; r < rowCount; r++) {
-    const y = (r + 0.5) * rowPitch; // mm, bottom→top
-    // World +Y is up but image row 0 is the TOP, so taller y ⇒ smaller pixel row.
-    let pxRow = Math.floor((1 - y / heightMM) * pxH);
-    if (pxRow < 0) pxRow = 0;
-    if (pxRow >= pxH) pxRow = pxH - 1;
-    const base = pxRow * pxW;
+    const y = (r + 0.5) * rowPitch;        // mm, bottom→top
+    const gridRow = rowCount - 1 - r;      // dot grid row 0 = top
+    const base = gridRow * colCount;
 
     const runs: RasterRun[] = [];
-    let runStart = -1; // first pixel column of the open run
+    let runStart = -1; // first dot column of the open run
     let runPower = 0;
     const closeRun = (endCol: number) => {
       if (runStart >= 0) runs.push({ x0: runStart * colPitch, x1: endCol * colPitch, power: runPower });
       runStart = -1;
     };
-    for (let c = 0; c < pxW; c++) {
-      const p = powerFor(clamp01(data[base + c]));
+    for (let c = 0; c < colCount; c++) {
+      const p = powerFor(dots[base + c]);
       if (p === null) {
         closeRun(c);
       } else if (runStart < 0) {
@@ -128,7 +176,7 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
         runStart = c; runPower = p;
       }
     }
-    closeRun(pxW);
+    closeRun(colCount);
 
     if (runs.length > 0) rows.push({ y, runs });
   }
