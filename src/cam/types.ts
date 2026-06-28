@@ -148,6 +148,16 @@ export interface CAMOperation {
    */
   vStep?: number;
   /**
+   * V-carve only: clearance height (mm above the stock surface) for the rapid
+   * hops between a region's contours. When set > 0 the bit hops at this low
+   * height instead of fully retracting to `safeZ` between every nested peel ring
+   * — much less air time on text/concentric carves. Leave unset/0 (the default)
+   * to retract to `safeZ`, which is the safe choice: a low hop assumes nothing —
+   * no hold-down clamp or fixture — stands above the stock within the carve's
+   * footprint, since the rapid travels over the stock below `safeZ`.
+   */
+  vHopClearance?: number;
+  /**
    * Chamfer only: lift the V-bit tip up into each sharp (convex) corner so the
    * bevel comes to a crisp point instead of a rounded fillet. Default false.
    */

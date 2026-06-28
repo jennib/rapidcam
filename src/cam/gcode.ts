@@ -780,12 +780,13 @@ function chamferCircle(
  * Emit G-code for one carved region: peel it into depth passes (shallow→deep)
  * and follow each pass's contours at its depth.
  *
- * The first contour is approached from `safeZ` (clears any clamps on the way in);
- * every later contour only retracts to RAMP_CLEAR above the *stock surface*
- * before rapiding to the next start. That's safe because all of a region's
- * contours lie within the part footprint, over stock — never over a fixture — so
- * a low hop can't collide, and it saves the full-height retract that used to run
- * between every nested ring (a big air-time win on text and concentric peels).
+ * Between contours the bit retracts to `safeZ` by default. If the op opts in via
+ * `vHopClearance` (mm above the stock surface), the *in-region* hops use that low
+ * height instead — saving the full-height retract between every nested ring (a
+ * big air-time win on text/concentric peels). That trade is the user's to make:
+ * a low hop only clears the stock the rapid passes over, NOT a hold-down clamp or
+ * fixture standing above the stock within the carve's footprint — which is why it
+ * is off unless asked for. The first approach and final park always use `safeZ`.
  */
 function vcarveRegionGcode(
   region: CarveRegion, op: CAMOperation,
@@ -794,9 +795,8 @@ function vcarveRegionGcode(
   const passes = vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op));
   if (passes.length === 0) return [];
   const lines: string[] = [];
-  // Hop height between in-region contours: just above the uncut surface (Z=0),
-  // which is the highest material anywhere inside the region.
-  const hopZ = RAMP_CLEAR;
+  // In-region hop height: the opted-in low clearance, else a full safe-Z retract.
+  const hopZ = op.vHopClearance && op.vHopClearance > 0 ? op.vHopClearance : op.safeZ;
   let first = true;
   for (const pass of passes) {
     for (const loop of pass.loops) {

@@ -41,14 +41,29 @@ describe("v-carve G-code", () => {
     expect(Math.min(...depths)).toBeCloseTo(-3, 6);
   });
 
-  it("hops between contours at low clearance, not full safe-Z", () => {
+  it("retracts to safe-Z between contours by default (no low hopping)", () => {
     const doc = new CADDocument({ width: 100, height: 100 });
     const poly = doc.add(new PolylineEntity(square(20), true));
-    const out = generateGCode([vcarveOp([poly.id])], doc);
+    const out = generateGCode([vcarveOp([poly.id])], doc); // no vHopClearance
 
-    const plunges = [...out.matchAll(/G1 Z-\d/g)].length; // one per carved contour
-    const hops    = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // low clearance (RAMP_CLEAR)
+    const plunges = [...out.matchAll(/G1 Z-\d/g)].length;     // one per carved contour
+    const lowHops = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // would-be low clearance
     const safes   = [...out.matchAll(/^G0 Z5$/gm)].length;    // full safe-Z (safeZ=5)
+
+    expect(plunges).toBeGreaterThan(3);
+    // Safe default: no low hops, and a safe-Z retract before every contour.
+    expect(lowHops).toBe(0);
+    expect(safes).toBeGreaterThanOrEqual(plunges);
+  });
+
+  it("hops at the opted-in low clearance when vHopClearance is set", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    const out = generateGCode([vcarveOp([poly.id], { vHopClearance: 0.5 })], doc);
+
+    const plunges = [...out.matchAll(/G1 Z-\d/g)].length;
+    const hops    = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // the opted-in hop height
+    const safes   = [...out.matchAll(/^G0 Z5$/gm)].length;
 
     expect(plunges).toBeGreaterThan(3);
     // All but the first contour is reached by a cheap low hop…

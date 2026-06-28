@@ -484,6 +484,7 @@ export class CamBar {
       chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
       sharpenCorners: existing?.sharpenCorners ?? false,
       vStep: existing?.vStep ?? DEFAULTS.vStep,
+      vHopClearance: existing?.vHopClearance ?? 0,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
@@ -651,6 +652,20 @@ export class CamBar {
     const vStepRow = this.dField("V-carve pitch (mm)", vStepInp);
     cutSec.appendChild(vStepRow);
 
+    // V-carve hop clearance — height (mm above the surface) for rapid hops between
+    // contours. 0 = retract to safe Z (safe default); a positive value trades that
+    // for speed, and is only safe if no clamp/fixture stands above the stock within
+    // the carve. Off unless the user opts in.
+    const vHopInp = document.createElement("input");
+    vHopInp.type = "number"; vHopInp.className = "dim"; vHopInp.step = "any"; vHopInp.min = "0";
+    vHopInp.value = String(state.vHopClearance);
+    vHopInp.title = "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
+    vHopInp.addEventListener("change", () => {
+      const v = parseFloat(vHopInp.value); if (isFinite(v) && v >= 0) state.vHopClearance = v;
+    });
+    const vHopRow = this.dField("V-carve hop clearance (mm, 0 = safe Z)", vHopInp);
+    cutSec.appendChild(vHopRow);
+
     const strategySelect = document.createElement("select");
     strategySelect.className = "unit";
     for (const [v, l] of [["offset", "Adaptive (contour-parallel)"], ["raster", "Raster (zig-zag)"]] as const) {
@@ -813,6 +828,7 @@ export class CamBar {
       stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
       vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
+      vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
@@ -835,6 +851,7 @@ export class CamBar {
     stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
     vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
+    vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
     {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
@@ -916,6 +933,7 @@ export class CamBar {
         chamferSide: type === "chamfer" ? state.chamferSide : undefined,
         sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
         vStep: type === "vcarve" ? state.vStep : undefined,
+        vHopClearance: type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
         regions: regionBased
