@@ -228,11 +228,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "points", "closed"],
-      "description": "Point DOF keys: v0, v1, ... vN (vertices); mid_0, mid_1, ... (segment midpoints). A segment can substitute for a line in line-type constraints via the entity ref \"<polylineId>#<segmentIndex>\".",
+      "description": "Point DOF keys: v<id> (vertices), mid_<id> (segment midpoints, keyed by the segment's START-vertex id). A segment can substitute for a line in line-type constraints via the entity ref \"<polylineId>#<startVertexId>\". The id of vertex i is vertexIds[i] when present, else its index as a string (\"0\",\"1\",…) — so files without vertexIds use v0/mid_0/<id>#0 exactly as before.",
       "properties": {
         "type": { "const": "polyline" },
         "id": { "type": "string", "minLength": 1 },
         "points": { "type": "array", "items": { "$ref": "#/$defs/vec2" }, "minItems": 2 },
+        "vertexIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional stable id per vertex, parallel to points (same length). Decouples a vertex's identity from its position so constraints/dimensions survive edits (chamfer/fillet) that insert or remove vertices ahead of them. Omit to default each id to its index as a string."
+        },
         "closed": { "type": "boolean" },
         "polygon": {
           "type": "object",

@@ -158,7 +158,7 @@ these right is the single most important thing when authoring constraints.
 | `line` | `a`, `b` (Vec2) | `a`, `b` endpoints; `mid` (derived, pickable) | — |
 | `circle` | `center` (Vec2), `radius` | `c` center | `r` radius |
 | `rectangle` | `p0`, `p1` (opposite corners) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | — |
-| `polyline` | `points` (Vec2[]), `closed` (bool) | vertices `v0` `v1` … `vN`; segment mids `mid_0` `mid_1` … | — |
+| `polyline` | `points` (Vec2[]), `vertexIds` (string[], optional), `closed` (bool) | vertices `v<id>`; segment mids `mid_<id>` (id of the segment's start vertex) | — |
 | `arc` | `center`, `radius`, `startAngle`, `endAngle` (rad, CCW) | `c` center; `start`, `end` (derived) | `r`, `sa`, `ea` |
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
 | `point` | `pos` (Vec2) | `p` | — |
@@ -167,9 +167,19 @@ these right is the single most important thing when authoring constraints.
 Notes:
 - A **Vec2** is `{ "x": number, "y": number }` in mm.
 - `rectangle` is axis-aligned; `p0`/`p1` are normalised to min/max corners on load.
+- A **polyline vertex carries a stable id.** `vertexIds[i]` is the id of `points[i]`;
+  point keys are `v<id>` and `mid_<id>` (the midpoint of the segment that *starts*
+  at vertex `<id>`). The id is decoupled from the array position so a constraint or
+  dimension keeps pointing at the same physical vertex when an edit (chamfer,
+  fillet, polygon resize) inserts or removes vertices ahead of it. `vertexIds` is
+  optional: when omitted, each id defaults to its index as a string (`"0"`, `"1"`,
+  …), so older files — whose keys are `v0`, `mid_0`, … — load unchanged. New
+  vertices get fresh ids that are never reused within the polyline.
 - A **polyline segment** can stand in for a line anywhere a line-type constraint
-  expects an entity: use the entity reference string `"<polylineId>#<segmentIndex>"`
-  (segment from vertex `index` to `index+1`).
+  expects an entity: use the entity reference string `"<polylineId>#<startVertexId>"`
+  (the segment that starts at that vertex and runs to the next). Legacy files
+  encoded the start vertex's *index* here; that resolves identically because a
+  loaded vertex's default id is its index.
 - `fontId` is either a bundled font (e.g. `"roboto-regular"`) or a `"font-XXXXXXXX"`
   id present in the top-level [`fonts`](#fonts) array. Text stays editable until CAM
   export, where it is expanded to glyph contours.

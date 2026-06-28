@@ -16,7 +16,7 @@ import {
   segmentRef,
   resolveLineGeom,
 } from "../model/constraints";
-import { Entity, LineEntity, CircleEntity } from "../model/entities";
+import { Entity, LineEntity, CircleEntity, PolylineEntity } from "../model/entities";
 import { dist } from "../core/vec2";
 import { SolveResult, constraintJacobianRankChange } from "../solver/solver";
 
@@ -69,7 +69,13 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
   // parallel/perpendicular/equal/etc. address individual polyline edges.
   const lineRefs: string[] = [
     ...lines.map((l) => l.id),
-    ...doc.selectedSegments.map((s) => segmentRef(s.entityId, s.index)),
+    ...doc.selectedSegments.map((s) => {
+      // Encode the segment by its START vertex's stable id, so the constraint
+      // survives later edits that renumber vertices.
+      const poly = doc.entities.find((e) => e.id === s.entityId);
+      const startId = poly instanceof PolylineEntity ? poly.vertexIds[s.index] : String(s.index);
+      return segmentRef(s.entityId, startId);
+    }),
   ];
 
   const ok = (constraints: Constraint[]): BuildResult => ({ ok: true, constraints });

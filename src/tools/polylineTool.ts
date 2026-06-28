@@ -95,7 +95,7 @@ export class PolylineTool implements Tool {
         ctx.doc.addConstraint(
           makeConstraint("coincident", {
             points: [
-              { entityId: ent.id, key: `v${i}` },
+              { entityId: ent.id, key: `v${ent.vertexIds[i]}` },
               { entityId: snap.entityId, key: snap.key },
             ],
           }),

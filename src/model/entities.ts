@@ -392,13 +392,61 @@ export class PolylineEntity extends Entity {
   readonly type = "polyline" as const;
   points: Vec2[];
   closed: boolean;
+  /**
+   * A stable id per vertex, parallel to `points`. Vertex/segment point-keys
+   * (`v<id>` and `mid_<id>`) are built from these, NOT from the array index, so
+   * a constraint or dimension keeps pointing at the same physical vertex when an
+   * edit (chamfer, fillet) inserts or removes vertices ahead of it. Defaults to
+   * the index-as-string (`"0"`,`"1"`,…) so legacy files — whose keys are `v0`,
+   * `v1`,… — resolve unchanged; new vertices get fresh, never-reused ids.
+   */
+  vertexIds: string[];
+  /** Monotonic source of fresh vertex ids; always past every existing numeric id. */
+  private nextVid: number;
   /** Present only while this closed polyline is still a pristine regular polygon. */
   polygon?: PolygonParams;
 
-  constructor(points: Vec2[], closed = false, id?: EntityId) {
+  constructor(points: Vec2[], closed = false, id?: EntityId, vertexIds?: string[]) {
     super(id);
     this.points = points.map(clone);
     this.closed = closed;
+    this.vertexIds =
+      vertexIds && vertexIds.length === this.points.length
+        ? [...vertexIds]
+        : this.points.map((_, i) => String(i));
+    this.nextVid = this.vertexIds.reduce((m, v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n + 1 > m ? n + 1 : m;
+    }, 0);
+  }
+
+  /** Mint a vertex id guaranteed not to collide with any current or past one. */
+  private mintVertexId(): string {
+    return String(this.nextVid++);
+  }
+
+  /**
+   * Replace the whole vertex set (e.g. regenerating a regular polygon from its
+   * params) and reset vertex ids to the defaults. No vertex identity survives a
+   * wholesale replace — but for a pristine polygon whose ids are already the
+   * defaults this is a no-op on identity, so a same-count edit keeps its keys.
+   */
+  replaceAllPoints(points: Vec2[]): void {
+    this.points = points.map(clone);
+    this.vertexIds = this.points.map((_, i) => String(i));
+    this.nextVid = this.points.length;
+  }
+
+  /**
+   * Splice the vertex list, keeping `points` and `vertexIds` in lock-step:
+   * removed vertices drop their ids; inserted vertices get fresh ids. Use this
+   * (not a raw `points.splice`) whenever an edit changes which vertices exist, so
+   * surviving vertices keep their ids — and the constraints/dimensions on them.
+   */
+  spliceVertices(start: number, deleteCount: number, ...newPoints: Vec2[]): void {
+    const newIds = newPoints.map(() => this.mintVertexId());
+    this.points.splice(start, deleteCount, ...newPoints.map(clone));
+    this.vertexIds.splice(start, deleteCount, ...newIds);
   }
 
   /** Number of drawn segments (accounts for the closing segment). */
@@ -410,6 +458,19 @@ export class PolylineEntity extends Entity {
   segment(i: number): [Vec2, Vec2] {
     const n = this.points.length;
     return [this.points[i], this.points[(i + 1) % n]];
+  }
+  /**
+   * Endpoints of the segment whose START vertex carries id `startId`, or null if
+   * no such vertex exists or it's the last vertex of an open polyline. Lets a
+   * segment-as-line constraint reference an edge by stable id rather than index.
+   */
+  segmentByStartVertexId(startId: string): [Vec2, Vec2] | null {
+    const i = this.vertexIds.indexOf(startId);
+    if (i < 0) return null;
+    const n = this.points.length;
+    const j = i + 1 < n ? i + 1 : this.closed ? 0 : -1;
+    if (j < 0) return null;
+    return [this.points[i], this.points[j]];
   }
 
   override bounds(): Bounds {
@@ -437,7 +498,7 @@ export class PolylineEntity extends Entity {
       pos: clone(pos),
       kind: "vertex" as const,
       entityId: this.id,
-      key: `v${i}`,
+      key: `v${this.vertexIds[i]}`,
     }));
     const segs = this.segmentCount();
     for (let i = 0; i < segs; i++) {
@@ -453,31 +514,38 @@ export class PolylineEntity extends Entity {
     if (this.polygon) this.polygon.center = add(this.polygon.center, d);
   }
   override duplicate(): PolylineEntity {
-    const e = new PolylineEntity(this.points, this.closed);
+    const e = new PolylineEntity(this.points, this.closed, undefined, this.vertexIds);
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
     if (this.polygon) e.polygon = { ...this.polygon, center: { ...this.polygon.center } };
     return e;
   }
+  /** Array index of the vertex carrying id `id`, or -1. */
+  private vertexIndex(id: string): number {
+    return this.vertexIds.indexOf(id);
+  }
   override dofPoints(): DofPoint[] {
-    return this.points.map((p, i) => ({ key: `v${i}`, pos: clone(p) }));
+    return this.points.map((p, i) => ({ key: `v${this.vertexIds[i]}`, pos: clone(p) }));
   }
   override pickablePoints(): DofPoint[] {
     const pts = this.dofPoints();
     const segs = this.segmentCount();
+    // A segment is identified by the id of its START vertex, so it survives edits
+    // ahead of it the same way a vertex does.
     for (let i = 0; i < segs; i++) {
       const [s0, s1] = this.segment(i);
-      pts.push({ key: `mid_${i}`, pos: mid(s0, s1) });
+      pts.push({ key: `mid_${this.vertexIds[i]}`, pos: mid(s0, s1) });
     }
     return pts;
   }
   override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
     if (key.startsWith("mid_")) {
-      const i = Number(key.slice(4));
+      const i = this.vertexIndex(key.slice(4));
+      if (i < 0) return [{ key, axis: "x" }, { key, axis: "y" }];
       const next = (i + 1) % this.points.length;
       return [
-        { key: `v${i}`, axis: "x" }, { key: `v${i}`, axis: "y" },
-        { key: `v${next}`, axis: "x" }, { key: `v${next}`, axis: "y" },
+        { key: `v${this.vertexIds[i]}`, axis: "x" }, { key: `v${this.vertexIds[i]}`, axis: "y" },
+        { key: `v${this.vertexIds[next]}`, axis: "x" }, { key: `v${this.vertexIds[next]}`, axis: "y" },
       ];
     }
     return [
@@ -487,25 +555,27 @@ export class PolylineEntity extends Entity {
   }
   override getPoint(key: string): Vec2 {
     if (key.startsWith("mid_")) {
-      const i = Number(key.slice(4));
+      const i = this.vertexIndex(key.slice(4));
+      if (i < 0) return super.getPoint(key);
       const [s0, s1] = this.segment(i);
       return mid(s0, s1);
     }
-    const i = Number(key.slice(1));
+    const i = this.vertexIndex(key.slice(1));
     const p = this.points[i];
     if (!p) return super.getPoint(key);
     return clone(p);
   }
   override setPoint(key: string, v: Vec2): void {
     if (key.startsWith("mid_")) {
-      const i = Number(key.slice(4));
+      const i = this.vertexIndex(key.slice(4));
+      if (i < 0) return;
       const [s0, s1] = this.segment(i);
       const d = sub(v, mid(s0, s1));
       this.points[i] = add(this.points[i], d);
       this.points[(i + 1) % this.points.length] = add(this.points[(i + 1) % this.points.length], d);
       return;
     }
-    const i = Number(key.slice(1));
+    const i = this.vertexIndex(key.slice(1));
     if (this.points[i]) this.points[i] = clone(v);
   }
 }

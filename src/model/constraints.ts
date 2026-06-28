@@ -71,13 +71,16 @@ export const samePointRef = (a: PointRef, b: PointRef): boolean =>
 
 /**
  * A polyline segment can stand in for a line in any line-type constraint. It is
- * encoded inside the constraint's `entities` array as `${polylineId}#${index}`
- * (segment from vertex `index` to `index+1`). `lineRefEntityId` recovers the
- * underlying entity id (for pruning/DOF purposes).
+ * encoded inside the constraint's `entities` array as `${polylineId}#${startId}`,
+ * where `startId` is the segment's START vertex's stable id (the segment runs to
+ * the next vertex). Using the stable id, not the index, keeps the ref pointing at
+ * the same edge after an edit inserts/removes vertices ahead of it. Legacy files
+ * encoded the index; since a loaded polyline's default ids are its indices, those
+ * refs resolve unchanged. `lineRefEntityId` recovers the underlying entity id.
  */
 export const SEGMENT_SEP = "#";
-export function segmentRef(polylineId: EntityId, index: number): EntityId {
-  return `${polylineId}${SEGMENT_SEP}${index}`;
+export function segmentRef(polylineId: EntityId, startVertexId: string): EntityId {
+  return `${polylineId}${SEGMENT_SEP}${startVertexId}`;
 }
 export function lineRefEntityId(ref: EntityId): EntityId {
   const i = ref.indexOf(SEGMENT_SEP);
@@ -113,12 +116,8 @@ function lineGeom(geo: Geo, ref: EntityId | undefined): LineGeom | null {
   if (sep >= 0) {
     const poly = geo(ref.slice(0, sep));
     if (!(poly instanceof PolylineEntity)) return null;
-    const i = parseInt(ref.slice(sep + 1), 10);
-    const n = poly.points.length;
-    if (!Number.isFinite(i) || i < 0 || i >= n) return null;
-    const j = i + 1 < n ? i + 1 : (poly.closed ? 0 : -1);
-    if (j < 0) return null;
-    return { a: poly.points[i], b: poly.points[j] };
+    const seg = poly.segmentByStartVertexId(ref.slice(sep + 1));
+    return seg ? { a: seg[0], b: seg[1] } : null;
   }
   const l = asLine(geo, ref);
   return l ? { a: l.a, b: l.b } : null;

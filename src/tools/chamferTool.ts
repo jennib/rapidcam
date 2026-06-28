@@ -214,7 +214,7 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boole
       pl.selected = corner.entity.selected;
       i = corner.index;
     }
-    pl.points.splice(i, 1, geo.T1, geo.T2);
+    pl.spliceVertices(i, 1, geo.T1, geo.T2);
     if (corner.kind === "rect") {
       doc.remove(corner.entity);
       doc.add(pl);

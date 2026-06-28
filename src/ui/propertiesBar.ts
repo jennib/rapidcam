@@ -593,7 +593,7 @@ export class PropertiesBar {
     const af = change.diameter ?? 2 * p.radius * Math.cos(Math.PI / p.sides);
     const radius = (af / 2) / Math.cos(Math.PI / sides);
     this.applyEdit(() => {
-      entity.points = regularPolygonPoints(p.center, radius, sides, p.rotation);
+      entity.replaceAllPoints(regularPolygonPoints(p.center, radius, sides, p.rotation));
       entity.polygon = { sides, center: { ...p.center }, radius, rotation: p.rotation };
     });
   }

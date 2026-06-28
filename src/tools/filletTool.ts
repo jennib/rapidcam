@@ -263,7 +263,7 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
       const a = geo.a1 + (span * k) / steps;
       arcPts.push({ x: geo.C.x + radius * Math.cos(a), y: geo.C.y + radius * Math.sin(a) });
     }
-    pl.points.splice(i, 1, ...arcPts);
+    pl.spliceVertices(i, 1, ...arcPts);
     if (corner.kind === "rect") {
       doc.remove(corner.entity);
       doc.add(pl);
