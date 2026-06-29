@@ -117,6 +117,99 @@ export function resampleGrid(grid: RasterGrid, outW: number, outH: number): Floa
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Shared "level field" — the machine-agnostic core.
+//
+// A laser maps a dot's darkness to beam POWER; a mill maps it to Z DEPTH. Both
+// want the same upstream work: box-average the source down to a physical dot
+// grid and quantise each dot to a normalised "cut level" (0 = no cut/surface,
+// 1 = darkest = full cut). This function produces that level field as rows
+// (bottom→top, world-Y-up). Each backend then interprets the levels — the laser
+// coalesces non-zero runs into beam-on segments (see {@link rasterEngrave}); the
+// mill rides a continuous Z profile across the whole row. Crucially the level is
+// quantised HERE (shared), so neighbouring equal-tone dots can be merged by each
+// backend without the merge depending on backend-specific units.
+
+/** One row of the dot field: quantised cut levels, left→right. 0 = surface, 1 = deepest/darkest. */
+export interface RasterLevelRow {
+  /** Row centre height, mm (bottom→top — same convention as RasterScanRow.y). */
+  y: number;
+  levels: Float32Array;
+}
+
+export interface RasterField {
+  /** Dots per row. */
+  cols: number;
+  /** Horizontal pitch between dots, mm. */
+  colPitch: number;
+  /** Rows, bottom→top. */
+  rows: RasterLevelRow[];
+}
+
+export interface RasterFieldParams {
+  /** Physical width, mm. */
+  widthMM: number;
+  /** Physical height, mm. */
+  heightMM: number;
+  /** Vertical pitch between rows, mm (the laser line interval / the mill stepover). */
+  lineIntervalMM: number;
+  /** Horizontal dot pitch, mm. Default = `lineIntervalMM` (square dots). */
+  dotPitchMM?: number;
+  /** Greyscale at/above which a dot is blank (level 0). 0..1, default 0.96. */
+  whiteThreshold?: number;
+  /** Cut the light areas instead of the dark (negative). Default false. */
+  invert?: boolean;
+  /**
+   * Quantise the level to this step (0..1) so equal-tone neighbours coalesce.
+   * Default 1/255. Coarser = fewer distinct levels = fewer moves (the mill
+   * collinear-merges equal-Z runs; the laser merges equal-power runs).
+   */
+  levelStep?: number;
+}
+
+/**
+ * Resample + quantise `grid` to a physical level field at the given size. Returns
+ * an empty field (`rows: []`) for degenerate inputs. Rows whose dots are all
+ * blank are still included (a mill rides across them at the surface) — emptiness
+ * is the consumer's call, unlike the laser which drops all-blank rows.
+ */
+export function rasterField(grid: RasterGrid, params: RasterFieldParams): RasterField {
+  const { width: pxW, height: pxH, data } = grid;
+  const { widthMM, heightMM, lineIntervalMM } = params;
+  if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0) return { cols: 0, colPitch: 0, rows: [] };
+  if (data.length < pxW * pxH) return { cols: 0, colPitch: 0, rows: [] };
+
+  const dotPitch = params.dotPitchMM && params.dotPitchMM > 0 ? params.dotPitchMM : lineIntervalMM;
+  const whiteThreshold = params.whiteThreshold ?? 0.96;
+  const invert = params.invert ?? false;
+  const levelStep = params.levelStep && params.levelStep > 0 ? params.levelStep : 1 / 255;
+
+  const rowCount = Math.max(1, Math.round(heightMM / lineIntervalMM));
+  const colCount = Math.max(1, Math.round(widthMM / dotPitch));
+  const rowPitch = heightMM / rowCount;
+  const colPitch = widthMM / colCount;
+  const dots = resampleGrid(grid, colCount, rowCount); // row 0 = top
+
+  // darkness, quantised; blank (0) where the dot is at/above the white threshold.
+  const levelFor = (gray: number): number => {
+    const g = clamp01(invert ? 1 - gray : gray);
+    if (g >= whiteThreshold) return 0;
+    const q = Math.round((1 - g) / levelStep) * levelStep;
+    return q > 0 ? q : 0;
+  };
+
+  const rows: RasterLevelRow[] = [];
+  for (let r = 0; r < rowCount; r++) {
+    const y = (r + 0.5) * rowPitch;   // mm, bottom→top
+    const gridRow = rowCount - 1 - r; // dot grid row 0 = top
+    const base = gridRow * colCount;
+    const levels = new Float32Array(colCount);
+    for (let c = 0; c < colCount; c++) levels[c] = levelFor(dots[base + c]);
+    rows.push({ y, levels });
+  }
+  return { cols: colCount, colPitch, rows };
+}
+
 /**
  * Build the scan rows for engraving `grid` at the given physical size and
  * parameters. Returns an empty array for degenerate inputs (non-positive size,
