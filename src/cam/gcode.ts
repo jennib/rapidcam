@@ -1,8 +1,10 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity } from "../model/entities";
+import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity } from "../model/entities";
+import { rasterField } from "./rasterEngrave";
+import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, type CoolantMode, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
+import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
@@ -669,6 +671,90 @@ function engraveArc(
   return lines;
 }
 
+// --- raster relief (greyscale image → modulated Z depth) ---------------------
+
+/**
+ * Carve a greyscale image as a 2.5-D RELIEF: the mill rasters the image like the
+ * laser does, but maps each dot's darkness to **Z depth** (darker = deeper)
+ * instead of beam power. Needs a depth-shaping bit (ball-nose or V-bit) — a flat
+ * end mill leaves blocky flat-bottomed dots — and rides a *continuous* Z profile
+ * across each row (white = surface), boustrophedon, with no retract between rows.
+ *
+ * Depth is reached over **stepdown passes** (each pass clamps to a deeper Z
+ * floor), so the bit never plunges the full relief depth in one go — a single
+ * deep pass would snap a small finishing bit. Equal-Z dots within a row are
+ * merged into straight segments, so the move count is bounded by the number of
+ * distinct depth levels, not the pixel count.
+ *
+ * Axis-aligned only (the image entity's angle is locked to 0).
+ */
+function reliefImage(
+  ent: RasterImageEntity, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  if (op.toolType !== "ball-nose" && op.toolType !== "v-bit")
+    return [`; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`];
+  const grid = getImageGrid(ent.imageId);
+  if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
+  if (ent.angle !== 0)
+    return [`; NOTE: image (${ent.id}) is rotated; relief engrave is axis-aligned — straighten it first`];
+
+  const maxDepth = Math.abs(op.depth);
+  if (maxDepth <= 0) return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
+  const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
+  const lineInterval = op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval;
+
+  const field = rasterField(grid, {
+    widthMM: ent.widthMM,
+    heightMM: ent.heightMM,
+    lineIntervalMM: lineInterval,
+    dotPitchMM: op.rasterDotPitch,
+    invert: op.rasterInvert,
+  });
+  if (field.rows.length === 0) return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
+
+  const { cols, colPitch, rows } = field;
+  const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
+  const lines: string[] = [];
+
+  for (let p = 1; p <= passes; p++) {
+    const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
+    // Build the whole pass as one continuous boustrophedon path, merging runs of
+    // equal Z within a row into straight segments.
+    const verts: { x: number; y: number; z: number }[] = [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const wy = ent.position.y + row.y;
+      const ltr = r % 2 === 0;
+      const zAt = (c: number) => Math.max(-row.levels[c] * maxDepth, passFloor);
+      const xAt = (c: number) => ent.position.x + (c + 0.5) * colPitch;
+      for (let k = 0; k < cols; k++) {
+        const c = ltr ? k : cols - 1 - k;
+        // Keep run boundaries and depth changes; drop interior collinear dots.
+        const prev = ltr ? c - 1 : c + 1;
+        const next = ltr ? c + 1 : c - 1;
+        const z = zAt(c);
+        const keep = k === 0 || k === cols - 1
+          || prev < 0 || prev >= cols || z !== zAt(prev)
+          || next < 0 || next >= cols || z !== zAt(next);
+        if (keep) verts.push({ x: xAt(c), y: wy, z });
+      }
+    }
+    if (verts.length === 0) continue;
+
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    lines.push(`G0 X${X(verts[0].x, ox)} Y${Y(verts[0].y, oy)}`);
+    lines.push(`G1 Z${Z(verts[0].z, zOff)} F${n(op.plungeRate)}`);
+    for (let i = 1; i < verts.length; i++) {
+      const v = verts[i];
+      const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+      lines.push(`G1 X${X(v.x, ox)} Y${Y(v.y, oy)} Z${Z(v.z, zOff)}${f}`);
+    }
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
 // --- drill -------------------------------------------------------------------
 
 /** Re-entry clearance above the previous peck bottom before feeding again, mm. */
@@ -1009,7 +1095,9 @@ function toolpathBody(
     }
 
     if (op.type === "engrave") {
-      if (ent instanceof LineEntity)
+      if (ent instanceof RasterImageEntity)
+        lines.push(...reliefImage(ent, op, ox, oy, zOff));
+      else if (ent instanceof LineEntity)
         lines.push(...engravePoints([ent.a, ent.b], false, op, ox, oy, zOff));
       else if (ent instanceof CircleEntity)
         lines.push(...engraveCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
