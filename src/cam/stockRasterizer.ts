@@ -17,10 +17,12 @@ import type { Vec2 } from "../core/vec2";
 import type { CADDocument } from "../model/document";
 import {
   LineEntity, CircleEntity, RectEntity,
-  PolylineEntity, ArcEntity, BezierEntity, TextEntity,
+  PolylineEntity, ArcEntity, BezierEntity, TextEntity, RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, chamferDepth, chamferSharpSequence } from "./types";
+import { rasterField } from "./rasterEngrave";
+import { getImageGrid } from "../core/imageManager";
+import { type CAMOperation, DEFAULTS, chamferDepth, chamferSharpSequence } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
@@ -167,7 +169,11 @@ function rasterizeOp(
           stamp(cx, cy, stockT + z);
       }
     } else if (op.type === "engrave") {
-      if (ent instanceof LineEntity)
+      if (ent instanceof RasterImageEntity) {
+        // Relief needs a depth-shaping bit (matches gcode.ts, which skips others).
+        if (op.toolType === "ball-nose" || op.toolType === "v-bit") rasRelief(ent, op, stamp, stockT);
+      }
+      else if (ent instanceof LineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
       else if (ent instanceof CircleEntity)
         sweepCircle(op, data, gridW, gridH, stockT,
@@ -337,6 +343,33 @@ function rasVcarve(
         return { x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) };
       });
       carve({ outer, holes: [] });
+    }
+  }
+}
+
+/**
+ * Stamp a greyscale image as a 2.5-D RELIEF into the height field: one tool stamp
+ * per dot, lowered to `surface − level·maxDepth` (darker = deeper). Overlapping
+ * ball/V stamps form the carved surface — so this previews the real tool ENVELOPE
+ * (scallop and all), which the per-dot tip-Z G-code only approximates. Mirrors
+ * `reliefImage` in gcode.ts (same rasterField, same level→depth mapping).
+ */
+function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number): void {
+  const grid = getImageGrid(ent.imageId);
+  if (!grid || ent.angle !== 0) return;
+  const maxDepth = Math.min(Math.abs(op.depth), stockT);
+  if (maxDepth <= 0) return;
+  const field = rasterField(grid, {
+    widthMM: ent.widthMM, heightMM: ent.heightMM,
+    lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
+    dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert,
+  });
+  for (const row of field.rows) {
+    const wy = ent.position.y + row.y;
+    for (let c = 0; c < field.cols; c++) {
+      const level = row.levels[c];
+      if (level <= 0) continue;
+      stamp((ent.position.x + (c + 0.5) * field.colPitch) * RES, wy * RES, stockT - level * maxDepth);
     }
   }
 }
