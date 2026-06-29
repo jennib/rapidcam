@@ -96,6 +96,21 @@ test("output size: a solid relief merges each row to its endpoints (not one move
   expect(moves).toBeGreaterThan(200); // but every row is represented
 });
 
+test("a large relief generates without overflowing the stack (no spread-push)", () => {
+  // ~290k moves — large enough that `lines.push(...reliefBody)` would overflow.
+  const bytes = Uint8Array.from({ length: 400 * 300 }, (_, i) => (i * 37) % 256);
+  let bin = ""; const C = 0x8000; // chunk: String.fromCharCode(...) also has an arg limit
+  for (let i = 0; i < bytes.length; i += C) bin += String.fromCharCode(...bytes.subarray(i, i + C));
+  registerEmbeddedImage({ id: "img-big", name: "big", width: 400, height: 300, data: btoa(bin) });
+
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.add(new RasterImageEntity("img-big", { x: 0, y: 0 }, 80, 60, 0));
+  const id = doc.entities.find((e) => e.type === "image")!.id;
+  let g = "";
+  expect(() => { g = generateGCode([reliefOp([id], { depth: -3, stepdown: 1.5, rasterLineInterval: 0.15, rasterDotPitch: 0.15 })], doc); }).not.toThrow();
+  expect((g.match(/^G1 /gm) || []).length).toBeGreaterThan(150_000);
+});
+
 test("output size: a gradient relief stays bounded by the dot grid × passes", () => {
   const grad = Array.from({ length: 256 }, (_, x) => x);
   const id = registerGrid([grad]); // 256×1, tiled vertically by resampling

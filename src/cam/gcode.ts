@@ -1096,7 +1096,9 @@ function toolpathBody(
 
     if (op.type === "engrave") {
       if (ent instanceof RasterImageEntity)
-        lines.push(...reliefImage(ent, op, ox, oy, zOff));
+        // Append element-wise, NOT push(...): a relief can emit 100k+ lines and
+        // spreading that as call args overflows the stack (same trap as laser).
+        for (const l of reliefImage(ent, op, ox, oy, zOff)) lines.push(l);
       else if (ent instanceof LineEntity)
         lines.push(...engravePoints([ent.a, ent.b], false, op, ox, oy, zOff));
       else if (ent instanceof CircleEntity)
@@ -1295,7 +1297,7 @@ export function generateGCode(
       const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);
       lines.push(`; V-Bit effective cut width at ${op.depth}mm: ${width}mm`);
     }
-    lines.push(...toolpathBody(op, doc, ox, oy, zOffset, pp));
+    for (const l of toolpathBody(op, doc, ox, oy, zOffset, pp)) lines.push(l); // not spread: a relief op can emit 100k+ lines
     lines.push("");
   }
 
