@@ -1,7 +1,7 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity, RectEntity, LineEntity, PolylineEntity, RasterImageEntity } from "../src/model/entities";
-import { comboOf, isValidFor, describeEntity, findContiguousChain, defaultCombo } from "../src/ui/camBarHelpers";
+import { comboOf, isValidFor, describeEntity, findContiguousChain, defaultCombo, checkOpSelection } from "../src/ui/camBarHelpers";
 import type { CAMOperation } from "../src/cam/types";
 
 const img = () => new RasterImageEntity("img-x", { x: 0, y: 0 }, 10, 10, 0);
@@ -27,6 +27,35 @@ test("defaultCombo: a new op with an image selected starts on Engrave", () => {
 test("defaultCombo: a new op without an image starts on Cut (profile-outside)", () => {
   expect(defaultCombo(null, [new CircleEntity({ x: 0, y: 0 }, 5)], true)).toBe("profile-outside");
   expect(defaultCombo(null, [], false)).toBe("profile-outside");
+});
+
+test("checkOpSelection: filters to the valid subset, keeping invalid entities selectable elsewhere", () => {
+  const circle = new CircleEntity({ x: 0, y: 0 }, 5);
+  const image = img();
+  const entities = [circle, image];
+  const ids = [circle.id, image.id];
+
+  // Engrave accepts both; profile accepts only the circle (image filtered, not error).
+  expect(checkOpSelection(entities, ids, "engrave").validIds.sort()).toEqual([circle.id, image.id].sort());
+  const prof = checkOpSelection(entities, ids, "profile-outside");
+  expect(prof.validIds).toEqual([circle.id]);
+  expect(prof.error).toBeNull();
+});
+
+test("checkOpSelection: an image-only selection on a non-engrave op explains why", () => {
+  const image = img();
+  const r = checkOpSelection([image], [image.id], "profile-outside");
+  expect(r.validIds).toEqual([]);
+  expect(r.error).toMatch(/image can only be engraved/i);
+  // …and is fine on Engrave.
+  expect(checkOpSelection([image], [image.id], "engrave").error).toBeNull();
+});
+
+test("checkOpSelection: distinguishes 'nothing selected' from 'nothing usable'", () => {
+  expect(checkOpSelection([], [], "engrave").error).toMatch(/select at least one/i);
+  const open = new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }], false);
+  const r = checkOpSelection([open], [open.id], "profile-outside");
+  expect(r.error).toMatch(/none of the selected geometry/i);
 });
 
 test("defaultCombo: editing an existing op keeps its own type (image default is new-op only)", () => {

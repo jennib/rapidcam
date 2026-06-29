@@ -31,6 +31,7 @@ import {
   AUTO_NAME_RE,
   comboOf,
   defaultCombo,
+  checkOpSelection,
   describeEntity,
   isValidFor,
   seedsFromEntityIds,
@@ -901,9 +902,12 @@ export class CamBar {
           if (region) for (const id of region.loopIds) hl.add(id);
         }
         ids = [...hl];
-      } else if (ids.length === 0) {
-        alert("Select at least one geometry item.");
-        return;
+      } else {
+        // Keep only the selection valid for this op type; a specific message when
+        // none are (e.g. an image selected for a Cut → "can only be engraved").
+        const check = checkOpSelection(this.doc.entities, state.entityIds, state.combo);
+        if (check.error) { alert(check.error); return; }
+        ids = check.validIds;
       }
 
       this.pushHistory?.();
@@ -1856,15 +1860,11 @@ export class CamBar {
       this.doc.regionPickFills = null;
       this.doc.emitChange();
       entityList.innerHTML = "";
-      // Only show entities that are valid for the current op type; silently
-      // drop any invalid ones from the selection sets (safety cleanup).
+      // Show only entities valid for the current op type. The selection sets are
+      // NOT pruned here — keeping invalid-for-this-combo entities means flipping
+      // the op type (e.g. Cut↔Engrave) doesn't permanently lose them, and Apply
+      // filters to the valid subset (see checkOpSelection).
       const ents = this.doc.entities.filter((e) => !e.isConstruction && isValidFor(e, state.combo));
-      for (const e of this.doc.entities) {
-        if (!isValidFor(e, state.combo)) {
-          state.entityIds.delete(e.id);
-          state.islandIds.delete(e.id);
-        }
-      }
       if (ents.length === 0) {
         const mt = document.createElement("div");
         mt.className = "tp-entity-empty";

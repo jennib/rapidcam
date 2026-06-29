@@ -63,6 +63,34 @@ export function describeEntity(e: Entity, doc: CADDocument): string {
   return "Entity";
 }
 
+export interface OpSelectionCheck {
+  /** Selected entity ids that are valid for this op type (the op's actual targets). */
+  validIds: string[];
+  /** A user-facing reason when nothing valid is selected, else null. */
+  error: string | null;
+}
+
+/**
+ * Validate a toolpath's target selection for its op type. Returns the subset of
+ * the selection valid for `combo`; when none are valid it returns a *specific*
+ * reason — e.g. an image can only be engraved — so the dialog can guide the user
+ * rather than just saying "select geometry". Invalid entities are filtered, not
+ * required to be absent, so a selection can carry geometry that only some op
+ * types accept (an image stays selected when you flip the op to Cut and back).
+ */
+export function checkOpSelection(entities: Entity[], selectedIds: Iterable<string>, combo: OpCombo): OpSelectionCheck {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const sel: Entity[] = [];
+  for (const id of selectedIds) { const e = byId.get(id); if (e) sel.push(e); }
+  const valid = sel.filter((e) => isValidFor(e, combo));
+  if (valid.length > 0) return { validIds: valid.map((e) => e.id), error: null };
+  if (sel.some((e) => e instanceof RasterImageEntity))
+    return { validIds: [], error: "An image can only be engraved — set this toolpath's type to Engrave." };
+  if (sel.length > 0)
+    return { validIds: [], error: "None of the selected geometry can be used by this operation type." };
+  return { validIds: [], error: "Select at least one geometry item." };
+}
+
 export function isValidFor(e: Entity, combo: OpCombo): boolean {
   if (e.isConstruction) return false;
   switch (combo) {
