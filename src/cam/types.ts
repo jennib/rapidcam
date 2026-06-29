@@ -224,6 +224,23 @@ export interface CAMOperation {
    * switched off when an op doesn't, or at program end. Default false.
    */
   airAssist?: boolean;
+  /**
+   * Raster engrave only (an Engrave op targeting an image entity): vertical pitch
+   * (mm) between scan rows — the line interval / vertical resolution. Default 0.1.
+   */
+  rasterLineInterval?: number;
+  /**
+   * Raster engrave only: horizontal pitch (mm) between dots within a row. Defaults
+   * to `rasterLineInterval` (square dots) when unset.
+   */
+  rasterDotPitch?: number;
+  /**
+   * Raster engrave only: beam power (%) for the lightest engraved dot; `laserPower`
+   * is the power for a fully black dot. Default 0.
+   */
+  rasterMinPower?: number;
+  /** Raster engrave only: engrave the light areas instead of the dark (photo negative). Default false. */
+  rasterInvert?: boolean;
 }
 
 export const DEFAULTS = {
@@ -250,6 +267,8 @@ export const DEFAULTS = {
   kerfWidth: 0,
   laserFillSpacing: 0.2,
   laserOverscan: 0,
+  rasterLineInterval: 0.1,
+  rasterMinPower: 0,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {

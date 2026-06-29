@@ -16,9 +16,11 @@ import { flattenBezier } from "../core/geom";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import {
   type Entity,
-  LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity,
+  LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
+import { rasterEngrave, type RasterScanRow } from "./rasterEngrave";
+import { getImageGrid } from "../core/imageManager";
 import type { CAMOperation } from "./types";
 import { DEFAULTS } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
@@ -157,7 +159,8 @@ type LaserPrim =
   | { kind: "poly"; pts: Vec2[]; closed: boolean }
   | { kind: "circle"; cx: number; cy: number; r: number }
   | { kind: "arc"; arc: ArcEntity }
-  | { kind: "fill"; segs: Vec2[][]; overscan: number };
+  | { kind: "fill"; segs: Vec2[][]; overscan: number }
+  | { kind: "raster"; rows: RasterScanRow[] };
 
 /** One dispatch result: a cut primitive or a skip note, kept in entity order. */
 type LaserItem = LaserPrim | { kind: "note"; text: string };
@@ -193,6 +196,37 @@ function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][]
 }
 
 /**
+ * Build the raster-engrave primitive for one image entity: resolve its greyscale
+ * pixels, sweep them into power-modulated scan rows at the op's resolution, and
+ * lift the rows from image-local mm into world space (axis-aligned, anchored at
+ * the entity's bottom-left). Returns a skip note if the pixels are missing, the
+ * image is (defensively) rotated, or it produces no burn.
+ */
+function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserItem[] {
+  const grid = getImageGrid(ent.imageId);
+  if (!grid) return [{ kind: "note", text: `image (${ent.id}) pixels not loaded — skipped` }];
+  if (ent.angle !== 0)
+    return [{ kind: "note", text: `image (${ent.id}) is rotated; raster engrave is axis-aligned — straighten it first` }];
+
+  const rows = rasterEngrave(grid, {
+    widthMM: ent.widthMM,
+    heightMM: ent.heightMM,
+    lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
+    dotPitchMM: op.rasterDotPitch,
+    maxPower: op.laserPower ?? DEFAULTS.laserPower,
+    minPower: op.rasterMinPower ?? DEFAULTS.rasterMinPower,
+    invert: op.rasterInvert,
+  });
+  if (rows.length === 0) return [{ kind: "note", text: `image (${ent.id}) engraved nothing (blank or zero size) — skipped` }];
+
+  const world: RasterScanRow[] = rows.map((r) => ({
+    y: ent.position.y + r.y,
+    runs: r.runs.map((run) => ({ x0: ent.position.x + run.x0, x1: ent.position.x + run.x1, power: run.power })),
+  }));
+  return [{ kind: "raster", rows: world }];
+}
+
+/**
  * Push the kerf-compensated ring(s) of a closed profile contour. If an inside
  * kerf is wider than the feature, the offset collapses to nothing — emit a note
  * instead of silently dropping the cut (mirrors the mill path's warnings).
@@ -219,6 +253,21 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   const profile = op.type === "profile";
   const items: LaserItem[] = [];
+
+  // Raster engrave: an Engrave op targeting image entities. Each image is swept as
+  // a greyscale raster (power per dot). Images are handled exclusively — any other
+  // entity in the same op is noted and ignored, since a raster sweep and a vector
+  // trace don't mix in one op.
+  if (op.type === "engrave") {
+    const live = op.entityIds.map((id) => entityMap.get(id)).filter((e): e is Entity => !!e && !e.isConstruction);
+    const images = live.filter((e): e is RasterImageEntity => e instanceof RasterImageEntity);
+    if (images.length > 0) {
+      for (const img of images) items.push(...rasterItemsForImage(img, op));
+      const others = live.length - images.length;
+      if (others > 0) items.push({ kind: "note", text: `raster engrave ignores ${others} non-image entit${others === 1 ? "y" : "ies"} in this op` });
+      return items;
+    }
+  }
 
   // Area-fill engrave: gather every closed contour, group even–odd into solids
   // with holes (so letter counters stay clear), outline each, then flood the
@@ -352,8 +401,35 @@ function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx
   return lines;
 }
 
+/**
+ * Trace power-modulated raster rows. The head sweeps each row in alternating
+ * directions (boustrophedon — no return-to-start travel) and the beam is gated
+ * per run: `G0` travels (off) to the run start, then a lit `G1` carries the run's
+ * power as an explicit ` S<power>` so it works on modal and inline-power heads
+ * alike. Feed is set once (modal). Blank gaps between runs are just the `G0`s.
+ */
+function traceRaster(rows: RasterScanRow[], passes: number, feed: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
+  const lines: string[] = [];
+  let setFeed = true;
+  for (let p = 0; p < passes; p++) {
+    rows.forEach((row, ri) => {
+      const ltr = ri % 2 === 0;
+      const runs = ltr ? row.runs : [...row.runs].reverse();
+      for (const run of runs) {
+        const aX = ltr ? run.x0 : run.x1;
+        const bX = ltr ? run.x1 : run.x0;
+        lines.push(`G0 X${X(aX, ox)} Y${Y(row.y, oy)}`);
+        const f = setFeed ? ` F${n(feed)}` : "";
+        lines.push(`G1 X${X(bX, ox)} Y${Y(row.y, oy)}${f} S${post.formatPower(run.power, maxPower)}`);
+        setFeed = false;
+      }
+    });
+  }
+  return lines;
+}
+
 /** Emit the G-code trace for one cut primitive. */
-function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: number): string[] {
+function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: number, post: LaserPost, maxPower: number | undefined): string[] {
   switch (prim.kind) {
     case "poly":   return prim.closed
       ? traceClosed(prim.pts, passes, cut, ox, oy)
@@ -361,6 +437,7 @@ function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: 
     case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
     case "arc":    return traceArc(prim.arc, passes, cut, ox, oy);
     case "fill":   return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
+    case "raster": return traceRaster(prim.rows, passes, cut.feed, post, maxPower, ox, oy);
   }
 }
 
@@ -385,8 +462,11 @@ function laserOpBody(
   lines.push(...post.beamOn(power));
   if (post.pierce) lines.push(...post.pierce());
   for (const it of items) {
-    if (it.kind === "note") lines.push(`; NOTE: ${it.text}`);
-    else lines.push(...emitPrim(it, passes, cut, ox, oy));
+    if (it.kind === "note") { lines.push(`; NOTE: ${it.text}`); continue; }
+    // Append element-by-element, NOT `push(...emitPrim())`: a raster prim can
+    // emit millions of lines, and spreading that as call arguments overflows the
+    // stack. (Other emitters are small, but this keeps one safe path.)
+    for (const l of emitPrim(it, passes, cut, ox, oy, post, maxPower)) lines.push(l);
   }
   lines.push(...post.beamOff());
   return lines;
@@ -433,6 +513,7 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
       if (it.kind === "circle") paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
       else if (it.kind === "arc") paths.push({ pts: arcPolyline(it.arc), closed: false });
       else if (it.kind === "fill") { for (const s of it.segs) if (s.length >= 2) paths.push({ pts: s, closed: false }); }
+      else if (it.kind === "raster") { for (const row of it.rows) for (const run of row.runs) paths.push({ pts: [{ x: run.x0, y: row.y }, { x: run.x1, y: row.y }], closed: false }); }
       else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }
   }
@@ -480,8 +561,9 @@ export function generateLaserGCode(
   let airActive = false;
 
   for (const op of ops) {
+    const isRaster = op.type === "engrave" && op.entityIds.some((id) => doc.entities.find((e) => e.id === id) instanceof RasterImageEntity);
     const typeLabel = op.type === "profile" ? `Profile (${op.side})`
-      : op.laserFill ? "Engrave (fill)" : "Engrave";
+      : isRaster ? "Engrave (raster)" : op.laserFill ? "Engrave (fill)" : "Engrave";
     const pct = Math.max(0, Math.min(100, op.laserPower ?? DEFAULTS.laserPower));
     lines.push(
       `; --- ${typeLabel} "${op.name}"  power:${pct}% (S${post.formatPower(pct, maxPower)})  ` +
@@ -492,7 +574,7 @@ export function generateLaserGCode(
       lines.push(...(wantAir ? airOnLines : airOffLines));
       airActive = wantAir;
     }
-    lines.push(...laserOpBody(op, doc, ox, oy, post, maxPower));
+    for (const l of laserOpBody(op, doc, ox, oy, post, maxPower)) lines.push(l); // not spread: a raster op can emit millions of lines
     lines.push("");
   }
 
