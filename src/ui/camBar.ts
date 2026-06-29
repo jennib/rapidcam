@@ -5,6 +5,7 @@ import {
   ArcEntity,
   BezierEntity,
   TextEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
@@ -79,6 +80,11 @@ interface OpState {
   laserFillSpacing: number;
   laserOverscan: number;
   airAssist: boolean;
+  // raster engrave (engrave op targeting an image entity)
+  rasterLineInterval: number;
+  rasterDotPitch: number; // 0 = square dots (use the line interval)
+  rasterMinPower: number;
+  rasterInvert: boolean;
 }
 
 /**
@@ -462,6 +468,11 @@ export class CamBar {
     // narrowed type list always has a matching selection.
     if (isLaser && initialCombo !== "profile-outside" && initialCombo !== "profile-inside" && initialCombo !== "engrave")
       initialCombo = "profile-outside";
+    // A raster image can only be engraved (not profile-cut), so a new op targeting
+    // one must default to Engrave — otherwise the geometry list strips the image as
+    // "invalid for profile" and the op commits with no geometry.
+    if (isNew && [...preSelected].some((id) => this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity))
+      initialCombo = "engrave";
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
@@ -511,6 +522,10 @@ export class CamBar {
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
       laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
       airAssist:    existing?.airAssist   ?? false,
+      rasterLineInterval: existing?.rasterLineInterval ?? DEFAULTS.rasterLineInterval,
+      rasterDotPitch: existing?.rasterDotPitch ?? 0,
+      rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
+      rasterInvert: existing?.rasterInvert ?? false,
     };
 
     let geomCleanup: () => void = () => {};
@@ -910,6 +925,7 @@ export class CamBar {
       else { type = "drill"; side = "outside"; }
 
       const isProfile = type === "profile";
+      const raster = isLaser && type === "engrave" && this.opTargetsImage(state.entityIds);
 
       const op: CAMOperation = {
         id: existing?.id ?? nextId("cam"),
@@ -950,10 +966,15 @@ export class CamBar {
         laserPower:  isLaser ? state.laserPower  : undefined,
         laserPasses: isLaser ? state.laserPasses : undefined,
         kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
-        laserFill:   isLaser && type === "engrave" && state.laserFill ? true : undefined,
-        laserFillSpacing: isLaser && type === "engrave" && state.laserFill ? state.laserFillSpacing : undefined,
-        laserOverscan: isLaser && type === "engrave" && state.laserFill && state.laserOverscan > 0 ? state.laserOverscan : undefined,
+        laserFill:   isLaser && type === "engrave" && !raster && state.laserFill ? true : undefined,
+        laserFillSpacing: isLaser && type === "engrave" && !raster && state.laserFill ? state.laserFillSpacing : undefined,
+        // Overscan serves both vector fill and raster rows.
+        laserOverscan: isLaser && type === "engrave" && (raster || state.laserFill) && state.laserOverscan > 0 ? state.laserOverscan : undefined,
         airAssist:   isLaser && state.airAssist ? true : undefined,
+        rasterLineInterval: raster ? Math.max(0.001, state.rasterLineInterval) : undefined,
+        rasterDotPitch: raster && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
+        rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
+        rasterInvert: raster && state.rasterInvert ? true : undefined,
       };
 
       if (existing) {
@@ -1459,6 +1480,12 @@ export class CamBar {
    * concepts a laser has no use for. `update` toggles the kerf row (cut only —
    * engrave is always on the centreline).
    */
+  /** True if any of the op's target entities is a raster image (→ raster engrave). */
+  private opTargetsImage(ids: Set<string>): boolean {
+    for (const id of ids) if (this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity) return true;
+    return false;
+  }
+
   private buildLaserSection(state: OpState): { root: HTMLElement; update: () => void } {
     const sec = this.dSection("Laser");
     const feed   = this.numRow("Feed (mm/min)", () => state.feedrate,   (v) => { state.feedrate   = Math.max(1, v); });
@@ -1477,10 +1504,26 @@ export class CamBar {
     fillChk.checked = state.laserFill;
     const fillRow = this.dField("Fill area (engrave solid)", fillChk);
     const fillSpacing = this.numRow("Fill spacing (mm)", () => state.laserFillSpacing, (v) => { state.laserFillSpacing = Math.max(0.01, v); });
-    const overscan = this.numRow("Fill overscan (mm, 0=off)", () => state.laserOverscan, (v) => { state.laserOverscan = Math.max(0, v); });
+    const overscan = this.numRow("Overscan (mm, 0=off)", () => state.laserOverscan, (v) => { state.laserOverscan = Math.max(0, v); });
     sec.appendChild(fillRow);
     sec.appendChild(fillSpacing.el);
     sec.appendChild(overscan.el);
+
+    // Raster engrave — shown when the engrave op targets an image entity. Power (%)
+    // above is the black/darkest power; these add the resolution and tonal range.
+    const rLine = this.numRow("Line interval (mm)", () => state.rasterLineInterval, (v) => { state.rasterLineInterval = Math.max(0.001, v); });
+    const rDot  = this.numRow("Dot pitch (mm, 0=square)", () => state.rasterDotPitch, (v) => { state.rasterDotPitch = Math.max(0, v); });
+    const rMin  = this.numRow("Min power (%)", () => state.rasterMinPower, (v) => { state.rasterMinPower = Math.min(100, Math.max(0, v)); });
+    const invChk = document.createElement("input");
+    invChk.type = "checkbox";
+    invChk.className = "settings-checkbox";
+    invChk.checked = state.rasterInvert;
+    invChk.addEventListener("change", () => { state.rasterInvert = invChk.checked; });
+    const rInvRow = this.dField("Invert (engrave light areas)", invChk);
+    sec.appendChild(rLine.el);
+    sec.appendChild(rDot.el);
+    sec.appendChild(rMin.el);
+    sec.appendChild(rInvRow);
 
     // Air assist — emits the post's air command (M8/M9 by default) around this op.
     const airChk = document.createElement("input");
@@ -1493,10 +1536,14 @@ export class CamBar {
     const update = () => {
       const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
       const isEngrave = state.combo === "engrave";
+      const isRaster = isEngrave && this.opTargetsImage(state.entityIds);
       kerf.el.style.display = isCut ? "" : "none";
-      fillRow.style.display = isEngrave ? "" : "none";
-      fillSpacing.el.style.display = isEngrave && state.laserFill ? "" : "none";
-      overscan.el.style.display = isEngrave && state.laserFill ? "" : "none";
+      // Vector fill applies to closed shapes, not images — hide it for a raster.
+      fillRow.style.display = isEngrave && !isRaster ? "" : "none";
+      fillSpacing.el.style.display = isEngrave && !isRaster && state.laserFill ? "" : "none";
+      // Overscan serves both vector fill and raster rows.
+      overscan.el.style.display = isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
+      for (const r of [rLine.el, rDot.el, rMin.el, rInvRow]) r.style.display = isRaster ? "" : "none";
     };
     fillChk.addEventListener("change", () => { state.laserFill = fillChk.checked; update(); });
     update();

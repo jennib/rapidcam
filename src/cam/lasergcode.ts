@@ -160,7 +160,7 @@ type LaserPrim =
   | { kind: "circle"; cx: number; cy: number; r: number }
   | { kind: "arc"; arc: ArcEntity }
   | { kind: "fill"; segs: Vec2[][]; overscan: number }
-  | { kind: "raster"; rows: RasterScanRow[] };
+  | { kind: "raster"; rows: RasterScanRow[]; overscan: number };
 
 /** One dispatch result: a cut primitive or a skip note, kept in entity order. */
 type LaserItem = LaserPrim | { kind: "note"; text: string };
@@ -223,7 +223,7 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
     y: ent.position.y + r.y,
     runs: r.runs.map((run) => ({ x0: ent.position.x + run.x0, x1: ent.position.x + run.x1, power: run.power })),
   }));
-  return [{ kind: "raster", rows: world }];
+  return [{ kind: "raster", rows: world, overscan: Math.max(0, op.laserOverscan ?? 0) }];
 }
 
 /**
@@ -408,19 +408,33 @@ function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx
  * power as an explicit ` S<power>` so it works on modal and inline-power heads
  * alike. Feed is set once (modal). Blank gaps between runs are just the `G0`s.
  */
-function traceRaster(rows: RasterScanRow[], passes: number, feed: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
+function traceRaster(rows: RasterScanRow[], passes: number, feed: number, overscan: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
   const lines: string[] = [];
   let setFeed = true;
   for (let p = 0; p < passes; p++) {
     rows.forEach((row, ri) => {
       const ltr = ri % 2 === 0;
       const runs = ltr ? row.runs : [...row.runs].reverse();
+      const y = Y(row.y, oy);
       for (const run of runs) {
         const aX = ltr ? run.x0 : run.x1;
         const bX = ltr ? run.x1 : run.x0;
-        lines.push(`G0 X${X(aX, ox)} Y${Y(row.y, oy)}`);
-        const f = setFeed ? ` F${n(feed)}` : "";
-        lines.push(`G1 X${X(bX, ox)} Y${Y(row.y, oy)}${f} S${post.formatPower(run.power, maxPower)}`);
+        const s = post.formatPower(run.power, maxPower);
+        if (overscan > 0) {
+          // Beam-off run-up / run-down so the head is at feed before the dot
+          // burns and decelerates after — no over-burnt run edges. The S0/S<power>
+          // blocks make this work on modal and inline-power heads alike.
+          const os = ltr ? overscan : -overscan;
+          lines.push(`G0 X${X(aX - os, ox)} Y${y}`);
+          const f = setFeed ? ` F${n(feed)}` : "";
+          lines.push(`G1 X${X(aX, ox)} Y${y}${f} S0`);
+          lines.push(`G1 X${X(bX, ox)} Y${y} S${s}`);
+          lines.push(`G1 X${X(bX + os, ox)} Y${y} S0`);
+        } else {
+          lines.push(`G0 X${X(aX, ox)} Y${y}`);
+          const f = setFeed ? ` F${n(feed)}` : "";
+          lines.push(`G1 X${X(bX, ox)} Y${y}${f} S${s}`);
+        }
         setFeed = false;
       }
     });
@@ -437,7 +451,7 @@ function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: 
     case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
     case "arc":    return traceArc(prim.arc, passes, cut, ox, oy);
     case "fill":   return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
-    case "raster": return traceRaster(prim.rows, passes, cut.feed, post, maxPower, ox, oy);
+    case "raster": return traceRaster(prim.rows, passes, cut.feed, prim.overscan, post, maxPower, ox, oy);
   }
 }
 

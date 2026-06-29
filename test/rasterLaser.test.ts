@@ -54,6 +54,19 @@ test("power is modulated per dot: darker → higher S, white skipped", () => {
   expect(g).toMatch(/M5/);    // beam off
 });
 
+test("overscan brackets each lit run with beam-off run-up/run-down", () => {
+  const id = registerGrid([[0]]); // one black dot
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const ent = doc.add(new RasterImageEntity(id, { x: 10, y: 0 }, 2, 1, 0));
+  const g = generateLaserGCode([engraveOp([ent.id], { rasterDotPitch: 2, rasterLineInterval: 1, laserOverscan: 1 })], doc);
+
+  // Approach 1mm before the run (rapid), run up at S0, burn at S>0, run down at S0.
+  expect(g).toMatch(/G0 X9 Y/);                 // 10 - 1mm overscan
+  expect(g).toMatch(/G1 X10 Y[\d.]+ F\d+ S0/);  // run-up, beam off
+  expect(g).toMatch(/G1 X12 Y[\d.]+ S[1-9]\d*/);// lit run (positive S)
+  expect(g).toMatch(/G1 X13 Y[\d.]+ S0/);       // run-down past the end, beam off
+});
+
 test("missing pixels and rotation are reported, not silently dropped", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const e1 = doc.add(new RasterImageEntity("img-not-loaded", { x: 0, y: 0 }, 10, 10, 0));

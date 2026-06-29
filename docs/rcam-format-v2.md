@@ -403,8 +403,14 @@ instead:
 | `kerfWidth` | `profile` | beam kerf (mm); the closed contour is offset outward (`side: "outside"`) or inward (`"inside"`) by half this. 0 = cut on the line |
 | `laserFill` | `engrave` | flood closed shapes with parallel scan lines (area/solid engraving) on top of the outline; counters (the hole in "O") stay clear. Default false |
 | `laserFillSpacing` | `engrave` | scan-line spacing (mm) when `laserFill` is on — roughly the beam width. Default 0.2 |
-| `laserOverscan` | `engrave` | fill only: distance (mm) the head runs past each scan line's ends with the beam off, so it's at full speed when the beam fires (avoids over-burned edges). 0 = off. Default 0 |
+| `laserOverscan` | `engrave` | fill **or** raster: distance (mm) the head runs past each scan line's/row's ends with the beam off, so it's at full speed when the beam fires (avoids over-burned edges). 0 = off. Default 0 |
 | `airAssist` | both | turn on air assist (the post's air command, `M8`/`M9` by default), held across consecutive ops that request it. Default false |
+| `rasterLineInterval` | `engrave` (image) | **raster engrave** (an Engrave op whose target is an `image` entity): vertical pitch (mm) between scan rows. Default 0.1 |
+| `rasterDotPitch` | `engrave` (image) | raster: horizontal pitch (mm) between dots in a row. Omitted = square dots (= `rasterLineInterval`) |
+| `rasterMinPower` | `engrave` (image) | raster: beam power (%) for the lightest engraved dot; `laserPower` is the power for a fully black dot. Default 0 |
+| `rasterInvert` | `engrave` (image) | raster: engrave the light areas instead of the dark (photo negative). Default false |
+
+A raster engrave is produced when an **Engrave** op's `entityIds` reference an `image` entity: the greyscale pixels are swept as horizontal scan rows, modulating beam power per dot (`laserPower` for black down to `rasterMinPower` for the lightest mark). `laserPower` is the *darkest* power; `laserPasses` repeats the whole sweep.
 
 ```jsonc
 // Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.
