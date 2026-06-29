@@ -188,8 +188,9 @@ Notes:
   Its `imageId` (`"img-XXXXXXXX"`) must appear in the top-level `images` array,
   which stores a downscaled **greyscale** buffer (one byte per pixel, row-major,
   row 0 = top, 0 = black) — colour carries no machining information for a laser.
-  The engrave currently assumes `angle` 0 (axis-aligned); a non-zero angle is
-  shown on canvas but warned about at G-code time.
+  `angle` (CCW radians) is reserved for forward compatibility but is always 0 in
+  this version — images are kept axis-aligned because the engrave does not yet
+  honour rotation (so the canvas can't show a cut the G-code won't make).
 
 ## Constraints
 

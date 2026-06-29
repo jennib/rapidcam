@@ -225,9 +225,9 @@ export class PropertiesBar {
     lockRow.append(lockLbl, lockCb);
     sec.appendChild(lockRow);
 
-    this.numRow(sec, "Angle", entity.angle * 180 / Math.PI, "°", (v) => {
-      this.applyEdit(() => { entity.angle = v * Math.PI / 180; });
-    });
+    // No angle field: a raster engrave is axis-aligned in this version, so the
+    // image must not be rotated on canvas (it would show a cut the G-code won't
+    // make). Rotation is intentionally not exposed until the engrave honours it.
     this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {
       this.applyEdit(() => { entity.position = { x, y }; });
     });
