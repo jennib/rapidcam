@@ -13,6 +13,7 @@ import {
   ArcEntity,
   BezierEntity,
   TextEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 import { dist } from "../core/vec2";
@@ -29,6 +30,24 @@ export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Eng
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
   return op.type as OpCombo;
+}
+
+/**
+ * The op-type a freshly opened toolpath dialog should start on:
+ * - editing an existing op → its own type;
+ * - a new op in a laser doc → a beam-capable type (profile/engrave);
+ * - a new op whose selection includes a raster image → **Engrave**, because an
+ *   image can only be engraved. Any other default would let the geometry list
+ *   strip the image as "invalid for profile", leaving the op with no geometry
+ *   (and Apply then rejecting it as an empty selection).
+ */
+export function defaultCombo(existing: CAMOperation | null, preSelected: Entity[], isLaser: boolean): OpCombo {
+  let combo: OpCombo = existing ? comboOf(existing) : "profile-outside";
+  // Laser has no spindle/Z ops; keep only beam-capable types.
+  if (isLaser && combo !== "profile-outside" && combo !== "profile-inside" && combo !== "engrave")
+    combo = "profile-outside";
+  if (!existing && preSelected.some((e) => e instanceof RasterImageEntity)) combo = "engrave";
+  return combo;
 }
 
 export function describeEntity(e: Entity, doc: CADDocument): string {

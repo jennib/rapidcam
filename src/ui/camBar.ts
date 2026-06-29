@@ -30,6 +30,7 @@ import {
   type OpCombo,
   AUTO_NAME_RE,
   comboOf,
+  defaultCombo,
   describeEntity,
   isValidFor,
   seedsFromEntityIds,
@@ -459,20 +460,12 @@ export class CamBar {
     // sections and shows a laser section (power/passes/feed) instead, and the
     // op-type list narrows to the two that map to a beam (cut + engrave).
     const isLaser = this.doc.machineKind === "laser";
-    const preSelected = new Set(
-      this.doc.entities.filter((e) => e.selected && !e.isConstruction).map((e) => e.id),
-    );
+    const preSelectedEnts = this.doc.entities.filter((e) => e.selected && !e.isConstruction);
+    const preSelected = new Set(preSelectedEnts.map((e) => e.id));
 
-    let initialCombo: OpCombo = existing ? comboOf(existing) : "profile-outside";
-    // In a laser doc, coerce any non-laser op type to a beam-capable one so the
-    // narrowed type list always has a matching selection.
-    if (isLaser && initialCombo !== "profile-outside" && initialCombo !== "profile-inside" && initialCombo !== "engrave")
-      initialCombo = "profile-outside";
-    // A raster image can only be engraved (not profile-cut), so a new op targeting
-    // one must default to Engrave — otherwise the geometry list strips the image as
-    // "invalid for profile" and the op commits with no geometry.
-    if (isNew && [...preSelected].some((id) => this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity))
-      initialCombo = "engrave";
+    // initialCombo picks the starting op type (and defaults an image selection to
+    // Engrave so it isn't stripped as invalid-for-profile — see defaultCombo).
+    const initialCombo: OpCombo = defaultCombo(existing, preSelectedEnts, isLaser);
     const state = {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
