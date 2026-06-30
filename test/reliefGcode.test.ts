@@ -73,8 +73,12 @@ test("relief: requires a depth-shaping bit (ball-nose / V-bit)", () => {
   const imgId = doc.entities.find((e) => e.type === "image")!.id;
   expect(generateGCode([reliefOp([imgId], { toolType: "end-mill" })], doc)).toMatch(/needs a ball-nose or V-bit/);
   expect(zMoves(generateGCode([reliefOp([imgId], { toolType: "end-mill" })], doc))).toEqual([]);
-  // V-bit is accepted.
-  expect(zMoves(generateGCode([reliefOp([imgId], { toolType: "v-bit" })], doc)).length).toBeGreaterThan(0);
+  // V-bit is accepted, but flagged as an engraving-like result (not a smooth relief).
+  const vg = generateGCode([reliefOp([imgId], { toolType: "v-bit" })], doc);
+  expect(zMoves(vg).length).toBeGreaterThan(0);
+  expect(vg).toMatch(/V-bit carves an engraving-like relief/);
+  // A ball-nose gets no such note.
+  expect(generateGCode([reliefOp([imgId], { toolType: "ball-nose" })], doc)).not.toMatch(/engraving-like/);
 });
 
 test("relief: reaches depth over stepdown passes (never one deep plunge)", () => {

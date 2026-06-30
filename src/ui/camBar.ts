@@ -523,9 +523,11 @@ export class CamBar {
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
       laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
       airAssist:    existing?.airAssist   ?? false,
-      // Laser wants a fine line interval (≈ beam width); a mill relief wants a
-      // coarser stepover (a fine one is a needlessly multi-hour cut with a wide bit).
-      rasterLineInterval: existing?.rasterLineInterval ?? (isLaser ? DEFAULTS.rasterLineInterval : 0.3),
+      // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
+      // scales with the bit — ~10% of the cutter diameter is a good scallop/speed
+      // balance (a fixed fine value is a needlessly long cut with a wide bit).
+      rasterLineInterval: existing?.rasterLineInterval
+        ?? (isLaser ? DEFAULTS.rasterLineInterval : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * 0.1)),
       rasterDotPitch: existing?.rasterDotPitch ?? 0,
       rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
       rasterInvert: existing?.rasterInvert ?? false,

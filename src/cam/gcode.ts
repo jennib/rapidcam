@@ -718,6 +718,11 @@ function reliefImage(
   const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
   const lines: string[] = [];
 
+  // A V-bit cuts a cone per dot, not a smooth surface — fine for line-art but
+  // engraving-like for a photo. Flag it so the result isn't a surprise.
+  if (op.toolType === "v-bit")
+    lines.push(`; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, or a V-carve op for line art`);
+
   for (let p = 1; p <= passes; p++) {
     const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
     // Build the whole pass as one continuous boustrophedon path, merging runs of
