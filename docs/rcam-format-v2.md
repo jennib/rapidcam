@@ -381,6 +381,7 @@ loop, e.g. `{ "containingLoops": [ ["circle-7"] ] }`.
   "feedrate": 900, "plungeRate": 250, "spindleSpeed": 18000, "safeZ": 5,
   "depth": -12, "stepdown": 2, "stepover": 0.4,
   "tabs":   { "enabled": true, "count": 4, "width": 6, "height": 2 },
+  // …or by spacing: { "enabled": true, "strategy": "spacing", "spacing": 50, "width": 6, "height": 2 }
   "leadIn": { "type": "arc", "length": 3 },
   "leadOut":{ "type": "arc", "length": 3 } }
 ```

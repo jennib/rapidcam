@@ -65,7 +65,9 @@ interface OpState {
   regionSeeds: Vec2[];
   followPattern: boolean;
   tabsEnabled: boolean;
+  tabStrategy: "count" | "spacing";
   tabCount: number;
+  tabSpacing: number;
   tabWidth: number;
   tabHeight: number;
   stepover: number;
@@ -507,7 +509,9 @@ export class CamBar {
           ? legacyPocketSeeds(existing, this.doc)
           : ([] as Vec2[]),
       tabsEnabled:  existing?.tabs?.enabled ?? false,
+      tabStrategy:  (existing?.tabs?.strategy ?? "count") as "count" | "spacing",
       tabCount:     existing?.tabs?.count   ?? 4,
+      tabSpacing:   existing?.tabs?.spacing ?? 40,
       tabWidth:     existing?.tabs?.width   ?? 4,
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
@@ -1048,7 +1052,9 @@ export class CamBar {
           : undefined,
         tabs: isProfile ? {
           enabled: state.tabsEnabled,
+          strategy: state.tabStrategy !== "count" ? state.tabStrategy : undefined,
           count:   state.tabCount,
+          spacing: state.tabStrategy === "spacing" ? state.tabSpacing : undefined,
           width:   state.tabWidth,
           height:  state.tabHeight,
         } : undefined,
@@ -1542,10 +1548,22 @@ export class CamBar {
     tabEnabledWrap.appendChild(tabEnabledLbl);
     tabsSec.appendChild(tabEnabledWrap);
 
-    const tabCountRow  = this.numRow("Tab count",       () => state.tabCount,  (v) => { state.tabCount  = Math.max(1, Math.round(v)); });
-    const tabWidthRow  = this.numRow("Tab width (mm)",  () => state.tabWidth,  (v) => { state.tabWidth  = Math.max(0.1, v); });
-    const tabHeightRow = this.numRow("Tab height (mm)", () => state.tabHeight, (v) => { state.tabHeight = Math.max(0.1, v); });
+    const tabStrategySel = document.createElement("select");
+    tabStrategySel.className = "unit";
+    for (const [v, l] of [["count", "By count"], ["spacing", "By spacing"]] as const) {
+      const o = document.createElement("option"); o.value = v; o.textContent = l;
+      tabStrategySel.appendChild(o);
+    }
+    tabStrategySel.value = state.tabStrategy;
+    const tabStrategyRow = this.dField("Tabs by", tabStrategySel);
+
+    const tabCountRow   = this.numRow("Tab count",       () => state.tabCount,   (v) => { state.tabCount   = Math.max(1, Math.round(v)); });
+    const tabSpacingRow = this.numRow("Tab spacing (mm)", () => state.tabSpacing, (v) => { state.tabSpacing = Math.max(1, v); });
+    const tabWidthRow   = this.numRow("Tab width (mm)",  () => state.tabWidth,   (v) => { state.tabWidth   = Math.max(0.1, v); });
+    const tabHeightRow  = this.numRow("Tab height (mm)", () => state.tabHeight,  (v) => { state.tabHeight  = Math.max(0.1, v); });
+    tabsSec.appendChild(tabStrategyRow);
     tabsSec.appendChild(tabCountRow.el);
+    tabsSec.appendChild(tabSpacingRow.el);
     tabsSec.appendChild(tabWidthRow.el);
     tabsSec.appendChild(tabHeightRow.el);
 
@@ -1553,10 +1571,14 @@ export class CamBar {
       const isProfile = state.combo === "profile-outside" || state.combo === "profile-inside";
       tabsSec.style.display = isProfile ? "" : "none";
       const fieldsOn = isProfile && state.tabsEnabled;
-      tabCountRow.el.style.display  = fieldsOn ? "" : "none";
+      const byCount = state.tabStrategy !== "spacing";
+      tabStrategyRow.style.display  = fieldsOn ? "" : "none";
+      tabCountRow.el.style.display  = fieldsOn && byCount ? "" : "none";
+      tabSpacingRow.el.style.display = fieldsOn && !byCount ? "" : "none";
       tabWidthRow.el.style.display  = fieldsOn ? "" : "none";
       tabHeightRow.el.style.display = fieldsOn ? "" : "none";
     };
+    tabStrategySel.addEventListener("change", () => { state.tabStrategy = tabStrategySel.value as "count" | "spacing"; update(); });
     update();
 
     tabEnabledCb.addEventListener("change", () => {

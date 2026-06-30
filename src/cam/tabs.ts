@@ -24,6 +24,16 @@ export function pathLengths(verts: Vec2[]): number[] {
   return lengths;
 }
 
+/**
+ * Resolve how many tabs to place on a path of `totalLength`: a fixed `count`, or
+ * one roughly every `spacing` mm when `spacing` is given (≥1 tab). Lets a longer
+ * contour get proportionally more tabs.
+ */
+export function resolveTabCount(totalLength: number, count: number, spacing?: number): number {
+  if (spacing && spacing > 0) return Math.max(1, Math.round(totalLength / spacing));
+  return Math.max(0, Math.round(count));
+}
+
 /** Distribute `count` tabs evenly around a closed path of `totalLength`. */
 export function computeTabRegions(
   totalLength: number,

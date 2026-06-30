@@ -529,7 +529,9 @@
       "required": ["enabled", "count", "width", "height"],
       "properties": {
         "enabled": { "type": "boolean" },
-        "count": { "type": "integer", "minimum": 0 },
+        "strategy": { "enum": ["count", "spacing"], "description": "How tab quantity is set: \"count\" (default) places `count` tabs evenly; \"spacing\" places one roughly every `spacing` mm of perimeter (a longer contour gets more)." },
+        "count": { "type": "integer", "minimum": 0, "description": "Number of tabs, evenly distributed (\"count\" strategy)." },
+        "spacing": { "type": "number", "exclusiveMinimum": 0, "description": "Perimeter distance (mm) between tabs (\"spacing\" strategy)." },
         "width": { "type": "number", "description": "arc-length of each tab, mm" },
         "height": { "type": "number", "description": "material left standing above the floor, mm" }
       }

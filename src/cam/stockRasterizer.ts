@@ -25,7 +25,7 @@ import { getImageGrid } from "../core/imageManager";
 import { type CAMOperation, DEFAULTS, chamferDepth, chamferSharpSequence } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
-import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
+import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { expandOpPatternTargets } from "./patternExpand";
@@ -576,7 +576,8 @@ function rasProfilePolygon(
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
 
   const tabs    = op.tabs;
-  const hasTabs = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
+  const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
+  const hasTabs = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
   const tabZOff = hasTabs ? op.depth + tabs!.height : 0;
 
   // Lead-in/out lengths (linear approximation of the cut path — enough to carve
@@ -613,7 +614,8 @@ function rasProfilePolygon(
         const tabDepth = stockT + tabZOff;
         const cumLens  = pathLengths(path);
         const totalLen = cumLens[path.length];
-        const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
+        const tabN     = resolveTabCount(totalLen, tabs!.count, tabsBySpacing ? tabs!.spacing : undefined);
+        const regions  = computeTabRegions(totalLen, tabN, tabs!.width);
         const segs     = splitPathForTabs(path, cumLens, regions);
         for (const seg of segs)
           walkSegment(seg.p0, seg.p1, stepR, seg.isTab ? tabDepth : depth, stamp);

@@ -52,7 +52,14 @@ export interface LeadDef {
 
 export interface TabDef {
   enabled: boolean;
-  count: number;    // tabs distributed evenly around the path
+  /**
+   * How tab quantity is set. "count" (default) places `count` tabs evenly;
+   * "spacing" places one roughly every `spacing` mm of perimeter (so a longer
+   * contour automatically gets more tabs).
+   */
+  strategy?: "count" | "spacing";
+  count: number;    // tabs distributed evenly around the path ("count" strategy)
+  spacing?: number; // mm between tabs along the perimeter ("spacing" strategy)
   width: number;    // mm — arc-length of each tab
   height: number;   // mm — material left standing above the cut floor
 }

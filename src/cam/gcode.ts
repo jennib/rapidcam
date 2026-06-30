@@ -8,7 +8,7 @@ import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSha
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
-import { pathLengths, computeTabRegions, splitPathForTabs } from "./tabs";
+import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
@@ -85,7 +85,8 @@ function profilePolygon(
     : [];
 
   const tabs      = op.tabs;
-  const hasTabs   = !!(tabs?.enabled && tabs.count > 0 && tabs.width > 0 && tabs.height > 0);
+  const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
+  const hasTabs   = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
   const tabZOff   = hasTabs ? op.depth + tabs!.height : 0;
 
   const liType = op.leadIn?.type  ?? "none";
@@ -142,7 +143,8 @@ function profilePolygon(
     } else {
       const cumLens  = pathLengths(path);
       const totalLen = cumLens[path.length];
-      const regions  = computeTabRegions(totalLen, tabs!.count, tabs!.width);
+      const tabN     = resolveTabCount(totalLen, tabs!.count, tabsBySpacing ? tabs!.spacing : undefined);
+      const regions  = computeTabRegions(totalLen, tabN, tabs!.width);
       const segs     = splitPathForTabs(path, cumLens, regions);
 
       let currentZ = z;
