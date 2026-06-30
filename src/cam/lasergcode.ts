@@ -551,8 +551,15 @@ export function generateLaserGCode(
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
 
+  const md = doc.metadata ?? {};
+  const metaLines: string[] = [];
+  if (md.job?.trim())      metaLines.push(`; Job: ${md.job.trim()}`);
+  if (md.revision?.trim()) metaLines.push(`; Revision: ${md.revision.trim()}`);
+  if (md.notes?.trim())    metaLines.push(`; Notes: ${md.notes.trim().replace(/\r?\n/g, " ")}`);
+
   const lines: string[] = [
     "; RapidCAM generated G-code - https://rapidcam.app",
+    ...metaLines,
     `; Laser post-processor: ${post.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}`,

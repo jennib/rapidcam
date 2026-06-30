@@ -53,6 +53,16 @@
       ],
       "description": "Optional end-of-program park position in work coordinates (mm); the program rapids here at safe Z before M30. { x: 0, y: 0 } parks at the WCS origin. null/omitted leaves the tool where the last toolpath ended."
     },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "job": { "type": "string", "description": "Job name / part number." },
+        "revision": { "type": "string", "description": "Revision identifier (e.g. \"A\", \"v2\")." },
+        "notes": { "type": "string", "description": "Free-form notes." }
+      },
+      "description": "Optional informational job metadata. Affects no geometry; non-empty fields are written as comments in the G-code header. Omitted when all fields are blank."
+    },
     "groups": {
       "type": "array",
       "items": { "$ref": "#/$defs/group" },

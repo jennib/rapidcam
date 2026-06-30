@@ -29,6 +29,8 @@ export interface RcamFile {
   machineKind?: string;
   /** Optional end-of-program park position (work coords, mm). Omitted when off. */
   endPosition?: { x: number; y: number } | null;
+  /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
+  metadata?: { job?: string; revision?: string; notes?: string };
   groups?: unknown[];
   layers?: unknown[];
   activeLayerId?: string;
@@ -45,6 +47,23 @@ export interface RcamFile {
   /** Greyscale pixels for image entities, embedded so a raster engrave reproduces
    *  anywhere. Stripped from the localStorage caches (recents/draft) — they're big. */
   images?: EmbeddedImage[];
+}
+
+/**
+ * Strip blank/whitespace-only fields from a metadata object; returns the
+ * trimmed object, or `null` when nothing meaningful remains (so callers can
+ * omit the field entirely rather than persisting an empty `{}`).
+ */
+function cleanMetadata(
+  m: { job?: string; revision?: string; notes?: string } | undefined,
+): { job?: string; revision?: string; notes?: string } | null {
+  if (!m) return null;
+  const out: { job?: string; revision?: string; notes?: string } = {};
+  for (const k of ["job", "revision", "notes"] as const) {
+    const v = m[k]?.trim();
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 /**
@@ -172,6 +191,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     postProcessor: doc.postProcessor,
     ...(doc.machineKind !== "mill" ? { machineKind: doc.machineKind } : {}),
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
+    ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
     activeLayerId: snap.activeLayerId,
@@ -227,6 +247,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     postProcessor: file.postProcessor,
     machineKind: file.machineKind as DocSnapshot["machineKind"],
     endPosition: file.endPosition ?? null,
+    metadata: cleanMetadata(file.metadata) ?? {},
     isConstructionMode: false,
     selectedPoints: [],
     selectedConstraintId: null,

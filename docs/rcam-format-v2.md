@@ -67,6 +67,7 @@ vocabularies is unchanged.
   "postProcessor": "linuxcnc",                  // mill: "linuxcnc" | "grbl"; laser: see below
   "machineKind": "mill",                         // "mill" | "laser", default "mill"
   "endPosition": null,                          // optional park position; see below
+  "metadata": { "job": "", "revision": "", "notes": "" }, // optional job info; see below
   "groups": [],
   "layers": [ /* optional; a Default layer is created if omitted */ ],
   "activeLayerId": "layer-0",
@@ -132,6 +133,12 @@ shop, not the design — so they are not stored in the file either.
 `endPosition` is an optional `{ "x", "y" }` (work coordinates, mm) the spindle
 rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS
 origin. `null` (or omitted) leaves the tool wherever the last toolpath ended.
+
+`metadata` is optional informational job data — `job`, `revision`, and `notes`,
+all optional strings. It affects no geometry or toolpaths; non-empty fields are
+written as comments in the G-code header (`; Job: …`, `; Revision: …`,
+`; Notes: …`). Blank fields are dropped on save, and an all-blank object is
+omitted entirely.
 
 ## IDs
 

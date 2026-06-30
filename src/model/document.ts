@@ -37,6 +37,20 @@ export interface EndPosition {
 }
 
 /**
+ * Free-form job metadata carried with the document. All fields optional; only
+ * non-empty fields are serialized and emitted in the G-code header. Purely
+ * informational — affects no geometry or toolpaths.
+ */
+export interface DocMetadata {
+  /** Job name / part number. */
+  job?: string;
+  /** Revision identifier (e.g. "A", "v2"). */
+  revision?: string;
+  /** Free-form notes. */
+  notes?: string;
+}
+
+/**
  * Resolve the named origin into concrete offsets used by G-code generation.
  * ox / oy: subtract from canvas coords to get G-code coords.
  * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
@@ -111,6 +125,7 @@ export interface DocSnapshot {
   postProcessor?: string;
   machineKind?: MachineKind;
   endPosition?: EndPosition | null;
+  metadata?: DocMetadata;
   groups?: GroupDef[];
   layers?: LayerDef[];
   activeLayerId?: string;
@@ -153,6 +168,12 @@ export class CADDocument {
    * last toolpath ended. Defaults to off.
    */
   endPosition: EndPosition | null = null;
+  /**
+   * Optional job metadata (job name, revision, notes). Informational only —
+   * serialized when non-empty and emitted in the G-code header. See
+   * {@link DocMetadata}.
+   */
+  metadata: DocMetadata = {};
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
@@ -607,6 +628,7 @@ export class CADDocument {
       postProcessor: this.postProcessor,
       machineKind: this.machineKind,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
+      metadata: { ...this.metadata },
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map(l => ({ ...l })),
@@ -698,6 +720,7 @@ export class CADDocument {
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
+    this.metadata = s.metadata ? { ...s.metadata } : {};
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
     for (const p of this.patterns) updateCounter(p.id);

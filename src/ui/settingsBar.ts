@@ -11,6 +11,9 @@ export class SettingsBar {
   private endReturnCheck!: HTMLInputElement;
   private endXInput!: HTMLInputElement;
   private endYInput!: HTMLInputElement;
+  private jobInput!: HTMLInputElement;
+  private revisionInput!: HTMLInputElement;
+  private notesInput!: HTMLTextAreaElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = false;
@@ -101,6 +104,16 @@ export class SettingsBar {
     endGroup.appendChild(this.field("End Y", this.endYInput));
     this.content.appendChild(endGroup);
 
+    // Job metadata (informational; written to the G-code header)
+    const jobGroup = this.group("Job");
+    jobGroup.appendChild(this.field("Job", (this.jobInput = this.textInput("part / job name"))));
+    jobGroup.appendChild(this.field("Revision", (this.revisionInput = this.textInput("e.g. A"))));
+    this.notesInput = document.createElement("textarea");
+    this.notesInput.className = "dim"; this.notesInput.rows = 2;
+    this.notesInput.placeholder = "notes (optional)";
+    jobGroup.appendChild(this.field("Notes", this.notesInput));
+    this.content.appendChild(jobGroup);
+
     // Units
     this.unitSelect = document.createElement("select");
     this.unitSelect.className = "unit";
@@ -157,6 +170,20 @@ export class SettingsBar {
     };
     this.endXInput.addEventListener("change", commitEnd);
     this.endYInput.addEventListener("change", commitEnd);
+    const commitMeta = (): void => {
+      const job = this.jobInput.value.trim();
+      const revision = this.revisionInput.value.trim();
+      const notes = this.notesInput.value.trim();
+      const next = { ...(job && { job }), ...(revision && { revision }), ...(notes && { notes }) };
+      const cur = this.doc.metadata ?? {};
+      if (cur.job === next.job && cur.revision === next.revision && cur.notes === next.notes) return;
+      this.pushHistory();
+      this.doc.metadata = next;
+      this.doc.emitChange();
+    };
+    this.jobInput.addEventListener("change", commitMeta);
+    this.revisionInput.addEventListener("change", commitMeta);
+    this.notesInput.addEventListener("change", commitMeta);
     this.unitSelect.addEventListener("change", () => {
       this.doc.displayUnit = this.unitSelect.value as Unit;
       this.doc.emitChange();
@@ -228,6 +255,12 @@ export class SettingsBar {
     return i;
   }
 
+  private textInput(placeholder: string): HTMLInputElement {
+    const i = document.createElement("input");
+    i.className = "dim"; i.type = "text"; i.placeholder = placeholder;
+    return i;
+  }
+
   private makeSelect(options: [string, string][]): HTMLSelectElement {
     const sel = document.createElement("select");
     sel.className = "unit";
@@ -268,6 +301,13 @@ export class SettingsBar {
       this.endXInput.value = formatLength(ep ? ep.x : 0, u);
     if (document.activeElement !== this.endYInput)
       this.endYInput.value = formatLength(ep ? ep.y : 0, u);
+    const md = this.doc.metadata ?? {};
+    if (document.activeElement !== this.jobInput)
+      this.jobInput.value = md.job ?? "";
+    if (document.activeElement !== this.revisionInput)
+      this.revisionInput.value = md.revision ?? "";
+    if (document.activeElement !== this.notesInput)
+      this.notesInput.value = md.notes ?? "";
     this.unitSelect.value = u;
   }
 }
