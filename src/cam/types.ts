@@ -241,6 +241,12 @@ export interface CAMOperation {
   rasterMinPower?: number;
   /** Raster engrave only: engrave the light areas instead of the dark (photo negative). Default false. */
   rasterInvert?: boolean;
+  /**
+   * Mill relief only: tone curve on the carved depth — `depth ∝ darkness ^ gamma`.
+   * 1 = linear (default). >1 lifts the mid-tones (flatter/shallower background),
+   * <1 deepens them; a photo usually needs this tuned to not read flat.
+   */
+  reliefGamma?: number;
 }
 
 export const DEFAULTS = {

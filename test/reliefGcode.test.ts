@@ -44,6 +44,28 @@ test("relief: a black top-left pixel carves deepest at top-left in world (Y-up, 
   expect(moves.some((m) => Math.abs(m.z) < 1e-9)).toBe(true);
 });
 
+test("relief: the tone curve (gamma) reshapes mid-tone depth, leaving black at full depth", () => {
+  const id = registerGrid([[128, 128], [128, 128]]); // mid-grey (needs ≥2 dots/row for a ride move)
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 4, 4, 0));
+  const idd = doc.entities.find((e) => e.type === "image")!.id;
+  const depthAt = (gamma?: number) => {
+    const g = generateGCode([reliefOp([idd], { depth: -4, stepdown: 4, rasterLineInterval: 2, rasterDotPitch: 2, reliefGamma: gamma })], doc);
+    return -Math.min(...zMoves(g).map((m) => m.z)); // carved depth of the mid-grey dot
+  };
+  const linear = depthAt(undefined);
+  expect(depthAt(2)).toBeLessThan(linear);   // gamma>1 makes the mid-tone shallower
+  expect(depthAt(0.5)).toBeGreaterThan(linear); // gamma<1 deepens it
+
+  // Black still reaches full depth regardless of gamma.
+  const black = registerGrid([[0, 0], [0, 0]]);
+  const doc2 = new CADDocument({ width: 100, height: 100 });
+  doc2.add(new RasterImageEntity(black, { x: 0, y: 0 }, 4, 4, 0));
+  const gb = generateGCode([reliefOp([doc2.entities.find((e) => e.type === "image")!.id],
+    { depth: -4, stepdown: 4, rasterLineInterval: 2, rasterDotPitch: 2, reliefGamma: 2 })], doc2);
+  expect(Math.min(...zMoves(gb).map((m) => m.z))).toBeCloseTo(-4, 6);
+});
+
 test("relief: requires a depth-shaping bit (ball-nose / V-bit)", () => {
   const id = registerGrid([[0]]);
   const doc = new CADDocument({ width: 100, height: 100 });

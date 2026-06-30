@@ -52,6 +52,17 @@ describe("rasterField (shared level grid)", () => {
     expect(f.rows[1].levels[0]).toBe(1); // top = black
   });
 
+  it("applies a tone curve (gamma) to the level, fixing the black/white endpoints", () => {
+    // (levels are quantised to 1/255, so compare at 2 decimals)
+    const mid = (gamma: number) => rasterField(grid([[0.5]]), F({ widthMM: 1, heightMM: 1, lineIntervalMM: 1, gamma })).rows[0].levels[0];
+    expect(mid(1)).toBeCloseTo(0.5, 2);                 // linear: darkness 0.5
+    expect(mid(2)).toBeCloseTo(0.25, 2);                // >1 lifts mid-tones (shallower) = 0.5²
+    expect(mid(0.5)).toBeCloseTo(Math.SQRT1_2, 2);      // <1 deepens them = 0.5^0.5
+    // Endpoints are unchanged by gamma.
+    expect(rasterField(grid([[0]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0]).toBe(1); // black
+    expect(rasterField(grid([[1]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0]).toBe(0); // white
+  });
+
   it("box-averages to the dot pitch (shares resampleGrid with rasterEngrave)", () => {
     // 4 source px across 2mm at a 1mm dot pitch → 2 dots, each the mean of 2 px.
     const f = rasterField(grid([[0, 0, 1, 1]]), F({ widthMM: 2, heightMM: 1, lineIntervalMM: 1 }));

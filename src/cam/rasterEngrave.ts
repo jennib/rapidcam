@@ -165,6 +165,13 @@ export interface RasterFieldParams {
    * collinear-merges equal-Z runs; the laser merges equal-power runs).
    */
   levelStep?: number;
+  /**
+   * Tone curve applied to the cut level: `level' = level ^ gamma`. 1 = linear
+   * (default). For a mill relief, >1 lifts the mid-tones (shallower, flatter
+   * background) and <1 deepens them — linear depth often makes a photo read flat,
+   * so this is how the user dials in the look. Endpoints (black/white) are fixed.
+   */
+  gamma?: number;
 }
 
 /**
@@ -183,6 +190,7 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   const whiteThreshold = params.whiteThreshold ?? 0.96;
   const invert = params.invert ?? false;
   const levelStep = params.levelStep && params.levelStep > 0 ? params.levelStep : 1 / 255;
+  const gamma = params.gamma && params.gamma > 0 ? params.gamma : 1;
 
   const rowCount = Math.max(1, Math.round(heightMM / lineIntervalMM));
   const colCount = Math.max(1, Math.round(widthMM / dotPitch));
@@ -194,7 +202,8 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   const levelFor = (gray: number): number => {
     const g = clamp01(invert ? 1 - gray : gray);
     if (g >= whiteThreshold) return 0;
-    const q = Math.round((1 - g) / levelStep) * levelStep;
+    const curved = gamma === 1 ? 1 - g : Math.pow(1 - g, gamma);
+    const q = Math.round(curved / levelStep) * levelStep;
     return q > 0 ? q : 0;
   };
 

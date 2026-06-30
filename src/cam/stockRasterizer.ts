@@ -362,7 +362,7 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
   const field = rasterField(grid, {
     widthMM: ent.widthMM, heightMM: ent.heightMM,
     lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
-    dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert,
+    dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert, gamma: op.reliefGamma,
   });
   for (const row of field.rows) {
     const wy = ent.position.y + row.y;

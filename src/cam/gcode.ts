@@ -710,6 +710,7 @@ function reliefImage(
     lineIntervalMM: lineInterval,
     dotPitchMM: op.rasterDotPitch,
     invert: op.rasterInvert,
+    gamma: op.reliefGamma,
   });
   if (field.rows.length === 0) return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
 

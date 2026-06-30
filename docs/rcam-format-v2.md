@@ -413,7 +413,7 @@ instead:
 
 A raster engrave is produced when an **Engrave** op's `entityIds` reference an `image` entity: the greyscale pixels are swept as horizontal scan rows, modulating beam power per dot (`laserPower` for black down to `rasterMinPower` for the lightest mark). `laserPower` is the *darkest* power; `laserPasses` repeats the whole sweep.
 
-On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose or V-bit** (a flat end mill is rejected with a note). `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead. (`laserPower`/`rasterMinPower` are ignored.)
+On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose or V-bit** (a flat end mill is rejected with a note). `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead; `reliefGamma` applies a tone curve (`depth ∝ darkness^gamma`, default linear) to keep a photo from reading flat. (`laserPower`/`rasterMinPower` are ignored.)
 
 ```jsonc
 // Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.

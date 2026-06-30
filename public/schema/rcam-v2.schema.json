@@ -607,7 +607,8 @@
         "rasterLineInterval": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only (an Engrave op targeting an image entity — a LASER raster or a MILL relief): vertical pitch (mm) between scan rows (the line interval for a laser, the stepover for a mill). Laser default 0.1; mill relief default 0.3." },
         "rasterDotPitch": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only: horizontal pitch (mm) between dots within a row. Omitted = square dots (uses rasterLineInterval)." },
         "rasterMinPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Laser raster engrave only: beam power (%) for the lightest engraved dot (laserPower is the power for a fully black dot). Default 0." },
-        "rasterInvert": { "type": "boolean", "description": "Image-engrave only: engrave/carve the light areas instead of the dark (negative). Default false." }
+        "rasterInvert": { "type": "boolean", "description": "Image-engrave only: engrave/carve the light areas instead of the dark (negative). Default false." },
+        "reliefGamma": { "type": "number", "exclusiveMinimum": 0, "description": "Mill relief only: tone curve on carved depth — depth proportional to darkness^gamma. 1 = linear (default). >1 lifts the mid-tones (flatter, shallower background), <1 deepens them. Black/white endpoints are fixed." }
       }
     },
     "tool": {

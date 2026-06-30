@@ -87,6 +87,7 @@ interface OpState {
   rasterDotPitch: number; // 0 = square dots (use the line interval)
   rasterMinPower: number;
   rasterInvert: boolean;
+  reliefGamma: number; // mill relief tone curve (1 = linear)
 }
 
 /**
@@ -528,6 +529,7 @@ export class CamBar {
       rasterDotPitch: existing?.rasterDotPitch ?? 0,
       rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
       rasterInvert: existing?.rasterInvert ?? false,
+      reliefGamma: existing?.reliefGamma ?? 1,
     };
 
     let geomCleanup: () => void = () => {};
@@ -716,6 +718,16 @@ export class CamBar {
     const reliefInvRow = this.dField("Invert (carve the light areas)", reliefInvChk);
     cutSec.appendChild(reliefInvRow);
 
+    const reliefGammaInp = document.createElement("input");
+    reliefGammaInp.type = "number"; reliefGammaInp.className = "dim"; reliefGammaInp.step = "any"; reliefGammaInp.min = "0.1";
+    reliefGammaInp.value = String(state.reliefGamma);
+    reliefGammaInp.title = "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
+    reliefGammaInp.addEventListener("change", () => {
+      const v = parseFloat(reliefGammaInp.value); if (isFinite(v) && v > 0) state.reliefGamma = v;
+    });
+    const reliefGammaRow = this.dField("Tone curve (gamma, 1 = linear)", reliefGammaInp);
+    cutSec.appendChild(reliefGammaRow);
+
     // Live cut-time estimate — a relief is a long job (often tens of minutes to
     // hours); surface it so a multi-MB, hour-long program isn't a surprise.
     const reliefEstRow = document.createElement("div");
@@ -744,7 +756,7 @@ export class CamBar {
     // also needs a depth-shaping bit, so force a ball-nose if it's a flat end mill.
     const updateReliefVisibility = (): void => {
       const isRelief = state.combo === "engrave" && this.opTargetsImage(state.entityIds);
-      for (const r of [reliefLineRow, reliefDotRow, reliefInvRow, reliefEstRow]) r.style.display = isRelief ? "" : "none";
+      for (const r of [reliefLineRow, reliefDotRow, reliefInvRow, reliefGammaRow, reliefEstRow]) r.style.display = isRelief ? "" : "none";
       if (isRelief && state.toolType !== "ball-nose" && state.toolType !== "v-bit") hooks.setToolType("ball-nose");
       if (isRelief) updateReliefEstimate();
     };
@@ -1052,6 +1064,8 @@ export class CamBar {
         rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
         rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
         rasterInvert: rasterFields && state.rasterInvert ? true : undefined,
+        // Tone curve is a mill-relief control (a laser raster uses min/max power instead).
+        reliefGamma: !isLaser && rasterFields && state.reliefGamma > 0 && state.reliefGamma !== 1 ? state.reliefGamma : undefined,
       };
 
       if (existing) {
