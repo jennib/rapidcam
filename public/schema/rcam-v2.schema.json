@@ -604,10 +604,10 @@
         "laserFillSpacing": { "type": "number", "exclusiveMinimum": 0, "description": "Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2." },
         "laserOverscan": { "type": "number", "minimum": 0, "description": "Laser fill / raster only: overscan distance (mm) the head runs past each scan line's/row's ends with the beam off, so it's at full speed when the beam fires (avoids over-burned edges). 0 = off. Default 0." },
         "airAssist": { "type": "boolean", "description": "Laser only: enable air assist for this operation (the post's air command, M8/M9 by default), kept on across consecutive ops that request it and off otherwise. Default false." },
-        "rasterLineInterval": { "type": "number", "exclusiveMinimum": 0, "description": "Raster engrave only (an Engrave op targeting an image entity): vertical pitch (mm) between scan rows — the line interval / vertical resolution. Default 0.1." },
-        "rasterDotPitch": { "type": "number", "exclusiveMinimum": 0, "description": "Raster engrave only: horizontal pitch (mm) between dots within a row. Omitted = square dots (uses rasterLineInterval)." },
-        "rasterMinPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Raster engrave only: beam power (%) for the lightest engraved dot (laserPower is the power for a fully black dot). Default 0." },
-        "rasterInvert": { "type": "boolean", "description": "Raster engrave only: engrave the light areas instead of the dark (photo negative). Default false." }
+        "rasterLineInterval": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only (an Engrave op targeting an image entity — a LASER raster or a MILL relief): vertical pitch (mm) between scan rows (the line interval for a laser, the stepover for a mill). Laser default 0.1; mill relief default 0.3." },
+        "rasterDotPitch": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only: horizontal pitch (mm) between dots within a row. Omitted = square dots (uses rasterLineInterval)." },
+        "rasterMinPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Laser raster engrave only: beam power (%) for the lightest engraved dot (laserPower is the power for a fully black dot). Default 0." },
+        "rasterInvert": { "type": "boolean", "description": "Image-engrave only: engrave/carve the light areas instead of the dark (negative). Default false." }
       }
     },
     "tool": {

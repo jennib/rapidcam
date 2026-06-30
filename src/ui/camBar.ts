@@ -471,7 +471,13 @@ export class CamBar {
       name: existing?.name ?? this.autoName(initialCombo),
       combo: initialCombo,
       toolId: existing?.toolId,
-      toolType: (existing?.toolType ?? DEFAULTS.toolType) as ToolType,
+      // A mill relief (engrave targeting an image) needs a depth-shaping bit, so a
+      // new one defaults to a ball-nose rather than the flat end mill (which carves
+      // nothing). Done here at state init so the tool selector reflects it on open.
+      toolType: (existing?.toolType ?? (
+        !isLaser && initialCombo === "engrave" && preSelectedEnts.some((e) => e instanceof RasterImageEntity)
+          ? "ball-nose" : DEFAULTS.toolType
+      )) as ToolType,
       toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
       diameter: existing?.diameter ?? DEFAULTS.diameter,
       vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
@@ -516,7 +522,9 @@ export class CamBar {
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
       laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
       airAssist:    existing?.airAssist   ?? false,
-      rasterLineInterval: existing?.rasterLineInterval ?? DEFAULTS.rasterLineInterval,
+      // Laser wants a fine line interval (≈ beam width); a mill relief wants a
+      // coarser stepover (a fine one is a needlessly multi-hour cut with a wide bit).
+      rasterLineInterval: existing?.rasterLineInterval ?? (isLaser ? DEFAULTS.rasterLineInterval : 0.3),
       rasterDotPitch: existing?.rasterDotPitch ?? 0,
       rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
       rasterInvert: existing?.rasterInvert ?? false,
@@ -590,7 +598,7 @@ export class CamBar {
     depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
     depthInp.value = String(state.depth);
     depthInp.addEventListener("change", () => {
-      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; hooks.updateVBitHint(); }
+      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; hooks.updateVBitHint(); updateReliefEstimate(); }
     });
     const throughBtn = document.createElement("button");
     throughBtn.className = "cbtn";
@@ -599,6 +607,7 @@ export class CamBar {
     throughBtn.addEventListener("click", () => {
       state.depth = -this.doc.stockThickness;
       depthInp.value = String(state.depth);
+      updateReliefEstimate();
     });
     depthRow.appendChild(depthInp);
     depthRow.appendChild(throughBtn);
@@ -626,6 +635,7 @@ export class CamBar {
     stepInp.value = String(state.stepdown);
     stepInp.addEventListener("change", () => {
       const v = parseFloat(stepInp.value); if (isFinite(v)) state.stepdown = v;
+      updateReliefEstimate();
     });
     const stepRow = this.dField("Stepdown (mm)", stepInp);
     cutSec.appendChild(stepRow);
@@ -674,6 +684,70 @@ export class CamBar {
     });
     const vHopRow = this.dField("V-carve hop clearance (mm, 0 = safe Z)", vHopInp);
     cutSec.appendChild(vHopRow);
+
+    // Relief engrave (a mill Engrave op targeting an image) — carve the image as
+    // depth-modulated 2.5-D. Depth (max) + Stepdown above drive the cut; these set
+    // the raster resolution. Needs a ball-nose/V-bit (forced below).
+    const reliefLineInp = document.createElement("input");
+    reliefLineInp.type = "number"; reliefLineInp.className = "dim"; reliefLineInp.step = "any"; reliefLineInp.min = "0.01";
+    reliefLineInp.value = String(state.rasterLineInterval);
+    reliefLineInp.title = "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
+    reliefLineInp.addEventListener("change", () => {
+      const v = parseFloat(reliefLineInp.value); if (isFinite(v) && v > 0) state.rasterLineInterval = v;
+      updateReliefEstimate();
+    });
+    const reliefLineRow = this.dField("Relief stepover (mm)", reliefLineInp);
+    cutSec.appendChild(reliefLineRow);
+
+    const reliefDotInp = document.createElement("input");
+    reliefDotInp.type = "number"; reliefDotInp.className = "dim"; reliefDotInp.step = "any"; reliefDotInp.min = "0";
+    reliefDotInp.value = String(state.rasterDotPitch);
+    reliefDotInp.title = "Horizontal dot pitch. 0 = square dots (use the stepover).";
+    reliefDotInp.addEventListener("change", () => {
+      const v = parseFloat(reliefDotInp.value); if (isFinite(v) && v >= 0) state.rasterDotPitch = v;
+    });
+    const reliefDotRow = this.dField("Relief dot pitch (mm, 0 = square)", reliefDotInp);
+    cutSec.appendChild(reliefDotRow);
+
+    const reliefInvChk = document.createElement("input");
+    reliefInvChk.type = "checkbox"; reliefInvChk.className = "settings-checkbox";
+    reliefInvChk.checked = state.rasterInvert;
+    reliefInvChk.addEventListener("change", () => { state.rasterInvert = reliefInvChk.checked; });
+    const reliefInvRow = this.dField("Invert (carve the light areas)", reliefInvChk);
+    cutSec.appendChild(reliefInvRow);
+
+    // Live cut-time estimate — a relief is a long job (often tens of minutes to
+    // hours); surface it so a multi-MB, hour-long program isn't a surprise.
+    const reliefEstRow = document.createElement("div");
+    reliefEstRow.className = "props-row";
+    const reliefEstSpan = document.createElement("span");
+    reliefEstSpan.style.cssText = "opacity:0.7;font-size:11px;";
+    reliefEstRow.appendChild(reliefEstSpan);
+    cutSec.appendChild(reliefEstRow);
+
+    const updateReliefEstimate = (): void => {
+      const ent = [...state.entityIds]
+        .map((id) => this.doc.entities.find((e) => e.id === id))
+        .find((e): e is RasterImageEntity => e instanceof RasterImageEntity);
+      if (!ent) { reliefEstSpan.textContent = ""; return; }
+      const li = state.rasterLineInterval > 0 ? state.rasterLineInterval : DEFAULTS.rasterLineInterval;
+      const maxDepth = Math.abs(state.depth);
+      const passes = Math.max(1, Math.ceil(maxDepth / (state.stepdown > 0 ? state.stepdown : maxDepth)));
+      const rows = ent.heightMM / li;
+      const lenMM = rows * ent.widthMM * passes; // boustrophedon X traversal ≈ cut length
+      const mins = state.feedrate > 0 ? lenMM / state.feedrate : 0;
+      const time = mins >= 90 ? `${(mins / 60).toFixed(1)} h` : `${Math.max(1, Math.round(mins))} min`;
+      reliefEstSpan.textContent = `≈ ${time} to cut @ ${state.feedrate} mm/min · ${Math.round(rows)} rows × ${passes} pass${passes > 1 ? "es" : ""}`;
+    };
+
+    // Relief rows visible only for a mill Engrave op targeting an image; that op
+    // also needs a depth-shaping bit, so force a ball-nose if it's a flat end mill.
+    const updateReliefVisibility = (): void => {
+      const isRelief = state.combo === "engrave" && this.opTargetsImage(state.entityIds);
+      for (const r of [reliefLineRow, reliefDotRow, reliefInvRow, reliefEstRow]) r.style.display = isRelief ? "" : "none";
+      if (isRelief && state.toolType !== "ball-nose" && state.toolType !== "v-bit") hooks.setToolType("ball-nose");
+      if (isRelief) updateReliefEstimate();
+    };
 
     const strategySelect = document.createElement("select");
     strategySelect.className = "unit";
@@ -849,6 +923,7 @@ export class CamBar {
       updateTabsVisibility();
       updateLeadVisibility();
       updateLaserVisibility();
+      updateReliefVisibility();
       if (state.combo === "pocket") {
         ensurePocketSeeds();
         startPickMode(); // pocket picking is canvas-driven — make it live immediately
@@ -870,6 +945,7 @@ export class CamBar {
     updateTabsVisibility();
     updateLeadVisibility();
     updateLaserVisibility();
+    updateReliefVisibility();
     if (state.combo === "pocket") {
       ensurePocketSeeds();
       startPickMode();
@@ -922,7 +998,11 @@ export class CamBar {
       else { type = "drill"; side = "outside"; }
 
       const isProfile = type === "profile";
-      const raster = isLaser && type === "engrave" && this.opTargetsImage(state.entityIds);
+      // Image engrave: laser raster OR mill relief — both carry the same raster
+      // resolution fields (rasterLineInterval/DotPitch/Invert).
+      const imageEngrave = type === "engrave" && this.opTargetsImage(state.entityIds);
+      const raster = isLaser && imageEngrave;       // laser-only field (rasterMinPower)
+      const rasterFields = imageEngrave;             // shared by laser raster + mill relief
 
       const op: CAMOperation = {
         id: existing?.id ?? nextId("cam"),
@@ -968,10 +1048,10 @@ export class CamBar {
         // Overscan serves both vector fill and raster rows.
         laserOverscan: isLaser && type === "engrave" && (raster || state.laserFill) && state.laserOverscan > 0 ? state.laserOverscan : undefined,
         airAssist:   isLaser && state.airAssist ? true : undefined,
-        rasterLineInterval: raster ? Math.max(0.001, state.rasterLineInterval) : undefined,
-        rasterDotPitch: raster && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
+        rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
+        rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
         rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
-        rasterInvert: raster && state.rasterInvert ? true : undefined,
+        rasterInvert: rasterFields && state.rasterInvert ? true : undefined,
       };
 
       if (existing) {
