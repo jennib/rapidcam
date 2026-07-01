@@ -740,11 +740,17 @@ export class Renderer {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
-    const stroke = (width: number, color: string) => {
+    // Vector cut/engrave paths draw as the beam glow + core; raster-engrave runs
+    // carry a per-run intensity and are shaded so the preview reads as a tonal
+    // image, not a wall of red.
+    const vector = this.laserPreview.filter((p) => p.intensity === undefined);
+    const raster = this.laserPreview.filter((p) => p.intensity !== undefined);
+
+    const strokeBatch = (paths: LaserPreviewPath[], width: number, color: string) => {
       ctx.lineWidth = width;
       ctx.strokeStyle = color;
       ctx.beginPath();
-      for (const path of this.laserPreview!) {
+      for (const path of paths) {
         if (path.pts.length < 2) continue;
         const s = view.worldToScreen(path.pts[0]);
         ctx.moveTo(s.x, s.y);
@@ -757,9 +763,46 @@ export class Renderer {
       ctx.stroke();
     };
 
-    stroke(4, COLORS.laserCutGlow); // soft glow
-    stroke(1.25, COLORS.laserCut);  // crisp beam core
+    if (vector.length) {
+      strokeBatch(vector, 4, COLORS.laserCutGlow); // soft glow
+      strokeBatch(vector, 1.25, COLORS.laserCut);  // crisp beam core
+    }
+
+    if (raster.length) this.drawRasterShaded(view, raster);
     ctx.restore();
+  }
+
+  /**
+   * Draw raster-engrave runs shaded by beam power. Runs are bucketed by rounded
+   * intensity so each opacity level is one batched stroke (thousands of runs
+   * stay a handful of draw calls). Higher intensity ⇒ more opaque red, matching
+   * the darker image areas that burn hardest.
+   */
+  private drawRasterShaded(view: Viewport, paths: LaserPreviewPath[]): void {
+    const ctx = this.ctx;
+    const BUCKETS = 12;
+    const byBucket: LaserPreviewPath[][] = Array.from({ length: BUCKETS + 1 }, () => []);
+    for (const p of paths) {
+      const b = Math.round((p.intensity ?? 0) * BUCKETS);
+      byBucket[b].push(p);
+    }
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = COLORS.laserCut;
+    for (let b = 0; b <= BUCKETS; b++) {
+      const bucket = byBucket[b];
+      if (bucket.length === 0) continue;
+      // Map intensity 0..1 to a visible alpha floor so even faint dots register.
+      ctx.globalAlpha = 0.12 + 0.88 * (b / BUCKETS);
+      ctx.beginPath();
+      for (const path of bucket) {
+        const s = view.worldToScreen(path.pts[0]);
+        ctx.moveTo(s.x, s.y);
+        const e = view.worldToScreen(path.pts[1]);
+        ctx.lineTo(e.x, e.y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // --- overlays ------------------------------------------------------------

@@ -106,12 +106,51 @@ function register(name: string, width: number, height: number, gray: Uint8Array)
   return id;
 }
 
+/** Public register — used after an import-time tone/contrast adjustment. */
+export function registerGrey(name: string, width: number, height: number, gray: Uint8Array): string {
+  return register(name, width, height, gray);
+}
+
+/** Raw greyscale, decoded and downscaled but not registered — the input to an
+ *  import-time adjustment (brightness/contrast) before the final buffer is baked. */
+export interface DecodedImage {
+  name: string;
+  width: number;
+  height: number;
+  gray: Uint8Array;
+}
+
+/** Tone adjustment applied to a greyscale buffer at import. Both in [-100, 100],
+ *  0 = no change. Baked into the stored buffer, so it feeds laser power and mill
+ *  relief depth identically — nothing downstream needs to know about it. */
+export interface ToneAdjust {
+  brightness: number;
+  contrast: number;
+}
+
 /**
- * Import a user-picked image file: decode it, downscale so the long edge is at
- * most {@link MAX_IMAGE_EDGE}, convert to greyscale, and register it. Browser
- * only (uses `createImageBitmap` + a canvas). Returns the registry id and dims.
+ * Apply brightness/contrast to a greyscale buffer via a 256-entry LUT. Contrast
+ * uses the classic pivot-at-128 factor; brightness is an additive offset. Returns
+ * a new buffer (the input is left untouched so a preview can re-derive from it).
+ * A no-op adjustment returns a copy unchanged.
  */
-export async function loadImageFromFile(file: File): Promise<{ id: string; name: string; width: number; height: number }> {
+export function adjustGrey(gray: Uint8Array, adj: ToneAdjust): Uint8Array {
+  const b = (Math.max(-100, Math.min(100, adj.brightness)) / 100) * 127;
+  const c = (Math.max(-100, Math.min(100, adj.contrast)) / 100) * 255;
+  const f = (259 * (c + 255)) / (255 * (259 - c));
+  const lut = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    const nv = f * (v - 128) + 128 + b;
+    lut[v] = nv < 0 ? 0 : nv > 255 ? 255 : Math.round(nv);
+  }
+  const out = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) out[i] = lut[gray[i]];
+  return out;
+}
+
+/** Decode + downscale a picked file to raw greyscale without registering it, so
+ *  the caller can offer an import-time adjustment before baking the final buffer. */
+export async function decodeImageFile(file: File): Promise<DecodedImage> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
@@ -122,10 +161,7 @@ export async function loadImageFromFile(file: File): Promise<{ id: string; name:
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close?.();
   const rgba = ctx.getImageData(0, 0, w, h).data;
-  const gray = toGreyscale(rgba, w, h);
-  const name = file.name.replace(/\.[^.]+$/, "");
-  const id = register(name, w, h, gray);
-  return { id, name, width: w, height: h };
+  return { name: file.name.replace(/\.[^.]+$/, ""), width: w, height: h, gray: toGreyscale(rgba, w, h) };
 }
 
 /** An embedded image as it appears in a .rcam file (base64 greyscale buffer). */

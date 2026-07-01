@@ -7,7 +7,8 @@ import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
 import { TextEntity, RasterImageEntity } from "../model/entities";
-import { loadImageFromFile } from "../core/imageManager";
+import { decodeImageFile, adjustGrey, registerGrey } from "../core/imageManager";
+import { openImageAdjustDialog } from "../ui/imageAdjustDialog";
 import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
@@ -278,29 +279,37 @@ export class ProjectManager {
     });
     if (!file) return;
 
-    let img: { id: string; name: string; width: number; height: number };
+    let decoded;
     try {
-      img = await loadImageFromFile(file);
+      decoded = await decodeImageFile(file);
     } catch {
       alert("Could not read that image file.");
       return;
     }
 
-    // Size to fit within ~60% of the smaller work-area dimension, keeping aspect,
-    // and centre it on the canvas. The user can then resize/reposition or set an
-    // exact size in the properties panel.
-    const maxDim = Math.min(this.doc.canvas.width, this.doc.canvas.height) * 0.6;
-    const widthMM = img.width >= img.height ? maxDim : (maxDim * img.width) / img.height;
-    const heightMM = img.height >= img.width ? maxDim : (maxDim * img.height) / img.width;
-    const pos = {
-      x: this.doc.canvas.width / 2 - widthMM / 2,
-      y: this.doc.canvas.height / 2 - heightMM / 2,
-    };
+    // Offer an import-time tone adjustment (baked into the stored buffer, so it
+    // feeds laser power / mill relief depth identically). "Place" bakes and drops
+    // the entity; cancelling aborts the import.
+    openImageAdjustDialog(decoded, (adj) => {
+      const gray = adjustGrey(decoded.gray, adj);
+      const id = registerGrey(decoded.name, decoded.width, decoded.height, gray);
 
-    this.pushHistory();
-    const ent = new RasterImageEntity(img.id, pos, widthMM, heightMM);
-    this.doc.addSelected(ent);
-    this.doc.emitChange();
+      // Size to fit within ~60% of the smaller work-area dimension, keeping aspect,
+      // and centre it on the canvas. The user can then resize/reposition or set an
+      // exact size in the properties panel.
+      const maxDim = Math.min(this.doc.canvas.width, this.doc.canvas.height) * 0.6;
+      const widthMM = decoded.width >= decoded.height ? maxDim : (maxDim * decoded.width) / decoded.height;
+      const heightMM = decoded.height >= decoded.width ? maxDim : (maxDim * decoded.height) / decoded.width;
+      const pos = {
+        x: this.doc.canvas.width / 2 - widthMM / 2,
+        y: this.doc.canvas.height / 2 - heightMM / 2,
+      };
+
+      this.pushHistory();
+      const ent = new RasterImageEntity(id, pos, widthMM, heightMM);
+      this.doc.addSelected(ent);
+      this.doc.emitChange();
+    });
   }
 
   async svgImport(): Promise<void> {

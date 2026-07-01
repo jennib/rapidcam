@@ -507,8 +507,11 @@ function arcPolyline(arc: ArcEntity): Vec2[] {
   });
 }
 
-/** A cut path for the flat preview, in model/world coordinates. */
-export interface LaserPreviewPath { pts: Vec2[]; closed: boolean; }
+/** A cut path for the flat preview, in model/world coordinates. `intensity`
+ *  (0..1) is set for raster-engrave runs so the preview can shade each dot by
+ *  its beam power (darker image area ⇒ higher power ⇒ stronger mark); it is
+ *  undefined for vector cut/engrave paths, which draw at full strength. */
+export interface LaserPreviewPath { pts: Vec2[]; closed: boolean; intensity?: number; }
 
 /**
  * Flatten the given laser ops into world-space cut polylines for an on-canvas
@@ -527,7 +530,13 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
       if (it.kind === "circle") paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
       else if (it.kind === "arc") paths.push({ pts: arcPolyline(it.arc), closed: false });
       else if (it.kind === "fill") { for (const s of it.segs) if (s.length >= 2) paths.push({ pts: s, closed: false }); }
-      else if (it.kind === "raster") { for (const row of it.rows) for (const run of row.runs) paths.push({ pts: [{ x: run.x0, y: row.y }, { x: run.x1, y: row.y }], closed: false }); }
+      else if (it.kind === "raster") {
+        // Normalise each run's power by the op's max power so the preview shows
+        // tonal contrast within the image regardless of the chosen power ceiling.
+        const maxP = Math.max(1, op.laserPower ?? DEFAULTS.laserPower);
+        for (const row of it.rows) for (const run of row.runs)
+          paths.push({ pts: [{ x: run.x0, y: row.y }, { x: run.x1, y: row.y }], closed: false, intensity: Math.min(1, run.power / maxP) });
+      }
       else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }
   }
