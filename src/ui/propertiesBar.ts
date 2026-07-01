@@ -264,6 +264,9 @@ export class PropertiesBar {
     inp.value = (!isAngle && dim.expr)
       ? dim.expr
       : isAngle ? formatAngle(dim.value) : formatLength(dim.value, this.doc.displayUnit);
+    // Flag a driving dimension whose formula no longer evaluates (a deleted variable) —
+    // it silently keeps its last value otherwise, which would post a wrong toolpath.
+    if (dim.expr && evalExpr(dim.expr, varMap(this.doc.variables)) === null) inp.style.borderColor = "var(--danger, #e05555)";
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
       let v: number | null = null;
@@ -384,6 +387,8 @@ export class PropertiesBar {
     const lbl = document.createElement("span"); lbl.textContent = label;
     const inp = document.createElement("input");
     inp.type = "text"; inp.style.flex = "1"; inp.value = expr ?? value.toFixed(decimals);
+    // Flag a formula that no longer evaluates (e.g. a referenced variable was deleted).
+    if (expr && evalExpr(expr, varMap(this.doc.variables)) === null) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => { inp.value = expr ?? value.toFixed(decimals); };
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
@@ -417,15 +422,20 @@ export class PropertiesBar {
     const inp = document.createElement("input");
     inp.type = "text"; inp.style.flex = "1";
     inp.value = binding ? binding.expr : currentValue.toFixed(decimals);
+    // A binding whose formula no longer evaluates (e.g. a referenced variable was
+    // deleted) is flagged red — the value silently held its last number otherwise.
+    const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables)) === null;
+    if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
       inp.value = b ? b.expr : currentValue.toFixed(decimals);
     };
 
     const badge = document.createElement("span");
-    badge.textContent = "ƒx";
-    badge.title = binding ? `Driven by formula: ${binding.expr} (click to unbind)` : "";
-    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.85;padding:0 4px;color:var(--accent,#5b9);display:${binding ? "inline" : "none"};`;
+    badge.textContent = broken ? "⚠" : "ƒx";
+    badge.title = broken ? `Broken formula (unknown variable?): ${binding!.expr} — click to unbind`
+                : binding ? `Driven by formula: ${binding.expr} (click to unbind)` : "";
+    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${binding ? "inline" : "none"};`;
     badge.addEventListener("click", () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
       if (b) this.applyEdit(() => { this.doc.bindings = this.doc.bindings.filter((x) => x !== b); });
