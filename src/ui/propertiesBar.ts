@@ -225,12 +225,24 @@ export class PropertiesBar {
     lockRow.append(lockLbl, lockCb);
     sec.appendChild(lockRow);
 
-    // No angle field: a raster engrave is axis-aligned in this version, so the
-    // image must not be rotated on canvas (it would show a cut the G-code won't
-    // make). Rotation is intentionally not exposed until the engrave honours it.
     this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {
       this.applyEdit(() => { entity.position = { x, y }; });
     });
+
+    // Angle — the engrave/relief sweeps along the image's rotated rows, so this
+    // is honoured in the toolpath (not just the on-canvas drawing).
+    const angleRow = document.createElement("div");
+    angleRow.className = "props-row";
+    const angleLbl = document.createElement("span"); angleLbl.textContent = "Angle";
+    const angleIn = document.createElement("input"); angleIn.type = "text"; angleIn.value = (entity.angle * 180 / Math.PI).toFixed(1);
+    const angleUnit = document.createElement("span"); angleUnit.textContent = "°";
+    angleIn.addEventListener("change", () => {
+      const v = parseFloat(angleIn.value);
+      if (isNaN(v)) return;
+      this.applyEdit(() => { entity.angle = v * Math.PI / 180; });
+    });
+    angleRow.append(angleLbl, angleIn, angleUnit);
+    sec.appendChild(angleRow);
 
     this.content.appendChild(sec);
   }
