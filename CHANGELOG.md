@@ -9,6 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Variables can reference other variables** — a variable's value may now be a formula built from *other* variables (e.g. `margin = width * 0.1`), evaluated in dependency order so declaration order doesn't matter. Reference cycles (including a self-reference) are detected and leave those variables at their last value instead of looping. Plain lengths (`50mm`, `1/2in`) still parse unit-aware as before.
 - **Parametric image sizing** — an engrave image's **Width**, **Height**, and **Angle** in the Properties panel now accept **variable formulas** (e.g. `plateW/2`), re-evaluated whenever a variable changes, so images resize/rotate parametrically alongside your other geometry. A pure number stays a literal; a formula is stored and shown as the formula. **Lock aspect** persists on the image and works with formulas (deriving the other side from the current proportions); angle formulas are in degrees. New optional `.rcam` `image.widthExpr` / `heightExpr` / `angleExpr` / `aspectLocked` fields (additive). Constraint/dimension-driven images are a planned follow-up.
 - **File → Start Screen** re-opens the welcome splash on demand (Examples, Open, Restore Draft) instead of it only appearing at page load. When reopened mid-session it's dismissable (Esc or click outside), and its **New Project** goes through the same guarded path as File → New (confirms before discarding unsaved work).
 
