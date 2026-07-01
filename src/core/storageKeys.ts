@@ -36,6 +36,9 @@ export const StorageKeys = {
   toolpathDialogPosition: "rapidcam:toolpath-dialog-position",
   /** Default canvas/stock settings for new projects. */
   defaultProjectSettings: "rapidcam:defaultProjectSettings",
+  /** Machine type picked for the most recent new project ("mill" | "laser"),
+   *  remembered so the New Project dialog defaults to it next time. */
+  lastMachineKind: "rapidcam:lastMachineKind",
   /** Counter for share-prompt throttling (show every Nth export). */
   sharePromptCounter: "rapidcam:sharePromptCounter",
 } as const;

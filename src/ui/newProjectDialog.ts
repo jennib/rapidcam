@@ -43,6 +43,17 @@ export function openNewProjectDialog(
     // Ignore parse errors
   }
 
+  // The machine type picked for the most recent project is remembered on its own
+  // (independent of "Save as default"), so a laser shop doesn't re-pick Laser
+  // every time. Falls back to the saved default, then "mill".
+  let lastMachineKind: MachineKind | undefined;
+  try {
+    const lk = localStorage.getItem(StorageKeys.lastMachineKind);
+    if (lk === "mill" || lk === "laser") lastMachineKind = lk;
+  } catch (e) {
+    // Ignore
+  }
+
   // Use initial values if provided, otherwise fallback to defaults or hardcoded defaults
   // ---- working state (dimensions always kept in mm internally) ----
   let unit: Unit = initial.displayUnit ?? defaults.displayUnit ?? "mm";
@@ -114,7 +125,7 @@ export function openNewProjectDialog(
   // -- machine --
   const macSec = sec("Machine");
   const mkSel = sel([["mill", "CNC Mill / Router"], ["laser", "Laser"]]);
-  mkSel.value = initial.machineKind ?? defaults.machineKind ?? "mill";
+  mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel(MILL_POST_OPTIONS);
   const ppRow = row("Post-processor", ppSel);
@@ -230,6 +241,9 @@ export function openNewProjectDialog(
         console.error("Failed to save default project settings:", e);
       }
     }
+
+    // Remember the machine type for next time, regardless of "Save as default".
+    try { localStorage.setItem(StorageKeys.lastMachineKind, cfg.machineKind); } catch (e) { /* ignore */ }
 
     // Persist the machine coolant capability (global, applies to all projects).
     setMachineHasCoolant(coolantChk.checked);
