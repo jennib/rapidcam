@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **File → Start Screen** re-opens the welcome splash on demand (Examples, Open, Restore Draft) instead of it only appearing at page load. When reopened mid-session it's dismissable (Esc or click outside), and its **New Project** goes through the same guarded path as File → New (confirms before discarding unsaved work).
+
 ## [1.1.0] — 2026-07-01
 
 ### Changed

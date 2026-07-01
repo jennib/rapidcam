@@ -5,6 +5,7 @@ import { getExamples } from "../io/examples";
 
 export interface FileMenuCallbacks {
   onNew: () => void;
+  onStartScreen: () => void;
   onOpen: () => void;
   onSave: () => void;
   onShareLink: () => void;
@@ -64,6 +65,7 @@ export class FileMenu {
   private buildItems(): void {
     this.dropdown.innerHTML = "";
     this.item("New Project", "Ctrl+N", () => { this.close(); this.cb.onNew(); });
+    this.item("Start Screen", "", () => { this.close(); this.cb.onStartScreen(); });
     this.sep();
     this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
     this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });

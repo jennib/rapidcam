@@ -186,6 +186,7 @@ export class App {
       }),
       file: {
         onNew: () => this.project.fileNew(),
+        onStartScreen: () => this.openStartScreen(),
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
         onShareLink: () => { void this.project.copyShareLink(); },
@@ -261,8 +262,17 @@ export class App {
       this.project.loadDocument(shared.file, shared.name);
       return;
     }
+    this.openStartScreen();
+  }
+
+  /** Show the start screen (welcome splash). Used at launch and from File → Start
+   *  Screen; the splash is dismissable (Escape / click-outside) when reopened. */
+  private openStartScreen(): void {
     showWelcomeScreen(
-      () => this.project.openSetupDialog(),
+      // fileNew (not openSetupDialog) so a mid-session "New Project" from the
+      // reopened splash still confirms before discarding real work; at launch the
+      // doc is empty so the confirm is skipped — same as before.
+      () => this.project.fileNew(),
       () => { void this.project.fileOpen(); },
       (entry) => this.project.fileOpenRecent(entry),
       () => this.project.restoreDraft(),
