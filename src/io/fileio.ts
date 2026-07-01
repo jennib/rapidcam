@@ -38,6 +38,7 @@ export interface RcamFile {
   constraints: unknown[];
   dimensions: unknown[];
   variables?: unknown[];
+  bindings?: unknown[];
   patterns?: unknown[];
   operations?: unknown[];
   tools?: unknown[];
@@ -199,6 +200,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     constraints: snap.constraints as unknown[],
     dimensions: snap.dimensions as unknown[],
     variables: snap.variables as unknown[],
+    bindings: snap.bindings as unknown[],
     patterns: snap.patterns as unknown[],
     operations: snap.operations as unknown[],
     tools: tools as unknown[],
@@ -234,6 +236,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     constraints: (file.constraints ?? []) as DocSnapshot["constraints"],
     dimensions: (file.dimensions ?? []) as DocSnapshot["dimensions"],
     variables: file.variables as DocSnapshot["variables"],
+    bindings: file.bindings as DocSnapshot["bindings"],
     patterns: file.patterns as DocSnapshot["patterns"],
     operations: file.operations as DocSnapshot["operations"],
     tools: file.tools as DocSnapshot["tools"],

@@ -95,7 +95,12 @@
     "variables": {
       "type": "array",
       "items": { "$ref": "#/$defs/variable" },
-      "description": "Named numeric variables referenced by dimension/pattern expressions."
+      "description": "Named numeric variables referenced by dimension/pattern/binding expressions."
+    },
+    "bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scalarBinding" },
+      "description": "Headless parametric bindings (formula → an entity scalar DOF). Default []."
     },
     "patterns": {
       "type": "array",
@@ -472,8 +477,20 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$", "description": "Valid identifier; referenced by expressions." },
-        "expr": { "type": "string", "description": "Raw input string, e.g. \"100\", \"50mm\", \"3.5in\"." },
+        "expr": { "type": "string", "description": "Raw input string, e.g. \"100\", \"50mm\", \"3.5in\", or a formula referencing other variables like \"width * 0.1\" (evaluated in dependency order)." },
         "value": { "type": "number", "description": "Cached evaluated value in mm." }
+      }
+    },
+    "scalarBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "entityId", "scalarKey", "expr"],
+      "description": "Headless parametric binding: drives one scalar DOF of an entity (by its dofScalars key, e.g. \"r\" for a circle radius) from a variable formula. Draws nothing; contributes a driving residual (currentScalar − expr) to the solver, so it reconciles with dimensions/constraints via the same over-constrained machinery.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string", "minLength": 1 },
+        "scalarKey": { "type": "string", "description": "A dofScalars() key on the entity, e.g. \"r\" (circle/arc radius), \"sa\"/\"ea\" (arc angles)." },
+        "expr": { "type": "string", "description": "Variable formula, e.g. \"plateW/2\"." }
       }
     },
 

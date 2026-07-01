@@ -18,6 +18,7 @@ import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import { Entity, ArcEntity } from "../model/entities";
 import { Constraint, Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
+import { bindingResiduals } from "../model/bindings";
 import { solveLinearSystem, matrixRank, determinedVariables } from "./linalg";
 import { EntityId } from "../model/entities";
 
@@ -74,6 +75,8 @@ export type PinMap = Map<string, Vec2>;
 export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
   const geo: Geo = (id) => byId.get(id);
+  // name → value for binding formulas (variables are already evaluated upstream).
+  const bindingVars = new Map(doc.variables.map((v) => [v.name, v.value]));
 
   const fixed = new Set<string>();
 
@@ -206,7 +209,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
-  const hasConstraints = doc.constraints.length > 0 || drivingDims.length > 0;
+  const hasConstraints = doc.constraints.length > 0 || drivingDims.length > 0 || doc.bindings.length > 0;
 
   // Constraint + driving-dimension residuals define convergence and the reported DOF.
   const constraintVec = (): number[] => {
@@ -217,6 +220,13 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     }
     for (const d of drivingDims) {
       const r = dimensionResiduals(d, geo);
+      for (const v of r) out.push(v);
+    }
+    // Headless parametric bindings: an additive residual source (currentScalar −
+    // formula), so the FD Jacobian and over/under-constrained counting cover them
+    // for free — one parametric channel with dimensions/constraints.
+    for (const b of doc.bindings) {
+      const r = bindingResiduals(b, geo, bindingVars);
       for (const v of r) out.push(v);
     }
     return out;

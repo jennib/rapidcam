@@ -11,6 +11,7 @@ import { Constraint, ConstraintType } from "../model/constraints";
 import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
 import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
+import { findBinding } from "../model/bindings";
 import { regularPolygonPoints } from "../core/geom";
 
 const DIM_LABELS: Record<DimensionType, string> = {
@@ -397,6 +398,63 @@ export class PropertiesBar {
     parent.appendChild(row);
   }
 
+  /**
+   * A scalar property row backed by the parametric engine. Enter a **formula**
+   * referencing variables (e.g. `plateW/2`) and it creates/updates a headless
+   * `ScalarBinding` on `(entityId, scalarKey)`, so the SOLVER drives the value
+   * (unified with dimensions/constraints — no second channel). A plain number
+   * clears the binding and applies a literal. An engine-driven field shows an
+   * `ƒx` badge (hover = the formula, click = unbind back to a literal).
+   */
+  private bindingRow(
+    parent: HTMLElement, label: string, entityId: string, scalarKey: string,
+    currentValue: number, unit: string | null, applyLiteral: (v: number) => void, decimals = 3,
+  ): void {
+    const binding = findBinding(this.doc.bindings, entityId, scalarKey);
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.style.flex = "1";
+    inp.value = binding ? binding.expr : currentValue.toFixed(decimals);
+    const reset = () => {
+      const b = findBinding(this.doc.bindings, entityId, scalarKey);
+      inp.value = b ? b.expr : currentValue.toFixed(decimals);
+    };
+
+    const badge = document.createElement("span");
+    badge.textContent = "ƒx";
+    badge.title = binding ? `Driven by formula: ${binding.expr} (click to unbind)` : "";
+    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.85;padding:0 4px;color:var(--accent,#5b9);display:${binding ? "inline" : "none"};`;
+    badge.addEventListener("click", () => {
+      const b = findBinding(this.doc.bindings, entityId, scalarKey);
+      if (b) this.applyEdit(() => { this.doc.bindings = this.doc.bindings.filter((x) => x !== b); });
+    });
+
+    inp.addEventListener("change", () => {
+      const raw = inp.value.trim();
+      const existing = findBinding(this.doc.bindings, entityId, scalarKey);
+      if (raw === "") { reset(); return; }
+      if (/^-?\d*\.?\d+$/.test(raw)) {                    // literal → clear binding + set value
+        const v = parseFloat(raw);
+        this.applyEdit(() => {
+          if (existing) this.doc.bindings = this.doc.bindings.filter((x) => x !== existing);
+          applyLiteral(v);
+        });
+        return;
+      }
+      if (evalExpr(raw, varMap(this.doc.variables)) === null) { this.flashInput(inp); reset(); return; }
+      this.applyEdit(() => {                              // formula → create/update the binding
+        if (existing) existing.expr = raw;
+        else this.doc.bindings.push({ id: nextId("bind"), entityId, scalarKey, expr: raw });
+      });
+    });
+
+    row.append(lbl, inp, badge);
+    if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
+    parent.appendChild(row);
+  }
+
   /** A two-field "Lx [x] Ly [y]" coordinate row committing both values together. */
   private coordRow(parent: HTMLElement, labelA: string, a: number, labelB: string, b: number, onCommit: (a: number, b: number) => void): void {
     const row = document.createElement("div");
@@ -509,9 +567,8 @@ export class PropertiesBar {
 
   private buildCircleProperties(entity: CircleEntity): void {
     const sec = this.createSection("CIRCLE");
-    this.numRow(sec, "Radius", entity.radius, "mm", (v) => {
-      if (v <= 0) return;
-      this.applyEdit(() => { entity.radius = v; });
+    this.bindingRow(sec, "Radius", entity.id, "r", entity.radius, "mm", (v) => {
+      if (v > 0) entity.radius = v;
     });
     this.coordRow(sec, "Cx", entity.center.x, "Cy", entity.center.y, (x, y) => {
       this.applyEdit(() => { entity.center = { x, y }; });

@@ -77,6 +77,7 @@ export const ORIGIN_ENTITY_ID = "__origin__";
 import { Constraint, PointRef, SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
 import { Dimension, dimensionHitDistance } from "./dimensions";
 import { Variable } from "./variables";
+import { ScalarBinding } from "./bindings";
 import { PatternDef, clonePatternDef } from "./patterns";
 import { updateCounter } from "./ids";
 
@@ -109,6 +110,7 @@ export interface DocSnapshot {
   constraints: Constraint[];
   dimensions: Dimension[];
   variables?: Variable[];
+  bindings?: ScalarBinding[];
   operations?: CAMOperation[];
   tools?: ToolDef[];
   patterns?: PatternDef[];
@@ -183,6 +185,8 @@ export class CADDocument {
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
   variables: Variable[] = [];
+  /** Headless parametric bindings (formula → an entity's scalar DOF). */
+  bindings: ScalarBinding[] = [];
   isConstructionMode = false;
 
   /** Individually selected point DOFs (in addition to whole-entity selection). */
@@ -300,6 +304,7 @@ export class CADDocument {
       (d) =>
         d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
     );
+    this.bindings = this.bindings.filter((b) => ids.has(b.entityId));
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
     this.selectedSegments = this.selectedSegments.filter((s) => ids.has(s.entityId));
     if (this.selectedConstraintId && !this.constraints.find((c) => c.id === this.selectedConstraintId))
@@ -452,6 +457,7 @@ export class CADDocument {
       if (e.heightExpr) e.heightExpr = e.heightExpr.replace(re, newName);
       if (e.angleExpr) e.angleExpr = e.angleExpr.replace(re, newName);
     }
+    for (const b of this.bindings) b.expr = b.expr.replace(re, newName);
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -623,6 +629,7 @@ export class CADDocument {
         entities: [...d.entities],
       })),
       variables: this.variables.map((v) => ({ ...v })),
+      bindings: this.bindings.map((b) => ({ ...b })),
       isConstructionMode: this.isConstructionMode,
       selectedPoints: this.selectedPoints.map((p) => ({ ...p })),
       selectedConstraintId: this.selectedConstraintId,
@@ -718,6 +725,7 @@ export class CADDocument {
       return d;
     });
     this.variables = (s.variables || []).map((v) => ({ ...v }));
+    this.bindings = (s.bindings || []).map((b) => ({ ...b }));
 
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
