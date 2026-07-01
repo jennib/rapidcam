@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-07-01
+
 ### Changed
 - **CAM: Curved profiles with holding tabs now post smooth arcs.** Arc-fitting previously ran only on tab-free profiles; a profile *with* tabs was linearized to G1 facets end to end. Now each material-cutting run between tabs is arc-fit to G2/G3 (the tab bridges stay straight G1 at their raised height, as before), so a tabbed circle or filleted part cuts smoothly instead of faceted. Straight-edged tabbed profiles are byte-identical. The arc-fit keeps its ≤tol faithfulness guarantee, so no toggle is needed.
 - **Constraints/dimensions on a polyline survive vertex edits.** Each polyline vertex now carries a stable id, and point keys (`v<id>`, `mid_<id>`) and segment-as-line refs (`<polylineId>#<startVertexId>`) are built from it instead of the array index. Previously, chamfering/filleting a corner — or resizing a polygon — inserted or removed vertices and silently re-pointed every later constraint/dimension at the wrong vertex. The `.rcam` format gains an optional parallel `vertexIds` array on polylines (additive — files without it default each id to its index, so older files and keys load unchanged); documented in the [authoring guide](docs/rcam-format-v2.md) and [schema](public/schema/rcam-v2.schema.json).
