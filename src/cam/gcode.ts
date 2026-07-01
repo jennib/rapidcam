@@ -123,14 +123,14 @@ function profilePolygon(
       lines.push(`${arcCmd} X${X(s.x, ox)} Y${Y(s.y, oy)} I${n(tx * liLen)} J${n(ty * liLen)} F${n(op.feedrate)}`);
     }
 
-    if (!useTabsThisPass) {
-      // Arc-fit the closed lap so curved profiles post as smooth G2/G3 instead of
-      // a run of G1 facets. Straight-edged profiles fit to all lines → identical
-      // output. I/J are the centre offset from each move's start point.
-      let cur = s;
-      let first = true;
-      for (const mv of fitArcs([...path, s])) {
-        const f = (first && liType === "none") ? ` F${n(op.feedrate)}` : "";
+    // Arc-fit an open run of points starting at the current tool position
+    // (pts[0]). Curved runs post as smooth G2/G3; straight runs fit to all lines
+    // → identical output. I/J are the centre offset from each move's start point.
+    // `first` carries the pending feed word across runs; returns it updated.
+    const emitRun = (pts: Vec2[], first: boolean): boolean => {
+      let cur = pts[0];
+      for (const mv of fitArcs(pts)) {
+        const f = first ? ` F${n(op.feedrate)}` : "";
         if (mv.kind === "line") {
           lines.push(`G1 X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)}${f}`);
         } else {
@@ -140,6 +140,12 @@ function profilePolygon(
         cur = mv.to;
         first = false;
       }
+      return first;
+    };
+
+    if (!useTabsThisPass) {
+      // Arc-fit the whole closed lap.
+      emitRun([...path, s], liType === "none");
     } else {
       const cumLens  = pathLengths(path);
       const totalLen = cumLens[path.length];
@@ -147,17 +153,31 @@ function profilePolygon(
       const regions  = computeTabRegions(totalLen, tabN, tabs!.width);
       const segs     = splitPathForTabs(path, cumLens, regions);
 
+      // Walk the split segments, arc-fitting each maximal run of material-cutting
+      // (non-tab) segments so curved profiles stay smooth between tabs; tab bridges
+      // ride up to tabZOff and stay straight G1 lines (they're short by design).
       let currentZ = z;
       let first    = liType === "none";
-      for (const seg of segs) {
-        const targetZ = seg.isTab ? tabZOff : z;
-        if (targetZ !== currentZ) {
-          lines.push(`G1 Z${Z(targetZ, zOff)} F${n(op.plungeRate)}`);
-          currentZ = targetZ;
+      let i = 0;
+      while (i < segs.length) {
+        if (segs[i].isTab) {
+          if (currentZ !== tabZOff) {
+            lines.push(`G1 Z${Z(tabZOff, zOff)} F${n(op.plungeRate)}`);
+            currentZ = tabZOff;
+          }
+          const feedStr = first ? ` F${n(op.feedrate)}` : "";
+          lines.push(`G1 X${X(segs[i].p1.x, ox)} Y${Y(segs[i].p1.y, oy)}${feedStr}`);
+          first = false;
+          i++;
+        } else {
+          const runPts: Vec2[] = [segs[i].p0];
+          while (i < segs.length && !segs[i].isTab) { runPts.push(segs[i].p1); i++; }
+          if (currentZ !== z) {
+            lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+            currentZ = z;
+          }
+          first = emitRun(runPts, first);
         }
-        const feedStr = first ? ` F${n(op.feedrate)}` : "";
-        lines.push(`G1 X${X(seg.p1.x, ox)} Y${Y(seg.p1.y, oy)}${feedStr}`);
-        first = false;
       }
       if (currentZ !== z) lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
     }

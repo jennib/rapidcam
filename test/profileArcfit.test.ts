@@ -63,6 +63,29 @@ describe("profile arc-fitting", () => {
     for (const r of endRadii) expect(r).toBeCloseTo(23, 1);
   });
 
+  it("arc-fits the material runs of a TABBED circular profile, keeping tab bridges straight", () => {
+    const R = 20, N = 64;
+    const pts = Array.from({ length: N }, (_, i) => {
+      const a = (i / N) * 2 * Math.PI;
+      return { x: 50 + R * Math.cos(a), y: 50 + R * Math.sin(a) };
+    });
+    const doc = new CADDocument({ width: 120, height: 120 });
+    const poly = doc.add(new PolylineEntity(pts, true));
+    const out = generateGCode([profileOp([poly.id], {
+      side: "outside",
+      tabs: { enabled: true, strategy: "count", count: 3, spacing: 0, width: 5, height: 1 },
+    })], doc);
+
+    // Arcs now appear between tabs (previously a tabbed profile was all G1)...
+    const { centres, endRadii, arcCount } = arcsOf(out);
+    expect(arcCount).toBeGreaterThan(0);
+    for (const c of centres) { expect(c.x).toBeCloseTo(centres[0].x, 0); expect(c.y).toBeCloseTo(centres[0].y, 0); }
+    for (const r of endRadii) expect(r).toBeCloseTo(23, 0);
+
+    // ...and the 3 tab bridges still ride up to depth + height = -1 as straight G1.
+    expect((out.match(/G1 Z-1\b/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+
   it("leaves a rectangle profile as straight G1 (no behaviour change)", () => {
     const doc = new CADDocument({ width: 120, height: 120 });
     const rect = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 60 }));
