@@ -199,6 +199,9 @@ Notes:
   `angle` (CCW radians) rotates the image about its anchor. The engrave/relief
   sweeps in the image's own (rotated) frame, so a non-zero `angle` is honoured in
   both the toolpath and the preview — the scan rows tilt with the image.
+  `flipX` / `flipY` (default false) mirror the image content left↔right / top↔bottom
+  about its centrelines; the mirror is baked into the sampled dots, so it is
+  honoured identically in the laser engrave, the mill relief, and both previews.
 
 ## Constraints
 

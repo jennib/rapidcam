@@ -732,6 +732,7 @@ function reliefImage(
     dotPitchMM: op.rasterDotPitch,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
+    flipX: ent.flipX, flipY: ent.flipY,
   });
   if (field.rows.length === 0) return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
 

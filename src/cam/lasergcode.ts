@@ -214,6 +214,7 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
     maxPower: op.laserPower ?? DEFAULTS.laserPower,
     minPower: op.rasterMinPower ?? DEFAULTS.rasterMinPower,
     invert: op.rasterInvert,
+    flipX: ent.flipX, flipY: ent.flipY,
   });
   if (rows.length === 0) return [{ kind: "note", text: `image (${ent.id}) engraved nothing (blank or zero size) — skipped` }];
 

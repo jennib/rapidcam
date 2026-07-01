@@ -428,9 +428,13 @@ export class Renderer {
         if (cv) {
           ctx.save();
           const tl = cs[3]; // top-left world corner → image row 0 draws downward here
+          const iw = view.toScreenLen(ie.widthMM), ih = view.toScreenLen(ie.heightMM);
           ctx.translate(tl.x, tl.y);
           ctx.rotate(-ie.angle);
-          ctx.drawImage(cv, 0, 0, view.toScreenLen(ie.widthMM), view.toScreenLen(ie.heightMM));
+          // Mirror within the WxH box so the drawn pixels match the flipped engrave.
+          if (ie.flipX) { ctx.translate(iw, 0); ctx.scale(-1, 1); }
+          if (ie.flipY) { ctx.translate(0, ih); ctx.scale(1, -1); }
+          ctx.drawImage(cv, 0, 0, iw, ih);
           ctx.restore();
         }
         // Outline the placement rect (dashed when the pixels aren't loaded).

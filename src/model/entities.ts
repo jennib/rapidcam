@@ -891,14 +891,20 @@ export class RasterImageEntity extends Entity {
   widthMM: number;
   heightMM: number;
   angle: number;
+  /** Mirror the image content left↔right (about its vertical centreline). */
+  flipX: boolean;
+  /** Mirror the image content top↔bottom (about its horizontal centreline). */
+  flipY: boolean;
 
-  constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, id?: EntityId) {
+  constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, flipX = false, flipY = false, id?: EntityId) {
     super(id);
     this.imageId = imageId;
     this.position = clone(position);
     this.widthMM = widthMM;
     this.heightMM = heightMM;
     this.angle = angle;
+    this.flipX = flipX;
+    this.flipY = flipY;
   }
 
   /** The four corners in world space (CCW from the bottom-left anchor). */
@@ -942,7 +948,7 @@ export class RasterImageEntity extends Entity {
   }
 
   override duplicate(): RasterImageEntity {
-    const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle);
+    const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle, this.flipX, this.flipY);
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
     return e;

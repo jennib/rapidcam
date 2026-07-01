@@ -363,6 +363,7 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
     widthMM: ent.widthMM, heightMM: ent.heightMM,
     lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
     dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert, gamma: op.reliefGamma,
+    flipX: ent.flipX, flipY: ent.flipY,
   });
   // Stamp each dot at its rotated world position so a tilted image previews tilted.
   const xf = makeRasterXf(ent.position, ent.angle);

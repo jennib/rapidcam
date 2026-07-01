@@ -64,6 +64,10 @@ export interface RasterEngraveParams {
    * merge into one run — fewer, longer moves. Default 1 (whole-percent steps).
    */
   powerStep?: number;
+  /** Mirror the sampled content left↔right. Default false. */
+  flipX?: boolean;
+  /** Mirror the sampled content top↔bottom. Default false. */
+  flipY?: boolean;
 }
 
 /** One beam-on run within a scan row: burn from `x0` to `x1` (mm) at `power` (%). */
@@ -112,7 +116,7 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
  * downsampling is a true area average (anti-aliased); output cells that no source
  * pixel lands in (when upsampling) fall back to the nearest source pixel.
  */
-export function resampleGrid(grid: RasterGrid, outW: number, outH: number): Float32Array {
+export function resampleGrid(grid: RasterGrid, outW: number, outH: number, flipX = false, flipY = false): Float32Array {
   const { width: sw, height: sh, data } = grid;
   const out = new Float32Array(outW * outH);
   const sum = new Float64Array(outW * outH);
@@ -139,7 +143,19 @@ export function resampleGrid(grid: RasterGrid, outW: number, outH: number): Floa
       }
     }
   }
-  return out;
+  if (!flipX && !flipY) return out;
+  // Mirror the resampled grid in place: flipX reverses columns (left↔right),
+  // flipY reverses rows (top↔bottom). One buffer feeds both the laser and the
+  // mill, so a flip is honoured identically in engrave power and relief depth.
+  const flipped = new Float32Array(outW * outH);
+  for (let oy = 0; oy < outH; oy++) {
+    const sy = flipY ? outH - 1 - oy : oy;
+    for (let ox = 0; ox < outW; ox++) {
+      const sx = flipX ? outW - 1 - ox : ox;
+      flipped[oy * outW + ox] = out[sy * outW + sx];
+    }
+  }
+  return flipped;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +213,10 @@ export interface RasterFieldParams {
    * so this is how the user dials in the look. Endpoints (black/white) are fixed.
    */
   gamma?: number;
+  /** Mirror the sampled content left↔right. Default false. */
+  flipX?: boolean;
+  /** Mirror the sampled content top↔bottom. Default false. */
+  flipY?: boolean;
 }
 
 /**
@@ -221,7 +241,7 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   const colCount = Math.max(1, Math.round(widthMM / dotPitch));
   const rowPitch = heightMM / rowCount;
   const colPitch = widthMM / colCount;
-  const dots = resampleGrid(grid, colCount, rowCount); // row 0 = top
+  const dots = resampleGrid(grid, colCount, rowCount, params.flipX, params.flipY); // row 0 = top
 
   // darkness, quantised; blank (0) where the dot is at/above the white threshold.
   const levelFor = (gray: number): number => {
@@ -266,7 +286,7 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
   const colCount = Math.max(1, Math.round(widthMM / dotPitch));
   const rowPitch = heightMM / rowCount;
   const colPitch = widthMM / colCount;
-  const dots = resampleGrid(grid, colCount, rowCount); // row 0 = top
+  const dots = resampleGrid(grid, colCount, rowCount, params.flipX, params.flipY); // row 0 = top
 
   // Map a resampled tone (0=black) to a quantised beam power (%), or null to leave
   // the dot blank. `invert` flips tone first so "engrave the light parts" reads

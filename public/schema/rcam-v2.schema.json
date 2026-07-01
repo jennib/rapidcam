@@ -351,6 +351,8 @@
         "widthMM": { "type": "number", "exclusiveMinimum": 0 },
         "heightMM": { "type": "number", "exclusiveMinimum": 0 },
         "angle": { "type": "number", "description": "radians" },
+        "flipX": { "type": "boolean", "description": "Mirror the image content left↔right. Default false." },
+        "flipY": { "type": "boolean", "description": "Mirror the image content top↔bottom. Default false." },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }

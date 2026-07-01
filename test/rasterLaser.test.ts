@@ -38,6 +38,28 @@ test("raster engrave is oriented correctly: a black top-left dot engraves at top
   expect(paths[0].pts).toEqual([{ x: 10, y: 23 }, { x: 12, y: 23 }]);
 });
 
+test("flipX mirrors the engrave left↔right: a black top-left dot burns top-right", () => {
+  const id = registerGrid([[0, 255], [255, 255]]); // black top-left
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const ent = doc.add(new RasterImageEntity(id, { x: 10, y: 20 }, 4, 4, 0));
+  ent.flipX = true;
+  const paths = laserPreviewPaths([engraveOp([ent.id], { rasterDotPitch: 2 })], doc);
+  // Top row still at y=23, but the black dot is now the RIGHT column (x 12→14).
+  expect(paths).toHaveLength(1);
+  expect(paths[0].pts).toEqual([{ x: 12, y: 23 }, { x: 14, y: 23 }]);
+});
+
+test("flipY mirrors the engrave top↔bottom: a black top-left dot burns bottom-left", () => {
+  const id = registerGrid([[0, 255], [255, 255]]); // black top-left
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const ent = doc.add(new RasterImageEntity(id, { x: 10, y: 20 }, 4, 4, 0));
+  ent.flipY = true;
+  const paths = laserPreviewPaths([engraveOp([ent.id], { rasterDotPitch: 2 })], doc);
+  // Left column still at x 10→12, but the black dot is now the BOTTOM row (y=21).
+  expect(paths).toHaveLength(1);
+  expect(paths[0].pts).toEqual([{ x: 10, y: 21 }, { x: 12, y: 21 }]);
+});
+
 test("power is modulated per dot: darker → higher S, white skipped", () => {
   // One row, 4 dots: black, dark-grey, light-grey, white.
   const id = registerGrid([[0, 85, 170, 255]]);

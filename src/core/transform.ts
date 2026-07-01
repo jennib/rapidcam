@@ -158,6 +158,13 @@ export function applyFlipH(entities: Entity[], cx: number): void {
       flipPt(e.p0); flipPt(e.p1);
       const minX = Math.min(e.p0.x, e.p1.x), maxX = Math.max(e.p0.x, e.p1.x);
       e.p0.x = minX; e.p1.x = maxX;
+    } else if (e instanceof RasterImageEntity) {
+      // Mirror the image content (flipX) and reflect its centre about cx. The
+      // 2·offX term reflects the footprint's centre, so a lone image flips in
+      // place while a multi-selection also lands in the mirrored slot.
+      const offX = (e.widthMM / 2) * Math.cos(e.angle) - (e.heightMM / 2) * Math.sin(e.angle);
+      e.position.x = 2 * cx - e.position.x - 2 * offX;
+      e.flipX = !e.flipX;
     }
   }
 }
@@ -185,6 +192,10 @@ export function applyFlipV(entities: Entity[], cy: number): void {
       flipPt(e.p0); flipPt(e.p1);
       const minY = Math.min(e.p0.y, e.p1.y), maxY = Math.max(e.p0.y, e.p1.y);
       e.p0.y = minY; e.p1.y = maxY;
+    } else if (e instanceof RasterImageEntity) {
+      const offY = (e.widthMM / 2) * Math.sin(e.angle) + (e.heightMM / 2) * Math.cos(e.angle);
+      e.position.y = 2 * cy - e.position.y - 2 * offY;
+      e.flipY = !e.flipY;
     }
   }
 }
