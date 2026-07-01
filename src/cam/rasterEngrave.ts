@@ -79,6 +79,31 @@ export interface RasterScanRow {
   runs: RasterRun[];
 }
 
+/**
+ * Rigid transform lifting an image's local mm coordinates (origin at the entity
+ * anchor, +X right, +Y up) into world mm. The scan pattern is always computed in
+ * local space (rows horizontal); this rotates + translates each emitted point, so
+ * a rotated image engraves along its own tilted rows without the row/boustrophedon
+ * logic needing to know about the angle. `angle` 0 ⇒ `cos:1, sin:0` ⇒ a pure
+ * translate, identical to the pre-rotation output.
+ */
+export interface RasterXf {
+  ox: number;
+  oy: number;
+  cos: number;
+  sin: number;
+}
+
+/** Build a {@link RasterXf} from an anchor position and rotation angle (rad). */
+export function makeRasterXf(pos: { x: number; y: number }, angle: number): RasterXf {
+  return { ox: pos.x, oy: pos.y, cos: Math.cos(angle), sin: Math.sin(angle) };
+}
+
+/** Map a local (mm) point through a {@link RasterXf} to world (mm). */
+export function xfPoint(xf: RasterXf, lx: number, ly: number): { x: number; y: number } {
+  return { x: xf.ox + lx * xf.cos - ly * xf.sin, y: xf.oy + lx * xf.sin + ly * xf.cos };
+}
+
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**

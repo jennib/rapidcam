@@ -1,7 +1,7 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity } from "../model/entities";
-import { rasterField } from "./rasterEngrave";
+import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
@@ -708,7 +708,8 @@ function engraveArc(
  * merged into straight segments, so the move count is bounded by the number of
  * distinct depth levels, not the pixel count.
  *
- * Axis-aligned only (the image entity's angle is locked to 0).
+ * The scan runs along the image's local rows; a rotated image carves along its
+ * own tilted rows (each point lifted through the entity transform).
  */
 function reliefImage(
   ent: RasterImageEntity, op: CAMOperation,
@@ -718,8 +719,6 @@ function reliefImage(
     return [`; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`];
   const grid = getImageGrid(ent.imageId);
   if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
-  if (ent.angle !== 0)
-    return [`; NOTE: image (${ent.id}) is rotated; relief engrave is axis-aligned — straighten it first`];
 
   const maxDepth = Math.abs(op.depth);
   if (maxDepth <= 0) return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
@@ -738,6 +737,7 @@ function reliefImage(
 
   const { cols, colPitch, rows } = field;
   const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
+  const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
 
   // A V-bit cuts a cone per dot, not a smooth surface — fine for line-art but
@@ -752,10 +752,8 @@ function reliefImage(
     const verts: { x: number; y: number; z: number }[] = [];
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      const wy = ent.position.y + row.y;
       const ltr = r % 2 === 0;
       const zAt = (c: number) => Math.max(-row.levels[c] * maxDepth, passFloor);
-      const xAt = (c: number) => ent.position.x + (c + 0.5) * colPitch;
       for (let k = 0; k < cols; k++) {
         const c = ltr ? k : cols - 1 - k;
         // Keep run boundaries and depth changes; drop interior collinear dots.
@@ -765,7 +763,8 @@ function reliefImage(
         const keep = k === 0 || k === cols - 1
           || prev < 0 || prev >= cols || z !== zAt(prev)
           || next < 0 || next >= cols || z !== zAt(next);
-        if (keep) verts.push({ x: xAt(c), y: wy, z });
+        // Lift the local (x, y) dot through the entity transform (rotation-aware).
+        if (keep) { const w = xfPoint(xf, (c + 0.5) * colPitch, row.y); verts.push({ x: w.x, y: w.y, z }); }
       }
     }
     if (verts.length === 0) continue;

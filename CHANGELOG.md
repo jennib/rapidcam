@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Engrave images can be rotated.** Placing an image for a laser engrave or a mill relief no longer forces it upright — rotate it like any other entity and the toolpath follows. The scan pattern is computed in the image's own frame and each point is lifted through the rotation, so the beam/bit sweeps along the image's *tilted* rows (boustrophedon, overscan, and depth-stepdown all rotate with it); the flat laser preview and the 3-D relief preview tilt to match. Unrotated images post byte-identically to before. The `.rcam` `image.angle` field (already present) is now honoured instead of pinned to 0 — [authoring guide](docs/rcam-format-v2.md) / [schema](public/schema/rcam-v2.schema.json) updated.
+
 ## [1.1.0] — 2026-07-01
 
 ### Changed

@@ -19,7 +19,7 @@ import {
   LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { rasterEngrave, type RasterScanRow } from "./rasterEngrave";
+import { rasterEngrave, type RasterScanRow, type RasterXf, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import type { CAMOperation } from "./types";
 import { DEFAULTS } from "./types";
@@ -160,7 +160,7 @@ type LaserPrim =
   | { kind: "circle"; cx: number; cy: number; r: number }
   | { kind: "arc"; arc: ArcEntity }
   | { kind: "fill"; segs: Vec2[][]; overscan: number }
-  | { kind: "raster"; rows: RasterScanRow[]; overscan: number };
+  | { kind: "raster"; rows: RasterScanRow[]; overscan: number; xf: RasterXf };
 
 /** One dispatch result: a cut primitive or a skip note, kept in entity order. */
 type LaserItem = LaserPrim | { kind: "note"; text: string };
@@ -198,15 +198,13 @@ function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][]
 /**
  * Build the raster-engrave primitive for one image entity: resolve its greyscale
  * pixels, sweep them into power-modulated scan rows at the op's resolution, and
- * lift the rows from image-local mm into world space (axis-aligned, anchored at
- * the entity's bottom-left). Returns a skip note if the pixels are missing, the
- * image is (defensively) rotated, or it produces no burn.
+ * attach the entity's local→world transform (so the emitter rotates each point).
+ * The rows stay in image-local mm; a rotated image engraves along its own tilted
+ * rows. Returns a skip note if the pixels are missing or it produces no burn.
  */
 function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserItem[] {
   const grid = getImageGrid(ent.imageId);
   if (!grid) return [{ kind: "note", text: `image (${ent.id}) pixels not loaded — skipped` }];
-  if (ent.angle !== 0)
-    return [{ kind: "note", text: `image (${ent.id}) is rotated; raster engrave is axis-aligned — straighten it first` }];
 
   const rows = rasterEngrave(grid, {
     widthMM: ent.widthMM,
@@ -219,11 +217,7 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
   });
   if (rows.length === 0) return [{ kind: "note", text: `image (${ent.id}) engraved nothing (blank or zero size) — skipped` }];
 
-  const world: RasterScanRow[] = rows.map((r) => ({
-    y: ent.position.y + r.y,
-    runs: r.runs.map((run) => ({ x0: ent.position.x + run.x0, x1: ent.position.x + run.x1, power: run.power })),
-  }));
-  return [{ kind: "raster", rows: world, overscan: Math.max(0, op.laserOverscan ?? 0) }];
+  return [{ kind: "raster", rows, overscan: Math.max(0, op.laserOverscan ?? 0), xf: makeRasterXf(ent.position, ent.angle) }];
 }
 
 /**
@@ -408,14 +402,20 @@ function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx
  * power as an explicit ` S<power>` so it works on modal and inline-power heads
  * alike. Feed is set once (modal). Blank gaps between runs are just the `G0`s.
  */
-function traceRaster(rows: RasterScanRow[], passes: number, feed: number, overscan: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
+function traceRaster(rows: RasterScanRow[], xf: RasterXf, passes: number, feed: number, overscan: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
   const lines: string[] = [];
   let setFeed = true;
+  // Each row is horizontal in the image's local frame; `xf` rotates + translates
+  // it into world space. `at(lx, ly)` formats one transformed point — for an
+  // unrotated image this reduces to the old axis-independent X/Y (byte-identical).
+  const at = (lx: number, ly: number): string => {
+    const w = xfPoint(xf, lx, ly);
+    return `X${X(w.x, ox)} Y${Y(w.y, oy)}`;
+  };
   for (let p = 0; p < passes; p++) {
     rows.forEach((row, ri) => {
       const ltr = ri % 2 === 0;
       const runs = ltr ? row.runs : [...row.runs].reverse();
-      const y = Y(row.y, oy);
       for (const run of runs) {
         const aX = ltr ? run.x0 : run.x1;
         const bX = ltr ? run.x1 : run.x0;
@@ -423,17 +423,18 @@ function traceRaster(rows: RasterScanRow[], passes: number, feed: number, oversc
         if (overscan > 0) {
           // Beam-off run-up / run-down so the head is at feed before the dot
           // burns and decelerates after — no over-burnt run edges. The S0/S<power>
-          // blocks make this work on modal and inline-power heads alike.
+          // blocks make this work on modal and inline-power heads alike. Overscan
+          // extends along the row's local +X, which `xf` rotates with the row.
           const os = ltr ? overscan : -overscan;
-          lines.push(`G0 X${X(aX - os, ox)} Y${y}`);
+          lines.push(`G0 ${at(aX - os, row.y)}`);
           const f = setFeed ? ` F${n(feed)}` : "";
-          lines.push(`G1 X${X(aX, ox)} Y${y}${f} S0`);
-          lines.push(`G1 X${X(bX, ox)} Y${y} S${s}`);
-          lines.push(`G1 X${X(bX + os, ox)} Y${y} S0`);
+          lines.push(`G1 ${at(aX, row.y)}${f} S0`);
+          lines.push(`G1 ${at(bX, row.y)} S${s}`);
+          lines.push(`G1 ${at(bX + os, row.y)} S0`);
         } else {
-          lines.push(`G0 X${X(aX, ox)} Y${y}`);
+          lines.push(`G0 ${at(aX, row.y)}`);
           const f = setFeed ? ` F${n(feed)}` : "";
-          lines.push(`G1 X${X(bX, ox)} Y${y}${f} S${s}`);
+          lines.push(`G1 ${at(bX, row.y)}${f} S${s}`);
         }
         setFeed = false;
       }
@@ -451,7 +452,7 @@ function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: 
     case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
     case "arc":    return traceArc(prim.arc, passes, cut, ox, oy);
     case "fill":   return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
-    case "raster": return traceRaster(prim.rows, passes, cut.feed, prim.overscan, post, maxPower, ox, oy);
+    case "raster": return traceRaster(prim.rows, prim.xf, passes, cut.feed, prim.overscan, post, maxPower, ox, oy);
   }
 }
 
@@ -533,9 +534,10 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
       else if (it.kind === "raster") {
         // Normalise each run's power by the op's max power so the preview shows
         // tonal contrast within the image regardless of the chosen power ceiling.
+        // Runs are local; `it.xf` rotates each endpoint so the preview tilts too.
         const maxP = Math.max(1, op.laserPower ?? DEFAULTS.laserPower);
         for (const row of it.rows) for (const run of row.runs)
-          paths.push({ pts: [{ x: run.x0, y: row.y }, { x: run.x1, y: row.y }], closed: false, intensity: Math.min(1, run.power / maxP) });
+          paths.push({ pts: [xfPoint(it.xf, run.x0, row.y), xfPoint(it.xf, run.x1, row.y)], closed: false, intensity: Math.min(1, run.power / maxP) });
       }
       else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }

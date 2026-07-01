@@ -20,7 +20,7 @@ import {
   PolylineEntity, ArcEntity, BezierEntity, TextEntity, RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { rasterField } from "./rasterEngrave";
+import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import { type CAMOperation, DEFAULTS, chamferDepth, chamferSharpSequence } from "./types";
 import { depthPasses } from "./postprocessors/base";
@@ -356,7 +356,7 @@ function rasVcarve(
  */
 function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number): void {
   const grid = getImageGrid(ent.imageId);
-  if (!grid || ent.angle !== 0) return;
+  if (!grid) return;
   const maxDepth = Math.min(Math.abs(op.depth), stockT);
   if (maxDepth <= 0) return;
   const field = rasterField(grid, {
@@ -364,12 +364,14 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
     lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
     dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert, gamma: op.reliefGamma,
   });
+  // Stamp each dot at its rotated world position so a tilted image previews tilted.
+  const xf = makeRasterXf(ent.position, ent.angle);
   for (const row of field.rows) {
-    const wy = ent.position.y + row.y;
     for (let c = 0; c < field.cols; c++) {
       const level = row.levels[c];
       if (level <= 0) continue;
-      stamp((ent.position.x + (c + 0.5) * field.colPitch) * RES, wy * RES, stockT - level * maxDepth);
+      const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
+      stamp(w.x * RES, w.y * RES, stockT - level * maxDepth);
     }
   }
 }

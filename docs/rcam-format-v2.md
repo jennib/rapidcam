@@ -196,9 +196,9 @@ Notes:
   Its `imageId` (`"img-XXXXXXXX"`) must appear in the top-level `images` array,
   which stores a downscaled **greyscale** buffer (one byte per pixel, row-major,
   row 0 = top, 0 = black) — colour carries no machining information for a laser.
-  `angle` (CCW radians) is reserved for forward compatibility but is always 0 in
-  this version — images are kept axis-aligned because the engrave does not yet
-  honour rotation (so the canvas can't show a cut the G-code won't make).
+  `angle` (CCW radians) rotates the image about its anchor. The engrave/relief
+  sweeps in the image's own (rotated) frame, so a non-zero `angle` is honoured in
+  both the toolpath and the preview — the scan rows tilt with the image.
 
 ## Constraints
 

@@ -342,7 +342,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "imageId", "position", "widthMM", "heightMM", "angle"],
-      "description": "A placed raster image for greyscale laser engraving. position is the bottom-left anchor; the image fills widthMM × heightMM. Point DOF key: pos. The greyscale pixels referenced by imageId must appear in the top-level \"images\" array. `angle` (CCW radians) is reserved for forward compatibility but is always 0 in this version — images are axis-aligned (the engrave does not yet honour rotation, so the editor keeps them upright).",
+      "description": "A placed raster image for greyscale laser engraving / mill relief carving. position is the bottom-left anchor; the image fills widthMM × heightMM. Point DOF key: pos. The greyscale pixels referenced by imageId must appear in the top-level \"images\" array. `angle` (CCW radians) rotates the image about its anchor; the engrave/relief sweeps along the image's rotated rows, so a non-zero angle is honoured in both the toolpath and the preview.",
       "properties": {
         "type": { "const": "image" },
         "id": { "type": "string", "minLength": 1 },

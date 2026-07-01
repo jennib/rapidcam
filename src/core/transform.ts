@@ -77,9 +77,11 @@ export function applyRotate(entities: Entity[], cx: number, cy: number, angle: n
     } else if (e instanceof CircleEntity) {
       rotPt(e.center);
     } else if (e instanceof RasterImageEntity) {
-      // A raster engrave is axis-aligned in this version: rotating the anchor would
-      // either misplace the (still-upright) image or imply a rotation the G-code
-      // won't honour. Leave image entities untouched by rotation.
+      // Rigid-rotate the image: spin its anchor about the pivot and add the angle
+      // to its own orientation. The raster/relief generators sweep in the image's
+      // local frame and lift each point through this angle, so the engrave follows.
+      rotPt(e.position);
+      e.angle += angle;
     } else if (e instanceof ArcEntity) {
       rotPt(e.center);
       e.startAngle += angle;

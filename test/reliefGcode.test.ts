@@ -97,15 +97,25 @@ test("relief: reaches depth over stepdown passes (never one deep plunge)", () =>
   expect(passStarts).toBe(3);
 });
 
-test("relief: missing pixels / rotation are reported, not silently dropped", () => {
+test("relief: missing pixels are reported, not silently dropped", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   doc.add(new RasterImageEntity("img-missing", { x: 0, y: 0 }, 10, 10, 0));
   expect(generateGCode([reliefOp([doc.entities.find((e) => e.type === "image")!.id])], doc)).toMatch(/pixels not loaded/);
+});
 
-  const id = registerGrid([[0]]);
-  const doc2 = new CADDocument({ width: 100, height: 100 });
-  doc2.add(new RasterImageEntity(id, { x: 0, y: 0 }, 10, 10, 0.3));
-  expect(generateGCode([reliefOp([doc2.entities.find((e) => e.type === "image")!.id])], doc2)).toMatch(/rotated; relief engrave is axis-aligned/);
+test("relief: a rotated image carves along its tilted rows (no longer refused)", () => {
+  const id = registerGrid([[0, 0]]); // dark row
+  const axis = new CADDocument({ width: 100, height: 100 });
+  axis.add(new RasterImageEntity(id, { x: 10, y: 10 }, 10, 10, 0));
+  const ga = generateGCode([reliefOp([axis.entities.find((e) => e.type === "image")!.id])], axis);
+
+  const rot = new CADDocument({ width: 100, height: 100 });
+  rot.add(new RasterImageEntity(id, { x: 10, y: 10 }, 10, 10, Math.PI / 2)); // 90°
+  const gr = generateGCode([reliefOp([rot.entities.find((e) => e.type === "image")!.id])], rot);
+
+  expect(gr).not.toMatch(/rotated/);   // not skipped
+  expect(gr).toMatch(/Z-/);            // still carves depth
+  expect(gr).not.toBe(ga);             // rotation changed the coordinates
 });
 
 // --- output-size checkpoint -------------------------------------------------

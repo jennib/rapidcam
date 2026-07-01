@@ -67,15 +67,35 @@ test("overscan brackets each lit run with beam-off run-up/run-down", () => {
   expect(g).toMatch(/G1 X13 Y[\d.]+ S0/);       // run-down past the end, beam off
 });
 
-test("missing pixels and rotation are reported, not silently dropped", () => {
+test("missing pixels are reported, not silently dropped", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const e1 = doc.add(new RasterImageEntity("img-not-loaded", { x: 0, y: 0 }, 10, 10, 0));
   expect(generateLaserGCode([engraveOp([e1.id])], doc)).toMatch(/pixels not loaded/);
+});
 
-  const id = registerGrid([[0, 0], [0, 0]]);
-  const doc2 = new CADDocument({ width: 100, height: 100 });
-  const e2 = doc2.add(new RasterImageEntity(id, { x: 0, y: 0 }, 10, 10, 0.3)); // rotated
-  expect(generateLaserGCode([engraveOp([e2.id])], doc2)).toMatch(/rotated; raster engrave is axis-aligned/);
+test("a rotated image engraves along its tilted rows (no longer refused)", () => {
+  const id = registerGrid([[0, 0], [0, 0]]); // solid black 2×2
+  const axis = new CADDocument({ width: 100, height: 100 });
+  const ea = axis.add(new RasterImageEntity(id, { x: 10, y: 10 }, 10, 10, 0));
+  const ga = generateLaserGCode([engraveOp([ea.id], { rasterLineInterval: 2 })], axis);
+
+  const rot = new CADDocument({ width: 100, height: 100 });
+  const er = rot.add(new RasterImageEntity(id, { x: 10, y: 10 }, 10, 10, Math.PI / 2)); // 90°
+  const gr = generateLaserGCode([engraveOp([er.id], { rasterLineInterval: 2 })], rot);
+
+  expect(gr).not.toMatch(/rotated/);       // not skipped
+  expect(gr).toMatch(/G1 [^\n]*S[1-9]/);   // still burns a lit run
+  expect(gr).not.toBe(ga);                 // rotation actually changed the coordinates
+
+  // At 90° a local row (constant y, x sweeping) maps to a VERTICAL run in world:
+  // world x = 10 - ly is constant along the run, world y = 10 + lx varies. Find a
+  // lit move and confirm its predecessor shares X but differs in Y (a vertical sweep).
+  const lit = gr.split("\n").findIndex((l) => /G1 .*S[1-9]/.test(l));
+  const a = gr.split("\n")[lit - 1], b = gr.split("\n")[lit];
+  const xOf = (l: string) => l.match(/X(-?[\d.]+)/)?.[1];
+  const yOf = (l: string) => l.match(/Y(-?[\d.]+)/)?.[1];
+  expect(xOf(a)).toBe(xOf(b));             // same X (vertical run)
+  expect(yOf(a)).not.toBe(yOf(b));         // Y changed
 });
 
 // --- output-size checkpoint -------------------------------------------------
