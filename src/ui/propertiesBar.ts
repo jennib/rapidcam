@@ -49,7 +49,9 @@ export class PropertiesBar {
   private content!: HTMLElement;
   private constructionBtn!: HTMLButtonElement;
   private isCollapsed = false;
-  private aspectLocked = true;
+  /** Aspect lock for the Transform > Scale section (distinct from an image
+   *  entity's own `aspectLocked`, which persists on the entity). */
+  private scaleLocked = true;
   private transformCollapsed = true;
 
   constructor(
@@ -189,8 +191,6 @@ export class PropertiesBar {
     }
   }
 
-  private imageAspectLocked = true;
-
   private buildImageProperties(entity: RasterImageEntity): void {
     const sec = this.createSection("IMAGE");
 
@@ -207,21 +207,30 @@ export class PropertiesBar {
     info.appendChild(span);
     sec.appendChild(info);
 
+    // Width/Height/Angle accept a variable formula (e.g. "plateW/2"). Aspect-lock
+    // still cross-links, but as a literal on the other field (it clears that
+    // field's formula — a locked pair isn't independently parametric).
     const aspect = entity.widthMM / entity.heightMM;
-    this.numRow(sec, "Width", entity.widthMM, "mm", (v) => {
+    this.exprRow(sec, "Width", entity.widthExpr, entity.widthMM, "mm", (v, expr) => {
       if (v <= 0) return;
-      this.applyEdit(() => { entity.widthMM = v; if (this.imageAspectLocked) entity.heightMM = v / aspect; });
+      this.applyEdit(() => {
+        entity.widthMM = v; entity.widthExpr = expr;
+        if (entity.aspectLocked) { entity.heightMM = v / aspect; entity.heightExpr = undefined; }
+      });
     });
-    this.numRow(sec, "Height", entity.heightMM, "mm", (v) => {
+    this.exprRow(sec, "Height", entity.heightExpr, entity.heightMM, "mm", (v, expr) => {
       if (v <= 0) return;
-      this.applyEdit(() => { entity.heightMM = v; if (this.imageAspectLocked) entity.widthMM = v * aspect; });
+      this.applyEdit(() => {
+        entity.heightMM = v; entity.heightExpr = expr;
+        if (entity.aspectLocked) { entity.widthMM = v * aspect; entity.widthExpr = undefined; }
+      });
     });
 
     const lockRow = document.createElement("div");
     lockRow.className = "props-row";
     const lockLbl = document.createElement("span"); lockLbl.textContent = "Lock aspect";
-    const lockCb = document.createElement("input"); lockCb.type = "checkbox"; lockCb.checked = this.imageAspectLocked;
-    lockCb.addEventListener("change", () => { this.imageAspectLocked = lockCb.checked; });
+    const lockCb = document.createElement("input"); lockCb.type = "checkbox"; lockCb.checked = entity.aspectLocked;
+    lockCb.addEventListener("change", () => { this.applyEdit(() => { entity.aspectLocked = lockCb.checked; }); });
     lockRow.append(lockLbl, lockCb);
     sec.appendChild(lockRow);
 
@@ -229,20 +238,11 @@ export class PropertiesBar {
       this.applyEdit(() => { entity.position = { x, y }; });
     });
 
-    // Angle — the engrave/relief sweeps along the image's rotated rows, so this
-    // is honoured in the toolpath (not just the on-canvas drawing).
-    const angleRow = document.createElement("div");
-    angleRow.className = "props-row";
-    const angleLbl = document.createElement("span"); angleLbl.textContent = "Angle";
-    const angleIn = document.createElement("input"); angleIn.type = "text"; angleIn.value = (entity.angle * 180 / Math.PI).toFixed(1);
-    const angleUnit = document.createElement("span"); angleUnit.textContent = "°";
-    angleIn.addEventListener("change", () => {
-      const v = parseFloat(angleIn.value);
-      if (isNaN(v)) return;
-      this.applyEdit(() => { entity.angle = v * Math.PI / 180; });
-    });
-    angleRow.append(angleLbl, angleIn, angleUnit);
-    sec.appendChild(angleRow);
+    // Angle — degrees (stored as radians); the engrave/relief sweeps along the
+    // image's rotated rows, so this is honoured in the toolpath. Accepts a formula.
+    this.exprRow(sec, "Angle", entity.angleExpr, entity.angle * 180 / Math.PI, "°", (v, expr) => {
+      this.applyEdit(() => { entity.angle = v * Math.PI / 180; entity.angleExpr = expr; });
+    }, 1);
 
     this.content.appendChild(sec);
   }
@@ -362,6 +362,35 @@ export class PropertiesBar {
       const v = parseFloat(inp.value);
       if (isNaN(v)) { inp.value = value.toFixed(decimals); return; }
       onCommit(v);
+    });
+    row.append(lbl, inp);
+    if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
+    parent.appendChild(row);
+  }
+
+  /**
+   * Like {@link numRow} but the value may be a **formula** referencing variables
+   * (e.g. `plateW/2`). A pure number commits as a literal (expr cleared); anything
+   * that evaluates against the current variables commits as an expression (stored
+   * and re-evaluated when a variable changes). `onCommit` receives `(value, expr?)`.
+   */
+  private exprRow(
+    parent: HTMLElement, label: string, expr: string | undefined, value: number,
+    unit: string | null, onCommit: (value: number, expr: string | undefined) => void, decimals = 3,
+  ): void {
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.style.flex = "1"; inp.value = expr ?? value.toFixed(decimals);
+    const reset = () => { inp.value = expr ?? value.toFixed(decimals); };
+    inp.addEventListener("change", () => {
+      const raw = inp.value.trim();
+      if (raw === "") { reset(); return; }
+      if (/^-?\d*\.?\d+$/.test(raw)) { onCommit(parseFloat(raw), undefined); return; } // literal
+      const ev = evalExpr(raw, varMap(this.doc.variables));                            // formula
+      if (ev !== null) onCommit(ev, raw);
+      else { this.flashInput(inp); reset(); }
     });
     row.append(lbl, inp);
     if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
@@ -862,16 +891,16 @@ export class PropertiesBar {
     const lblW = document.createElement("span"); lblW.textContent = "W";
     const inW = document.createElement("input"); inW.type = "text"; inW.value = w.toFixed(2);
     const btnLock = document.createElement("button");
-    btnLock.className = this.aspectLocked ? "btn active" : "btn";
-    btnLock.textContent = this.aspectLocked ? "🔒" : "🔓";
+    btnLock.className = this.scaleLocked ? "btn active" : "btn";
+    btnLock.textContent = this.scaleLocked ? "🔒" : "🔓";
     btnLock.title = "Toggle aspect ratio lock";
     const lblH = document.createElement("span"); lblH.textContent = "H";
     const inH = document.createElement("input"); inH.type = "text"; inH.value = h.toFixed(2);
 
     btnLock.addEventListener("click", () => {
-      this.aspectLocked = !this.aspectLocked;
-      btnLock.textContent = this.aspectLocked ? "🔒" : "🔓";
-      btnLock.className = this.aspectLocked ? "btn active" : "btn";
+      this.scaleLocked = !this.scaleLocked;
+      btnLock.textContent = this.scaleLocked ? "🔒" : "🔓";
+      btnLock.className = this.scaleLocked ? "btn active" : "btn";
     });
 
     const parseInput = (val: string, base: number) => {
@@ -880,13 +909,13 @@ export class PropertiesBar {
     };
 
     inW.addEventListener("input", () => {
-      if (!this.aspectLocked) return;
+      if (!this.scaleLocked) return;
       const newW = parseInput(inW.value, w);
       if (!isNaN(newW) && w !== 0) inH.value = (newW * (h / w)).toFixed(2);
     });
 
     inH.addEventListener("input", () => {
-      if (!this.aspectLocked) return;
+      if (!this.scaleLocked) return;
       const newH = parseInput(inH.value, h);
       if (!isNaN(newH) && h !== 0) inW.value = (newH * (w / h)).toFixed(2);
     });

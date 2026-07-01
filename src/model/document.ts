@@ -102,7 +102,7 @@ type EntitySnapshot =
   | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "text"; id: string; text: string; fontId: string; sizeMM: number; position: Vec2; angle: number; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "image"; id: string; imageId: string; position: Vec2; widthMM: number; heightMM: number; angle: number; flipX?: boolean; flipY?: boolean; selected: boolean; isConstruction: boolean; layerId?: string };
+  | { type: "image"; id: string; imageId: string; position: Vec2; widthMM: number; heightMM: number; angle: number; flipX?: boolean; flipY?: boolean; widthExpr?: string; heightExpr?: string; angleExpr?: string; aspectLocked?: boolean; selected: boolean; isConstruction: boolean; layerId?: string };
 
 export interface DocSnapshot {
   entities: EntitySnapshot[];
@@ -446,6 +446,12 @@ export class CADDocument {
         if (typeof e === "string") p[key] = e.replace(re, newName);
       }
     }
+    for (const e of this.entities) {
+      if (!(e instanceof RasterImageEntity)) continue;
+      if (e.widthExpr) e.widthExpr = e.widthExpr.replace(re, newName);
+      if (e.heightExpr) e.heightExpr = e.heightExpr.replace(re, newName);
+      if (e.angleExpr) e.angleExpr = e.angleExpr.replace(re, newName);
+    }
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -599,7 +605,7 @@ export class CADDocument {
         if (e instanceof TextEntity)
           return { type: "text", id: e.id, text: e.text, fontId: e.fontId, sizeMM: e.sizeMM, position: { ...e.position }, angle: e.angle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof RasterImageEntity)
-          return { type: "image", id: e.id, imageId: e.imageId, position: { ...e.position }, widthMM: e.widthMM, heightMM: e.heightMM, angle: e.angle, flipX: e.flipX, flipY: e.flipY, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
+          return { type: "image", id: e.id, imageId: e.imageId, position: { ...e.position }, widthMM: e.widthMM, heightMM: e.heightMM, angle: e.angle, flipX: e.flipX, flipY: e.flipY, widthExpr: e.widthExpr, heightExpr: e.heightExpr, angleExpr: e.angleExpr, aspectLocked: e.aspectLocked, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         const pe = e as PolylineEntity;
         return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), vertexIds: [...pe.vertexIds], closed: pe.closed,
           ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
@@ -677,6 +683,10 @@ export class CADDocument {
         }
         case "image": {
           e = new RasterImageEntity(es.imageId, { ...es.position }, es.widthMM, es.heightMM, es.angle, es.flipX ?? false, es.flipY ?? false, es.id);
+          (e as RasterImageEntity).widthExpr = es.widthExpr;
+          (e as RasterImageEntity).heightExpr = es.heightExpr;
+          (e as RasterImageEntity).angleExpr = es.angleExpr;
+          (e as RasterImageEntity).aspectLocked = es.aspectLocked ?? true;
           break;
         }
       }

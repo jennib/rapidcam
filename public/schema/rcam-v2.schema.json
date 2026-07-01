@@ -353,6 +353,10 @@
         "angle": { "type": "number", "description": "radians" },
         "flipX": { "type": "boolean", "description": "Mirror the image content left↔right. Default false." },
         "flipY": { "type": "boolean", "description": "Mirror the image content top↔bottom. Default false." },
+        "widthExpr": { "type": "string", "description": "Optional formula driving widthMM (mm), re-evaluated against variables. When present, widthMM is the cached value." },
+        "heightExpr": { "type": "string", "description": "Optional formula driving heightMM (mm). See widthExpr." },
+        "angleExpr": { "type": "string", "description": "Optional formula driving angle, in DEGREES (angle is stored in radians). See widthExpr." },
+        "aspectLocked": { "type": "boolean", "description": "Whether the aspect ratio is locked. Default true." },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }

@@ -432,10 +432,11 @@ export class App {
     } finally {
       this.autoRegenerating = false;
     }
+    this.doc.emitChange();
   }
 
   private runSolve(pins?: PinMap): void {
-    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
+    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit, this.doc.entities);
     const res = solve(this.doc, pins);
     if (!pins) {
       this.lastSolveResult = res;

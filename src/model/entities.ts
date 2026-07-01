@@ -895,6 +895,16 @@ export class RasterImageEntity extends Entity {
   flipX: boolean;
   /** Mirror the image content top↔bottom (about its horizontal centreline). */
   flipY: boolean;
+  /** Optional formula driving `widthMM` (mm), re-evaluated against variables.
+   *  When set, `widthMM` is the cached evaluation. Cleared to use a literal. */
+  widthExpr?: string;
+  /** Optional formula driving `heightMM` (mm). See {@link widthExpr}. */
+  heightExpr?: string;
+  /** Optional formula driving `angle`, expressed in DEGREES (converted to the
+   *  radians stored in `angle`). See {@link widthExpr}. */
+  angleExpr?: string;
+  /** Whether the aspect ratio is locked when modifying width/height. */
+  aspectLocked = true;
 
   constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, flipX = false, flipY = false, id?: EntityId) {
     super(id);
@@ -951,6 +961,10 @@ export class RasterImageEntity extends Entity {
     const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle, this.flipX, this.flipY);
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
+    e.widthExpr = this.widthExpr;
+    e.heightExpr = this.heightExpr;
+    e.angleExpr = this.angleExpr;
+    e.aspectLocked = this.aspectLocked;
     return e;
   }
 

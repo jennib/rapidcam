@@ -202,6 +202,13 @@ Notes:
   `flipX` / `flipY` (default false) mirror the image content left↔right / top↔bottom
   about its centrelines; the mirror is baked into the sampled dots, so it is
   honoured identically in the laser engrave, the mill relief, and both previews.
+  `widthExpr` / `heightExpr` / `angleExpr` are optional **formulas** that drive
+  `widthMM` / `heightMM` / `angle` from named variables (e.g. `"plateW/2"`),
+  re-evaluated whenever a variable changes — `widthMM`/etc. hold the cached value.
+  `angleExpr` is evaluated in **degrees** (while `angle` is stored in radians); it
+  uses the referenced variable's raw numeric value, so give **angle** variables a
+  plain number (`30`), not a length with a unit suffix (`1in` would be read as its
+  mm value, 25.4). Omit a field to use a plain literal.
 
 ## Constraints
 
