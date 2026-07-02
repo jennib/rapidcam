@@ -491,7 +491,8 @@
         "id": { "type": "string", "minLength": 1 },
         "entityId": { "type": "string", "minLength": 1 },
         "scalarKey": { "type": "string", "description": "A dofScalars() key on the entity, e.g. \"r\" (circle/arc radius), \"sa\"/\"ea\" (arc angles)." },
-        "expr": { "type": "string", "description": "Variable formula, e.g. \"plateW/2\"." }
+        "expr": { "type": "string", "description": "Variable formula, e.g. \"plateW/2\"." },
+        "scale": { "type": "number", "description": "Multiplier from the formula's display unit to the scalar's internal unit. Omitted/1 for lengths (mm); π/180 for an angle scalar (sa/ea) entered in degrees." }
       }
     },
 

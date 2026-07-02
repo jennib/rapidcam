@@ -14,7 +14,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity, PolylineEntity } from "../src/model/entities";
+import { CircleEntity, PolylineEntity, LineEntity, RasterImageEntity } from "../src/model/entities";
+import { makeDimension } from "../src/model/dimensions";
+import { registerEmbeddedImage } from "../src/core/imageManager";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 import type { CAMOperation, ToolDef } from "../src/cam/types";
 
@@ -160,6 +162,22 @@ describe("rcam v2 schema — serialized real document", () => {
     const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink") as { tools?: unknown[] };
     expect((data.tools ?? []).map((t: any) => t.id)).toEqual(["tool1"]);
   });
+
+  // Drift guard for the parametric/metadata/image additions (the kitchen-sink
+  // above only covers CAM). Serializes a doc exercising: variable-to-variable
+  // formulas, a scalar binding, a hidden driving dimension, an image entity with
+  // formula fields + flip + aspectLocked (and an embedded image), and metadata.
+  it("validates a serializeDoc() output covering the parametric + image + metadata fields", () => {
+    const data = serializeDoc(parametricDoc(), "parametric");
+    const ok = validate(data);
+    if (!ok) {
+      const msg = (validate.errors ?? [])
+        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+        .join("\n");
+      throw new Error(`serialized parametric doc does not match rcam-v2 schema:\n${msg}`);
+    }
+    expect(ok).toBe(true);
+  });
 });
 
 /**
@@ -237,6 +255,32 @@ function kitchenSinkDoc(): CADDocument {
     },
   ];
   doc.operations.push(...ops);
+  return doc;
+}
+
+/**
+ * A document exercising every parametric / metadata / image format addition,
+ * built and serialized through the production path.
+ */
+function parametricDoc(): CADDocument {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.metadata = { job: "J-100", revision: "A", notes: "anodize after cut" };
+  doc.variables.push({ id: "v1", name: "plateW", expr: "120", value: 120 });
+  doc.variables.push({ id: "v2", name: "margin", expr: "plateW * 0.1", value: 12 }); // var-to-var
+
+  const c = doc.add(new CircleEntity({ x: 50, y: 50 }, 10));
+  doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "plateW/2", scale: 1 });
+
+  const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 50, y: 0 }));
+  doc.dimensions.push(makeDimension("distance", {
+    points: [{ entityId: l.id, key: "a" }, { entityId: l.id, key: "b" }],
+    value: 50, offset: 0, driving: true, expr: "margin", hidden: true, // hidden driving dim
+  }));
+
+  registerEmbeddedImage({ id: "img-p", name: "p", width: 2, height: 2, data: btoa(String.fromCharCode(0, 255, 255, 0)) });
+  const img = new RasterImageEntity("img-p", { x: 10, y: 10 }, 40, 20, 0.3, true, false);
+  img.widthExpr = "plateW"; img.heightExpr = "plateW/2"; img.angleExpr = "margin"; img.aspectLocked = true;
+  doc.add(img);
   return doc;
 }
 
