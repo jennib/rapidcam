@@ -509,6 +509,7 @@ export class Renderer {
     };
 
     for (const dim of doc.dimensions) {
+      if (dim.hidden) continue; // headless driving dim (a property-field formula) — not drawn
       if (dim.entities.some(id => !isVisible(id))) continue;
       if (dim.points.some(p => !isVisible(p.entityId))) continue;
 

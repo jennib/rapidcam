@@ -466,7 +466,8 @@
           "maxItems": 2,
           "description": "[t1, t2] parametric anchors for line-distance extension lines."
         },
-        "expr": { "type": "string", "description": "Optional formula driving value, e.g. \"width * 2\"." }
+        "expr": { "type": "string", "description": "Optional formula driving value, e.g. \"width * 2\"." },
+        "hidden": { "type": "boolean", "description": "Not drawn. A hidden driving dimension is how a formula typed into a measurement property field (line length, rect W/H) parks in the engine — it drives geometry but shows no annotation." }
       }
     },
 

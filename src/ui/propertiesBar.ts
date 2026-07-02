@@ -6,8 +6,8 @@ import { getImageEntry } from "../core/imageManager";
 import {
   Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, RasterImageEntity, Bounds,
 } from "../model/entities";
-import { Dimension, DimensionType } from "../model/dimensions";
-import { Constraint, ConstraintType } from "../model/constraints";
+import { Dimension, DimensionType, makeDimension } from "../model/dimensions";
+import { Constraint, ConstraintType, PointRef } from "../model/constraints";
 import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
 import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
@@ -466,6 +466,68 @@ export class PropertiesBar {
     parent.appendChild(row);
   }
 
+  /**
+   * Like {@link bindingRow} but for a *measurement* property (line length, rect
+   * W/H) that has no scalar DOF — the formula parks in a **hidden driving
+   * dimension** of `dimType` between `points`. Reuses the whole dimension engine
+   * (solver residual, prune, rename) — it just isn't drawn. A plain number clears
+   * the hidden dim and calls `applyLiteral` (the entity's own resize).
+   */
+  private hiddenDimRow(
+    parent: HTMLElement, label: string, dimType: DimensionType, points: PointRef[],
+    currentValue: number, unit: string | null, applyLiteral: (v: number) => void, decimals = 3,
+  ): void {
+    const pkey = (p: PointRef) => `${p.entityId}:${p.key}`;
+    const wantKeys = new Set(points.map(pkey));
+    const findDim = () => this.doc.dimensions.find((d) =>
+      d.hidden && d.type === dimType && d.points.length === points.length && d.points.every((p) => wantKeys.has(pkey(p))));
+    const dim = findDim();
+
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span"); lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.style.flex = "1"; inp.value = dim?.expr ?? currentValue.toFixed(decimals);
+    const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables)) === null;
+    if (broken) inp.style.borderColor = "var(--danger, #e05555)";
+    const reset = () => { const d = findDim(); inp.value = d?.expr ?? currentValue.toFixed(decimals); };
+
+    const badge = document.createElement("span");
+    badge.textContent = broken ? "⚠" : "ƒx";
+    badge.title = broken ? `Broken formula: ${dim!.expr} — click to unbind`
+                : dim ? `Driven by formula: ${dim.expr} (click to unbind)` : "";
+    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${dim ? "inline" : "none"};`;
+    badge.addEventListener("click", () => {
+      const d = findDim();
+      if (d) this.applyEdit(() => { this.doc.dimensions = this.doc.dimensions.filter((x) => x !== d); });
+    });
+
+    inp.addEventListener("change", () => {
+      const raw = inp.value.trim();
+      const existing = findDim();
+      if (raw === "") { reset(); return; }
+      if (/^-?\d*\.?\d+$/.test(raw)) {                    // literal → clear hidden dim + resize
+        const v = parseFloat(raw);
+        this.applyEdit(() => {
+          if (existing) this.doc.dimensions = this.doc.dimensions.filter((x) => x !== existing);
+          applyLiteral(v);
+        });
+        return;
+      }
+      if (evalExpr(raw, varMap(this.doc.variables)) === null) { this.flashInput(inp); reset(); return; }
+      this.applyEdit(() => {                              // formula → hidden driving dimension
+        if (existing) existing.expr = raw;
+        else this.doc.dimensions.push(makeDimension(dimType, {
+          points, value: currentValue, offset: 0, driving: true, expr: raw, hidden: true,
+        }));
+      });
+    });
+
+    row.append(lbl, inp, badge);
+    if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
+    parent.appendChild(row);
+  }
+
   /** A two-field "Lx [x] Ly [y]" coordinate row committing both values together. */
   private coordRow(parent: HTMLElement, labelA: string, a: number, labelB: string, b: number, onCommit: (a: number, b: number) => void): void {
     const row = document.createElement("div");
@@ -621,15 +683,16 @@ export class PropertiesBar {
     const sec = this.createSection("LINE");
     const angleDeg = Math.atan2(entity.b.y - entity.a.y, entity.b.x - entity.a.x) * 180 / Math.PI;
 
-    // Length — resize along the current direction, anchoring endpoint A.
-    this.numRow(sec, "Length", entity.length, "mm", (v) => {
-      if (v <= 0) return;
-      this.applyEdit(() => {
+    // Length — a formula parks in a hidden distance dimension (a→b); a literal
+    // resizes along the current direction, anchoring endpoint A.
+    this.hiddenDimRow(sec, "Length", "distance",
+      [{ entityId: entity.id, key: "a" }, { entityId: entity.id, key: "b" }],
+      entity.length, "mm", (v) => {
+        if (v <= 0) return;
         const dx = entity.b.x - entity.a.x, dy = entity.b.y - entity.a.y;
         const L = Math.hypot(dx, dy) || 1;
         entity.b = { x: entity.a.x + (dx / L) * v, y: entity.a.y + (dy / L) * v };
       });
-    });
     // Angle — rotate endpoint B about A, keeping the length.
     this.numRow(sec, "Angle", angleDeg, "°", (v) => {
       this.applyEdit(() => {
@@ -649,22 +712,18 @@ export class PropertiesBar {
 
   private buildRectProperties(entity: RectEntity): void {
     const sec = this.createSection("RECTANGLE");
-    // Resize anchored at the min (bottom-left) corner.
-    this.numRow(sec, "W", entity.width, "mm", (v) => {
+    // W/H formulas park in hidden horizontal/vertical dims between the corners;
+    // a literal resizes anchored at the min (bottom-left) corner.
+    const corners: PointRef[] = [{ entityId: entity.id, key: "bl" }, { entityId: entity.id, key: "tr" }];
+    this.hiddenDimRow(sec, "W", "horizontal", corners, entity.width, "mm", (v) => {
       if (v <= 0) return;
-      this.applyEdit(() => {
-        const m = entity.minPt, h = entity.height;
-        entity.p0 = { x: m.x, y: m.y };
-        entity.p1 = { x: m.x + v, y: m.y + h };
-      });
+      const m = entity.minPt, h = entity.height;
+      entity.p0 = { x: m.x, y: m.y }; entity.p1 = { x: m.x + v, y: m.y + h };
     });
-    this.numRow(sec, "H", entity.height, "mm", (v) => {
+    this.hiddenDimRow(sec, "H", "vertical", corners, entity.height, "mm", (v) => {
       if (v <= 0) return;
-      this.applyEdit(() => {
-        const m = entity.minPt, w = entity.width;
-        entity.p0 = { x: m.x, y: m.y };
-        entity.p1 = { x: m.x + w, y: m.y + v };
-      });
+      const m = entity.minPt, w = entity.width;
+      entity.p0 = { x: m.x, y: m.y }; entity.p1 = { x: m.x + w, y: m.y + v };
     });
     this.content.appendChild(sec);
   }

@@ -53,11 +53,18 @@ export interface Dimension {
   anchors?: [number, number];
   /** Formula string when the value is driven by an expression (e.g. "width * 2"). */
   expr?: string;
+  /**
+   * Not drawn on the canvas. A `hidden` driving dimension is how a formula typed
+   * into a *measurement* property field (line length, rect W/H) parks in the
+   * engine — it drives geometry like any dimension but shows no annotation. See
+   * the parametric plan / property-field bindings.
+   */
+  hidden?: boolean;
 }
 
 export function makeDimension(
   type: DimensionType,
-  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number]; expr?: string },
+  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number]; expr?: string; hidden?: boolean },
 ): Dimension {
   return {
     id: nextId("dim"),
@@ -69,6 +76,7 @@ export function makeDimension(
     offset: opts.offset,
     anchors: opts.anchors,
     expr: opts.expr,
+    hidden: opts.hidden,
   };
 }
 

@@ -467,6 +467,7 @@ export class CADDocument {
   dimensionAt(p: Vec2, tol: number): Dimension | null {
     const geo = this.geo();
     for (let i = this.dimensions.length - 1; i >= 0; i--) {
+      if (this.dimensions[i].hidden) continue; // headless — nothing drawn to click
       if (dimensionHitDistance(this.dimensions[i], geo, p, this.displayUnit) <= tol) {
         return this.dimensions[i];
       }
