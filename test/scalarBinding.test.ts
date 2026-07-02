@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity } from "../src/model/entities";
+import { CircleEntity, ArcEntity } from "../src/model/entities";
 import { solve } from "../src/solver/solver";
 import { evaluateAll, makeVariable } from "../src/model/variables";
 import { bindingResiduals } from "../src/model/bindings";
@@ -45,6 +45,15 @@ test("bindingResiduals is empty for a broken formula (deleted variable)", () => 
   const before = c.radius;
   resolve(doc);
   expect(c.radius).toBe(before);
+});
+
+test("an angle binding applies the degree→radian scale", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const a = doc.add(new ArcEntity({ x: 100, y: 100 }, 20, 0, Math.PI / 2));
+  doc.variables.push(makeVariable("tilt", "90", "mm"));
+  doc.bindings.push({ id: "b1", entityId: a.id, scalarKey: "sa", expr: "tilt", scale: Math.PI / 180 });
+  resolve(doc);
+  expect(a.startAngle).toBeCloseTo(Math.PI / 2, 3);   // 90° → π/2 rad
 });
 
 test("deleting the entity prunes its binding", () => {

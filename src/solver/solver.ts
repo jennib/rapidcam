@@ -18,7 +18,7 @@ import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import { Entity, ArcEntity } from "../model/entities";
 import { Constraint, Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { bindingResiduals } from "../model/bindings";
+import { bindingTarget, bindingResidualAt } from "../model/bindings";
 import { solveLinearSystem, matrixRank, determinedVariables } from "./linalg";
 import { EntityId } from "../model/entities";
 
@@ -75,8 +75,10 @@ export type PinMap = Map<string, Vec2>;
 export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
   const geo: Geo = (id) => byId.get(id);
-  // name → value for binding formulas (variables are already evaluated upstream).
+  // Binding targets are constant during a solve (they depend only on variables,
+  // which are fixed here) — evaluate each once, up front, out of the FD loop.
   const bindingVars = new Map(doc.variables.map((v) => [v.name, v.value]));
+  const bindingTargets = doc.bindings.map((b) => bindingTarget(b, bindingVars));
 
   const fixed = new Set<string>();
 
@@ -225,10 +227,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     // Headless parametric bindings: an additive residual source (currentScalar −
     // formula), so the FD Jacobian and over/under-constrained counting cover them
     // for free — one parametric channel with dimensions/constraints.
-    for (const b of doc.bindings) {
-      const r = bindingResiduals(b, geo, bindingVars);
+    doc.bindings.forEach((b, i) => {
+      const r = bindingResidualAt(b, geo, bindingTargets[i]);
       for (const v of r) out.push(v);
-    }
+    });
     return out;
   };
   // Full residual the optimiser minimises: constraints + soft pin goals + anchors.

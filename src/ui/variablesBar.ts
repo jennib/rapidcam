@@ -1,5 +1,7 @@
 import { CADDocument } from "../model/document";
-import { makeVariable, isValidName, isDuplicateName } from "../model/variables";
+import { makeVariable, isValidName, isDuplicateName, varMap } from "../model/variables";
+import { parseLength } from "../core/units";
+import { evalExpr } from "../core/expr";
 
 export class VariablesBar {
   private content!: HTMLElement;
@@ -96,7 +98,12 @@ export class VariablesBar {
       valInput.dataset.vid = v.id;
       valInput.dataset.field = "val";
       valInput.style.cssText = "flex:1;min-width:0;font-family:var(--mono);";
-      valInput.title = "Value (number with optional unit, e.g. 50mm)";
+      valInput.title = "Value (number, unit like 50mm, or a formula of other variables)";
+      // Flag a formula that no longer resolves (e.g. references a deleted variable).
+      if (parseLength(v.expr, this.doc.displayUnit) === null && evalExpr(v.expr, varMap(this.doc.variables)) === null) {
+        valInput.style.borderColor = "var(--danger, #e05555)";
+        valInput.title = "⚠ Formula error — unknown variable or invalid expression";
+      }
 
       // Error label
       const errEl = document.createElement("span");

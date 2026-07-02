@@ -414,6 +414,7 @@ export class PropertiesBar {
   private bindingRow(
     parent: HTMLElement, label: string, entityId: string, scalarKey: string,
     currentValue: number, unit: string | null, applyLiteral: (v: number) => void, decimals = 3,
+    scale = 1,
   ): void {
     const binding = findBinding(this.doc.bindings, entityId, scalarKey);
     const row = document.createElement("div");
@@ -456,7 +457,7 @@ export class PropertiesBar {
       if (evalExpr(raw, varMap(this.doc.variables)) === null) { this.flashInput(inp); reset(); return; }
       this.applyEdit(() => {                              // formula → create/update the binding
         if (existing) existing.expr = raw;
-        else this.doc.bindings.push({ id: nextId("bind"), entityId, scalarKey, expr: raw });
+        else this.doc.bindings.push({ id: nextId("bind"), entityId, scalarKey, expr: raw, ...(scale !== 1 ? { scale } : {}) });
       });
     });
 
@@ -592,16 +593,16 @@ export class PropertiesBar {
     const span = ((entity.endAngle - entity.startAngle) % TAU + TAU) % TAU;
     const toDeg = (r: number) => r * 180 / Math.PI;
 
-    this.numRow(sec, "Radius", entity.radius, "mm", (v) => {
-      if (v <= 0) return;
-      this.applyEdit(() => { entity.radius = v; });
+    const DEG = Math.PI / 180;
+    this.bindingRow(sec, "Radius", entity.id, "r", entity.radius, "mm", (v) => {
+      if (v > 0) entity.radius = v;
     });
-    this.numRow(sec, "Start", toDeg(entity.startAngle), "°", (v) => {
-      this.applyEdit(() => { entity.startAngle = v * Math.PI / 180; });
-    }, 1);
-    this.numRow(sec, "End", toDeg(entity.endAngle), "°", (v) => {
-      this.applyEdit(() => { entity.endAngle = v * Math.PI / 180; });
-    }, 1);
+    this.bindingRow(sec, "Start", entity.id, "sa", toDeg(entity.startAngle), "°", (v) => {
+      entity.startAngle = v * DEG;
+    }, 1, DEG);
+    this.bindingRow(sec, "End", entity.id, "ea", toDeg(entity.endAngle), "°", (v) => {
+      entity.endAngle = v * DEG;
+    }, 1, DEG);
 
     const sweepRow = document.createElement("div");
     sweepRow.className = "props-row";

@@ -26,17 +26,32 @@ export interface ScalarBinding {
   scalarKey: string;
   /** Variable formula, e.g. "plateW/2". */
   expr: string;
+  /**
+   * Multiplier converting the formula's value (in the field's display unit) to
+   * the scalar's internal unit. Omitted/1 for lengths (mm); π/180 for an angle
+   * scalar entered in degrees. Keeps the formula in the unit the user typed.
+   */
+  scale?: number;
 }
 
-/** Driving residual for a binding: `[current − target]`, or `[]` when unresolved. */
+/** The binding's target in the scalar's internal unit, or null if unresolvable. */
+export function bindingTarget(b: ScalarBinding, vars: VarMap): number | null {
+  const t = evalExpr(b.expr, vars);
+  if (t === null || !isFinite(t)) return null;
+  return t * (b.scale ?? 1);
+}
+
+/** Driving residual from a precomputed target: `[current − target]`, or `[]`. The
+ *  target is constant during a solve, so the solver hoists it out of the FD loop. */
+export function bindingResidualAt(b: ScalarBinding, geo: Geo, target: number | null): number[] {
+  if (target === null) return [];
+  const cur = geo(b.entityId)?.dofScalars().find((s) => s.key === b.scalarKey)?.value;
+  return cur === undefined ? [] : [cur - target];
+}
+
+/** Convenience: residual computing its own target (one-off / tests). */
 export function bindingResiduals(b: ScalarBinding, geo: Geo, vars: VarMap): number[] {
-  const ent = geo(b.entityId);
-  if (!ent) return [];
-  const cur = ent.dofScalars().find((s) => s.key === b.scalarKey)?.value;
-  if (cur === undefined) return [];
-  const target = evalExpr(b.expr, vars);
-  if (target === null || !isFinite(target)) return [];
-  return [cur - target];
+  return bindingResidualAt(b, geo, bindingTarget(b, vars));
 }
 
 /** The binding driving `(entityId, scalarKey)`, if any. */
