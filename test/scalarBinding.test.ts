@@ -4,6 +4,8 @@ import { CircleEntity, ArcEntity } from "../src/model/entities";
 import { solve } from "../src/solver/solver";
 import { evaluateAll, makeVariable } from "../src/model/variables";
 import { bindingResiduals } from "../src/model/bindings";
+import { computeEntityDofStatus } from "../src/solver/solver";
+import { makeConstraint } from "../src/model/constraints";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 
 function resolve(doc: CADDocument) {
@@ -54,6 +56,20 @@ test("an angle binding applies the degree→radian scale", () => {
   doc.bindings.push({ id: "b1", entityId: a.id, scalarKey: "sa", expr: "tilt", scale: Math.PI / 180 });
   resolve(doc);
   expect(a.startAngle).toBeCloseTo(Math.PI / 2, 3);   // 90° → π/2 rad
+});
+
+test("a bound scalar counts toward the entity DOF status (not left under-defined)", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const c = doc.add(new CircleEntity({ x: 0, y: 0 }, 10));
+  // Pin the centre to the origin so only the radius DOF is left free.
+  doc.constraints.push(makeConstraint("coincident", {
+    points: [{ entityId: c.id, key: "c" }, { entityId: "__origin__", key: "p" }],
+  }));
+  doc.variables.push(makeVariable("r0", "25", "mm"));
+  expect(computeEntityDofStatus(doc, resolve(doc)).get(c.id)).toBe("under-defined"); // radius free
+
+  doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "r0" });
+  expect(computeEntityDofStatus(doc, resolve(doc)).get(c.id)).toBe("defined"); // radius now driven
 });
 
 test("deleting the entity prunes its binding", () => {

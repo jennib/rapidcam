@@ -477,12 +477,14 @@ export function computeEntityDofStatus(
   // Build constraint Jacobian (no anchors/pins — pure constraint equations)
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
+  const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
 
   const evalR = (x: number[]): number[] => {
     vars.forEach((v, i) => v.set(x[i]));
     const out: number[] = [];
     for (const c of active) for (const r of constraintResiduals(c, geo)) out.push(r);
     for (const d of drivingDims) for (const r of dimensionResiduals(d, geo)) out.push(r);
+    doc.bindings.forEach((b, i) => { for (const r of bindingResidualAt(b, geo, bTargets[i])) out.push(r); });
     return out;
   };
 
@@ -562,12 +564,14 @@ export function constraintJacobianRankChange(
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const extraActive = extras.filter((c) => c.type !== "fixed");
+  const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
 
   const buildEvalR = (includeExtras: boolean) => (x: number[]): number[] => {
     vars.forEach((v, i) => v.set(x[i]));
     const out: number[] = [];
     for (const c of active) for (const v of constraintResiduals(c, geo)) out.push(v);
     for (const d of drivingDims) for (const v of dimensionResiduals(d, geo)) out.push(v);
+    doc.bindings.forEach((b, i) => { for (const v of bindingResidualAt(b, geo, bTargets[i])) out.push(v); });
     if (includeExtras) for (const c of extraActive) for (const v of constraintResiduals(c, geo)) out.push(v);
     return out;
   };

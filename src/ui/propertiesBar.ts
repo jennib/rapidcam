@@ -479,8 +479,11 @@ export class PropertiesBar {
   ): void {
     const pkey = (p: PointRef) => `${p.entityId}:${p.key}`;
     const wantKeys = new Set(points.map(pkey));
+    // Match ANY driving dimension of this measurement (hidden OR a user's visible
+    // one) so the field reflects/edits it instead of adding a conflicting second
+    // driver. Reference (non-driving) dims are ignored — they don't constrain.
     const findDim = () => this.doc.dimensions.find((d) =>
-      d.hidden && d.type === dimType && d.points.length === points.length && d.points.every((p) => wantKeys.has(pkey(p))));
+      d.driving && d.type === dimType && d.points.length === points.length && d.points.every((p) => wantKeys.has(pkey(p))));
     const dim = findDim();
 
     const row = document.createElement("div");
@@ -494,28 +497,43 @@ export class PropertiesBar {
 
     const badge = document.createElement("span");
     badge.textContent = broken ? "⚠" : "ƒx";
+    // Only formula-driven dims get the badge; a plain-literal driving dimension has no formula.
+    const badged = !!dim?.expr;
     badge.title = broken ? `Broken formula: ${dim!.expr} — click to unbind`
-                : dim ? `Driven by formula: ${dim.expr} (click to unbind)` : "";
-    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${dim ? "inline" : "none"};`;
+                : badged ? `Driven by formula: ${dim!.expr} (click to unbind)` : "";
+    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${badged ? "inline" : "none"};`;
     badge.addEventListener("click", () => {
       const d = findDim();
-      if (d) this.applyEdit(() => { this.doc.dimensions = this.doc.dimensions.filter((x) => x !== d); });
+      if (!d) return;
+      // Clearing our own hidden dim removes it; a user's visible dim is kept (just
+      // its formula is dropped, becoming a plain-value dimension) — don't delete it.
+      this.applyEdit(() => {
+        if (d.hidden) this.doc.dimensions = this.doc.dimensions.filter((x) => x !== d);
+        else d.expr = undefined;
+      });
     });
 
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
       const existing = findDim();
       if (raw === "") { reset(); return; }
-      if (/^-?\d*\.?\d+$/.test(raw)) {                    // literal → clear hidden dim + resize
+      if (/^-?\d*\.?\d+$/.test(raw)) {                    // literal
         const v = parseFloat(raw);
+        if (v <= 0) { reset(); return; }
         this.applyEdit(() => {
-          if (existing) this.doc.dimensions = this.doc.dimensions.filter((x) => x !== existing);
-          applyLiteral(v);
+          if (existing?.hidden) {                          // our hidden dim → drop it and resize freely
+            this.doc.dimensions = this.doc.dimensions.filter((x) => x !== existing);
+            applyLiteral(v);
+          } else if (existing) {                           // a visible dim already drives it → set its value
+            existing.expr = undefined; existing.value = v;
+          } else {                                         // undriven → resize the geometry directly
+            applyLiteral(v);
+          }
         });
         return;
       }
       if (evalExpr(raw, varMap(this.doc.variables)) === null) { this.flashInput(inp); reset(); return; }
-      this.applyEdit(() => {                              // formula → hidden driving dimension
+      this.applyEdit(() => {                              // formula → drive the existing dim, or a new hidden one
         if (existing) existing.expr = raw;
         else this.doc.dimensions.push(makeDimension(dimType, {
           points, value: currentValue, offset: 0, driving: true, expr: raw, hidden: true,
