@@ -74,7 +74,8 @@ vocabularies is unchanged.
   "entities": [ /* geometry */ ],
   "constraints": [ /* parametric constraints */ ],
   "dimensions": [ /* measurements / driving dims */ ],
-  "variables": [ /* named numbers */ ],
+  "variables": [ /* named numbers, may reference each other */ ],
+  "bindings": [ /* headless formula → an entity scalar (e.g. circle radius) */ ],
   "patterns": [ /* linear / circular patterns */ ],
   "operations": [ /* CAM toolpaths */ ],
   "tools": [ /* reusable tool definitions referenced by operations */ ],
@@ -288,13 +289,41 @@ Optional: `anchors` (`[t1, t2]`, for `line-distance` extension lines) and `expr`
 
 ## Variables
 
-Named numbers referenced by dimension/pattern expressions. `expr` is the raw input
-string (`"100"`, `"50mm"`, `"3.5in"`); `value` is its cached evaluation in mm.
-`name` must match `^[a-zA-Z_][a-zA-Z0-9_]*$`.
+Named numbers referenced by dimension/pattern/binding expressions. `expr` is the
+raw input string; `value` is its cached evaluation in mm. `name` must match
+`^[a-zA-Z_][a-zA-Z0-9_]*$`.
+
+`expr` may be a plain length (`"100"`, `"50mm"`, `"3.5in"`) **or a formula that
+references other variables** (`"width * 0.1"`). Variables are evaluated in
+dependency order, so declaration order doesn't matter; a reference cycle (or a
+self-reference) leaves those variables at their last value rather than looping.
+Bare numbers inside a formula are millimetres (like dimension formulas).
 
 ```json
 { "id": "var1", "name": "pcd", "expr": "60mm", "value": 60 }
+{ "id": "var2", "name": "margin", "expr": "pcd * 0.1", "value": 6 }
 ```
+
+## Bindings
+
+Optional. A **headless parametric binding** drives one *scalar* DOF of an entity
+(by its scalar key — `"r"` for a circle/arc radius, `"sa"`/`"ea"` for arc angles)
+from a variable formula. It draws nothing on the canvas: it contributes a driving
+residual (`currentScalar − expr`) to the same solver as dimensions/constraints, so
+it reconciles through the one over/under-constrained mechanism (no separate
+channel). `scale` converts the formula's display unit to the scalar's internal
+unit — omit it (or `1`) for lengths; `π/180` for an angle scalar entered in
+degrees. Measurement fields without a scalar DOF (line length, rect W/H) use a
+`hidden` driving **dimension** instead (see below), not a binding.
+
+```json
+{ "id": "bind1", "entityId": "ent3", "scalarKey": "r", "expr": "pcd/2" }
+{ "id": "bind2", "entityId": "arc1", "scalarKey": "sa", "expr": "tilt", "scale": 0.0174533 }
+```
+
+A dimension may carry `"hidden": true` — a driving dimension that isn't drawn,
+used when a formula is typed into a *measurement* property field (line length,
+rect W/H). It drives geometry like any dimension but shows no annotation.
 
 ## Patterns
 
