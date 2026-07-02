@@ -209,7 +209,10 @@ Notes:
   `angleExpr` is evaluated in **degrees** (while `angle` is stored in radians); it
   uses the referenced variable's raw numeric value, so give **angle** variables a
   plain number (`30`), not a length with a unit suffix (`1in` would be read as its
-  mm value, 25.4). Omit a field to use a plain literal.
+  mm value, 25.4). Omit a field to use a plain literal. `aspectLocked` (default
+  true) keeps width and height proportional: when a formula (or literal) changes
+  one side and the other has no formula of its own, the other is derived from the
+  current proportions.
 
 ## Constraints
 

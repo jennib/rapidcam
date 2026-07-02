@@ -14,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity, PolylineEntity, LineEntity, RasterImageEntity } from "../src/model/entities";
+import {
+  CircleEntity, PolylineEntity, LineEntity, RasterImageEntity,
+  RectEntity, ArcEntity, BezierEntity, TextEntity,
+} from "../src/model/entities";
 import { makeDimension } from "../src/model/dimensions";
 import { registerEmbeddedImage } from "../src/core/imageManager";
 import { serializeDoc, applyFile } from "../src/io/fileio";
@@ -167,6 +170,22 @@ describe("rcam v2 schema — serialized real document", () => {
   // above only covers CAM). Serializes a doc exercising: variable-to-variable
   // formulas, a scalar binding, a hidden driving dimension, an image entity with
   // formula fields + flip + aspectLocked (and an embedded image), and metadata.
+  // Coverage the bundled examples lack: bezier, non-empty `groups`, a non-default
+  // `layer`, construction geometry, and a polyline carrying `polygon` + `vertexIds`.
+  // (`point` is intentionally excluded — it's origin-only, filtered from save, and
+  // no longer in the schema.)
+  it("validates a serializeDoc() output covering every serializable entity type + optional fields", () => {
+    const data = serializeDoc(allEntityTypesDoc(), "all-entities");
+    const ok = validate(data);
+    if (!ok) {
+      const msg = (validate.errors ?? [])
+        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+        .join("\n");
+      throw new Error(`serialized all-entities doc does not match rcam-v2 schema:\n${msg}`);
+    }
+    expect(ok).toBe(true);
+  });
+
   it("validates a serializeDoc() output covering the parametric + image + metadata fields", () => {
     const data = serializeDoc(parametricDoc(), "parametric");
     const ok = validate(data);
@@ -255,6 +274,29 @@ function kitchenSinkDoc(): CADDocument {
     },
   ];
   doc.operations.push(...ops);
+  return doc;
+}
+
+/**
+ * One of every entity type, plus optional fields the bundled examples miss:
+ * construction geometry, a non-default layer, a group, and a polyline carrying
+ * both `polygon` params and `vertexIds`.
+ */
+function allEntityTypesDoc(): CADDocument {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  doc.layers.push({ id: "layer-1", name: "Cuts", color: "#ff3333", visible: true, locked: false });
+  const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 20, y: 0 }));
+  line.isConstruction = true; line.layerId = "layer-1";
+  doc.add(new CircleEntity({ x: 40, y: 40 }, 6));
+  doc.add(new RectEntity({ x: 60, y: 60 }, { x: 90, y: 85 }));
+  doc.add(new ArcEntity({ x: 120, y: 120 }, 10, 0, Math.PI / 2));
+  doc.add(new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 130 }, { x: 30, y: 130 }, { x: 40, y: 100 }));
+  const poly = new PolylineEntity(
+    [{ x: 150, y: 150 }, { x: 174, y: 150 }, { x: 162, y: 171 }], true, undefined, ["va", "vb", "vc"]);
+  poly.polygon = { sides: 3, center: { x: 162, y: 157 }, radius: 12, rotation: 0 };
+  doc.add(poly);
+  doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 200, y: 200 }, 0.2));
+  doc.groups.push({ id: "grp1", name: "Group A", entityIds: [line.id] });
   return doc;
 }
 

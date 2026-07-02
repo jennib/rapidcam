@@ -194,7 +194,6 @@
         { "$ref": "#/$defs/polylineEntity" },
         { "$ref": "#/$defs/arcEntity" },
         { "$ref": "#/$defs/bezierEntity" },
-        { "$ref": "#/$defs/pointEntity" },
         { "$ref": "#/$defs/textEntity" },
         { "$ref": "#/$defs/imageEntity" }
       ]
@@ -311,19 +310,6 @@
       }
     },
 
-    "pointEntity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "id", "pos"],
-      "description": "Single reference point. Point DOF key: p. The reserved WCS origin uses id \"__origin__\".",
-      "properties": {
-        "type": { "const": "point" },
-        "id": { "type": "string", "minLength": 1 },
-        "pos": { "$ref": "#/$defs/vec2" },
-        "isConstruction": { "type": "boolean" },
-        "layerId": { "type": "string" }
-      }
-    },
 
     "textEntity": {
       "type": "object",
