@@ -895,15 +895,8 @@ export class RasterImageEntity extends Entity {
   flipX: boolean;
   /** Mirror the image content top↔bottom (about its horizontal centreline). */
   flipY: boolean;
-  /** Optional formula driving `widthMM` (mm), re-evaluated against variables.
-   *  When set, `widthMM` is the cached evaluation. Cleared to use a literal. */
-  widthExpr?: string;
-  /** Optional formula driving `heightMM` (mm). See {@link widthExpr}. */
-  heightExpr?: string;
-  /** Optional formula driving `angle`, expressed in DEGREES (converted to the
-   *  radians stored in `angle`). See {@link widthExpr}. */
-  angleExpr?: string;
-  /** Whether the aspect ratio is locked when modifying width/height. */
+  /** Whether the aspect ratio is locked when modifying width/height (an edit-time
+   *  convenience — a formula in one side writes a proportional one to the other). */
   aspectLocked = true;
 
   constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, flipX = false, flipY = false, id?: EntityId) {
@@ -961,9 +954,6 @@ export class RasterImageEntity extends Entity {
     const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle, this.flipX, this.flipY);
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
-    e.widthExpr = this.widthExpr;
-    e.heightExpr = this.heightExpr;
-    e.angleExpr = this.angleExpr;
     e.aspectLocked = this.aspectLocked;
     return e;
   }
@@ -977,6 +967,20 @@ export class RasterImageEntity extends Entity {
   }
   override setPoint(key: string, v: Vec2): void {
     if (key === "pos") this.position = clone(v);
+  }
+  // Size/rotation are scalar DOFs so formulas drive them through the solver like
+  // any other entity (parametric bindings), instead of a bespoke direct-drive path.
+  override dofScalars(): DofScalar[] {
+    return [
+      { key: "w", value: this.widthMM },
+      { key: "h", value: this.heightMM },
+      { key: "angle", value: this.angle },
+    ];
+  }
+  override setScalar(key: string, v: number): void {
+    if (key === "w") this.widthMM = Math.max(0.001, v);
+    else if (key === "h") this.heightMM = Math.max(0.001, v);
+    else if (key === "angle") this.angle = v;
   }
 }
 

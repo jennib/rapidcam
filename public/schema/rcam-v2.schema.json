@@ -344,10 +344,7 @@
         "angle": { "type": "number", "description": "radians" },
         "flipX": { "type": "boolean", "description": "Mirror the image content left↔right. Default false." },
         "flipY": { "type": "boolean", "description": "Mirror the image content top↔bottom. Default false." },
-        "widthExpr": { "type": "string", "description": "Optional formula driving widthMM (mm), re-evaluated against variables. When present, widthMM is the cached value." },
-        "heightExpr": { "type": "string", "description": "Optional formula driving heightMM (mm). See widthExpr." },
-        "angleExpr": { "type": "string", "description": "Optional formula driving angle, in DEGREES (angle is stored in radians). See widthExpr." },
-        "aspectLocked": { "type": "boolean", "description": "Whether the aspect ratio is locked. Default true." },
+        "aspectLocked": { "type": "boolean", "description": "Whether the aspect ratio is locked. Default true. Edit-time only: with it on, editing one of width/height writes a proportional value/formula to the other." },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
@@ -476,9 +473,9 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "entityId": { "type": "string", "minLength": 1 },
-        "scalarKey": { "type": "string", "description": "A dofScalars() key on the entity, e.g. \"r\" (circle/arc radius), \"sa\"/\"ea\" (arc angles)." },
+        "scalarKey": { "type": "string", "description": "A dofScalars() key on the entity, e.g. \"r\" (circle/arc radius), \"sa\"/\"ea\" (arc angles), \"w\"/\"h\"/\"angle\" (image width/height/rotation)." },
         "expr": { "type": "string", "description": "Variable formula, e.g. \"plateW/2\"." },
-        "scale": { "type": "number", "description": "Multiplier from the formula's display unit to the scalar's internal unit. Omitted/1 for lengths (mm); π/180 for an angle scalar (sa/ea) entered in degrees." }
+        "scale": { "type": "number", "description": "Multiplier from the formula's display unit to the scalar's internal unit. Omitted/1 for lengths (mm); π/180 for an angle scalar (sa/ea, or image angle) entered in degrees." }
       }
     },
 

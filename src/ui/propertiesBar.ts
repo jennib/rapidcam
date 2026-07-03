@@ -208,24 +208,31 @@ export class PropertiesBar {
     info.appendChild(span);
     sec.appendChild(info);
 
-    // Width/Height/Angle accept a variable formula (e.g. "plateW/2"). Aspect-lock
-    // still cross-links, but as a literal on the other field (it clears that
-    // field's formula — a locked pair isn't independently parametric).
-    const aspect = entity.widthMM / entity.heightMM;
-    this.exprRow(sec, "Width", entity.widthExpr, entity.widthMM, "mm", (v, expr) => {
-      if (v <= 0) return;
-      this.applyEdit(() => {
-        entity.widthMM = v; entity.widthExpr = expr;
-        if (entity.aspectLocked) { entity.heightMM = v / aspect; entity.heightExpr = undefined; }
-      });
-    });
-    this.exprRow(sec, "Height", entity.heightExpr, entity.heightMM, "mm", (v, expr) => {
-      if (v <= 0) return;
-      this.applyEdit(() => {
-        entity.heightMM = v; entity.heightExpr = expr;
-        if (entity.aspectLocked) { entity.widthMM = v * aspect; entity.widthExpr = undefined; }
-      });
-    });
+    // Width/Height/Angle are ordinary scalar DOFs driven through the shared
+    // binding engine (a formula like "plateW/2" becomes a ScalarBinding on the
+    // solver, same channel as circle radius). Aspect-lock is an edit-time
+    // cross-link: editing one side writes a proportional value/formula to the
+    // other (baked at the current ratio), so both re-evaluate together on a
+    // variable change and the proportion holds — no solver ratio-constraint.
+    const aspect = entity.heightMM !== 0 ? entity.widthMM / entity.heightMM : 1;
+    // Set the paired scalar within the caller's edit: a formula → mirror binding,
+    // a literal → clear the binding and set the value directly.
+    const setPaired = (key: string, value: number, expr: string | undefined) => {
+      const existing = findBinding(this.doc.bindings, entity.id, key);
+      if (expr) {
+        if (existing) existing.expr = expr;
+        else this.doc.bindings.push({ id: nextId("bind"), entityId: entity.id, scalarKey: key, expr });
+      } else {
+        if (existing) this.doc.bindings = this.doc.bindings.filter((b) => b !== existing);
+        entity.setScalar(key, value);
+      }
+    };
+    this.bindingRow(sec, "Width", entity.id, "w", entity.widthMM, "mm",
+      (v) => entity.setScalar("w", v), 3, 1,
+      (v, expr) => { if (entity.aspectLocked) setPaired("h", v / aspect, expr ? `(${expr})/${aspect}` : undefined); });
+    this.bindingRow(sec, "Height", entity.id, "h", entity.heightMM, "mm",
+      (v) => entity.setScalar("h", v), 3, 1,
+      (v, expr) => { if (entity.aspectLocked) setPaired("w", v * aspect, expr ? `(${expr})*${aspect}` : undefined); });
 
     const lockRow = document.createElement("div");
     lockRow.className = "props-row";
@@ -240,10 +247,10 @@ export class PropertiesBar {
     });
 
     // Angle — degrees (stored as radians); the engrave/relief sweeps along the
-    // image's rotated rows, so this is honoured in the toolpath. Accepts a formula.
-    this.exprRow(sec, "Angle", entity.angleExpr, entity.angle * 180 / Math.PI, "°", (v, expr) => {
-      this.applyEdit(() => { entity.angle = v * Math.PI / 180; entity.angleExpr = expr; });
-    }, 1);
+    // image's rotated rows, so this is honoured in the toolpath. The π/180 scale
+    // lets the formula read in degrees while the "angle" DOF stays radians.
+    this.bindingRow(sec, "Angle", entity.id, "angle", entity.angle * 180 / Math.PI, "°",
+      (v) => entity.setScalar("angle", v * Math.PI / 180), 1, Math.PI / 180);
 
     this.content.appendChild(sec);
   }
@@ -373,37 +380,6 @@ export class PropertiesBar {
   }
 
   /**
-   * Like {@link numRow} but the value may be a **formula** referencing variables
-   * (e.g. `plateW/2`). A pure number commits as a literal (expr cleared); anything
-   * that evaluates against the current variables commits as an expression (stored
-   * and re-evaluated when a variable changes). `onCommit` receives `(value, expr?)`.
-   */
-  private exprRow(
-    parent: HTMLElement, label: string, expr: string | undefined, value: number,
-    unit: string | null, onCommit: (value: number, expr: string | undefined) => void, decimals = 3,
-  ): void {
-    const row = document.createElement("div");
-    row.className = "props-row";
-    const lbl = document.createElement("span"); lbl.textContent = label;
-    const inp = document.createElement("input");
-    inp.type = "text"; inp.style.flex = "1"; inp.value = expr ?? value.toFixed(decimals);
-    // Flag a formula that no longer evaluates (e.g. a referenced variable was deleted).
-    if (expr && evalExpr(expr, varMap(this.doc.variables)) === null) inp.style.borderColor = "var(--danger, #e05555)";
-    const reset = () => { inp.value = expr ?? value.toFixed(decimals); };
-    inp.addEventListener("change", () => {
-      const raw = inp.value.trim();
-      if (raw === "") { reset(); return; }
-      if (/^-?\d*\.?\d+$/.test(raw)) { onCommit(parseFloat(raw), undefined); return; } // literal
-      const ev = evalExpr(raw, varMap(this.doc.variables));                            // formula
-      if (ev !== null) onCommit(ev, raw);
-      else { this.flashInput(inp); reset(); }
-    });
-    row.append(lbl, inp);
-    if (unit) { const u = document.createElement("span"); u.textContent = unit; row.appendChild(u); }
-    parent.appendChild(row);
-  }
-
-  /**
    * A scalar property row backed by the parametric engine. Enter a **formula**
    * referencing variables (e.g. `plateW/2`) and it creates/updates a headless
    * `ScalarBinding` on `(entityId, scalarKey)`, so the SOLVER drives the value
@@ -415,6 +391,10 @@ export class PropertiesBar {
     parent: HTMLElement, label: string, entityId: string, scalarKey: string,
     currentValue: number, unit: string | null, applyLiteral: (v: number) => void, decimals = 3,
     scale = 1,
+    // Fires inside the same edit after a literal or formula commits, with the
+    // committed value and raw expr (undefined for a literal). Images use it to
+    // propagate an aspect-locked edit to the paired dimension.
+    onAfterCommit?: (value: number, expr: string | undefined) => void,
   ): void {
     const binding = findBinding(this.doc.bindings, entityId, scalarKey);
     const row = document.createElement("div");
@@ -451,13 +431,16 @@ export class PropertiesBar {
         this.applyEdit(() => {
           if (existing) this.doc.bindings = this.doc.bindings.filter((x) => x !== existing);
           applyLiteral(v);
+          onAfterCommit?.(v, undefined);
         });
         return;
       }
-      if (evalExpr(raw, varMap(this.doc.variables)) === null) { this.flashInput(inp); reset(); return; }
+      const ev = evalExpr(raw, varMap(this.doc.variables));
+      if (ev === null) { this.flashInput(inp); reset(); return; }
       this.applyEdit(() => {                              // formula → create/update the binding
         if (existing) existing.expr = raw;
         else this.doc.bindings.push({ id: nextId("bind"), entityId, scalarKey, expr: raw, ...(scale !== 1 ? { scale } : {}) });
+        onAfterCommit?.(ev, raw);
       });
     });
 

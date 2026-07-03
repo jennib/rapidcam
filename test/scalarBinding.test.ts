@@ -9,7 +9,7 @@ import { makeConstraint } from "../src/model/constraints";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 
 function resolve(doc: CADDocument) {
-  evaluateAll(doc.variables, doc.dimensions, doc.displayUnit, doc.entities);
+  evaluateAll(doc.variables, doc.dimensions, doc.displayUnit);
   return solve(doc);
 }
 

@@ -321,8 +321,14 @@ function parametricDoc(): CADDocument {
 
   registerEmbeddedImage({ id: "img-p", name: "p", width: 2, height: 2, data: btoa(String.fromCharCode(0, 255, 255, 0)) });
   const img = new RasterImageEntity("img-p", { x: 10, y: 10 }, 40, 20, 0.3, true, false);
-  img.widthExpr = "plateW"; img.heightExpr = "plateW/2"; img.angleExpr = "margin"; img.aspectLocked = true;
+  img.aspectLocked = true;
   doc.add(img);
+  // Image size/rotation formulas are ordinary scalar bindings (like circle radius).
+  doc.bindings.push(
+    { id: "b2", entityId: img.id, scalarKey: "w", expr: "plateW" },
+    { id: "b3", entityId: img.id, scalarKey: "h", expr: "plateW/2" },
+    { id: "b4", entityId: img.id, scalarKey: "angle", expr: "margin", scale: Math.PI / 180 },
+  );
   return doc;
 }
 

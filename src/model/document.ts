@@ -79,7 +79,7 @@ import { Dimension, dimensionHitDistance } from "./dimensions";
 import { Variable } from "./variables";
 import { ScalarBinding } from "./bindings";
 import { PatternDef, clonePatternDef } from "./patterns";
-import { updateCounter } from "./ids";
+import { updateCounter, nextId } from "./ids";
 
 export interface GroupDef {
   id: string;
@@ -103,6 +103,8 @@ type EntitySnapshot =
   | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
   | { type: "text"; id: string; text: string; fontId: string; sizeMM: number; position: Vec2; angle: number; selected: boolean; isConstruction: boolean; layerId?: string }
+  // widthExpr/heightExpr/angleExpr are LEGACY (read-only): pre-unification image
+  // formulas, migrated to scalar bindings on load and never written back out.
   | { type: "image"; id: string; imageId: string; position: Vec2; widthMM: number; heightMM: number; angle: number; flipX?: boolean; flipY?: boolean; widthExpr?: string; heightExpr?: string; angleExpr?: string; aspectLocked?: boolean; selected: boolean; isConstruction: boolean; layerId?: string };
 
 export interface DocSnapshot {
@@ -451,12 +453,6 @@ export class CADDocument {
         if (typeof e === "string") p[key] = e.replace(re, newName);
       }
     }
-    for (const e of this.entities) {
-      if (!(e instanceof RasterImageEntity)) continue;
-      if (e.widthExpr) e.widthExpr = e.widthExpr.replace(re, newName);
-      if (e.heightExpr) e.heightExpr = e.heightExpr.replace(re, newName);
-      if (e.angleExpr) e.angleExpr = e.angleExpr.replace(re, newName);
-    }
     for (const b of this.bindings) b.expr = b.expr.replace(re, newName);
   }
   private geo(): Geo {
@@ -612,7 +608,7 @@ export class CADDocument {
         if (e instanceof TextEntity)
           return { type: "text", id: e.id, text: e.text, fontId: e.fontId, sizeMM: e.sizeMM, position: { ...e.position }, angle: e.angle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         if (e instanceof RasterImageEntity)
-          return { type: "image", id: e.id, imageId: e.imageId, position: { ...e.position }, widthMM: e.widthMM, heightMM: e.heightMM, angle: e.angle, flipX: e.flipX, flipY: e.flipY, widthExpr: e.widthExpr, heightExpr: e.heightExpr, angleExpr: e.angleExpr, aspectLocked: e.aspectLocked, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
+          return { type: "image", id: e.id, imageId: e.imageId, position: { ...e.position }, widthMM: e.widthMM, heightMM: e.heightMM, angle: e.angle, flipX: e.flipX, flipY: e.flipY, aspectLocked: e.aspectLocked, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
         const pe = e as PolylineEntity;
         return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), vertexIds: [...pe.vertexIds], closed: pe.closed,
           ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
@@ -656,6 +652,9 @@ export class CADDocument {
     this.layers = s.layers ? s.layers.map(l => ({ ...l })) : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
     this.activeLayerId = s.activeLayerId ?? "layer-0";
 
+    // Legacy image direct-drive formulas (widthExpr/heightExpr/angleExpr) migrated
+    // to scalar bindings during entity restore; merged into `bindings` below.
+    const legacyImageBindings: ScalarBinding[] = [];
     this.entities = s.entities.map((es): Entity => {
       let e: Entity;
       switch (es.type) {
@@ -691,10 +690,15 @@ export class CADDocument {
         }
         case "image": {
           e = new RasterImageEntity(es.imageId, { ...es.position }, es.widthMM, es.heightMM, es.angle, es.flipX ?? false, es.flipY ?? false, es.id);
-          (e as RasterImageEntity).widthExpr = es.widthExpr;
-          (e as RasterImageEntity).heightExpr = es.heightExpr;
-          (e as RasterImageEntity).angleExpr = es.angleExpr;
           (e as RasterImageEntity).aspectLocked = es.aspectLocked ?? true;
+          // Migrate legacy direct-drive image formulas (widthExpr/heightExpr/angleExpr,
+          // pre-unification) to the general scalar-binding channel.
+          const mig: [string | undefined, string, number][] = [
+            [es.widthExpr, "w", 1], [es.heightExpr, "h", 1], [es.angleExpr, "angle", Math.PI / 180],
+          ];
+          for (const [expr, key, scale] of mig) {
+            if (expr) legacyImageBindings.push({ id: nextId("bind"), entityId: es.id, scalarKey: key, expr, ...(scale !== 1 ? { scale } : {}) });
+          }
           break;
         }
       }
@@ -726,7 +730,7 @@ export class CADDocument {
       return d;
     });
     this.variables = (s.variables || []).map((v) => ({ ...v }));
-    this.bindings = (s.bindings || []).map((b) => ({ ...b }));
+    this.bindings = [...(s.bindings || []).map((b) => ({ ...b })), ...legacyImageBindings];
 
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));

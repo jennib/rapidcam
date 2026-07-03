@@ -203,16 +203,17 @@ Notes:
   `flipX` / `flipY` (default false) mirror the image content left↔right / top↔bottom
   about its centrelines; the mirror is baked into the sampled dots, so it is
   honoured identically in the laser engrave, the mill relief, and both previews.
-  `widthExpr` / `heightExpr` / `angleExpr` are optional **formulas** that drive
-  `widthMM` / `heightMM` / `angle` from named variables (e.g. `"plateW/2"`),
-  re-evaluated whenever a variable changes — `widthMM`/etc. hold the cached value.
-  `angleExpr` is evaluated in **degrees** (while `angle` is stored in radians); it
-  uses the referenced variable's raw numeric value, so give **angle** variables a
-  plain number (`30`), not a length with a unit suffix (`1in` would be read as its
-  mm value, 25.4). Omit a field to use a plain literal. `aspectLocked` (default
-  true) keeps width and height proportional: when a formula (or literal) changes
-  one side and the other has no formula of its own, the other is derived from the
-  current proportions.
+  To **drive** `widthMM` / `heightMM` / `angle` from a variable formula, add a
+  scalar binding (see [Bindings](#bindings)) on the image with
+  `scalarKey` `"w"` / `"h"` / `"angle"` — exactly the mechanism used for a circle
+  radius. An `"angle"` binding is entered in **degrees** and carries
+  `scale: 0.0174533` (π/180) to reach the radian DOF, like an arc's `sa`/`ea`.
+  (Pre-unification files used inline `widthExpr` / `heightExpr` / `angleExpr`
+  fields; these are still read and auto-migrated to bindings on load, but are no
+  longer written.) `aspectLocked` (default true) is an **edit-time** convenience
+  only: with it on, editing one of width/height writes a proportional value or
+  formula to the other — it stores nothing extra in the file and adds no solver
+  constraint.
 
 ## Constraints
 
@@ -310,8 +311,8 @@ Bare numbers inside a formula are millimetres (like dimension formulas).
 ## Bindings
 
 Optional. A **headless parametric binding** drives one *scalar* DOF of an entity
-(by its scalar key — `"r"` for a circle/arc radius, `"sa"`/`"ea"` for arc angles)
-from a variable formula. It draws nothing on the canvas: it contributes a driving
+(by its scalar key — `"r"` for a circle/arc radius, `"sa"`/`"ea"` for arc angles,
+`"w"`/`"h"`/`"angle"` for image width/height/rotation) from a variable formula. It draws nothing on the canvas: it contributes a driving
 residual (`currentScalar − expr`) to the same solver as dimensions/constraints, so
 it reconciles through the one over/under-constrained mechanism (no separate
 channel). `scale` converts the formula's display unit to the scalar's internal
