@@ -6,6 +6,8 @@ Sketch a part, lock it down with real parametric constraints, generate toolpaths
 
 ### 👉 [Try it now at rapidcam.app](https://rapidcam.app) — nothing to install
 
+<video src="docs/videos/Rapidcamapp%20Overview-1080P.mp4" width="100%" controls></video>
+
 | Sketch editor | Constraint solver | CAM toolpaths |
 |---|---|---|
 | ![Sketch editor](docs/screenshots/editor.png) | ![Constraints](docs/screenshots/constraints.png) | ![CAM](docs/screenshots/cam.png) |
