@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity, RasterImageEntity } from "../src/model/entities";
 import { makeConstraint } from "../src/model/constraints";
-import { solve } from "../src/solver/solver";
+import { solve, computeEntityDofStatus } from "../src/solver/solver";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 
 const near = (p: { x: number; y: number }, x: number, y: number, d = 3) => {
@@ -85,6 +85,46 @@ test("moving the constraint target reflows the constrained image", () => {
   (circ as CircleEntity).center = { x: 80, y: 70 };
   expect(solve(doc).converged).toBe(true);
   near(img.getPoint("c2"), 80, 70);
+});
+
+test("DOF accounting: a rigid image has exactly 2 DOF (position); one point constraint defines it", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const img = doc.add(new RasterImageEntity("img", { x: 20, y: 20 }, 40, 20, 0));
+  // Unbound → w/h/angle are fixed, so only the 2 position DOFs are free.
+  expect(computeEntityDofStatus(doc, solve(doc)).get(img.id)).toBe("under-defined");
+  // Pinning any one point removes both position DOFs → fully defined.
+  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: img.id, key: "c0" }], params: [20, 20] }));
+  expect(computeEntityDofStatus(doc, solve(doc)).get(img.id)).toBe("defined");
+});
+
+test("a rotated image stays rigid under a corner constraint (angle + size preserved)", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 40, 20, Math.PI / 6)); // 30°
+  const circ = doc.add(new CircleEntity({ x: 100, y: 80 }, 5));
+  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: circ.id, key: "c" }], params: [100, 80] }));
+  doc.addConstraint(makeConstraint("coincident", { points: [{ entityId: img.id, key: "c2" }, { entityId: circ.id, key: "c" }] }));
+
+  expect(solve(doc).converged).toBe(true);
+  near(img.getPoint("c2"), 100, 80);
+  expect(img.angle).toBeCloseTo(Math.PI / 6, 4); // rotation preserved (rigid)
+  expect(img.widthMM).toBeCloseTo(40, 3);
+  expect(img.heightMM).toBeCloseTo(20, 3);
+});
+
+test("inconsistent two-corner pins fail gracefully — over-defined, best-fit, finite (no distort/NaN)", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 20, 0)); // c0→c1 is 20mm
+  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: img.id, key: "c0" }], params: [0, 0] }));
+  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: img.id, key: "c1" }], params: [50, 0] })); // implies width 50
+
+  const r = solve(doc);
+  // A rigid image can't resize to satisfy both → not converged, but stable:
+  expect(r.converged).toBe(false);
+  expect(Number.isFinite(img.position.x) && Number.isFinite(img.position.y)).toBe(true);
+  expect(img.widthMM).toBeCloseTo(20, 3);   // never distorted to "fit"
+  near(img.position, 15, 0);                // least-squares best-fit anchor
+  // Flagged as a conflict (over/conflicting constraints) so the UI can show it red.
+  expect(computeEntityDofStatus(doc, r).get(img.id)).toBe("conflict");
 });
 
 test("an image-corner constraint round-trips through save/load and still solves", () => {
