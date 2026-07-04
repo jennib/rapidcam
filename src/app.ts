@@ -58,6 +58,7 @@ import { VariablesBar } from "./ui/variablesBar";
 import { ContextMenu, ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
+import { isModalOpen, closeAllModals } from "./ui/modal";
 import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
@@ -123,6 +124,9 @@ export class App {
       onCloseEditors: () => {
         this.dimEditor.close();
         this.closeValueEditor();
+        // A document swap (New Project / open / draft restore) must not leave a
+        // dialog open over the new document — it would act on geometry that's gone.
+        closeAllModals();
       }
     });
 
@@ -847,6 +851,10 @@ export class App {
   // --- keyboard ------------------------------------------------------------
   private onKeyDown = (ev: KeyboardEvent): void => {
     if (isTypingTarget(ev.target)) return;
+    // While a dialog is open it owns the keyboard: don't let editor shortcuts
+    // (Ctrl+N, undo, Delete, single-key tool switches) mutate the document
+    // underneath it. Escape-to-close is handled by the modal manager itself.
+    if (isModalOpen()) return;
 
     if (ev.key === " ") {
       this.spaceDown = true;

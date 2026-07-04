@@ -1,5 +1,6 @@
 import { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
+import { confirmDialog } from "./modal";
 
 export class LayersBar {
   private content!: HTMLElement;
@@ -165,13 +166,18 @@ export class LayersBar {
       delBtn.title = "Delete Layer";
       delBtn.disabled = this.doc.layers.length <= 1;
       delBtn.style.opacity = delBtn.disabled ? "0.3" : "1";
-      delBtn.onclick = () => {
+      delBtn.onclick = async () => {
         if (this.doc.layers.length <= 1) return;
-        
+
         const entsOnLayer = this.doc.entities.filter(e => e.layerId === layer.id);
         if (entsOnLayer.length > 0) {
-          const confirm = window.confirm(`Layer "${layer.name}" contains ${entsOnLayer.length} object(s). Are you sure you want to delete it and all its objects?`);
-          if (!confirm) return;
+          const ok = await confirmDialog({
+            title: "Delete layer?",
+            message: `Layer "${layer.name}" contains ${entsOnLayer.length} object${entsOnLayer.length > 1 ? "s" : ""}.\nDeleting the layer deletes them too.`,
+            confirmLabel: "Delete",
+            danger: true,
+          });
+          if (!ok) return;
         }
 
         this.pushHistory();

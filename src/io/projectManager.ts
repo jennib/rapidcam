@@ -14,6 +14,7 @@ import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
 import { copyToClipboard } from "../ui/clipboard";
 import { toast } from "../ui/toast";
+import { confirmDialog } from "../ui/modal";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 
@@ -78,11 +79,14 @@ export class ProjectManager {
 
   // --- file operations ---
   fileNew(): void {
-    if (this.doc.entities.length && !confirm("Discard current drawing and start new?")) return;
+    // The discard confirmation now lives inside the dialog as an inline warning
+    // (shown only when there's real work), so Cancel truly loses nothing and the
+    // drawing is discarded only on Create Project.
     this.openSetupDialog();
   }
 
   openSetupDialog(): void {
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
     openNewProjectDialog(
       {
         name: this.currentFileName === "Untitled" ? "Untitled" : this.currentFileName,
@@ -107,14 +111,31 @@ export class ProjectManager {
         this.markClean();
         track("project_new", { width: cfg.width, height: cfg.height, unit: cfg.displayUnit });
       },
+      { hasWork },
     );
   }
 
   async fileOpen(): Promise<void> {
+    if (!(await this.confirmDiscard("open a file"))) return;
     const result = await openFile();
     if (!result) return;
     track("project_opened");
     this.loadDocument(result.file, result.name, result.handle ?? null);
+  }
+
+  /**
+   * If the current drawing has real work, ask before discarding it. Returns true
+   * to proceed (empty drawing, or user confirmed), false to abort.
+   */
+  private async confirmDiscard(actionLabel: string): Promise<boolean> {
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
+    if (!hasWork) return true;
+    return confirmDialog({
+      title: "Discard current drawing?",
+      message: `This will discard the current drawing to ${actionLabel}.\nSave first if you want to keep it.`,
+      confirmLabel: "Discard",
+      danger: true,
+    });
   }
 
   async fileSave(): Promise<void> {
@@ -178,15 +199,14 @@ export class ProjectManager {
     toast("Design link copied — anyone with it can open this design.");
   }
 
-  fileOpenRecent(entry: RecentEntry): void {
-    if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
+  async fileOpenRecent(entry: RecentEntry): Promise<void> {
+    if (!(await this.confirmDiscard(`open "${entry.name}"`))) return;
     track("project_opened_recent");
     this.loadDocument(entry.data, entry.name);
   }
 
-  loadExample(entry: ExampleEntry): void {
-    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
-    if (hasWork && !confirm(`Discard current drawing and open example "${entry.name}"?`)) return;
+  async loadExample(entry: ExampleEntry): Promise<void> {
+    if (!(await this.confirmDiscard(`open example "${entry.name}"`))) return;
     track("example_opened", { name: entry.name });
     // No file handle: a later Save prompts for a new file, leaving the bundled example intact.
     this.loadDocument(entry.file, entry.name);

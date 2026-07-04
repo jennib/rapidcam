@@ -3,6 +3,7 @@ import { type MachineKind, type OriginDef, type OriginX, type OriginY, type Orig
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
+import { registerModal } from "./modal";
 
 const MILL_POST_OPTIONS: [string, string][] = [["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]];
 
@@ -27,6 +28,7 @@ export interface NewProjectConfig {
 export function openNewProjectDialog(
   initial: Partial<NewProjectConfig>,
   onConfirm: (cfg: NewProjectConfig) => void,
+  opts: { hasWork?: boolean } = {},
 ): void {
   document.getElementById("npd-backdrop")?.remove();
 
@@ -68,7 +70,9 @@ export function openNewProjectDialog(
   const backdrop = document.createElement("div");
   backdrop.id = "npd-backdrop";
   backdrop.className = "tp-backdrop";
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -87,6 +91,16 @@ export function openNewProjectDialog(
   const body = document.createElement("div");
   body.className = "tp-dialog-body";
   dialog.appendChild(body);
+
+  // Warn (in-dialog, not a pre-emptive native confirm) that creating a project
+  // discards the current drawing — so Cancel genuinely loses nothing and the
+  // discard happens only on Create Project.
+  if (opts.hasWork) {
+    const warn = document.createElement("div");
+    warn.className = "npd-discard-warning";
+    warn.textContent = "⚠ Creating a new project discards the current drawing. Save first if you want to keep it.";
+    body.appendChild(warn);
+  }
 
   // -- project name --
   const nameInput = inp("text", vals.name);
@@ -195,7 +209,7 @@ export function openNewProjectDialog(
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => backdrop.remove());
+  cancelBtn.addEventListener("click", () => close());
 
   const createBtn = document.createElement("button");
   createBtn.className = "btn tp-apply-btn";
@@ -248,7 +262,7 @@ export function openNewProjectDialog(
     // Persist the machine coolant capability (global, applies to all projects).
     setMachineHasCoolant(coolantChk.checked);
 
-    backdrop.remove();
+    close();
     onConfirm(cfg);
   });
 
@@ -268,12 +282,13 @@ export function openNewProjectDialog(
     tInp.value = formatLength(t, unit);
   });
 
-  // keyboard
+  // keyboard (Escape is also handled globally by the modal manager; Enter here
+  // submits from any field except when the Cancel button holds focus)
   backdrop.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") backdrop.remove();
     if (e.key === "Enter" && document.activeElement !== cancelBtn) createBtn.click();
   });
 
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
   setTimeout(() => { nameInput.focus(); nameInput.select(); }, 40);
 }

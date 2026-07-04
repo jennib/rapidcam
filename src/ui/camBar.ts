@@ -26,6 +26,8 @@ import { nextId } from "../model/ids";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 import { maybeShowSharePrompt } from "./sharePrompt";
+import { registerModal, confirmDialog } from "./modal";
+import { toast } from "./toast";
 import {
   type OpCombo,
   AUTO_NAME_RE,
@@ -217,7 +219,8 @@ export class CamBar {
     const ops = selectedOpsInOrder(this.doc.operations, this.selectedOpIds);
     if (ops.length === 0) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
-    this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    const file = this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    toast(`Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
 
@@ -333,6 +336,14 @@ export class CamBar {
     const opColor = TP_PALETTE[index % TP_PALETTE.length];
     item.style.setProperty("--tp-color", opColor);
 
+    // Two-row card: identity on top (checkbox · handle · swatch · badge · name),
+    // tool/params summary + actions below. A single row truncated the name to
+    // "Pr…" and wrapped the summary one word per line at the default width.
+    const topRow = document.createElement("div");
+    topRow.className = "tp-op-top";
+    const botRow = document.createElement("div");
+    botRow.className = "tp-op-bot";
+
     const sel = document.createElement("input");
     sel.type = "checkbox";
     sel.className = "tp-select";
@@ -344,17 +355,17 @@ export class CamBar {
       else this.selectedOpIds.delete(op.id);
       this.updateExportSelBtn();
     });
-    item.appendChild(sel);
+    topRow.appendChild(sel);
 
     const handle = document.createElement("span");
     handle.className = "tp-drag-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
-    item.appendChild(handle);
+    topRow.appendChild(handle);
 
     const swatch = document.createElement("span");
     swatch.className = "tp-color-swatch";
-    item.appendChild(swatch);
+    topRow.appendChild(swatch);
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
@@ -366,13 +377,16 @@ export class CamBar {
       : op.type === "vcarve"  ? "VCV"
       : op.type === "relief-rough" ? "RUF"
       : "DRL";
-    item.appendChild(badge);
+    topRow.appendChild(badge);
 
-    const info = document.createElement("div");
-    info.className = "tp-op-info";
     const nameEl = document.createElement("div");
     nameEl.className = "tp-op-name";
     nameEl.textContent = op.name;
+    nameEl.title = op.name;
+    topRow.appendChild(nameEl);
+
+    const info = document.createElement("div");
+    info.className = "tp-op-info";
     const params = document.createElement("div");
     params.className = "tp-op-params";
     const toolLabel = op.toolType === "v-bit" ? `V-Bit(${op.vAngle ?? 60}°)`
@@ -393,7 +407,6 @@ export class CamBar {
       params.style.color = "var(--warn, #e0a85a)";
       item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
     }
-    info.appendChild(nameEl);
     info.appendChild(params);
 
     // Roughing deeper than its finish op's surface gouges the final part — flag it.
@@ -418,7 +431,7 @@ export class CamBar {
       follows.title = "This toolpath covers the whole pattern and tracks its count as it changes.";
       info.appendChild(follows);
     }
-    item.appendChild(info);
+    botRow.appendChild(info);
 
     const dlBtn = document.createElement("button");
     dlBtn.className = "tp-icon-btn";
@@ -430,9 +443,9 @@ export class CamBar {
       `</svg>`;
     dlBtn.addEventListener("click", () => {
       const code = generateGCode([op], this.doc, this.gcodeOpts());
-      this.download(code, op.name);
+      const file = this.download(code, op.name);
+      toast(`Exported "${op.name}" → ${file}`);
     });
-    item.appendChild(dlBtn);
 
     const editBtn = document.createElement("button");
     editBtn.className = "tp-icon-btn";
@@ -443,7 +456,6 @@ export class CamBar {
       `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>` +
       `</svg>`;
     editBtn.addEventListener("click", () => this.openDialog(op));
-    item.appendChild(editBtn);
 
     const delBtn = document.createElement("button");
     delBtn.className = "tp-icon-btn tp-icon-del";
@@ -460,7 +472,17 @@ export class CamBar {
       this.doc.emitChange();
       this.renderOps();
     });
-    item.appendChild(delBtn);
+
+    // Actions live at the right of the summary row.
+    const actions = document.createElement("div");
+    actions.className = "tp-op-actions";
+    actions.appendChild(dlBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+    botRow.appendChild(actions);
+
+    item.appendChild(topRow);
+    item.appendChild(botRow);
 
     return item;
   }
@@ -551,6 +573,7 @@ export class CamBar {
     };
 
     let geomCleanup: () => void = () => {};
+    let unregisterModal: () => void = () => {};
 
     const closeDialog = () => {
       geomCleanup();
@@ -560,6 +583,7 @@ export class CamBar {
       this.doc.regionPickHoverFill = null;
       this.doc.toolpathHighlightIds = null;
       this.doc.emitChange();
+      unregisterModal();
       document.getElementById("tp-dialog-backdrop")?.remove();
     };
 
@@ -568,6 +592,7 @@ export class CamBar {
 
     // --- backdrop + draggable dialog shell ---
     const { backdrop, dialog, body } = this.buildDialogShell(isNew, closeDialog);
+    unregisterModal = registerModal(backdrop, closeDialog);
 
     // name
     const nameInput = document.createElement("input");
@@ -1165,21 +1190,26 @@ export class CamBar {
     return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
   }
 
-  private generate(): void {
+  private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     // Text whose font can't be resolved produces no toolpath geometry. Surface
     // that as an explicit choice rather than silently omitting it from the cut.
     const missing = this.missingFontText();
     if (missing.length > 0) {
       const list = missing.map((t) => `  • "${t.text}"`).join("\n");
-      const ok = confirm(
-        `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
-        `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
-      );
+      const ok = await confirmDialog({
+        title: "Missing fonts",
+        message:
+          `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
+          `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
+        confirmLabel: "Generate anyway",
+      });
       if (!ok) return;
     }
     track("gcode_generated", { operation_count: this.doc.operations.length });
-    this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    const n = this.doc.operations.length;
+    const file = this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
 
@@ -1192,15 +1222,18 @@ export class CamBar {
     );
   }
 
-  private download(code: string, name: string): void {
+  /** Trigger a .nc download and return the filename used (for confirmation UI). */
+  private download(code: string, name: string): string {
     const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    const filename = `${safe || "toolpath"}.nc`;
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${safe || "toolpath"}.nc`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    return filename;
   }
 
   // --- helpers ---------------------------------------------------------------

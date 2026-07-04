@@ -284,15 +284,43 @@ export class CADDocument {
       this.emitChange();
     }
   }
+  /**
+   * Reset to an empty document. Clears *every* mutable field — geometry,
+   * constraints, dimensions, variables/bindings, groups, patterns, layers, and
+   * CAM state (operations, tools, job metadata) — so a New Project can't inherit
+   * the previous drawing's toolpaths or variables. Document-level settings
+   * (canvas/units/origin/machine) are reset to defaults here and then overwritten
+   * by the caller's chosen values (see ProjectManager.openSetupDialog).
+   *
+   * NOTE: keep this in sync with the fields captured by {@link snapshot} — any
+   * new persisted field must be reset here too, or it leaks across New Project.
+   */
   clear(): void {
     this.entities = [new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID)];
     this.constraints = [];
     this.dimensions = [];
+    this.variables = [];
+    this.bindings = [];
+    this.groups = [];
     this.patterns = [];
+    this.layers = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
+    this.activeLayerId = "layer-0";
+    this.operations = [];
+    this.tools = [];
+    this.endPosition = null;
+    this.metadata = {};
+    this.isConstructionMode = false;
     this.selectedPoints = [];
     this.selectedSegments = [];
     this.selectedConstraintId = null;
     this.selectedDimensionId = null;
+    // Transient dialog/highlight state must not survive a document swap.
+    this.toolpathHighlightIds = null;
+    this.toolpathHighlightColor = null;
+    this.regionPickHandler = null;
+    this.regionHoverHandler = null;
+    this.regionPickFills = null;
+    this.regionPickHoverFill = null;
     this.emitChange();
   }
 
