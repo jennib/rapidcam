@@ -12,8 +12,10 @@ export interface FileMenuCallbacks {
   onOpenRecent: (entry: RecentEntry) => void;
   onOpenExample: (entry: ExampleEntry) => void;
   onImportSvg: () => void;
+  onImportDxf: () => void;
   onImportImage: () => void;
   onExportSvg: () => void;
+  onExportDxf: () => void;
 }
 
 export class FileMenu {
@@ -72,8 +74,10 @@ export class FileMenu {
     this.item("Copy Share Link", "", () => { this.close(); this.cb.onShareLink(); });
     this.sep();
     this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
+    this.item("Import DXF", "", () => { this.close(); this.cb.onImportDxf(); });
     this.item("Import Image…", "", () => { this.close(); this.cb.onImportImage(); });
     this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
+    this.item("Export DXF", "", () => { this.close(); this.cb.onExportDxf(); });
 
     const examples = getExamples();
     if (examples.length) {

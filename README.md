@@ -116,8 +116,9 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 
 - **Native project format** — JSON snapshot with full document state (undo history preserved across sessions); embeds used fonts and **image pixels** so a saved job reproduces (and cuts) identically on any machine
 - **SVG import/export** — round-trips clean paths; exported SVG preserves layer colours
+- **DXF import** — **File → Import DXF** reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE and legacy POLYLINE (bulged segments become **true arcs**, not tessellation), SPLINE and ELLIPSE (tessellated), and INSERT block references with rotation/scale; honours `$INSUNITS` (inch files scale to mm automatically); anything unsupported is skipped with a summary rather than silently dropped
+- **DXF export** — **File → Export DXF** writes true arcs, splines (béziers stay exact NURBS curves), closed polylines, and text as engraveable outline polylines, with layer names preserved — for handoff to LightBurn, QCAD, LibreCAD, Fusion, or a laser-cutting service
 - **Image import** — **File → Import Image…** places a photo (PNG/JPEG/…) on the canvas as a sized, movable raster for laser raster engraving or CNC relief carving (downscaled and stored greyscale)
-- **Drag-and-drop** — drop an SVG file onto the canvas to import
 
 ---
 
@@ -196,6 +197,8 @@ src/
     ├── fileio.ts
     ├── svgImport.ts
     ├── svgExport.ts
+    ├── dxfImport.ts    # ASCII DXF parser (bulges → true arcs, blocks, NURBS splines)
+    ├── dxfExport.ts    # Minimal AC1015 writer (arcs, splines, text outlines)
     └── projectManager.ts
 ```
 

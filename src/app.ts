@@ -197,6 +197,8 @@ export class App {
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
         onImportSvg: () => this.project.svgImport(),
+        onImportDxf: () => this.project.dxfImport(),
+        onExportDxf: () => this.project.dxfExport(),
         onImportImage: () => this.project.imageImport(),
         onExportSvg: () => this.project.svgExport(),
       },

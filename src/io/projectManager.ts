@@ -3,6 +3,8 @@ import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
+import { importDxf } from "./dxfImport";
+import { exportDxf } from "./dxfExport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
@@ -332,6 +334,63 @@ export class ProjectManager {
     });
   }
 
+  async dxfImport(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".dxf";
+    const file = await new Promise<File | null>((resolve) => {
+      let settled = false;
+      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      input.addEventListener("cancel", () => settle(null));
+      input.addEventListener("change", () => settle(input.files?.[0] ?? null));
+      input.click();
+    });
+    if (!file) return;
+
+    const text = await file.text();
+    let result;
+    try {
+      result = importDxf(text);
+    } catch (e) {
+      alert(`Could not import DXF: ${(e as Error).message}`);
+      return;
+    }
+    const { entities, warnings } = result;
+    if (entities.length === 0) {
+      alert(
+        "No supported geometry found in the DXF file." +
+        (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
+      );
+      return;
+    }
+    track("dxf_imported", { entities: entities.length });
+    this.pushHistory();
+    // Select exactly the imported geometry so it's ready to move/group.
+    for (const e of this.doc.entities) e.selected = false;
+    for (const e of entities) {
+      e.selected = true;
+      e.layerId = this.doc.activeLayerId;
+      this.doc.entities.push(e);
+    }
+    if (entities.length >= 2) {
+      this.doc.groups.push({
+        id: nextId("grp"),
+        name: file.name.replace(/\.dxf$/i, ""),
+        entityIds: entities.map((e) => e.id),
+      });
+    }
+    this.doc.emitChange();
+    // DXF coordinates land wherever the source CAD put them — bring them into view.
+    this.cb.onFitView();
+    if (warnings.length) {
+      const shown = warnings.slice(0, 2).join(" · ");
+      toast(
+        `DXF: ${shown}${warnings.length > 2 ? ` · +${warnings.length - 2} more` : ""}`,
+        6000,
+      );
+    }
+  }
+
   async svgImport(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
@@ -380,6 +439,19 @@ export class ProjectManager {
     a.download = `${this.currentFileName}.svg`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  dxfExport(): void {
+    track("dxf_exported");
+    const { dxf, warnings } = exportDxf(this.doc);
+    const blob = new Blob([dxf], { type: "application/dxf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${this.currentFileName}.dxf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${this.currentFileName}.dxf${warnings.length ? ` · ${warnings[0]}` : ""}`, 5000);
   }
 
   restoreDraft(): void {
