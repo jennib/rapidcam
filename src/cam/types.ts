@@ -1,7 +1,7 @@
 import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 
-export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve";
+export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve" | "relief-rough";
 
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";

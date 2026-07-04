@@ -364,6 +364,7 @@ export class CamBar {
       : op.type === "engrave" ? "ENG"
       : op.type === "chamfer" ? "CHM"
       : op.type === "vcarve"  ? "VCV"
+      : op.type === "relief-rough" ? "RUF"
       : "DRL";
     item.appendChild(badge);
 
@@ -394,6 +395,17 @@ export class CamBar {
     }
     info.appendChild(nameEl);
     info.appendChild(params);
+
+    // Roughing deeper than its finish op's surface gouges the final part — flag it.
+    const gouge = this.reliefRoughGougeWarning(op);
+    if (gouge) {
+      const warn = document.createElement("div");
+      warn.className = "tp-op-params";
+      warn.style.color = "var(--warn, #e0a85a)";
+      warn.textContent = "⚠ roughing goes below the finish surface";
+      warn.title = gouge;
+      info.appendChild(warn);
+    }
 
     // Hint when the op targets a pattern: it cuts every copy and follows the count
     // (unless the op opted out via followPattern:false).
@@ -581,6 +593,7 @@ export class CamBar {
           ["chamfer",         "Chamfer (V-bevel edge)"],
           ["vcarve",          "V-Carve (text/shape)"],
           ["engrave",         "Engrave"],
+          ["relief-rough",    "Relief Roughing (image)"],
           ["drill",           "Drill"],
         ];
     for (const [v, l] of combos) {
@@ -748,9 +761,17 @@ export class CamBar {
         .map((id) => this.doc.entities.find((e) => e.id === id))
         .find((e): e is RasterImageEntity => e instanceof RasterImageEntity);
       if (!ent) { reliefEstSpan.textContent = ""; return; }
-      const li = state.rasterLineInterval > 0 ? state.rasterLineInterval : DEFAULTS.rasterLineInterval;
       const maxDepth = Math.abs(state.depth);
-      const passes = Math.max(1, Math.ceil(maxDepth / (state.stepdown > 0 ? state.stepdown : maxDepth)));
+      const stepdown = state.stepdown > 0 ? state.stepdown : maxDepth;
+      // Roughing rasters at the tool's stepover (fraction × diameter) over the
+      // depth minus the finish allowance; the finish pass rasters at its line
+      // interval over the full depth.
+      const rough = state.combo === "relief-rough";
+      const li = rough
+        ? Math.max(0.05, state.stepover * state.diameter)
+        : (state.rasterLineInterval > 0 ? state.rasterLineInterval : DEFAULTS.rasterLineInterval);
+      const cutDepth = rough ? Math.max(0, maxDepth - Math.max(0, state.finishAllowance)) : maxDepth;
+      const passes = Math.max(1, Math.ceil(cutDepth / stepdown));
       const rows = ent.heightMM / li;
       const lenMM = rows * ent.widthMM * passes; // boustrophedon X traversal ≈ cut length
       const mins = state.feedrate > 0 ? lenMM / state.feedrate : 0;
@@ -761,10 +782,15 @@ export class CamBar {
     // Relief rows visible only for a mill Engrave op targeting an image; that op
     // also needs a depth-shaping bit, so force a ball-nose if it's a flat end mill.
     const updateReliefVisibility = (): void => {
-      const isRelief = state.combo === "engrave" && this.opTargetsImage(state.entityIds);
-      for (const r of [reliefLineRow, reliefDotRow, reliefInvRow, reliefGammaRow, reliefEstRow]) r.style.display = isRelief ? "" : "none";
-      if (isRelief && state.toolType !== "ball-nose" && state.toolType !== "v-bit") hooks.setToolType("ball-nose");
-      if (isRelief) updateReliefEstimate();
+      const isFinish = state.combo === "engrave" && this.opTargetsImage(state.entityIds);
+      const isRough = state.combo === "relief-rough";
+      // Finish-only raster controls (scan-row spacing / dot pitch).
+      for (const r of [reliefLineRow, reliefDotRow]) r.style.display = isFinish ? "" : "none";
+      // Image controls shared by finish + roughing (invert / tone curve / estimate).
+      for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow]) r.style.display = (isFinish || isRough) ? "" : "none";
+      // The finish needs a depth-shaping bit; roughing wants a flat/bull tool (leave it).
+      if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") hooks.setToolType("ball-nose");
+      if (isFinish || isRough) updateReliefEstimate();
     };
 
     const strategySelect = document.createElement("select");
@@ -926,17 +952,22 @@ export class CamBar {
       if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
       stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
       peckRow.style.display     = state.combo === "drill"   ? "" : "none";
-      stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+      stepoverRow.style.display = state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
       strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
       vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
       vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
-      finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
+      // Roughing always leaves an allowance (no finish-pass checkbox — it's implicit).
+      finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       updateChamferVisibility();
       // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
       if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit")
         hooks.setToolType("v-bit");
+      // Roughing wants a flat tool — reset a depth-shaping bit (often inherited from
+      // the image → Engrave default) to an end mill when switching to it.
+      if (state.combo === "relief-rough" && (state.toolType === "ball-nose" || state.toolType === "v-bit"))
+        hooks.setToolType("end-mill");
       hooks.updateVBitHint();
       updateTabsVisibility();
       updateLeadVisibility();
@@ -950,14 +981,14 @@ export class CamBar {
     });
     stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
     peckRow.style.display     = state.combo === "drill"   ? "" : "none";
-    stepoverRow.style.display = state.combo === "pocket"  ? "" : "none";
+    stepoverRow.style.display = state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
     vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
     vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
     {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
-      finishAllowRow.style.display = showFinish && state.finishPass ? "" : "none";
+      finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
     }
     updateChamferVisibility();
     updateTabsVisibility();
@@ -1013,14 +1044,18 @@ export class CamBar {
       else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
       else if (state.combo === "vcarve") { type = "vcarve"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
+      else if (state.combo === "relief-rough") { type = "relief-rough"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
 
       const isProfile = type === "profile";
+      const reliefRough = type === "relief-rough";
       // Image engrave: laser raster OR mill relief — both carry the same raster
       // resolution fields (rasterLineInterval/DotPitch/Invert).
       const imageEngrave = type === "engrave" && this.opTargetsImage(state.entityIds);
       const raster = isLaser && imageEngrave;       // laser-only field (rasterMinPower)
       const rasterFields = imageEngrave;             // shared by laser raster + mill relief
+      // Invert / tone curve apply to both the mill relief FINISH and its roughing.
+      const reliefImageFields = imageEngrave || reliefRough;
 
       const op: CAMOperation = {
         id: existing?.id ?? nextId("cam"),
@@ -1039,7 +1074,8 @@ export class CamBar {
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
-        finishAllowance: (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
+        // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
+        finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
         chamferSide: type === "chamfer" ? state.chamferSide : undefined,
         sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
@@ -1071,9 +1107,9 @@ export class CamBar {
         rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
         rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
         rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
-        rasterInvert: rasterFields && state.rasterInvert ? true : undefined,
+        rasterInvert: reliefImageFields && state.rasterInvert ? true : undefined,
         // Tone curve is a mill-relief control (a laser raster uses min/max power instead).
-        reliefGamma: !isLaser && rasterFields && state.reliefGamma > 0 && state.reliefGamma !== 1 ? state.reliefGamma : undefined,
+        reliefGamma: !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1 ? state.reliefGamma : undefined,
       };
 
       if (existing) {
@@ -1177,6 +1213,7 @@ export class CamBar {
       : combo === "chamfer" ? "Chamfer"
       : combo === "vcarve"  ? "V-Carve"
       : combo === "engrave" ? "Engrave"
+      : combo === "relief-rough" ? "Relief Roughing"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
     return `${prefix} ${n}`;
@@ -1599,6 +1636,25 @@ export class CamBar {
   private opTargetsImage(ids: Set<string>): boolean {
     for (const id of ids) if (this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity) return true;
     return false;
+  }
+
+  /**
+   * A relief-roughing op leaves a `finishAllowance` above its OWN depth — but the
+   * *final* surface is set by the relief FINISH op (an Engrave on the same image).
+   * If roughing removes material deeper than the finish op ever cuts, it gouges the
+   * part. Return a warning in that case (null when safe or there's no finish op yet).
+   */
+  private reliefRoughGougeWarning(op: CAMOperation): string | null {
+    if (op.type !== "relief-rough") return null;
+    const shared = new Set(op.entityIds);
+    const finishDepths = this.doc.operations
+      .filter((o) => o.type === "engrave" && o.entityIds.some((id) => shared.has(id)) && this.opTargetsImage(new Set(o.entityIds)))
+      .map((o) => Math.abs(o.depth));
+    if (finishDepths.length === 0) return null;                    // no finish op to compare against
+    const roughFloor = Math.abs(op.depth) - Math.max(0, op.finishAllowance ?? 0);
+    const finishDepth = Math.min(...finishDepths);                // the shallowest finish is the binding one
+    if (roughFloor <= finishDepth + 1e-6) return null;
+    return `Roughing clears to ${roughFloor.toFixed(2)} mm but the finish op only reaches ${finishDepth.toFixed(2)} mm — it will gouge below the final surface. Lower this op's depth or raise its finish allowance.`;
   }
 
   private buildLaserSection(state: OpState): { root: HTMLElement; update: () => void } {

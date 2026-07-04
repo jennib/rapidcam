@@ -215,6 +215,10 @@ function profilePolygon(
 
 /** Ramp-entry geometry: descend at this angle off horizontal (gentle on the cutter). */
 const RAMP_ANGLE_DEG = 3;
+/** Relief-roughing entry ramp angle — steeper than a pocket helix (the descent is
+ *  only one stepdown), but still spreads the plunge load along the cut instead of
+ *  dropping straight in. */
+const ROUGH_RAMP_DEG = 20;
 /** Rapid down to this clearance (mm) above the previous cut level before feeding. */
 const RAMP_CLEAR = 0.5;
 
@@ -783,6 +787,115 @@ function reliefImage(
   return lines;
 }
 
+/**
+ * ROUGH a greyscale relief in flat **Z-levels** with a coarse flat / bull-nose
+ * tool, clearing the bulk down to a `finishAllowance` of stock that the relief
+ * FINISH pass (an `engrave` op on the same image, ball-nose) then carves to shape.
+ *
+ * The image is resampled to a coarse grid at the roughing tool's stepover (a
+ * fraction of its diameter, like a pocket), and each cell's final depth is
+ * `−level·maxDepth` (darker = deeper). Roughing removes material down to
+ * `finishZ + allowance` (capped at the stock top), in planes stepped down by
+ * `stepdown`. At each plane `zP` the tool clears every cell whose rough surface
+ * sits at or below the plane — a raster of straight runs (boustrophedon), hopping
+ * over the gaps at a low clearance above the stock top (safe: nothing protrudes
+ * above the stock). Because a deeper plane's cleared region is a subset of the
+ * shallower one above it, the plunge at each run only cuts one `stepdown` of new
+ * material — never a full-depth plunge.
+ *
+ * The op's depth / gamma / invert / flip should MATCH the finish op or the left
+ * allowance won't be uniform; they're exposed on both ops for that reason.
+ */
+function reliefRoughImage(
+  ent: RasterImageEntity, op: CAMOperation,
+  ox: number, oy: number, zOff: number,
+): string[] {
+  const grid = getImageGrid(ent.imageId);
+  if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
+
+  const maxDepth = Math.abs(op.depth);
+  if (maxDepth <= 0) return [`; NOTE: relief roughing depth is 0 — set a cut depth; image ${ent.id} skipped`];
+  const allowance = Math.max(0, op.finishAllowance ?? 0);
+  if (maxDepth - allowance <= 1e-6)
+    return [`; NOTE: relief depth (${maxDepth}mm) ≤ finish allowance (${allowance}mm) — nothing to rough; the finish pass cuts it all. image ${ent.id} skipped`];
+
+  const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
+  // stepover is a fraction of tool diameter (like a pocket); the coarse raster
+  // pitch is that radial engagement in mm.
+  const pitch = Math.max(0.05, (op.stepover > 0 ? op.stepover : DEFAULTS.stepover) * op.diameter);
+
+  const field = rasterField(grid, {
+    widthMM: ent.widthMM,
+    heightMM: ent.heightMM,
+    lineIntervalMM: pitch,
+    dotPitchMM: pitch,               // coarse square grid at the tool's stepover
+    invert: op.rasterInvert,
+    gamma: op.reliefGamma,
+    flipX: ent.flipX, flipY: ent.flipY,
+  });
+  if (field.rows.length === 0) return [`; NOTE: relief roughing produced nothing (blank or zero size) — image ${ent.id} skipped`];
+
+  const { cols, colPitch, rows } = field;
+  const xf = makeRasterXf(ent.position, ent.angle);
+  const lines: string[] = [];
+  if (op.toolType === "v-bit" || op.toolType === "ball-nose")
+    lines.push(`; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`);
+
+  // Rough surface per cell = final depth left with the allowance on top, capped at
+  // the stock top (Z=0). White (level 0) → 0 → never cut.
+  const roughSurf = (level: number) => Math.min(0, -level * maxDepth + allowance);
+  const deepest = -(maxDepth - allowance);                          // deepest plane needed
+  const nPasses = Math.max(1, Math.ceil((maxDepth - allowance) / stepdown));
+  const RC = RAMP_CLEAR;                                            // hop height above stock top
+
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  let firstRun = true;                                             // first traverse clears fixtures at safeZ
+  for (let p = 1; p <= nPasses; p++) {
+    const zP = Math.max(-p * stepdown, deepest);                   // this pass's flat cutting plane
+    const zPrev = p === 1 ? RC : Math.max(-(p - 1) * stepdown, deepest); // cleared floor just above zP
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const ltr = r % 2 === 0;
+      // Emit runs of consecutive in-mask cells; runFrom is the scan-order START.
+      let runFrom = -1, runTo = -1;
+      const flush = () => {
+        if (runFrom < 0) return;
+        const a = xfPoint(xf, (runFrom + 0.5) * colPitch, row.y);  // cut runFrom → runTo (boustrophedon)
+        const b = xfPoint(xf, (runTo + 0.5) * colPitch, row.y);
+        const hop = firstRun ? op.safeZ : RC;
+        lines.push(`G0 Z${Z(hop, zOff)}`);                         // lift over the gap
+        lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
+        if (zPrev !== hop) lines.push(`G0 Z${Z(zPrev, zOff)}`);    // rapid down onto the prior-pass floor
+        // Enter with a ramp along the run (spreads the plunge load off the tool tip)
+        // when there's length for it; otherwise a short run just plunges straight.
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        const rampDist = (zPrev - zP) / Math.tan(ROUGH_RAMP_DEG * Math.PI / 180);
+        if (L > rampDist && rampDist > 1e-6) {
+          const t = rampDist / L;                                  // ramp to full depth over rampDist of a→b
+          const rx = a.x + (b.x - a.x) * t, ry = a.y + (b.y - a.y) * t;
+          lines.push(`G1 X${X(rx, ox)} Y${Y(ry, oy)} Z${Z(zP, zOff)} F${n(op.plungeRate)}`); // descending ramp
+          lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);                 // flat cut remainder
+        } else {
+          lines.push(`G1 Z${Z(zP, zOff)} F${n(op.plungeRate)}`);   // too short to ramp — straight plunge
+          lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
+        }
+        firstRun = false;
+        runFrom = runTo = -1;
+      };
+      for (let k = 0; k < cols; k++) {
+        const c = ltr ? k : cols - 1 - k;
+        if (roughSurf(row.levels[c]) <= zP + 1e-9) {               // material present at this plane
+          if (runFrom < 0) runFrom = c;
+          runTo = c;
+        } else flush();
+      }
+      flush();
+    }
+  }
+  lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
 // --- drill -------------------------------------------------------------------
 
 /** Re-entry clearance above the previous peck bottom before feeding again, mm. */
@@ -1122,6 +1235,15 @@ function toolpathBody(
       continue;
     }
 
+    if (op.type === "relief-rough") {
+      if (ent instanceof RasterImageEntity)
+        // Append element-wise (not push(...)): roughing can emit 100k+ lines.
+        for (const l of reliefRoughImage(ent, op, ox, oy, zOff)) lines.push(l);
+      else
+        lines.push(`; NOTE: relief roughing targets a greyscale image — entity ${ent.id} (${ent.type}) skipped`);
+      continue;
+    }
+
     if (op.type === "engrave") {
       if (ent instanceof RasterImageEntity)
         // Append element-wise, NOT push(...): a relief can emit 100k+ lines and
@@ -1321,6 +1443,7 @@ export function generateGCode(
       : op.type === "engrave" ? "Engrave"
       : op.type === "vcarve"  ? "V-Carve"
       : op.type === "chamfer" ? "Chamfer"
+      : op.type === "relief-rough" ? "Relief Roughing"
       : "Drill";
     const toolLabel = op.toolType === "v-bit"     ? `V-Bit(${op.vAngle ?? 60}°)`
                     : op.toolType === "ball-nose"  ? "Ball Nose"

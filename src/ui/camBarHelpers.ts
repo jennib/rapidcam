@@ -22,10 +22,10 @@ import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
 
-export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve";
+export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve" | "relief-rough";
 
 /** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve) \d+$/;
+export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing) \d+$/;
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -115,6 +115,9 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
         e instanceof RectEntity ||
         (e instanceof PolylineEntity && e.closed)
       );
+    case "relief-rough":
+      // Roughing (like the relief finish) only targets a greyscale image.
+      return e instanceof RasterImageEntity;
     case "drill":
       return e instanceof CircleEntity;
   }

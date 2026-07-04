@@ -580,7 +580,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve"] },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve", "relief-rough"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
         "followPattern": { "type": "boolean", "description": "When the op's geometry belongs to a pattern, the toolpath covers the whole pattern and follows its count. Set false to cut only the literal entityIds. Default (omitted) = follow." },
@@ -599,7 +599,7 @@
         "stepdown": { "type": "number", "exclusiveMinimum": 0, "description": "mm per depth pass (ignored for drill)." },
         "peckDepth": { "type": "number", "exclusiveMinimum": 0, "description": "Drill only: peck increment (mm). Drills the hole in steps, fully retracting between pecks (G83-style). Omitted/0 = single full-depth plunge." },
         "finishPass": { "type": "boolean", "description": "Profile/pocket: leave a thin radial skin during roughing and remove it in a final full-depth wall pass, cleaning the ridges between depth levels. Default false." },
-        "finishAllowance": { "type": "number", "minimum": 0, "description": "Radial stock (mm) left on the walls during roughing and removed by the finishing pass. Only used when finishPass is true; default 0.2, clamped below the tool radius." },
+        "finishAllowance": { "type": "number", "minimum": 0, "description": "Stock (mm) left for a finishing pass. For profile/pocket: radial wall stock left during roughing, used only when finishPass is true (clamped below the tool radius). For relief-rough: the depth of material left above the final relief surface for the ball-nose finish pass to remove. Default 0.2." },
         "chamferWidth": { "type": "number", "exclusiveMinimum": 0, "description": "Chamfer only: horizontal width (mm) of the bevel face. The plunge depth is derived from this and the V-bit angle (depth = width / tan(½·vAngle)). Requires a v-bit tool." },
         "chamferSide": { "enum": ["on", "outside", "inside"], "description": "Chamfer only: which side of the contour the bevel sits on (\"on\" = centred on the edge). Default \"on\"." },
         "sharpenCorners": { "type": "boolean", "description": "Chamfer only: pull the V-bit tip up into each sharp inside (convex) corner — the bevel tapers to the surface at the corner vertex — so corners come to a crisp point instead of a rounded fillet. Concave corners are left rounded (a V-bit can't reach them). Default false." },
@@ -627,8 +627,8 @@
         "rasterLineInterval": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only (an Engrave op targeting an image entity — a LASER raster or a MILL relief): vertical pitch (mm) between scan rows (the line interval for a laser, the stepover for a mill). Laser default 0.1; mill relief default 0.3." },
         "rasterDotPitch": { "type": "number", "exclusiveMinimum": 0, "description": "Image-engrave only: horizontal pitch (mm) between dots within a row. Omitted = square dots (uses rasterLineInterval)." },
         "rasterMinPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Laser raster engrave only: beam power (%) for the lightest engraved dot (laserPower is the power for a fully black dot). Default 0." },
-        "rasterInvert": { "type": "boolean", "description": "Image-engrave only: engrave/carve the light areas instead of the dark (negative). Default false." },
-        "reliefGamma": { "type": "number", "exclusiveMinimum": 0, "description": "Mill relief only: tone curve on carved depth — depth proportional to darkness^gamma. 1 = linear (default). >1 lifts the mid-tones (flatter, shallower background), <1 deepens them. Black/white endpoints are fixed." }
+        "rasterInvert": { "type": "boolean", "description": "Image-engrave / relief-rough only: engrave/carve the light areas instead of the dark (negative). Default false. Should match between a relief roughing op and its finish op." },
+        "reliefGamma": { "type": "number", "exclusiveMinimum": 0, "description": "Mill relief only (engrave-on-image or relief-rough): tone curve on carved depth — depth proportional to darkness^gamma. 1 = linear (default). >1 lifts the mid-tones (flatter, shallower background), <1 deepens them. Black/white endpoints are fixed. Should match between a relief roughing op and its finish op." }
       }
     },
     "tool": {

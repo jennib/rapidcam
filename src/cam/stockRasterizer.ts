@@ -168,6 +168,8 @@ function rasterizeOp(
         for (const z of depthPasses(op))
           stamp(cx, cy, stockT + z);
       }
+    } else if (op.type === "relief-rough") {
+      if (ent instanceof RasterImageEntity) rasReliefRough(ent, op, stamp, stockT);
     } else if (op.type === "engrave") {
       if (ent instanceof RasterImageEntity) {
         // Relief needs a depth-shaping bit (matches gcode.ts, which skips others).
@@ -373,6 +375,52 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
       if (level <= 0) continue;
       const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
       stamp(w.x * RES, w.y * RES, stockT - level * maxDepth);
+    }
+  }
+}
+
+/**
+ * Preview the RELIEF ROUGHING staircase: each coarse cell is cut to the deepest
+ * flat Z-level that clears its material down to `finishZ + allowance`, leaving the
+ * allowance for the finish pass. Uses the same coarse field (tool stepover pitch)
+ * and level→plane arithmetic as `reliefRoughImage` in gcode.ts, so the preview and
+ * the toolpath agree; the (flat) tool stamp gives the flat-bottomed staircase.
+ */
+function rasReliefRough(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number): void {
+  const grid = getImageGrid(ent.imageId);
+  if (!grid) return;
+  const maxDepth = Math.min(Math.abs(op.depth), stockT);
+  if (maxDepth <= 0) return;
+  const allowance = Math.max(0, op.finishAllowance ?? 0);
+  const maxCut = maxDepth - allowance;               // deepest material roughing removes
+  if (maxCut <= 1e-6) return;
+  const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
+  const pitch = Math.max(0.05, (op.stepover > 0 ? op.stepover : DEFAULTS.stepover) * op.diameter);
+  const nPasses = Math.max(1, Math.ceil(maxCut / stepdown));
+  // The deepest flat plane (matching reliefRoughImage's pass sequence, last plane
+  // clamped to −maxCut) that still reaches a cell of the given rough surface.
+  const floorZ = (roughSurf: number): number => {
+    let z = 0;
+    for (let p = 1; p <= nPasses; p++) {
+      const zP = Math.max(-p * stepdown, -maxCut);
+      if (roughSurf <= zP + 1e-9) z = zP;
+    }
+    return z; // ≤ 0; 0 = untouched
+  };
+
+  const field = rasterField(grid, {
+    widthMM: ent.widthMM, heightMM: ent.heightMM,
+    lineIntervalMM: pitch, dotPitchMM: pitch,
+    invert: op.rasterInvert, gamma: op.reliefGamma,
+    flipX: ent.flipX, flipY: ent.flipY,
+  });
+  const xf = makeRasterXf(ent.position, ent.angle);
+  for (const row of field.rows) {
+    for (let c = 0; c < field.cols; c++) {
+      const z = floorZ(Math.min(0, -row.levels[c] * maxDepth + allowance));
+      if (z >= 0) continue;                          // nothing removed here
+      const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
+      stamp(w.x * RES, w.y * RES, stockT + z);
     }
   }
 }
