@@ -214,6 +214,12 @@ Notes:
   only: with it on, editing one of width/height writes a proportional value or
   formula to the other — it stores nothing extra in the file and adds no solver
   constraint.
+  The image also exposes constrainable **point keys** for use in constraints: the
+  four corners `c0` (bottom-left anchor), `c1`, `c2`, `c3` (CCW) and `center`.
+  A constraint on one of these (e.g. `coincident` of `c0` with a circle's `c`)
+  reflows the image through the solver. An image whose size/rotation aren't driven
+  by a binding is treated as **rigid** — such a constraint translates it (the
+  `w`/`h`/`angle` DOFs are held), so positioning it never distorts it.
 
 ## Constraints
 

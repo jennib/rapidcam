@@ -910,16 +910,29 @@ export class RasterImageEntity extends Entity {
     this.flipY = flipY;
   }
 
+  /** Map a point in the image's local (unrotated) frame to world space. */
+  private toWorld(l: Vec2): Vec2 {
+    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    return { x: this.position.x + l.x * c - l.y * s, y: this.position.y + l.x * s + l.y * c };
+  }
+
+  /** The image's constrainable local points, keyed. c0 = bottom-left anchor,
+   *  c1..c3 CCW; `center` is the middle. Used for getPoint/snap/pick + constraints. */
+  private static readonly LOCAL_KEYS = ["c0", "c1", "c2", "c3", "center"] as const;
+  private localPoint(key: string): Vec2 | null {
+    switch (key) {
+      case "c0": return { x: 0, y: 0 };
+      case "c1": return { x: this.widthMM, y: 0 };
+      case "c2": return { x: this.widthMM, y: this.heightMM };
+      case "c3": return { x: 0, y: this.heightMM };
+      case "center": return { x: this.widthMM / 2, y: this.heightMM / 2 };
+      default: return null;
+    }
+  }
+
   /** The four corners in world space (CCW from the bottom-left anchor). */
   corners(): Vec2[] {
-    const c = Math.cos(this.angle), s = Math.sin(this.angle);
-    return [
-      { x: 0, y: 0 }, { x: this.widthMM, y: 0 },
-      { x: this.widthMM, y: this.heightMM }, { x: 0, y: this.heightMM },
-    ].map((p) => ({
-      x: this.position.x + p.x * c - p.y * s,
-      y: this.position.y + p.x * s + p.y * c,
-    }));
+    return ["c0", "c1", "c2", "c3"].map((k) => this.toWorld(this.localPoint(k)!));
   }
 
   override bounds(): Bounds {
@@ -943,7 +956,11 @@ export class RasterImageEntity extends Entity {
   }
 
   override snapPoints(): SnapPoint[] {
-    return this.corners().map((pos) => ({ pos, kind: "endpoint" as const, entityId: this.id }));
+    return RasterImageEntity.LOCAL_KEYS.map((key) => ({
+      pos: this.toWorld(this.localPoint(key)!),
+      kind: key === "center" ? ("center" as const) : ("vertex" as const),
+      entityId: this.id, key,
+    }));
   }
 
   override translate(d: Vec2): void {
@@ -961,12 +978,32 @@ export class RasterImageEntity extends Entity {
   override dofPoints(): DofPoint[] {
     return [{ key: "pos", pos: clone(this.position) }];
   }
+  // Corners + centre are DERIVED points (from pos/w/h/angle) — constrainable and
+  // pickable like an arc's endpoints. They are NOT dof points; the solver reaches
+  // them by perturbing pos/w/h/angle (finite-difference Jacobian), so a constraint
+  // on a corner reflows the image with no bespoke solver code.
+  override pickablePoints(): DofPoint[] {
+    return RasterImageEntity.LOCAL_KEYS.map((key) => ({ key, pos: this.toWorld(this.localPoint(key)!) }));
+  }
   override getPoint(key: string): Vec2 {
     if (key === "pos") return clone(this.position);
+    const l = this.localPoint(key);
+    if (l) return this.toWorld(l);
     return super.getPoint(key);
   }
   override setPoint(key: string, v: Vec2): void {
-    if (key === "pos") this.position = clone(v);
+    // Only the anchor is a real DOF; a corner/centre write repositions the whole
+    // image so that derived point lands on v (keeps size/rotation).
+    if (key === "pos") { this.position = clone(v); return; }
+    const l = this.localPoint(key);
+    if (l) this.position = add(this.position, sub(v, this.toWorld(l)));
+  }
+  // Dragging any corner/centre translates the image (moves the pos DOF); resize and
+  // rotate stay in the Properties panel / Transform. Constraint solves don't use
+  // this (it only frees DOFs for a drag pin).
+  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    if (key === "pos" || this.localPoint(key)) return [{ key: "pos", axis: "x" }, { key: "pos", axis: "y" }];
+    return [];
   }
   // Size/rotation are scalar DOFs so formulas drive them through the solver like
   // any other entity (parametric bindings), instead of a bespoke direct-drive path.

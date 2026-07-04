@@ -15,7 +15,7 @@
 
 import { Vec2 } from "../core/vec2";
 import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
-import { Entity, ArcEntity } from "../model/entities";
+import { Entity, ArcEntity, RasterImageEntity } from "../model/entities";
 import { Constraint, Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
 import { bindingTarget, bindingResidualAt } from "../model/bindings";
@@ -97,6 +97,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
+  fixRigidImageScalars(doc, fixed);
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
   // the cursor by a weak residual, so hard constraints win in a conflict while a
@@ -376,6 +377,23 @@ function scalarComponent(ent: Entity, key: string): Variable {
 
 const scalarKey = (id: string, key: string): string => `scalar:${id}:${key}`;
 const sumSq = (v: number[]): number => v.reduce((s, x) => s + x * x, 0);
+
+/**
+ * Fix an image's size/rotation DOFs (w/h/angle) UNLESS a formula binding drives
+ * them. An image is then a **rigid** body under geometric constraints — a corner
+ * or centre coincident/point-on constraint translates it, rather than the solver
+ * distorting size/rotation to satisfy the constraint (its corners are nonlinear in
+ * w/h/angle, so an unfixed image reflows ambiguously). A bound scalar stays free
+ * so parametric formulas still drive it.
+ */
+function fixRigidImageScalars(doc: CADDocument, fixed: Set<string>): void {
+  for (const ent of doc.entities) {
+    if (!(ent instanceof RasterImageEntity)) continue;
+    for (const s of ent.dofScalars())
+      if (!doc.bindings.some((b) => b.entityId === ent.id && b.scalarKey === s.key))
+        fixed.add(scalarKey(ent.id, s.key));
+  }
+}
 const norm = (v: number[]): number => Math.sqrt(sumSq(v));
 
 const TAU = Math.PI * 2;
@@ -443,6 +461,7 @@ export function computeEntityDofStatus(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
+  fixRigidImageScalars(doc, fixed);
 
   // Build variable list with per-variable entity tracking
   const vars: Variable[] = [];
@@ -544,6 +563,7 @@ export function constraintJacobianRankChange(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
+  fixRigidImageScalars(doc, fixed);
 
   // Build variable list
   const vars: Variable[] = [];
