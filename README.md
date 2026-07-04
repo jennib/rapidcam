@@ -15,7 +15,7 @@ Sketch a part, lock it down with real parametric constraints, generate toolpaths
 **Why RapidCAM?**
 
 - **Runs anywhere** — it's a web app. Open it on any machine, no setup.
-- **Truly parametric** — a Levenberg-Marquardt constraint solver, driving dimensions, and variables, so edits stay consistent (not just a drawing program).
+- **Truly parametric** — a Levenberg-Marquardt constraint solver with driving dimensions and variables. Type a variable formula straight into a property field (a circle's radius, a line's length, an image's size/angle…), reference variables from other variables, and constrain engrave images to the geometry around them — so edits stay consistent (not just a drawing program).
 - **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview; **laser** cut/engrave output (including **photo/greyscale raster engraving**) with a flat path preview; and **CNC relief carving** that turns a greyscale image into 2.5-D depth.
 - **Private by default** — all processing is local; your files stay on your machine. Analytics is opt-in only.
 - **Open source** — AGPL-3.0, with a commercial license available.
@@ -67,15 +67,19 @@ RapidCAM uses a **Levenberg-Marquardt** solver with Tikhonov regularisation. Non
 
 Line-type constraints (horizontal, vertical, parallel, perpendicular, collinear, equal, angle, tangent, point-on-line) also apply to **individual polyline segments** — click a segment in the select tool to constrain it like a standalone line, without exploding the polyline. Tangents to an *arc* are solved against its full circle (standard CAD behaviour); if the contact point falls outside the arc's sweep the constraint bar shows a non-blocking warning.
 
+**Engrave images can be positioned by constraints** too — an image exposes its four corners and centre as snap/pick points, so you can make a corner *coincident* with a hole, centre it on a point, or put a corner *on* a line/circle, and the image reflows to follow. An unconstrained image is treated as a rigid body (a point constraint translates it; size and rotation are set in the Properties panel or by formulas), so positioning it never distorts it.
+
 **DOF-based entity colouring:** After each solve, every entity is coloured by its constraint status — **blue** = under-defined (free DOFs remain), **normal** = fully defined, **red** = over-constrained or conflicting. The analysis uses RREF null-space decomposition so that mutual dependencies between entities are handled correctly.
 
 ### Driving dimensions vs. reference dimensions
 
 Driving dimensions change the geometry when edited (shown in cyan). Reference (driven) dimensions display the measured value in grey, wrapped in parentheses: `(50.00 mm)`. Toggle between the two modes in the dimension inspector.
 
-### Variables
+### Variables & formula fields
 
-Named variables (`pitch`, `diameter`, …) can be defined in the Variables panel and used in any dimension value field — and in pattern count/spacing fields. Expressions like `pitch * 2` are evaluated at solve time.
+Named variables (`pitch`, `diameter`, …) can be defined in the Variables panel and used in any dimension value field, pattern count/spacing field, or property field. Expressions like `pitch * 2` are evaluated at solve time, and a **variable may reference other variables** (`margin = width * 0.1`), resolved in dependency order (reference cycles are detected, not looped).
+
+You can also type a formula **directly into a scalar property field** — a circle's radius, an arc's radius/angles, a line's length, a rectangle's W/H, an image's width/height/angle — instead of adding a dimension. A driven field shows an **ƒx** badge (click to unbind, or type a plain number to go back to a literal); it's fed to the *same* constraint solver as dimensions, so formulas and geometric constraints reconcile through one channel. If a formula's variable is later deleted, the field turns **red** (and the badge a **⚠**) rather than silently holding a stale value.
 
 ### Parametric patterns
 
@@ -95,7 +99,8 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Profile cut | Contour-follows any closed chain; inside/outside, tabs, lead-in / lead-out arcs, optional full-depth finishing pass. Curved profiles post as smooth `G2`/`G3` (arc-fitted) instead of faceted G1 |
 | Pocket clearing | Adaptive contour-parallel clearing (default) — concentric offset loops that wrap islands with helical entry and no per-row lifting — or classic zig-zag raster; both respect islands and flood-fill region picking; optional finishing pass |
 | Engrave | Follows geometry on its centreline at depth (lines, arcs, beziers, text); standalone arcs/beziers emit native `G2`/`G3` |
-| Relief carving (mill) | Carve a **greyscale image** as 2.5-D depth with a ball-nose (or V-bit): each pixel's darkness becomes Z depth (darkest = cut depth, white = surface), swept as continuous scan rows reached over stepdown passes. Tone curve (gamma), stepover scaled to the bit, invert, and a live cut-time estimate; rendered in the 3D preview. (Best for shallow reliefs — roughing is a separate op, planned) |
+| Relief carving (mill) | Carve a **greyscale image** as 2.5-D depth with a ball-nose (or V-bit): each pixel's darkness becomes Z depth (darkest = cut depth, white = surface), swept as continuous scan rows reached over stepdown passes. Tone curve (gamma), stepover scaled to the bit, invert, and a live cut-time estimate; rendered in the 3D preview |
+| Relief roughing (mill) | Hog out the bulk of a relief first: a coarse flat/bull tool clears the image in flat **Z-levels** down to a **finish allowance**, ramping into each cut, so the ball-nose finish pass only skims the last of the material — making *deep* reliefs practical. Runs before the relief-carve (finish) op with its own tool; warns if it would gouge below the finish surface |
 | V-carve | Variable-depth carving with a V-bit — depth tracks distance from the wall so strokes taper to a sharp spine, clamped to a max depth. Carves text (counters become holes) and flood-fill regions (with islands); shown in the 3D preview |
 | Chamfer | Bevels an edge with a V-bit by **width**; plunge depth derived from the bit angle, with an optional sharp-corner lift |
 | Drill | Plunge at points / circle centres; optional G83-style peck retract |
@@ -103,7 +108,7 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
 | Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation) and vector **engrave**, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear) and **greyscale raster engrave** of an imported image (sweeps the photo as scan rows, modulating beam power per pixel — darker = more power — with invert and overscan). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Per-op air assist (M8/M9). A built-in **Material Test** generator sweeps power × speed across a labelled grid so you can dial in settings for a new material. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
 | G-code export | GRBL and LinuxCNC post-processors (mill) / selectable laser controllers (laser); post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
-| Toolpath preview | 3D WebGL stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill, image relief — showing the true tool-envelope); laser documents instead show a flat on-canvas preview of the beam cut paths |
+| Toolpath preview | 3D WebGL stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill, image relief + relief roughing — showing the true tool-envelope); laser documents instead show a flat on-canvas preview of the beam cut paths |
 
 > **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
 
@@ -204,7 +209,7 @@ src/
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18 or later
+- [Node.js](https://nodejs.org/) 20.19+ (or 22.12+) — required by Vite 8
 - npm (bundled with Node)
 
 ### Install and run
