@@ -135,6 +135,15 @@ export interface CAMOperation {
    */
   finishPass?: boolean;
   /**
+   * Entry ramp angle (degrees off horizontal) for ops that descend into the cut
+   * gradually instead of plunging straight down — the helical/linear pocket entry
+   * and the relief-roughing ramp. Lower = gentler on the cutter but a longer
+   * entry; higher = steeper. Unset uses each mechanism's built-in default
+   * (≈10° helix, 3° linear ramp, 20° relief rough); a set value overrides them
+   * all and is clamped to 0.5–45°.
+   */
+  rampAngle?: number;
+  /**
    * Corner relief for female (inside) cuts. A round tool leaves a fillet in every
    * inside corner of a pocket / inside profile, so a mating square part won't
    * seat. `"dogbone"` adds a diagonal overcut at each such corner so the tool

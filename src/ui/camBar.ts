@@ -74,6 +74,8 @@ interface OpState {
   tabHeight: number;
   stepover: number;
   cornerStyle: "none" | "dogbone";
+  /** Plunge ramp angle override (deg); undefined = per-context default. */
+  rampAngle?: number;
   pocketStrategy: "offset" | "raster";
   leadInType: LeadType;
   leadInLen: number;
@@ -551,6 +553,7 @@ export class CamBar {
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
       cornerStyle:  existing?.cornerStyle ?? "none",
+      rampAngle:    existing?.rampAngle,
       pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
       leadInLen:    existing?.leadIn?.length  ?? 2,
@@ -872,6 +875,20 @@ export class CamBar {
     const cornerRow = this.dField("Corner overcut", cornerSelect);
     cutSec.appendChild(cornerRow);
 
+    // Plunge ramp angle — pocket and relief-rough ramp into the cut instead of
+    // plunging straight. Empty = the per-context default (shown as placeholder);
+    // visibility + placeholder are set in the combo handler below.
+    const rampInp = document.createElement("input");
+    rampInp.type = "number"; rampInp.className = "dim"; rampInp.step = "any"; rampInp.min = "0.5"; rampInp.max = "45";
+    rampInp.value = state.rampAngle !== undefined ? String(state.rampAngle) : "";
+    rampInp.addEventListener("change", () => {
+      const v = parseFloat(rampInp.value);
+      state.rampAngle = rampInp.value.trim() === "" || !isFinite(v) ? undefined : Math.max(0.5, Math.min(45, v));
+      if (state.rampAngle !== undefined) rampInp.value = String(state.rampAngle);
+    });
+    const rampRow = this.dField("Plunge ramp angle (°)", rampInp);
+    cutSec.appendChild(rampRow);
+
     // Chamfer — width (bevel face) + side. Depth is derived from the V-bit angle.
     const chamWidthInp = document.createElement("input");
     chamWidthInp.type = "number"; chamWidthInp.className = "dim"; chamWidthInp.step = "any"; chamWidthInp.min = "0";
@@ -1004,6 +1021,10 @@ export class CamBar {
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       // Corner overcut is a female-feature relief — inside profiles and pockets only.
       cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
+      const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
+      rampRow.style.display = showRamp ? "" : "none";
+      rampInp.placeholder = "auto";
       updateChamferVisibility();
       // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
       if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit")
@@ -1034,6 +1055,9 @@ export class CamBar {
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
+      rampRow.style.display = showRamp ? "" : "none";
+      rampInp.placeholder = "auto";
     }
     updateChamferVisibility();
     updateTabsVisibility();
@@ -1122,6 +1146,9 @@ export class CamBar {
         // Dog-bone corner relief applies only to female features (inside profile / pocket).
         cornerStyle: ((state.combo === "profile-inside" || state.combo === "pocket") && state.cornerStyle === "dogbone")
           ? "dogbone" : undefined,
+        // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
+        rampAngle: ((state.combo === "pocket" || state.combo === "relief-rough") && state.rampAngle !== undefined)
+          ? state.rampAngle : undefined,
         // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
         finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,

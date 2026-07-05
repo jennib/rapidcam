@@ -226,6 +226,18 @@ const RAMP_ANGLE_DEG = 3;
  *  only one stepdown), but still spreads the plunge load along the cut instead of
  *  dropping straight in. */
 const ROUGH_RAMP_DEG = 20;
+
+/**
+ * The plunge ramp angle (degrees off horizontal) for an op: the user's
+ * `rampAngle` override when set, else the context default. Clamped to a sane
+ * range so a stray value can't make the ramp vertical (loads the tip) or
+ * near-flat (a mile-long entry).
+ */
+function rampAngleDeg(op: CAMOperation, fallback: number): number {
+  const a = op.rampAngle;
+  if (a === undefined || !Number.isFinite(a)) return fallback;
+  return Math.max(0.5, Math.min(45, a));
+}
 /** Rapid down to this clearance (mm) above the previous cut level before feeding. */
 const RAMP_CLEAR = 0.5;
 
@@ -255,7 +267,7 @@ function rampPlunge(
   }
 
   out.push(`G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`); // feed down to the cut level
-  const run = depth / Math.tan((RAMP_ANGLE_DEG * Math.PI) / 180); // horizontal travel needed
+  const run = depth / Math.tan((rampAngleDeg(op, RAMP_ANGLE_DEG) * Math.PI) / 180); // horizontal travel needed
 
   let dist = 0;
   let cur = a, target = b;
@@ -317,7 +329,7 @@ function helicalLoop(
     return out;
   }
 
-  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
   const totalArc = nLaps * perim;
   let acc = 0, first = true;
   for (let lap = 0; lap < nLaps; lap++) {
@@ -551,7 +563,7 @@ function helicalBore(
   ];
   const depth = zStart - zTarget;
   const turns = depth < 1e-9 ? 0
-    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
   for (let i = 1; i <= turns; i++) {
     const zc = zStart - depth * (i / turns);
     out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 Z${Z(zc, zOff)} F${n(op.feedrate)}`);
@@ -885,7 +897,7 @@ function reliefRoughImage(
         // Enter with a ramp along the run (spreads the plunge load off the tool tip)
         // when there's length for it; otherwise a short run just plunges straight.
         const L = Math.hypot(b.x - a.x, b.y - a.y);
-        const rampDist = (zPrev - zP) / Math.tan(ROUGH_RAMP_DEG * Math.PI / 180);
+        const rampDist = (zPrev - zP) / Math.tan(rampAngleDeg(op, ROUGH_RAMP_DEG) * Math.PI / 180);
         if (L > rampDist && rampDist > 1e-6) {
           const t = rampDist / L;                                  // ramp to full depth over rampDist of a→b
           const rx = a.x + (b.x - a.x) * t, ry = a.y + (b.y - a.y) * t;
