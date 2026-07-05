@@ -1121,6 +1121,7 @@ button.cbtn.solve {
 }
 .tp-badge-profile { background: var(--accent-dim); color: #fff; }
 .tp-badge-engrave { background: #7c3aed; color: #fff; }
+.tp-badge-score   { background: #0e7490; color: #fff; }
 .tp-badge-drill   { background: #15803d; color: #fff; }
 
 .tp-op-info {

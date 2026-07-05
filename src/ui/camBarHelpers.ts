@@ -22,10 +22,10 @@ import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
 
-export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve" | "relief-rough";
+export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve" | "relief-rough" | "score";
 
 /** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing) \d+$/;
+export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold) \d+$/;
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -44,7 +44,7 @@ export function comboOf(op: CAMOperation): OpCombo {
 export function defaultCombo(existing: CAMOperation | null, preSelected: Entity[], isLaser: boolean): OpCombo {
   let combo: OpCombo = existing ? comboOf(existing) : "profile-outside";
   // Laser has no spindle/Z ops; keep only beam-capable types.
-  if (isLaser && combo !== "profile-outside" && combo !== "profile-inside" && combo !== "engrave")
+  if (isLaser && combo !== "profile-outside" && combo !== "profile-inside" && combo !== "engrave" && combo !== "score")
     combo = "profile-outside";
   if (!existing && preSelected.some((e) => e instanceof RasterImageEntity)) combo = "engrave";
   return combo;
@@ -107,6 +107,9 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
     case "engrave":
     case "chamfer":
       return true;
+    case "score":
+      // A score/fold follows any vector centreline; a raster image can't be scored.
+      return !(e instanceof RasterImageEntity);
     case "vcarve":
       // V-carve fills closed regions; text is the main use case.
       return (

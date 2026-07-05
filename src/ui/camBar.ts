@@ -379,6 +379,7 @@ export class CamBar {
       : op.type === "chamfer" ? "CHM"
       : op.type === "vcarve"  ? "VCV"
       : op.type === "relief-rough" ? "RUF"
+      : op.type === "score"   ? "SCR"
       : "DRL";
     topRow.appendChild(badge);
 
@@ -402,11 +403,11 @@ export class CamBar {
       ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min`
         + (op.laserFill ? " · fill" : op.type === "profile" && (op.kerfWidth ?? 0) > 0 ? ` · kerf ${op.kerfWidth}mm` : "")
       : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
-    // A laser only cuts/engraves: a milling-only op (pocket/drill/vcarve/chamfer)
-    // left in a laser document won't produce a toolpath — flag it here rather than
-    // letting it surface only as a "; NOTE:" buried in the exported G-code.
-    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave") {
-      params.textContent = "⚠ no laser equivalent — use Cut or Engrave";
+    // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
+    // chamfer) left in a laser document won't produce a toolpath — flag it here
+    // rather than letting it surface only as a "; NOTE:" buried in the G-code.
+    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave" && op.type !== "score") {
+      params.textContent = "⚠ no laser equivalent — use Cut, Score, or Engrave";
       params.style.color = "var(--warn, #e0a85a)";
       item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
     }
@@ -559,7 +560,9 @@ export class CamBar {
       leadInLen:    existing?.leadIn?.length  ?? 2,
       leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
       leadOutLen:   existing?.leadOut?.length ?? 2,
-      laserPower:   existing?.laserPower  ?? DEFAULTS.laserPower,
+      // A score/fold marks the surface, not through it — seed a low default power
+      // for a new one (a full-power score would burn through the fold line).
+      laserPower:   existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
       laserPasses:  existing?.laserPasses ?? DEFAULTS.laserPasses,
       kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
       laserFill:    existing?.laserFill   ?? false,
@@ -614,6 +617,7 @@ export class CamBar {
       ? [
           ["profile-outside", "Cut (outside)"],
           ["profile-inside",  "Cut (inside)"],
+          ["score",           "Score / Fold (low power)"],
           ["engrave",         "Engrave (centreline)"],
         ]
       : [
@@ -1113,6 +1117,7 @@ export class CamBar {
       else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
       else if (state.combo === "vcarve") { type = "vcarve"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
+      else if (state.combo === "score") { type = "score"; side = "outside"; }
       else if (state.combo === "relief-rough") { type = "relief-rough"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
 
@@ -1297,6 +1302,7 @@ export class CamBar {
       : combo === "vcarve"  ? "V-Carve"
       : combo === "engrave" ? "Engrave"
       : combo === "relief-rough" ? "Relief Roughing"
+      : combo === "score" ? "Score / Fold"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
     return `${prefix} ${n}`;
