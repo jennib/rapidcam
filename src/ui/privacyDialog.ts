@@ -4,6 +4,7 @@ import {
   isDoNotTrack,
   setConsentChoices,
 } from "../analytics";
+import { registerModal } from "./modal";
 
 /**
  * Help → Privacy & Analytics. Lets the user view and change both consents at
@@ -16,6 +17,8 @@ export function showPrivacyDialog(): void {
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
 
   const panel = document.createElement("div");
   panel.className = "about-dialog";
@@ -25,7 +28,7 @@ export function showPrivacyDialog(): void {
   const closeBtn = document.createElement("button");
   closeBtn.className = "about-close";
   closeBtn.textContent = "✕";
-  closeBtn.addEventListener("click", () => backdrop.remove());
+  closeBtn.addEventListener("click", () => close());
 
   const title = document.createElement("h2");
   title.textContent = "Privacy & Analytics";
@@ -85,14 +88,15 @@ export function showPrivacyDialog(): void {
   save.disabled = dnt;
   save.addEventListener("click", () => {
     void setConsentChoices(analyticsCheck.checked, replayCheck.checked);
-    backdrop.remove();
+    close();
   });
 
   panel.append(closeBtn, title, intro, analyticsRow, replayRow, save);
   backdrop.appendChild(panel);
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 }
 

@@ -73,20 +73,24 @@ export function closeAllModals(): void {
 }
 
 // Capture phase so this beats the app's window-level keydown handler.
-window.addEventListener(
-  "keydown",
-  (e) => {
-    if (e.key !== "Escape" || !isModalOpen()) return;
-    // Don't hijack Escape while typing in a field inside the dialog unless it's
-    // the only reasonable action; dialogs with their own field-level Escape
-    // (e.g. cancelling an inline edit) still work because we only close the
-    // topmost modal here, matching what the user expects from a dialog.
-    e.preventDefault();
-    e.stopPropagation();
-    closeTopModal();
-  },
-  true,
-);
+// Guarded so importing this module in a non-DOM env (e.g. vitest/node, reached
+// transitively via a tool that imports a dialog) doesn't throw at import time.
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Escape" || !isModalOpen()) return;
+      // Don't hijack Escape while typing in a field inside the dialog unless it's
+      // the only reasonable action; dialogs with their own field-level Escape
+      // (e.g. cancelling an inline edit) still work because we only close the
+      // topmost modal here, matching what the user expects from a dialog.
+      e.preventDefault();
+      e.stopPropagation();
+      closeTopModal();
+    },
+    true,
+  );
+}
 
 // ---- styled confirm ---------------------------------------------------------
 

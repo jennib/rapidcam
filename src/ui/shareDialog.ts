@@ -5,6 +5,7 @@
  */
 
 import { copyToClipboard } from "./clipboard";
+import { registerModal } from "./modal";
 
 const SHARE_URL = "https://rapidcam.app";
 const SHARE_TITLE = "RapidCAM — Free Browser-Based CAD/CAM for Desktop CNC";
@@ -72,6 +73,8 @@ export function showShareDialog(): void {
     backdrop.id = "share-dialog-backdrop";
     backdrop.className = "welcome-backdrop";
     backdrop.style.zIndex = "9999";
+    let unregister: () => void = () => {};
+    const close = () => { unregister(); backdrop.remove(); };
 
     const container = document.createElement("div");
     container.className = "about-dialog";
@@ -80,7 +83,7 @@ export function showShareDialog(): void {
     const closeBtn = document.createElement("button");
     closeBtn.className = "about-close";
     closeBtn.textContent = "✕";
-    closeBtn.addEventListener("click", () => backdrop.remove());
+    closeBtn.addEventListener("click", () => close());
 
     const title = document.createElement("h2");
     title.style.cssText = "margin:0 0 8px 0;font-size:18px;text-align:center;";
@@ -167,9 +170,10 @@ export function showShareDialog(): void {
     backdrop.appendChild(container);
 
     backdrop.addEventListener("click", (e) => {
-        if (e.target === backdrop) backdrop.remove();
+        if (e.target === backdrop) close();
     });
 
+    unregister = registerModal(backdrop, close);
     document.body.appendChild(backdrop);
 
     // Select the URL on show so it's ready to copy with Ctrl+C

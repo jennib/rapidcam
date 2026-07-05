@@ -1,4 +1,5 @@
 import { type MaterialTestParams, MATERIAL_TEST_DEFAULTS } from "../cam/materialTest";
+import { registerModal } from "./modal";
 
 type TestConfig = Omit<MaterialTestParams, "origin">;
 
@@ -13,7 +14,9 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   const backdrop = document.createElement("div");
   backdrop.id = "mtd-backdrop";
   backdrop.className = "tp-backdrop";
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -90,24 +93,25 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   ftr.className = "tp-dialog-footer";
   const cancel = document.createElement("button");
   cancel.className = "btn"; cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => backdrop.remove());
+  cancel.addEventListener("click", () => close());
   const create = document.createElement("button");
   create.className = "btn tp-apply-btn"; create.textContent = "Generate";
   create.addEventListener("click", () => {
     if (d.powerMax < d.powerMin) [d.powerMin, d.powerMax] = [d.powerMax, d.powerMin];
     if (d.speedMax < d.speedMin) [d.speedMin, d.speedMax] = [d.speedMax, d.speedMin];
-    backdrop.remove();
+    close();
     onConfirm(d);
   });
   ftr.appendChild(cancel);
   ftr.appendChild(create);
   dialog.appendChild(ftr);
 
+  // Escape is handled globally by the modal manager; Enter submits.
   backdrop.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") backdrop.remove();
     if (e.key === "Enter" && document.activeElement !== cancel) create.click();
   });
 
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 }
 

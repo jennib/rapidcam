@@ -6,6 +6,10 @@
 
 import { CADDocument } from "../model/document";
 import { applyRotate } from "../core/transform";
+import { registerModal } from "./modal";
+
+/** Backdrop element carrying its own registered close (unregister + remove). */
+interface BackdropEl extends HTMLElement { close: () => void }
 
 // ---------------------------------------------------------------------------
 // Rectangular array
@@ -109,10 +113,14 @@ export function openCircArrayDialog(
 // ---------------------------------------------------------------------------
 // DOM helpers
 
-function makeBackdrop(): HTMLElement {
-  const el = document.createElement("div");
+function makeBackdrop(): BackdropEl {
+  let unregister: () => void = () => {};
+  const el = Object.assign(document.createElement("div"), {
+    close: () => { unregister(); el.remove(); },
+  }) as BackdropEl;
   el.className = "tp-backdrop";
-  el.addEventListener("click", (e) => { if (e.target === el) el.remove(); });
+  el.addEventListener("click", (e) => { if (e.target === el) el.close(); });
+  unregister = registerModal(el, el.close);
   return el;
 }
 
@@ -154,21 +162,21 @@ function addField(body: HTMLElement, label: string, value: string, step: string)
   return inp;
 }
 
-function addFooter(dialog: HTMLElement, backdrop: HTMLElement, onApply: () => void): void {
+function addFooter(dialog: HTMLElement, backdrop: BackdropEl, onApply: () => void): void {
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => backdrop.remove());
+  cancelBtn.addEventListener("click", () => backdrop.close());
 
   const applyBtn = document.createElement("button");
   applyBtn.className = "btn tp-apply-btn";
   applyBtn.textContent = "Create";
   applyBtn.addEventListener("click", () => {
     onApply();
-    backdrop.remove();
+    backdrop.close();
   });
 
   ftr.appendChild(cancelBtn);
