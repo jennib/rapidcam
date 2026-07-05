@@ -4,7 +4,10 @@ import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, st
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import { importDxf } from "./dxfImport";
-import { repairImportedEntities, summarizeRepairs } from "./dxfRepair";
+import {
+  repairImportedEntities, summarizeRepairs,
+  diagnoseImportedEntities, summarizeDiagnostics, type DxfDiagnostic,
+} from "./dxfRepair";
 import { exportDxf } from "./dxfExport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
@@ -26,6 +29,8 @@ export interface ProjectManagerCallbacks {
   onSolve: () => void;
   onFitView: () => void;
   onCloseEditors: () => void;
+  /** Highlight located DXF-import problems on the canvas (null clears them). */
+  onDiagnostics: (diags: DxfDiagnostic[] | null) => void;
 }
 
 export class ProjectManager {
@@ -357,39 +362,70 @@ export class ProjectManager {
       return;
     }
     const warnings = result.warnings;
-    if (result.entities.length === 0) {
+    const raw = result.entities;
+    if (raw.length === 0) {
       alert(
         "No supported geometry found in the DXF file." +
         (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
       );
       return;
     }
-    // Babel: weld gaps, drop duplicates/degenerates so CAM can chain the loops.
-    const { entities, report } = repairImportedEntities(result.entities);
-    const repairs = summarizeRepairs(report);
-    track("dxf_imported", {
-      entities: entities.length,
-      repaired: report.endpointsWelded + report.duplicatesRemoved
-        + report.degenerateRemoved + report.polylinesClosed,
-    });
+
+    // Babel: diagnose problems that would stop CAM from chaining the contours.
+    const diagnostics = diagnoseImportedEntities(raw);
+
     this.pushHistory();
-    // Select exactly the imported geometry so it's ready to move/group.
+    // Place the imported geometry (still untouched) and select it, ready to move.
     for (const e of this.doc.entities) e.selected = false;
-    for (const e of entities) {
+    for (const e of raw) {
       e.selected = true;
       e.layerId = this.doc.activeLayerId;
       this.doc.entities.push(e);
     }
-    if (entities.length >= 2) {
-      this.doc.groups.push({
-        id: nextId("grp"),
-        name: file.name.replace(/\.dxf$/i, ""),
-        entityIds: entities.map((e) => e.id),
-      });
-    }
     this.doc.emitChange();
     // DXF coordinates land wherever the source CAD put them — bring them into view.
     this.cb.onFitView();
+
+    // Highlight the problems on the canvas and let the user choose to repair
+    // before anything is welded or removed.
+    let survivors: typeof raw = raw;
+    let repairs: string[] = [];
+    if (diagnostics.length) {
+      this.cb.onDiagnostics(diagnostics);
+      const repair = await confirmDialog({
+        title: "Repair imported drawing?",
+        message:
+          `Babel found ${summarizeDiagnostics(diagnostics).join(", ")} in this DXF, ` +
+          `highlighted on the canvas.\n\n` +
+          `Repairing welds the gaps and removes duplicate / empty entities so CAM can chain the contours.`,
+        confirmLabel: "Repair",
+        cancelLabel: "Keep as-is",
+      });
+      this.cb.onDiagnostics(null);
+      if (repair) {
+        const { entities: kept, report } = repairImportedEntities(raw);
+        survivors = kept;
+        for (const e of raw) if (!kept.includes(e)) this.doc.remove(e);
+        repairs = summarizeRepairs(report);
+        this.doc.emitChange();
+      }
+    }
+
+    // Group the surviving imported geometry so it moves as one unit.
+    if (survivors.length >= 2) {
+      this.doc.groups.push({
+        id: nextId("grp"),
+        name: file.name.replace(/\.dxf$/i, ""),
+        entityIds: survivors.map((e) => e.id),
+      });
+      this.doc.emitChange();
+    }
+    track("dxf_imported", {
+      entities: survivors.length,
+      issues: diagnostics.length,
+      repaired: repairs.length > 0,
+    });
+
     // Lead with what Babel fixed, then any parser warnings.
     const notes = [...repairs, ...warnings];
     if (notes.length) {

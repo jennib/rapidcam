@@ -58,8 +58,8 @@ export interface RepairOptions {
 export interface RepairReport {
   degenerateRemoved: number;
   duplicatesRemoved: number;
-  /** Individual endpoints snapped onto a neighbour. */
-  endpointsWelded: number;
+  /** Distinct gaps closed (a cluster of coincident endpoints, not per endpoint). */
+  gapsWelded: number;
   /** Open polylines whose ends met and were closed. */
   polylinesClosed: number;
 }
@@ -68,18 +68,19 @@ const dist = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** Total number of changes the repair made. */
 export function repairChangeCount(r: RepairReport): number {
-  return r.degenerateRemoved + r.duplicatesRemoved + r.endpointsWelded + r.polylinesClosed;
+  return r.degenerateRemoved + r.duplicatesRemoved + r.gapsWelded + r.polylinesClosed;
 }
+
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
 
 /** Human-readable lines describing what the repair did (empty if it changed nothing). */
 export function summarizeRepairs(r: RepairReport): string[] {
   const out: string[] = [];
-  const n = (count: number, one: string, many: string) =>
-    `${count} ${count === 1 ? one : many}`;
-  if (r.endpointsWelded) out.push(`welded ${n(r.endpointsWelded, "gap", "gaps")}`);
-  if (r.polylinesClosed) out.push(`closed ${n(r.polylinesClosed, "open contour", "open contours")}`);
-  if (r.duplicatesRemoved) out.push(`removed ${n(r.duplicatesRemoved, "duplicate", "duplicates")}`);
-  if (r.degenerateRemoved) out.push(`removed ${n(r.degenerateRemoved, "empty entity", "empty entities")}`);
+  if (r.gapsWelded) out.push(`welded ${plural(r.gapsWelded, "gap", "gaps")}`);
+  if (r.polylinesClosed) out.push(`closed ${plural(r.polylinesClosed, "open contour", "open contours")}`);
+  if (r.duplicatesRemoved) out.push(`removed ${plural(r.duplicatesRemoved, "duplicate", "duplicates")}`);
+  if (r.degenerateRemoved) out.push(`removed ${plural(r.degenerateRemoved, "empty entity", "empty entities")}`);
   return out;
 }
 
@@ -164,56 +165,56 @@ function weldNodes(entities: Entity[]): WeldNode[] {
   return nodes;
 }
 
-/** Snap near-coincident open endpoints together; returns the number of moved endpoints. */
-function weldEndpoints(entities: Entity[], tol: number): number {
-  const nodes = weldNodes(entities);
+/**
+ * Union-find the endpoints into clusters of coincident-within-`tol` points,
+ * returning only clusters of ≥2. Two endpoints of the *same* entity are never
+ * merged (that would collapse a short segment to nothing).
+ */
+function clusterEndpoints(nodes: WeldNode[], tol: number): number[][] {
   const n = nodes.length;
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (i: number): number => {
     while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
     return i;
   };
-  const union = (i: number, j: number) => { parent[find(i)] = find(j); };
-
-  // O(n²) pairwise — fine for typical DXF sizes (hundreds of endpoints). Never
-  // merge two endpoints of the same entity (that would collapse a short segment).
+  // O(n²) pairwise — fine for typical DXF sizes (hundreds of endpoints).
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       if (nodes[i].owner === nodes[j].owner) continue;
-      if (dist(nodes[i].pos, nodes[j].pos) < tol) union(i, j);
+      if (dist(nodes[i].pos, nodes[j].pos) < tol) parent[find(i)] = find(j);
     }
   }
-
-  // Group by cluster root.
   const clusters = new Map<number, number[]>();
   for (let i = 0; i < n; i++) {
     const r = find(i);
     (clusters.get(r) ?? clusters.set(r, []).get(r)!).push(i);
   }
+  return [...clusters.values()].filter((c) => c.length >= 2);
+}
 
-  let welded = 0;
-  for (const members of clusters.values()) {
-    if (members.length < 2) continue;
-    // Prefer an anchor (arc endpoint) as the shared target so arcs stay exact;
-    // otherwise use the centroid of the movable endpoints.
-    const anchor = members.find((i) => !nodes[i].set);
-    let target: Vec2;
-    if (anchor !== undefined) {
-      target = { ...nodes[anchor].pos };
-    } else {
-      const cx = members.reduce((s, i) => s + nodes[i].pos.x, 0) / members.length;
-      const cy = members.reduce((s, i) => s + nodes[i].pos.y, 0) / members.length;
-      target = { x: cx, y: cy };
-    }
+/** The shared target a cluster collapses to: an arc anchor if present, else the centroid. */
+function clusterTarget(members: number[], nodes: WeldNode[]): Vec2 {
+  const anchor = members.find((i) => !nodes[i].set);
+  if (anchor !== undefined) return { ...nodes[anchor].pos };
+  const cx = members.reduce((s, i) => s + nodes[i].pos.x, 0) / members.length;
+  const cy = members.reduce((s, i) => s + nodes[i].pos.y, 0) / members.length;
+  return { x: cx, y: cy };
+}
+
+/** Snap near-coincident open endpoints together; returns the number of gaps closed. */
+function weldEndpoints(entities: Entity[], tol: number): number {
+  const nodes = weldNodes(entities);
+  let gaps = 0;
+  for (const members of clusterEndpoints(nodes, tol)) {
+    const target = clusterTarget(members, nodes);
+    let moved = false;
     for (const i of members) {
       const node = nodes[i];
-      if (node.set && dist(node.pos, target) > 1e-9) {
-        node.set(target);
-        welded++;
-      }
+      if (node.set && dist(node.pos, target) > 1e-9) { node.set(target); moved = true; }
     }
+    if (moved) gaps++;
   }
-  return welded;
+  return gaps;
 }
 
 /** Mark open polylines whose ends already meet as closed; returns how many. */
@@ -250,7 +251,7 @@ export function repairImportedEntities(
   const report: RepairReport = {
     degenerateRemoved: 0,
     duplicatesRemoved: 0,
-    endpointsWelded: 0,
+    gapsWelded: 0,
     polylinesClosed: 0,
   };
 
@@ -278,8 +279,105 @@ export function repairImportedEntities(
     // Close self-meeting polylines first so their ends drop out of the open-endpoint
     // welding below.
     report.polylinesClosed = closeOpenPolylines(result, weldTolerance);
-    report.endpointsWelded = weldEndpoints(result, weldTolerance);
+    report.gapsWelded = weldEndpoints(result, weldTolerance);
   }
 
   return { entities: result, report };
+}
+
+// ---------------------------------------------------------------------------
+// Diagnosis (non-mutating) — locate issues so they can be highlighted before
+// the user commits to a repair.
+// ---------------------------------------------------------------------------
+
+/** CAM chains loops at this threshold (mm); gaps at or below it already meet. */
+const GAP_CHAIN_EPS = 1e-4;
+
+export type DiagnosticKind = "gap" | "open-contour" | "duplicate" | "degenerate";
+
+export interface DxfDiagnostic {
+  kind: DiagnosticKind;
+  /** Where to anchor the on-canvas marker (world mm). */
+  pos: Vec2;
+  /** Magnitude in mm where meaningful (gap / end-separation width); 0 otherwise. */
+  sizeMM: number;
+}
+
+/** A representative point for marking an entity (its middle / centre). */
+function entityAnchor(e: Entity): Vec2 {
+  if (e instanceof LineEntity) return { x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 };
+  if (e instanceof CircleEntity || e instanceof ArcEntity) return { ...e.center };
+  if (e instanceof PolylineEntity && e.points.length) return { ...e.points[0] };
+  return { x: 0, y: 0 };
+}
+
+/** Largest separation between any two endpoints in a cluster. */
+function clusterSpan(members: number[], nodes: WeldNode[]): number {
+  let max = 0;
+  for (let i = 0; i < members.length; i++) {
+    for (let j = i + 1; j < members.length; j++) {
+      max = Math.max(max, dist(nodes[members[i]].pos, nodes[members[j]].pos));
+    }
+  }
+  return max;
+}
+
+/**
+ * Find everything {@link repairImportedEntities} would fix, with a location for
+ * each, without changing any geometry. Used to highlight issues on the canvas
+ * before the user decides whether to repair.
+ */
+export function diagnoseImportedEntities(
+  entities: Entity[],
+  opts: RepairOptions = {},
+): DxfDiagnostic[] {
+  const tol = opts.weldTolerance ?? DEFAULT_WELD_TOLERANCE;
+  const diags: DxfDiagnostic[] = [];
+
+  // Degenerates — reported on their own; excluded from the passes below as noise.
+  const live: Entity[] = [];
+  for (const e of entities) {
+    if (isDegenerate(e)) diags.push({ kind: "degenerate", pos: entityAnchor(e), sizeMM: 0 });
+    else live.push(e);
+  }
+
+  // Exact duplicates (2nd and later occurrences).
+  const seen = new Set<string>();
+  for (const e of live) {
+    const key = dupeKey(e);
+    if (key === null) continue;
+    if (seen.has(key)) diags.push({ kind: "duplicate", pos: entityAnchor(e), sizeMM: 0 });
+    else seen.add(key);
+  }
+
+  // Weldable gaps — clusters wide enough that CAM can't already chain them.
+  const nodes = weldNodes(live);
+  for (const members of clusterEndpoints(nodes, tol)) {
+    const span = clusterSpan(members, nodes);
+    if (span <= GAP_CHAIN_EPS) continue;
+    diags.push({ kind: "gap", pos: clusterTarget(members, nodes), sizeMM: span });
+  }
+
+  // Unclosed contours — polylines whose ends meet but aren't flagged closed.
+  for (const e of live) {
+    if (e instanceof PolylineEntity && !e.closed && e.points.length >= 3) {
+      const a = e.points[0], b = e.points[e.points.length - 1];
+      const d = dist(a, b);
+      if (d < tol) diags.push({ kind: "open-contour", pos: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, sizeMM: d });
+    }
+  }
+
+  return diags;
+}
+
+/** Human-readable lines describing diagnosed issues (empty if none). */
+export function summarizeDiagnostics(diags: DxfDiagnostic[]): string[] {
+  const c: Record<DiagnosticKind, number> = { gap: 0, "open-contour": 0, duplicate: 0, degenerate: 0 };
+  for (const d of diags) c[d.kind]++;
+  const out: string[] = [];
+  if (c.gap) out.push(plural(c.gap, "gap", "gaps"));
+  if (c["open-contour"]) out.push(plural(c["open-contour"], "unclosed contour", "unclosed contours"));
+  if (c.duplicate) out.push(plural(c.duplicate, "duplicate", "duplicates"));
+  if (c.degenerate) out.push(plural(c.degenerate, "empty entity", "empty entities"));
+  return out;
 }
