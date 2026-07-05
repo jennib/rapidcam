@@ -73,6 +73,7 @@ interface OpState {
   tabWidth: number;
   tabHeight: number;
   stepover: number;
+  cornerStyle: "none" | "dogbone";
   pocketStrategy: "offset" | "raster";
   leadInType: LeadType;
   leadInLen: number;
@@ -549,6 +550,7 @@ export class CamBar {
       tabWidth:     existing?.tabs?.width   ?? 4,
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
+      cornerStyle:  existing?.cornerStyle ?? "none",
       pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
       leadInLen:    existing?.leadIn?.length  ?? 2,
@@ -855,6 +857,21 @@ export class CamBar {
       finishAllowRow.style.display = finishChk.checked ? "" : "none";
     });
 
+    // Corner overcut — female (inside profile / pocket) cuts only. A dog-bone
+    // relieves each inside corner so a mating square part seats despite the
+    // tool's corner radius. Visibility is toggled in the combo handler below.
+    const cornerSelect = document.createElement("select");
+    cornerSelect.className = "unit";
+    for (const [v, l] of [["none", "None (leave fillet)"], ["dogbone", "Dog-bone"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      cornerSelect.appendChild(o);
+    }
+    cornerSelect.value = state.cornerStyle;
+    cornerSelect.addEventListener("change", () => { state.cornerStyle = cornerSelect.value as "none" | "dogbone"; });
+    const cornerRow = this.dField("Corner overcut", cornerSelect);
+    cutSec.appendChild(cornerRow);
+
     // Chamfer — width (bevel face) + side. Depth is derived from the V-bit angle.
     const chamWidthInp = document.createElement("input");
     chamWidthInp.type = "number"; chamWidthInp.className = "dim"; chamWidthInp.step = "any"; chamWidthInp.min = "0";
@@ -985,6 +1002,8 @@ export class CamBar {
       finishRow.style.display      = showFinish ? "" : "none";
       // Roughing always leaves an allowance (no finish-pass checkbox — it's implicit).
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      // Corner overcut is a female-feature relief — inside profiles and pockets only.
+      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
       updateChamferVisibility();
       // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
       if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit")
@@ -1014,6 +1033,7 @@ export class CamBar {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
     }
     updateChamferVisibility();
     updateTabsVisibility();
@@ -1099,6 +1119,9 @@ export class CamBar {
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+        // Dog-bone corner relief applies only to female features (inside profile / pocket).
+        cornerStyle: ((state.combo === "profile-inside" || state.combo === "pocket") && state.cornerStyle === "dogbone")
+          ? "dogbone" : undefined,
         // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
         finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,

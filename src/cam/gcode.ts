@@ -6,6 +6,7 @@ import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
+import { addDogbones } from "./dogbone";
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -192,8 +193,14 @@ function profilePolygon(
   };
 
   // Anchor the lead/plunge mid-edge only when a lead is used (otherwise leave the
-  // start at the natural corner — no silent change to plain profiles).
-  const prep = (raw: Vec2[]): Vec2[] => (useLead ? startAtLongestEdgeMid(raw) : raw);
+  // start at the natural corner — no silent change to plain profiles). Inside
+  // profiles optionally get dog-bone corner relief first (a female feature that
+  // must seat a square part); outside profiles never need it.
+  const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
+  const prep = (raw: Vec2[]): Vec2[] => {
+    const db = dogbone ? addDogbones(raw, toolR) : raw;
+    return useLead ? startAtLongestEdgeMid(db) : db;
+  };
 
   for (const rawPath of roughPaths) {
     if (rawPath.length < 2) continue;
@@ -368,10 +375,13 @@ function pocketPolygon(
     lines.push(...clear(verts, islands));
   }
 
-  // Only add a finishing wall lap if clearing actually cut something — a pocket
-  // too small for the tool emits just a `; NOTE:` and has no wall to finish.
+  // Add a finishing wall lap if clearing actually cut something — a pocket too
+  // small for the tool emits just a `; NOTE:` and has no wall to finish. A
+  // dog-bone request also needs the wall lap (that's where the corner relief is
+  // cut), even without an explicit finishing pass.
   const cleared = lines.some((l) => /^G[0-3]\b/.test(l));
-  if (op.finishPass && cleared) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
+  if ((op.finishPass || op.cornerStyle === "dogbone") && cleared)
+    lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
   return lines;
 }
 
@@ -389,8 +399,14 @@ function pocketWallFinish(
   const walls = offsetPolygon(ccw, -toolR);
   if (walls.length === 0) return [];
 
+  // Dog-bone corner relief lives on the region walls (not the islands): the
+  // inside corners of the pocket are what must seat a square part.
+  const wallLoops = op.cornerStyle === "dogbone"
+    ? walls.map((w) => addDogbones(w, toolR))
+    : walls;
+
   const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
-  for (const w of walls)
+  for (const w of wallLoops)
     lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));
   for (const isl of islands) {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
