@@ -1443,6 +1443,12 @@ export function generateGCode(
       if (doc.hasToolChanger) {
         lines.push(`T${op.toolNumber} M6 ; tool change`);
       } else if (!isFirst && toolChanged) {
+        // Rapid to the park position (work coords, already at safe Z) so the
+        // operator can reach the spindle for the swap.
+        if (doc.toolChangePosition) {
+          const tp = doc.toolChangePosition;
+          lines.push(`G0 X${n(tp.x)} Y${n(tp.y)} ; park for tool change`);
+        }
         lines.push(`; *** Manual tool change to T${op.toolNumber} (⌀${op.diameter}mm) ***`);
         lines.push("; M0 ; uncomment to pause for manual tool change");
       }

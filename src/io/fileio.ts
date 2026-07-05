@@ -29,6 +29,7 @@ export interface RcamFile {
   machineKind?: string;
   /** Optional end-of-program park position (work coords, mm). Omitted when off. */
   endPosition?: { x: number; y: number } | null;
+  toolChangePosition?: { x: number; y: number } | null;
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
   metadata?: { job?: string; revision?: string; notes?: string };
   groups?: unknown[];
@@ -192,6 +193,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     postProcessor: doc.postProcessor,
     ...(doc.machineKind !== "mill" ? { machineKind: doc.machineKind } : {}),
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
+    ...(doc.toolChangePosition ? { toolChangePosition: { ...doc.toolChangePosition } } : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
@@ -250,6 +252,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     postProcessor: file.postProcessor,
     machineKind: file.machineKind as DocSnapshot["machineKind"],
     endPosition: file.endPosition ?? null,
+    toolChangePosition: file.toolChangePosition ?? null,
     metadata: cleanMetadata(file.metadata) ?? {},
     isConstructionMode: false,
     selectedPoints: [],

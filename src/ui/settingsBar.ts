@@ -11,6 +11,10 @@ export class SettingsBar {
   private endReturnCheck!: HTMLInputElement;
   private endXInput!: HTMLInputElement;
   private endYInput!: HTMLInputElement;
+  private parkGroup!: HTMLElement;
+  private parkCheck!: HTMLInputElement;
+  private parkXInput!: HTMLInputElement;
+  private parkYInput!: HTMLInputElement;
   private jobInput!: HTMLInputElement;
   private revisionInput!: HTMLInputElement;
   private notesInput!: HTMLTextAreaElement;
@@ -104,6 +108,19 @@ export class SettingsBar {
     endGroup.appendChild(this.field("End Y", this.endYInput));
     this.content.appendChild(endGroup);
 
+    // Tool-change park — where the tool rapids for a manual tool change (mill
+    // only; hidden for lasers, which have no tool changes).
+    this.parkGroup = this.group("Tool Change");
+    this.parkCheck = document.createElement("input");
+    this.parkCheck.type = "checkbox";
+    this.parkCheck.className = "settings-checkbox";
+    this.parkGroup.appendChild(this.field("Park for change", this.parkCheck));
+    this.parkXInput = this.dimInput();
+    this.parkYInput = this.dimInput();
+    this.parkGroup.appendChild(this.field("Park X", this.parkXInput));
+    this.parkGroup.appendChild(this.field("Park Y", this.parkYInput));
+    this.content.appendChild(this.parkGroup);
+
     // Job metadata (informational; written to the G-code header)
     const jobGroup = this.group("Job");
     jobGroup.appendChild(this.field("Job", (this.jobInput = this.textInput("part / job name"))));
@@ -170,6 +187,30 @@ export class SettingsBar {
     };
     this.endXInput.addEventListener("change", commitEnd);
     this.endYInput.addEventListener("change", commitEnd);
+    this.parkCheck.addEventListener("change", () => {
+      this.pushHistory();
+      if (this.parkCheck.checked) {
+        const x = parseLength(this.parkXInput.value, this.doc.displayUnit) ?? 0;
+        const y = parseLength(this.parkYInput.value, this.doc.displayUnit) ?? 0;
+        this.doc.toolChangePosition = { x, y };
+      } else {
+        this.doc.toolChangePosition = null;
+      }
+      this.doc.emitChange();
+    });
+    const commitPark = (): void => {
+      if (!this.doc.toolChangePosition) return;
+      const x = parseLength(this.parkXInput.value, this.doc.displayUnit);
+      const y = parseLength(this.parkYInput.value, this.doc.displayUnit);
+      this.pushHistory();
+      this.doc.toolChangePosition = {
+        x: x ?? this.doc.toolChangePosition.x,
+        y: y ?? this.doc.toolChangePosition.y,
+      };
+      this.doc.emitChange();
+    };
+    this.parkXInput.addEventListener("change", commitPark);
+    this.parkYInput.addEventListener("change", commitPark);
     const commitMeta = (): void => {
       const job = this.jobInput.value.trim();
       const revision = this.revisionInput.value.trim();
@@ -301,6 +342,16 @@ export class SettingsBar {
       this.endXInput.value = formatLength(ep ? ep.x : 0, u);
     if (document.activeElement !== this.endYInput)
       this.endYInput.value = formatLength(ep ? ep.y : 0, u);
+    // Tool-change park — mill only.
+    this.parkGroup.style.display = this.doc.machineKind === "laser" ? "none" : "";
+    const tp = this.doc.toolChangePosition;
+    this.parkCheck.checked = !!tp;
+    this.parkXInput.disabled = !tp;
+    this.parkYInput.disabled = !tp;
+    if (document.activeElement !== this.parkXInput)
+      this.parkXInput.value = formatLength(tp ? tp.x : 0, u);
+    if (document.activeElement !== this.parkYInput)
+      this.parkYInput.value = formatLength(tp ? tp.y : 0, u);
     const md = this.doc.metadata ?? {};
     if (document.activeElement !== this.jobInput)
       this.jobInput.value = md.job ?? "";
