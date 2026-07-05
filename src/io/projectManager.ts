@@ -4,6 +4,7 @@ import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, st
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import { importDxf } from "./dxfImport";
+import { repairImportedEntities, summarizeRepairs } from "./dxfRepair";
 import { exportDxf } from "./dxfExport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
@@ -355,15 +356,22 @@ export class ProjectManager {
       alert(`Could not import DXF: ${(e as Error).message}`);
       return;
     }
-    const { entities, warnings } = result;
-    if (entities.length === 0) {
+    const warnings = result.warnings;
+    if (result.entities.length === 0) {
       alert(
         "No supported geometry found in the DXF file." +
         (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
       );
       return;
     }
-    track("dxf_imported", { entities: entities.length });
+    // Babel: weld gaps, drop duplicates/degenerates so CAM can chain the loops.
+    const { entities, report } = repairImportedEntities(result.entities);
+    const repairs = summarizeRepairs(report);
+    track("dxf_imported", {
+      entities: entities.length,
+      repaired: report.endpointsWelded + report.duplicatesRemoved
+        + report.degenerateRemoved + report.polylinesClosed,
+    });
     this.pushHistory();
     // Select exactly the imported geometry so it's ready to move/group.
     for (const e of this.doc.entities) e.selected = false;
@@ -382,10 +390,12 @@ export class ProjectManager {
     this.doc.emitChange();
     // DXF coordinates land wherever the source CAD put them — bring them into view.
     this.cb.onFitView();
-    if (warnings.length) {
-      const shown = warnings.slice(0, 2).join(" · ");
+    // Lead with what Babel fixed, then any parser warnings.
+    const notes = [...repairs, ...warnings];
+    if (notes.length) {
+      const shown = notes.slice(0, 2).join(" · ");
       toast(
-        `DXF: ${shown}${warnings.length > 2 ? ` · +${warnings.length - 2} more` : ""}`,
+        `DXF: ${shown}${notes.length > 2 ? ` · +${notes.length - 2} more` : ""}`,
         6000,
       );
     }
