@@ -253,3 +253,25 @@ export function clipProgramToTile(program: GProgram, rect: Bounds): ClipResult {
 export function clipGCodeToTile(gcode: string, rect: Bounds): ClipResult {
   return clipProgramToTile(parseProgram(gcode), rect);
 }
+
+/**
+ * Bounding box of all *cutting* in a program (arc-linearized), or null if it
+ * cuts nothing. This is the true toolpath extent — including tool-offset and
+ * lead overhang — so tiling can plan from it directly, in the G-code's own
+ * coordinate space.
+ */
+export function programCutBounds(program: GProgram): Bounds | null {
+  const { items } = extractRuns(program);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
+  for (const it of items) {
+    if (it.kind !== "run") continue;
+    for (const p of it.run.pts) {
+      any = true;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  return any ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null;
+}
