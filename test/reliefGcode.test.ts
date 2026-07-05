@@ -145,7 +145,10 @@ test("a large relief generates without overflowing the stack (no spread-push)", 
   let g = "";
   expect(() => { g = generateGCode([reliefOp([id], { depth: -3, stepdown: 1.5, rasterLineInterval: 0.15, rasterDotPitch: 0.15 })], doc); }).not.toThrow();
   expect((g.match(/^G1 /gm) || []).length).toBeGreaterThan(150_000);
-});
+  // Generating ~290k moves is genuinely heavy: ~0.7s solo, but it can exceed
+  // the default 5s timeout when the full suite competes for CPU. Give it room
+  // (a real stack overflow throws immediately, so this won't mask that bug).
+}, 30_000);
 
 test("output size: a gradient relief stays bounded by the dot grid × passes", () => {
   const grad = Array.from({ length: 256 }, (_, x) => x);
