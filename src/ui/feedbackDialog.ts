@@ -1,3 +1,5 @@
+import { registerModal } from "./modal";
+
 const FEEDBACK_EMAIL = "tuttistudios@gmail.com";
 
 const CATEGORIES = [
@@ -11,6 +13,8 @@ export function showFeedbackDialog(): void {
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
 
   const card = document.createElement("div");
   card.className = "feedback-dialog";
@@ -18,7 +22,7 @@ export function showFeedbackDialog(): void {
   const closeBtn = document.createElement("button");
   closeBtn.className = "about-close";
   closeBtn.textContent = "✕";
-  closeBtn.addEventListener("click", () => backdrop.remove());
+  closeBtn.addEventListener("click", () => close());
 
   const title = document.createElement("h2");
   title.className = "feedback-title";
@@ -52,7 +56,7 @@ export function showFeedbackDialog(): void {
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "feedback-btn-cancel";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => backdrop.remove());
+  cancelBtn.addEventListener("click", () => close());
 
   const sendBtn = document.createElement("button");
   sendBtn.className = "feedback-btn-send";
@@ -69,7 +73,7 @@ export function showFeedbackDialog(): void {
     const subject = encodeURIComponent(`[RapidCAM] ${category}`);
     const encodedBody = encodeURIComponent(body);
     window.location.href = `mailto:${FEEDBACK_EMAIL}?subject=${subject}&body=${encodedBody}`;
-    backdrop.remove();
+    close();
   });
 
   descArea.addEventListener("input", () => {
@@ -89,9 +93,10 @@ export function showFeedbackDialog(): void {
   backdrop.appendChild(card);
 
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
 
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
   setTimeout(() => descArea.focus(), 50);
 }

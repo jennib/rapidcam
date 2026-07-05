@@ -25,6 +25,7 @@ import { getImageGrid } from "../core/imageManager";
 import { type CAMOperation, DEFAULTS, chamferDepth, chamferSharpSequence } from "./types";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
+import { addDogbones } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
@@ -625,6 +626,8 @@ function rasProfilePolygon(
 ): void {
   const toolR = op.diameter / 2;
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
+  // Mirror the G-code so the preview shows dog-bone corner relief (inside only).
+  const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
 
   const tabs    = op.tabs;
   const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
@@ -643,8 +646,9 @@ function rasProfilePolygon(
   };
   for (const rawPath of paths) {
     if (rawPath.length < 2) continue;
-    // Mirror the G-code: mid-side start only when a lead is used.
-    const path = useLead ? startAtLongestEdgeMid(rawPath) : rawPath;
+    // Mirror the G-code: dog-bone the wall, then mid-side start only for a lead.
+    const db = dogbone ? addDogbones(rawPath, toolR) : rawPath;
+    const path = useLead ? startAtLongestEdgeMid(db) : db;
     const np = path.length;
 
     const tIn = unit(path[0], path[1]);            // entry tangent
@@ -711,10 +715,12 @@ function rasPocketPolygon(
       for (const row of rows)
         for (let i = 0; i + 1 < row.length; i += 2)
           walkSegment(row[i], row[i + 1], stepR, depth, stamp);
-      // Sweep outer inset boundary (finish pass)
-      const np = inset.length;
+      // Sweep outer inset boundary (finish pass), with dog-bone relief when set —
+      // matching the G-code's wall lap. The interior clearing rows stay plain.
+      const wall = op.cornerStyle === "dogbone" ? addDogbones(inset, toolR) : inset;
+      const np = wall.length;
       for (let i = 0; i < np; i++)
-        walkSegment(inset[i], inset[(i + 1) % np], stepR, depth, stamp);
+        walkSegment(wall[i], wall[(i + 1) % np], stepR, depth, stamp);
       // Sweep island keepout boundaries (finish pass for island walls)
       for (const keepout of islandKeepouts) {
         const kn = keepout.length;

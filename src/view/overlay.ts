@@ -28,9 +28,17 @@ export interface TransformBox {
   polygon?: Vec2[]; // optional oriented bounding box
 }
 
+/** A located DXF-import problem, drawn as a fixed-size marker (see Babel / dxfRepair). */
+export interface DiagnosticMarker {
+  pos: Vec2; // world coords
+  kind: "gap" | "open-contour" | "duplicate" | "degenerate";
+}
+
 export interface Overlay {
   /** In-progress geometry drawn in the preview style. */
   previews: PreviewShape[];
+  /** Located import problems to highlight (Babel diagnose mode), if any. */
+  diagnostics?: DiagnosticMarker[] | null;
   /** Active snap point to highlight, if any. */
   snap: SnapPoint | null;
   /** Rubber-band selection rectangle, in world coords. */

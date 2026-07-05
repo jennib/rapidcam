@@ -4,6 +4,7 @@ import {
 } from "../core/prefs";
 import type { CADDocument, MachineKind } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+import { registerModal } from "./modal";
 
 const MILL_POST_OPTIONS: [string, string][] = [["linuxcnc", "LinuxCNC"], ["grbl", "GRBL / FluidNC"]];
 
@@ -26,6 +27,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
 
   const container = document.createElement("div");
   container.className = "about-dialog post-settings-dialog";
@@ -33,7 +36,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const closeBtn = document.createElement("button");
   closeBtn.className = "about-close";
   closeBtn.textContent = "✕";
-  closeBtn.addEventListener("click", () => backdrop.remove());
+  closeBtn.addEventListener("click", () => close());
 
   const title = document.createElement("h2");
   title.className = "post-settings-title";
@@ -108,7 +111,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const cancel = document.createElement("button");
   cancel.className = "btn";
   cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => backdrop.remove());
+  cancel.addEventListener("click", () => close());
   const save = document.createElement("button");
   save.className = "btn btn-primary";
   save.textContent = "Save";
@@ -124,7 +127,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
-    backdrop.remove();
+    close();
     doc.emitChange();
     opts.onSaved?.();
   });
@@ -137,8 +140,9 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   );
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 }
 

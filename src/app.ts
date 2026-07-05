@@ -13,7 +13,7 @@ import { Geo } from "./model/constraints";
 import { Dimension, dimensionLayout } from "./model/dimensions";
 import { Viewport } from "./view/viewport";
 import { Renderer } from "./view/renderer";
-import { Overlay } from "./view/overlay";
+import { Overlay, DiagnosticMarker } from "./view/overlay";
 import { SnapEngine, SnapResult } from "./input/snapping";
 import { solve, PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, ToolPointerEvent } from "./tools/tool";
@@ -58,6 +58,7 @@ import { VariablesBar } from "./ui/variablesBar";
 import { ContextMenu, ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
+import { isModalOpen, closeAllModals } from "./ui/modal";
 import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
@@ -79,6 +80,8 @@ export class App {
   private currentSnap: SnapResult["snap"] = null;
   private currentHover: EntityId | null = null;
   private currentHoverConstraint: EntityId | null = null;
+  /** Babel diagnose-mode markers over located DXF-import problems, if any. */
+  private dxfDiagnostics: DiagnosticMarker[] | null = null;
   private renderScheduled = false;
 
   private project: ProjectManager;
@@ -123,7 +126,16 @@ export class App {
       onCloseEditors: () => {
         this.dimEditor.close();
         this.closeValueEditor();
-      }
+        // A document swap (New Project / open / draft restore) must not leave a
+        // dialog open over the new document — it would act on geometry that's gone.
+        closeAllModals();
+      },
+      onDiagnostics: (diags) => {
+        this.dxfDiagnostics = diags && diags.length
+          ? diags.map((d) => ({ pos: d.pos, kind: d.kind }))
+          : null;
+        this.requestRender();
+      },
     });
 
     this.tools = new ToolManager(
@@ -193,6 +205,8 @@ export class App {
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
         onImportSvg: () => this.project.svgImport(),
+        onImportDxf: () => this.project.dxfImport(),
+        onExportDxf: () => this.project.dxfExport(),
         onImportImage: () => this.project.imageImport(),
         onExportSvg: () => this.project.svgExport(),
       },
@@ -484,6 +498,7 @@ export class App {
       hover: this.currentHover,
       hoverConstraint: this.currentHoverConstraint,
       transformBox: to.transformBox,
+      diagnostics: this.dxfDiagnostics,
     };
     this.renderer.render(this.doc, this.view, overlay);
     this.statusBar.setZoom(this.view.scale);
@@ -847,6 +862,10 @@ export class App {
   // --- keyboard ------------------------------------------------------------
   private onKeyDown = (ev: KeyboardEvent): void => {
     if (isTypingTarget(ev.target)) return;
+    // While a dialog is open it owns the keyboard: don't let editor shortcuts
+    // (Ctrl+N, undo, Delete, single-key tool switches) mutate the document
+    // underneath it. Escape-to-close is handled by the modal manager itself.
+    if (isModalOpen()) return;
 
     if (ev.key === " ") {
       this.spaceDown = true;

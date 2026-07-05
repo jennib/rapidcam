@@ -242,10 +242,12 @@ function pushClosedProfile(items: LaserItem[], verts: Vec2[], op: CAMOperation, 
  * {@link laserPreviewPaths}. Volumetric op types yield a single note.
  */
 function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): LaserItem[] {
-  if (op.type !== "profile" && op.type !== "engrave")
-    return [{ kind: "note", text: `${op.type} has no laser equivalent — use Profile or Engrave; skipped` }];
+  if (op.type !== "profile" && op.type !== "engrave" && op.type !== "score")
+    return [{ kind: "note", text: `${op.type} has no laser equivalent — use Cut, Score, or Engrave; skipped` }];
 
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+  // A score/fold follows the geometry centreline with no kerf offset (like a
+  // vector engrave) — only "profile" is a kerf-compensated cut.
   const profile = op.type === "profile";
   const items: LaserItem[] = [];
 
@@ -596,6 +598,7 @@ export function generateLaserGCode(
   for (const op of ops) {
     const isRaster = op.type === "engrave" && op.entityIds.some((id) => doc.entities.find((e) => e.id === id) instanceof RasterImageEntity);
     const typeLabel = op.type === "profile" ? `Profile (${op.side})`
+      : op.type === "score" ? "Score / Fold"
       : isRaster ? "Engrave (raster)" : op.laserFill ? "Engrave (fill)" : "Engrave";
     const pct = Math.max(0, Math.min(100, op.laserPower ?? DEFAULTS.laserPower));
     lines.push(

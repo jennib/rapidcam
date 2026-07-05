@@ -1,7 +1,7 @@
 import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 
-export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve" | "relief-rough";
+export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve" | "relief-rough" | "score";
 
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";
@@ -134,6 +134,31 @@ export interface CAMOperation {
    * between depth levels. Default false.
    */
   finishPass?: boolean;
+  /**
+   * Entry ramp angle (degrees off horizontal) for ops that descend into the cut
+   * gradually instead of plunging straight down — the helical/linear pocket entry
+   * and the relief-roughing ramp. Lower = gentler on the cutter but a longer
+   * entry; higher = steeper. Unset uses each mechanism's built-in default
+   * (≈10° helix, 3° linear ramp, 20° relief rough); a set value overrides them
+   * all and is clamped to 0.5–45°.
+   */
+  rampAngle?: number;
+  /**
+   * Cut direction for a profile contour, relative to the standard M3 (clockwise)
+   * spindle. `"climb"` (tool travels CW on an outside profile / CCW on an inside
+   * one) gives a better finish on rigid machines; `"conventional"` (the reverse)
+   * pulls less on loose/manual machines. Unset leaves the raw offset winding
+   * untouched (back-compat with pre-toggle files). Profile ops only.
+   */
+  cutDirection?: "climb" | "conventional";
+  /**
+   * Corner relief for female (inside) cuts. A round tool leaves a fillet in every
+   * inside corner of a pocket / inside profile, so a mating square part won't
+   * seat. `"dogbone"` adds a diagonal overcut at each such corner so the tool
+   * reaches the true corner. `"none"` (default) leaves the fillets. Only applies
+   * to pockets and inside profiles; ignored elsewhere.
+   */
+  cornerStyle?: "none" | "dogbone";
   /**
    * Radial stock (mm) left on the walls during roughing and removed by the
    * finishing pass. Only used when `finishPass` is true; default 0.2. Clamped

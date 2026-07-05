@@ -1050,13 +1050,34 @@ button.cbtn.solve {
 /* --- toolpath list items --- */
 .tp-op-item {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   background: var(--panel-2);
   border: 1px solid var(--text-dim);
   border-radius: 4px;
   padding: 6px 8px;
   cursor: pointer;
+}
+.tp-op-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tp-op-bot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  /* indent the summary under the badge so it lines up past the checkbox column */
+  padding-left: 2px;
+}
+.tp-op-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .tp-op-item:hover { border-color: var(--accent-dim); }
 .tp-op-item.tp-dragging { opacity: 0.4; }
@@ -1100,6 +1121,7 @@ button.cbtn.solve {
 }
 .tp-badge-profile { background: var(--accent-dim); color: #fff; }
 .tp-badge-engrave { background: #7c3aed; color: #fff; }
+.tp-badge-score   { background: #0e7490; color: #fff; }
 .tp-badge-drill   { background: #15803d; color: #fff; }
 
 .tp-op-info {
@@ -1108,7 +1130,10 @@ button.cbtn.solve {
 }
 
 .tp-op-name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
+  font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -1236,6 +1261,23 @@ button.cbtn.solve {
   color: #fff !important;
 }
 .tp-apply-btn:hover:not(:disabled) { background: var(--accent) !important; }
+
+.tp-danger-btn {
+  background: #b3261e !important;
+  border-color: #e0483c !important;
+  color: #fff !important;
+}
+.tp-danger-btn:hover:not(:disabled) { background: #c9352b !important; }
+
+.npd-discard-warning {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warn, #e0a85a);
+  background: color-mix(in srgb, var(--warn, #e0a85a) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #e0a85a) 40%, transparent);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
 
 /* dialog sections (fieldset-style) */
 .tp-dialog-section {

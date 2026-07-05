@@ -3,6 +3,12 @@ import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
+import { importDxf } from "./dxfImport";
+import {
+  repairImportedEntities, summarizeRepairs,
+  diagnoseImportedEntities, summarizeDiagnostics, type DxfDiagnostic,
+} from "./dxfRepair";
+import { exportDxf } from "./dxfExport";
 import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
@@ -14,6 +20,7 @@ import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
 import { copyToClipboard } from "../ui/clipboard";
 import { toast } from "../ui/toast";
+import { confirmDialog } from "../ui/modal";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 
@@ -22,6 +29,8 @@ export interface ProjectManagerCallbacks {
   onSolve: () => void;
   onFitView: () => void;
   onCloseEditors: () => void;
+  /** Highlight located DXF-import problems on the canvas (null clears them). */
+  onDiagnostics: (diags: DxfDiagnostic[] | null) => void;
 }
 
 export class ProjectManager {
@@ -78,11 +87,14 @@ export class ProjectManager {
 
   // --- file operations ---
   fileNew(): void {
-    if (this.doc.entities.length && !confirm("Discard current drawing and start new?")) return;
+    // The discard confirmation now lives inside the dialog as an inline warning
+    // (shown only when there's real work), so Cancel truly loses nothing and the
+    // drawing is discarded only on Create Project.
     this.openSetupDialog();
   }
 
   openSetupDialog(): void {
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
     openNewProjectDialog(
       {
         name: this.currentFileName === "Untitled" ? "Untitled" : this.currentFileName,
@@ -107,14 +119,31 @@ export class ProjectManager {
         this.markClean();
         track("project_new", { width: cfg.width, height: cfg.height, unit: cfg.displayUnit });
       },
+      { hasWork },
     );
   }
 
   async fileOpen(): Promise<void> {
+    if (!(await this.confirmDiscard("open a file"))) return;
     const result = await openFile();
     if (!result) return;
     track("project_opened");
     this.loadDocument(result.file, result.name, result.handle ?? null);
+  }
+
+  /**
+   * If the current drawing has real work, ask before discarding it. Returns true
+   * to proceed (empty drawing, or user confirmed), false to abort.
+   */
+  private async confirmDiscard(actionLabel: string): Promise<boolean> {
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
+    if (!hasWork) return true;
+    return confirmDialog({
+      title: "Discard current drawing?",
+      message: `This will discard the current drawing to ${actionLabel}.\nSave first if you want to keep it.`,
+      confirmLabel: "Discard",
+      danger: true,
+    });
   }
 
   async fileSave(): Promise<void> {
@@ -178,15 +207,14 @@ export class ProjectManager {
     toast("Design link copied — anyone with it can open this design.");
   }
 
-  fileOpenRecent(entry: RecentEntry): void {
-    if (this.doc.entities.length && !confirm(`Discard current drawing and open "${entry.name}"?`)) return;
+  async fileOpenRecent(entry: RecentEntry): Promise<void> {
+    if (!(await this.confirmDiscard(`open "${entry.name}"`))) return;
     track("project_opened_recent");
     this.loadDocument(entry.data, entry.name);
   }
 
-  loadExample(entry: ExampleEntry): void {
-    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
-    if (hasWork && !confirm(`Discard current drawing and open example "${entry.name}"?`)) return;
+  async loadExample(entry: ExampleEntry): Promise<void> {
+    if (!(await this.confirmDiscard(`open example "${entry.name}"`))) return;
     track("example_opened", { name: entry.name });
     // No file handle: a later Save prompts for a new file, leaving the bundled example intact.
     this.loadDocument(entry.file, entry.name);
@@ -312,6 +340,103 @@ export class ProjectManager {
     });
   }
 
+  async dxfImport(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".dxf";
+    const file = await new Promise<File | null>((resolve) => {
+      let settled = false;
+      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      input.addEventListener("cancel", () => settle(null));
+      input.addEventListener("change", () => settle(input.files?.[0] ?? null));
+      input.click();
+    });
+    if (!file) return;
+
+    const text = await file.text();
+    let result;
+    try {
+      result = importDxf(text);
+    } catch (e) {
+      alert(`Could not import DXF: ${(e as Error).message}`);
+      return;
+    }
+    const warnings = result.warnings;
+    const raw = result.entities;
+    if (raw.length === 0) {
+      alert(
+        "No supported geometry found in the DXF file." +
+        (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
+      );
+      return;
+    }
+
+    // Babel: diagnose problems that would stop CAM from chaining the contours.
+    const diagnostics = diagnoseImportedEntities(raw);
+
+    this.pushHistory();
+    // Place the imported geometry (still untouched) and select it, ready to move.
+    for (const e of this.doc.entities) e.selected = false;
+    for (const e of raw) {
+      e.selected = true;
+      e.layerId = this.doc.activeLayerId;
+      this.doc.entities.push(e);
+    }
+    this.doc.emitChange();
+    // DXF coordinates land wherever the source CAD put them — bring them into view.
+    this.cb.onFitView();
+
+    // Highlight the problems on the canvas and let the user choose to repair
+    // before anything is welded or removed.
+    let survivors: typeof raw = raw;
+    let repairs: string[] = [];
+    if (diagnostics.length) {
+      this.cb.onDiagnostics(diagnostics);
+      const repair = await confirmDialog({
+        title: "Repair imported drawing?",
+        message:
+          `Babel found ${summarizeDiagnostics(diagnostics).join(", ")} in this DXF, ` +
+          `highlighted on the canvas.\n\n` +
+          `Repairing welds the gaps and removes duplicate / empty entities so CAM can chain the contours.`,
+        confirmLabel: "Repair",
+        cancelLabel: "Keep as-is",
+      });
+      this.cb.onDiagnostics(null);
+      if (repair) {
+        const { entities: kept, report } = repairImportedEntities(raw);
+        survivors = kept;
+        for (const e of raw) if (!kept.includes(e)) this.doc.remove(e);
+        repairs = summarizeRepairs(report);
+        this.doc.emitChange();
+      }
+    }
+
+    // Group the surviving imported geometry so it moves as one unit.
+    if (survivors.length >= 2) {
+      this.doc.groups.push({
+        id: nextId("grp"),
+        name: file.name.replace(/\.dxf$/i, ""),
+        entityIds: survivors.map((e) => e.id),
+      });
+      this.doc.emitChange();
+    }
+    track("dxf_imported", {
+      entities: survivors.length,
+      issues: diagnostics.length,
+      repaired: repairs.length > 0,
+    });
+
+    // Lead with what Babel fixed, then any parser warnings.
+    const notes = [...repairs, ...warnings];
+    if (notes.length) {
+      const shown = notes.slice(0, 2).join(" · ");
+      toast(
+        `DXF: ${shown}${notes.length > 2 ? ` · +${notes.length - 2} more` : ""}`,
+        6000,
+      );
+    }
+  }
+
   async svgImport(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
@@ -360,6 +485,19 @@ export class ProjectManager {
     a.download = `${this.currentFileName}.svg`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  dxfExport(): void {
+    track("dxf_exported");
+    const { dxf, warnings } = exportDxf(this.doc);
+    const blob = new Blob([dxf], { type: "application/dxf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${this.currentFileName}.dxf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${this.currentFileName}.dxf${warnings.length ? ` · ${warnings[0]}` : ""}`, 5000);
   }
 
   restoreDraft(): void {

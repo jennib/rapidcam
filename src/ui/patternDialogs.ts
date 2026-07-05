@@ -21,6 +21,10 @@ import {
 } from "../model/patternEngine";
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
+import { registerModal } from "./modal";
+
+/** Backdrop element carrying its own registered close (unregister + remove). */
+interface BackdropEl extends HTMLElement { close: () => void }
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -218,10 +222,14 @@ function isPlainNumber(s: string): boolean {
 // ---------------------------------------------------------------------------
 // DOM helpers
 
-function makeBackdrop(): HTMLElement {
-  const el = document.createElement("div");
+function makeBackdrop(): BackdropEl {
+  let unregister: () => void = () => {};
+  const el = Object.assign(document.createElement("div"), {
+    close: () => { unregister(); el.remove(); },
+  }) as BackdropEl;
   el.className = "tp-backdrop";
-  el.addEventListener("click", (e) => { if (e.target === el) el.remove(); });
+  el.addEventListener("click", (e) => { if (e.target === el) el.close(); });
+  unregister = registerModal(el, el.close);
   return el;
 }
 
@@ -272,21 +280,21 @@ function addInfo(body: HTMLElement, text: string): HTMLElement {
   return el;
 }
 
-function addFooter(dialog: HTMLElement, backdrop: HTMLElement, applyLabel: string, onApply: () => void): void {
+function addFooter(dialog: HTMLElement, backdrop: BackdropEl, applyLabel: string, onApply: () => void): void {
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => backdrop.remove());
+  cancelBtn.addEventListener("click", () => backdrop.close());
 
   const applyBtn = document.createElement("button");
   applyBtn.className = "btn tp-apply-btn";
   applyBtn.textContent = applyLabel;
   applyBtn.addEventListener("click", () => {
     onApply();
-    backdrop.remove();
+    backdrop.close();
   });
 
   ftr.appendChild(cancelBtn);

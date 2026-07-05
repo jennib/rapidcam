@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-04
+
+DXF interchange lands in both directions — bring parts in from Fusion, LightBurn,
+or a box-joint generator and hand them back out to a laser or cutting service —
+alongside a round of dialog and modality hardening.
+
+### Added
+- **DXF import** — **File → Import DXF** brings parts in from the rest of the CNC ecosystem (Fusion exports, LightBurn libraries, box-joint generators, laser-cutting services). Reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE and legacy POLYLINE — **bulged polyline segments become true arcs** (not tessellation), so the arc-fitting G-code posts keep real `G2`/`G3` moves — plus SPLINE (NURBS, tessellated), ELLIPSE (tessellated), and INSERT block references expanded with rotation and uniform scale. Honours the file's `$INSUNITS` (inch files scale to mm automatically; unitless files assume mm with a note). Imported geometry arrives selected, grouped under the filename, and the view zooms to fit; anything unsupported (TEXT, HATCH, dimensions…) is skipped with a warning summary instead of silently dropped.
+- **DXF export** — **File → Export DXF** writes the drawing as a minimal DXF for handoff to LightBurn, QCAD, LibreCAD, Fusion, or a cutting service: true ARCs, closed/open LWPOLYLINEs, **béziers as exact SPLINE curves** (a cubic bézier is a degree-3 NURBS — no tessellation), POINTs, and text as engraveable outline polylines (falls back to a DXF TEXT entity when the font isn't available). Layer names are preserved; construction geometry and hidden layers are excluded. Export → re-import round-trips exactly.
+
+### Fixed
+- **New Project no longer inherits the old project's CAM state** — creating a new project used to carry over the previous drawing's toolpath operations, variables, bindings, groups, layers, and job metadata (e.g. an old mill profile op showing up in a fresh laser project). The document reset now clears every field.
+- **Dialogs are properly modal** — editor keyboard shortcuts (Ctrl+N/O/S, undo, Delete, tool keys) no longer fire underneath an open dialog, **Escape** now closes the topmost dialog, and switching projects closes any dialog left open. This now applies across every dialog (New Project, Tool Library, toolpath editor, array/pattern generators, text, image adjust, material test, machine settings, share, feedback, privacy, and about). The pre-emptive browser confirm before **File → New** is gone: the New Project dialog itself shows a discard warning only when there's real work, so Cancel never loses anything.
+- **Styled confirmations replace browser popups** — deleting a layer or a library tool, opening a recent file or example over unsaved work, and the missing-font export check now use in-app dialogs (and **Ctrl+O** now asks before discarding unsaved work — it previously didn't ask at all).
+- **Toolpath cards no longer truncate** — the operation name and tool summary now use a two-row layout instead of squeezing into one line ("Pr…").
+- **G-code export confirms** — generating or exporting toolpaths shows a toast with the file name instead of a silent download.
+
 ## [1.2.0] — 2026-07-04
 
 Parametric modelling comes to RapidCAM: type variable formulas straight into

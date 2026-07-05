@@ -21,7 +21,7 @@ import { dimensionLayout } from "../model/dimensions";
 import { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
-import { Overlay, PreviewShape } from "./overlay";
+import { Overlay, PreviewShape, DiagnosticMarker } from "./overlay";
 import { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 
@@ -77,6 +77,7 @@ export class Renderer {
     this.drawPreviews(view, overlay.previews);
     this.drawSnap(view, overlay);
     this.drawTransformBox(view, overlay);
+    if (overlay.diagnostics && overlay.diagnostics.length) this.drawDiagnostics(view, overlay.diagnostics);
   }
 
   // --- grid ----------------------------------------------------------------
@@ -887,6 +888,42 @@ export class Renderer {
           ctx.restore();
           break;
         }
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Babel diagnose mode: fixed-size markers over located import problems. */
+  private drawDiagnostics(view: Viewport, markers: DiagnosticMarker[]): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 2;
+    const R = 8;
+    for (const m of markers) {
+      const s = view.worldToScreen(m.pos);
+      // Amber = weldable gap / open contour; red = removable duplicate / empty.
+      const warn = m.kind === "gap" || m.kind === "open-contour";
+      const color = warn ? "#f5a623" : "#e5484d";
+      ctx.strokeStyle = color;
+      ctx.fillStyle = warn ? "rgba(245,166,35,0.18)" : "rgba(229,72,77,0.18)";
+      ctx.setLineDash(m.kind === "open-contour" ? [4, 3] : []);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (m.kind === "duplicate" || m.kind === "degenerate") {
+        // A little ✕ to read as "remove".
+        const d = R * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(s.x - d, s.y - d); ctx.lineTo(s.x + d, s.y + d);
+        ctx.moveTo(s.x + d, s.y - d); ctx.lineTo(s.x - d, s.y + d);
+        ctx.stroke();
+      } else {
+        // A center dot marks the point the gap closes onto.
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     ctx.restore();

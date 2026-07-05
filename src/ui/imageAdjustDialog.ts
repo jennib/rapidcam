@@ -1,4 +1,5 @@
 import { type DecodedImage, type ToneAdjust, adjustGrey } from "../core/imageManager";
+import { registerModal } from "./modal";
 
 /**
  * Import-time tone adjustment for an engrave image. Shows a live greyscale
@@ -17,7 +18,9 @@ export function openImageAdjustDialog(
   const backdrop = document.createElement("div");
   backdrop.id = "iad-backdrop";
   backdrop.className = "tp-backdrop";
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -107,18 +110,19 @@ export function openImageAdjustDialog(
   });
   const cancel = document.createElement("button");
   cancel.className = "btn"; cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => backdrop.remove());
+  cancel.addEventListener("click", () => close());
   const place = document.createElement("button");
   place.className = "btn tp-apply-btn"; place.textContent = "Place";
-  place.addEventListener("click", () => { backdrop.remove(); onConfirm(adj); });
+  place.addEventListener("click", () => { close(); onConfirm(adj); });
   ftr.append(reset, cancel, place);
   dialog.appendChild(ftr);
 
+  // Escape is handled globally by the modal manager; Enter submits.
   backdrop.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") backdrop.remove();
     if (e.key === "Enter" && document.activeElement !== cancel) place.click();
   });
 
   redraw();
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 }

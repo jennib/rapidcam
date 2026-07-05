@@ -1,6 +1,7 @@
 import { loadLibrary, saveLibrary, removeTool } from "../cam/toolLibrary";
 import { ToolDef, ToolType, TOOL_TYPE_LABELS } from "../cam/types";
 import { buildToolDiagram } from "./toolDiagram";
+import { registerModal, confirmDialog } from "./modal";
 
 export function openToolLibraryDialog(): void {
   document.getElementById("tlib-backdrop")?.remove();
@@ -185,8 +186,14 @@ export function openToolLibraryDialog(): void {
     delBtn.className = "btn";
     delBtn.textContent = "Delete Tool";
     delBtn.style.color = "var(--danger)";
-    delBtn.addEventListener("click", () => {
-      if (confirm(`Are you sure you want to delete '${t.name}'?`)) {
+    delBtn.addEventListener("click", async () => {
+      const ok = await confirmDialog({
+        title: "Delete tool?",
+        message: `Delete "${t.name}" from the tool library?`,
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (ok) {
         removeTool(t.id);
         tools = loadLibrary();
         selectedId = tools.length > 0 ? tools[0].id : null;
@@ -279,9 +286,11 @@ export function openToolLibraryDialog(): void {
 
   const close = () => {
     saveCurrentEdit();
+    unregister();
     backdrop.remove();
   };
 
+  const unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
   render();
 }

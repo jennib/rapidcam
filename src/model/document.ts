@@ -129,6 +129,7 @@ export interface DocSnapshot {
   postProcessor?: string;
   machineKind?: MachineKind;
   endPosition?: EndPosition | null;
+  toolChangePosition?: EndPosition | null;
   metadata?: DocMetadata;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -172,6 +173,12 @@ export class CADDocument {
    * last toolpath ended. Defaults to off.
    */
   endPosition: EndPosition | null = null;
+  /**
+   * Optional park position (work coords, mm) the tool rapids to at safe Z before
+   * a *manual* tool change, so the operator can reach the spindle. `null` leaves
+   * the tool over the work. Ignored with an automatic tool changer and on lasers.
+   */
+  toolChangePosition: EndPosition | null = null;
   /**
    * Optional job metadata (job name, revision, notes). Informational only —
    * serialized when non-empty and emitted in the G-code header. See
@@ -284,15 +291,44 @@ export class CADDocument {
       this.emitChange();
     }
   }
+  /**
+   * Reset to an empty document. Clears *every* mutable field — geometry,
+   * constraints, dimensions, variables/bindings, groups, patterns, layers, and
+   * CAM state (operations, tools, job metadata) — so a New Project can't inherit
+   * the previous drawing's toolpaths or variables. Document-level settings
+   * (canvas/units/origin/machine) are reset to defaults here and then overwritten
+   * by the caller's chosen values (see ProjectManager.openSetupDialog).
+   *
+   * NOTE: keep this in sync with the fields captured by {@link snapshot} — any
+   * new persisted field must be reset here too, or it leaks across New Project.
+   */
   clear(): void {
     this.entities = [new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID)];
     this.constraints = [];
     this.dimensions = [];
+    this.variables = [];
+    this.bindings = [];
+    this.groups = [];
     this.patterns = [];
+    this.layers = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
+    this.activeLayerId = "layer-0";
+    this.operations = [];
+    this.tools = [];
+    this.endPosition = null;
+    this.toolChangePosition = null;
+    this.metadata = {};
+    this.isConstructionMode = false;
     this.selectedPoints = [];
     this.selectedSegments = [];
     this.selectedConstraintId = null;
     this.selectedDimensionId = null;
+    // Transient dialog/highlight state must not survive a document swap.
+    this.toolpathHighlightIds = null;
+    this.toolpathHighlightColor = null;
+    this.regionPickHandler = null;
+    this.regionHoverHandler = null;
+    this.regionPickFills = null;
+    this.regionPickHoverFill = null;
     this.emitChange();
   }
 
@@ -638,6 +674,7 @@ export class CADDocument {
       postProcessor: this.postProcessor,
       machineKind: this.machineKind,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
+      toolChangePosition: this.toolChangePosition ? { ...this.toolChangePosition } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -743,6 +780,7 @@ export class CADDocument {
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
+    this.toolChangePosition = s.toolChangePosition ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y } : null;
     this.metadata = s.metadata ? { ...s.metadata } : {};
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];

@@ -1,7 +1,11 @@
+import { registerModal } from "./modal";
+
 export function showAboutDialog(): void {
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
 
   const container = document.createElement("div");
   container.className = "about-dialog";
@@ -9,7 +13,7 @@ export function showAboutDialog(): void {
   const closeBtn = document.createElement("button");
   closeBtn.className = "about-close";
   closeBtn.textContent = "✕";
-  closeBtn.addEventListener("click", () => backdrop.remove());
+  closeBtn.addEventListener("click", () => close());
 
   const logo = document.createElement("img");
   logo.src = "/rapidcam-logo.svg";
@@ -26,7 +30,7 @@ export function showAboutDialog(): void {
 
   const version = document.createElement("p");
   version.className = "about-version";
-  version.textContent = "Version 1.2.0  ·  © 2026 RapidCAM";
+  version.textContent = "Version 1.3.0  ·  © 2026 RapidCAM";
 
   const bmc = document.createElement("a");
   bmc.href = "https://www.buymeacoffee.com/jennibm";
@@ -51,8 +55,9 @@ export function showAboutDialog(): void {
   backdrop.appendChild(container);
 
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
 
+  unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 }

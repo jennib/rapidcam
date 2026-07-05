@@ -4,6 +4,7 @@
  */
 
 import { listFonts, defaultFontId, loadFromFile, initBundledFonts } from "../core/fontManager";
+import { registerModal } from "./modal";
 
 export interface TextParams {
   text: string;
@@ -141,12 +142,16 @@ export function openTextDialog(
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
 
-  const close = () => backdrop.remove();
+  let unregister: () => void = () => {};
+  const close = () => { unregister(); backdrop.remove(); };
+  // User-driven dismissal (Escape, backdrop click, Cancel) also aborts via
+  // onCancel; the returned `close` is the programmatic path that doesn't.
+  const cancel = () => { close(); onCancel?.(); };
 
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => { close(); onCancel?.(); });
+  cancelBtn.addEventListener("click", () => cancel());
 
   const applyBtn = document.createElement("button");
   applyBtn.className = "btn tp-apply-btn";
@@ -164,18 +169,19 @@ export function openTextDialog(
     });
   });
 
-  // Allow Enter to apply
+  // Allow Enter to apply (Escape is handled globally by the modal manager,
+  // which invokes the registered `cancel`).
   dialog.addEventListener("keydown", e => {
     if (e.key === "Enter") applyBtn.click();
-    if (e.key === "Escape") { close(); onCancel?.(); }
   });
 
-  backdrop.addEventListener("click", e => { if (e.target === backdrop) { close(); onCancel?.(); } });
+  backdrop.addEventListener("click", e => { if (e.target === backdrop) cancel(); });
 
   ftr.appendChild(cancelBtn);
   ftr.appendChild(applyBtn);
   dialog.appendChild(ftr);
   backdrop.appendChild(dialog);
+  unregister = registerModal(backdrop, cancel);
   document.body.appendChild(backdrop);
   setTimeout(() => textInp.focus(), 0);
 

@@ -6,6 +6,21 @@ import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
+import { addDogbones } from "./dogbone";
+
+/**
+ * Reorient a profile toolpath loop so it travels in the requested cut direction,
+ * assuming a clockwise (M3) spindle. Climb keeps the freshly-cut wall behind the
+ * tool; the winding that achieves it flips with the cut side:
+ *   climb → CCW inside, CW outside;   conventional → the reverse.
+ * Unset leaves the loop as-is (byte-identical to pre-toggle output).
+ */
+function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
+  if (op.cutDirection !== "climb" && op.cutDirection !== "conventional") return loop;
+  const wantCCW = op.cutDirection === "climb" ? op.side === "inside" : op.side === "outside";
+  const isCCW = signedArea(loop) >= 0;
+  return isCCW === wantCCW ? loop : [...loop].reverse();
+}
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -192,8 +207,15 @@ function profilePolygon(
   };
 
   // Anchor the lead/plunge mid-edge only when a lead is used (otherwise leave the
-  // start at the natural corner — no silent change to plain profiles).
-  const prep = (raw: Vec2[]): Vec2[] => (useLead ? startAtLongestEdgeMid(raw) : raw);
+  // start at the natural corner — no silent change to plain profiles). Inside
+  // profiles optionally get dog-bone corner relief first (a female feature that
+  // must seat a square part); outside profiles never need it.
+  const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
+  const prep = (raw: Vec2[]): Vec2[] => {
+    const db = dogbone ? addDogbones(raw, toolR) : raw;
+    const dir = orientForCut(db, op);
+    return useLead ? startAtLongestEdgeMid(dir) : dir;
+  };
 
   for (const rawPath of roughPaths) {
     if (rawPath.length < 2) continue;
@@ -219,6 +241,18 @@ const RAMP_ANGLE_DEG = 3;
  *  only one stepdown), but still spreads the plunge load along the cut instead of
  *  dropping straight in. */
 const ROUGH_RAMP_DEG = 20;
+
+/**
+ * The plunge ramp angle (degrees off horizontal) for an op: the user's
+ * `rampAngle` override when set, else the context default. Clamped to a sane
+ * range so a stray value can't make the ramp vertical (loads the tip) or
+ * near-flat (a mile-long entry).
+ */
+function rampAngleDeg(op: CAMOperation, fallback: number): number {
+  const a = op.rampAngle;
+  if (a === undefined || !Number.isFinite(a)) return fallback;
+  return Math.max(0.5, Math.min(45, a));
+}
 /** Rapid down to this clearance (mm) above the previous cut level before feeding. */
 const RAMP_CLEAR = 0.5;
 
@@ -248,7 +282,7 @@ function rampPlunge(
   }
 
   out.push(`G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`); // feed down to the cut level
-  const run = depth / Math.tan((RAMP_ANGLE_DEG * Math.PI) / 180); // horizontal travel needed
+  const run = depth / Math.tan((rampAngleDeg(op, RAMP_ANGLE_DEG) * Math.PI) / 180); // horizontal travel needed
 
   let dist = 0;
   let cur = a, target = b;
@@ -310,7 +344,7 @@ function helicalLoop(
     return out;
   }
 
-  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
   const totalArc = nLaps * perim;
   let acc = 0, first = true;
   for (let lap = 0; lap < nLaps; lap++) {
@@ -368,10 +402,13 @@ function pocketPolygon(
     lines.push(...clear(verts, islands));
   }
 
-  // Only add a finishing wall lap if clearing actually cut something — a pocket
-  // too small for the tool emits just a `; NOTE:` and has no wall to finish.
+  // Add a finishing wall lap if clearing actually cut something — a pocket too
+  // small for the tool emits just a `; NOTE:` and has no wall to finish. A
+  // dog-bone request also needs the wall lap (that's where the corner relief is
+  // cut), even without an explicit finishing pass.
   const cleared = lines.some((l) => /^G[0-3]\b/.test(l));
-  if (op.finishPass && cleared) lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
+  if ((op.finishPass || op.cornerStyle === "dogbone") && cleared)
+    lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
   return lines;
 }
 
@@ -389,8 +426,14 @@ function pocketWallFinish(
   const walls = offsetPolygon(ccw, -toolR);
   if (walls.length === 0) return [];
 
+  // Dog-bone corner relief lives on the region walls (not the islands): the
+  // inside corners of the pocket are what must seat a square part.
+  const wallLoops = op.cornerStyle === "dogbone"
+    ? walls.map((w) => addDogbones(w, toolR))
+    : walls;
+
   const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
-  for (const w of walls)
+  for (const w of wallLoops)
     lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));
   for (const isl of islands) {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
@@ -535,7 +578,7 @@ function helicalBore(
   ];
   const depth = zStart - zTarget;
   const turns = depth < 1e-9 ? 0
-    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((HELIX_ANGLE_MAX_DEG * Math.PI) / 180))));
+    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
   for (let i = 1; i <= turns; i++) {
     const zc = zStart - depth * (i / turns);
     out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 Z${Z(zc, zOff)} F${n(op.feedrate)}`);
@@ -869,7 +912,7 @@ function reliefRoughImage(
         // Enter with a ramp along the run (spreads the plunge load off the tool tip)
         // when there's length for it; otherwise a short run just plunges straight.
         const L = Math.hypot(b.x - a.x, b.y - a.y);
-        const rampDist = (zPrev - zP) / Math.tan(ROUGH_RAMP_DEG * Math.PI / 180);
+        const rampDist = (zPrev - zP) / Math.tan(rampAngleDeg(op, ROUGH_RAMP_DEG) * Math.PI / 180);
         if (L > rampDist && rampDist > 1e-6) {
           const t = rampDist / L;                                  // ramp to full depth over rampDist of a→b
           const rx = a.x + (b.x - a.x) * t, ry = a.y + (b.y - a.y) * t;
@@ -1415,6 +1458,12 @@ export function generateGCode(
       if (doc.hasToolChanger) {
         lines.push(`T${op.toolNumber} M6 ; tool change`);
       } else if (!isFirst && toolChanged) {
+        // Rapid to the park position (work coords, already at safe Z) so the
+        // operator can reach the spindle for the swap.
+        if (doc.toolChangePosition) {
+          const tp = doc.toolChangePosition;
+          lines.push(`G0 X${n(tp.x)} Y${n(tp.y)} ; park for tool change`);
+        }
         lines.push(`; *** Manual tool change to T${op.toolNumber} (⌀${op.diameter}mm) ***`);
         lines.push("; M0 ; uncomment to pause for manual tool change");
       }

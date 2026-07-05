@@ -26,6 +26,8 @@ import { nextId } from "../model/ids";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 import { maybeShowSharePrompt } from "./sharePrompt";
+import { registerModal, confirmDialog } from "./modal";
+import { toast } from "./toast";
 import {
   type OpCombo,
   AUTO_NAME_RE,
@@ -71,6 +73,10 @@ interface OpState {
   tabWidth: number;
   tabHeight: number;
   stepover: number;
+  cornerStyle: "none" | "dogbone";
+  cutDirection: "climb" | "conventional";
+  /** Plunge ramp angle override (deg); undefined = per-context default. */
+  rampAngle?: number;
   pocketStrategy: "offset" | "raster";
   leadInType: LeadType;
   leadInLen: number;
@@ -217,7 +223,8 @@ export class CamBar {
     const ops = selectedOpsInOrder(this.doc.operations, this.selectedOpIds);
     if (ops.length === 0) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
-    this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    const file = this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    toast(`Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
 
@@ -333,6 +340,14 @@ export class CamBar {
     const opColor = TP_PALETTE[index % TP_PALETTE.length];
     item.style.setProperty("--tp-color", opColor);
 
+    // Two-row card: identity on top (checkbox · handle · swatch · badge · name),
+    // tool/params summary + actions below. A single row truncated the name to
+    // "Pr…" and wrapped the summary one word per line at the default width.
+    const topRow = document.createElement("div");
+    topRow.className = "tp-op-top";
+    const botRow = document.createElement("div");
+    botRow.className = "tp-op-bot";
+
     const sel = document.createElement("input");
     sel.type = "checkbox";
     sel.className = "tp-select";
@@ -344,17 +359,17 @@ export class CamBar {
       else this.selectedOpIds.delete(op.id);
       this.updateExportSelBtn();
     });
-    item.appendChild(sel);
+    topRow.appendChild(sel);
 
     const handle = document.createElement("span");
     handle.className = "tp-drag-handle";
     handle.textContent = "⠿";
     handle.title = "Drag to reorder";
-    item.appendChild(handle);
+    topRow.appendChild(handle);
 
     const swatch = document.createElement("span");
     swatch.className = "tp-color-swatch";
-    item.appendChild(swatch);
+    topRow.appendChild(swatch);
 
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
@@ -365,14 +380,18 @@ export class CamBar {
       : op.type === "chamfer" ? "CHM"
       : op.type === "vcarve"  ? "VCV"
       : op.type === "relief-rough" ? "RUF"
+      : op.type === "score"   ? "SCR"
       : "DRL";
-    item.appendChild(badge);
+    topRow.appendChild(badge);
 
-    const info = document.createElement("div");
-    info.className = "tp-op-info";
     const nameEl = document.createElement("div");
     nameEl.className = "tp-op-name";
     nameEl.textContent = op.name;
+    nameEl.title = op.name;
+    topRow.appendChild(nameEl);
+
+    const info = document.createElement("div");
+    info.className = "tp-op-info";
     const params = document.createElement("div");
     params.className = "tp-op-params";
     const toolLabel = op.toolType === "v-bit" ? `V-Bit(${op.vAngle ?? 60}°)`
@@ -385,15 +404,14 @@ export class CamBar {
       ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min`
         + (op.laserFill ? " · fill" : op.type === "profile" && (op.kerfWidth ?? 0) > 0 ? ` · kerf ${op.kerfWidth}mm` : "")
       : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
-    // A laser only cuts/engraves: a milling-only op (pocket/drill/vcarve/chamfer)
-    // left in a laser document won't produce a toolpath — flag it here rather than
-    // letting it surface only as a "; NOTE:" buried in the exported G-code.
-    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave") {
-      params.textContent = "⚠ no laser equivalent — use Cut or Engrave";
+    // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
+    // chamfer) left in a laser document won't produce a toolpath — flag it here
+    // rather than letting it surface only as a "; NOTE:" buried in the G-code.
+    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave" && op.type !== "score") {
+      params.textContent = "⚠ no laser equivalent — use Cut, Score, or Engrave";
       params.style.color = "var(--warn, #e0a85a)";
       item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
     }
-    info.appendChild(nameEl);
     info.appendChild(params);
 
     // Roughing deeper than its finish op's surface gouges the final part — flag it.
@@ -418,7 +436,7 @@ export class CamBar {
       follows.title = "This toolpath covers the whole pattern and tracks its count as it changes.";
       info.appendChild(follows);
     }
-    item.appendChild(info);
+    botRow.appendChild(info);
 
     const dlBtn = document.createElement("button");
     dlBtn.className = "tp-icon-btn";
@@ -430,9 +448,9 @@ export class CamBar {
       `</svg>`;
     dlBtn.addEventListener("click", () => {
       const code = generateGCode([op], this.doc, this.gcodeOpts());
-      this.download(code, op.name);
+      const file = this.download(code, op.name);
+      toast(`Exported "${op.name}" → ${file}`);
     });
-    item.appendChild(dlBtn);
 
     const editBtn = document.createElement("button");
     editBtn.className = "tp-icon-btn";
@@ -443,7 +461,6 @@ export class CamBar {
       `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>` +
       `</svg>`;
     editBtn.addEventListener("click", () => this.openDialog(op));
-    item.appendChild(editBtn);
 
     const delBtn = document.createElement("button");
     delBtn.className = "tp-icon-btn tp-icon-del";
@@ -460,7 +477,17 @@ export class CamBar {
       this.doc.emitChange();
       this.renderOps();
     });
-    item.appendChild(delBtn);
+
+    // Actions live at the right of the summary row.
+    const actions = document.createElement("div");
+    actions.className = "tp-op-actions";
+    actions.appendChild(dlBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+    botRow.appendChild(actions);
+
+    item.appendChild(topRow);
+    item.appendChild(botRow);
 
     return item;
   }
@@ -527,12 +554,20 @@ export class CamBar {
       tabWidth:     existing?.tabs?.width   ?? 4,
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
+      cornerStyle:  existing?.cornerStyle ?? "none",
+      // New profiles default to climb (best on rigid CNC); an existing profile
+      // without the field defaults to whatever its raw winding already cuts, so
+      // re-applying an old op doesn't silently flip its direction.
+      cutDirection: existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
+      rampAngle:    existing?.rampAngle,
       pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
       leadInLen:    existing?.leadIn?.length  ?? 2,
       leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
       leadOutLen:   existing?.leadOut?.length ?? 2,
-      laserPower:   existing?.laserPower  ?? DEFAULTS.laserPower,
+      // A score/fold marks the surface, not through it — seed a low default power
+      // for a new one (a full-power score would burn through the fold line).
+      laserPower:   existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
       laserPasses:  existing?.laserPasses ?? DEFAULTS.laserPasses,
       kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
       laserFill:    existing?.laserFill   ?? false,
@@ -551,6 +586,7 @@ export class CamBar {
     };
 
     let geomCleanup: () => void = () => {};
+    let unregisterModal: () => void = () => {};
 
     const closeDialog = () => {
       geomCleanup();
@@ -560,6 +596,7 @@ export class CamBar {
       this.doc.regionPickHoverFill = null;
       this.doc.toolpathHighlightIds = null;
       this.doc.emitChange();
+      unregisterModal();
       document.getElementById("tp-dialog-backdrop")?.remove();
     };
 
@@ -568,6 +605,7 @@ export class CamBar {
 
     // --- backdrop + draggable dialog shell ---
     const { backdrop, dialog, body } = this.buildDialogShell(isNew, closeDialog);
+    unregisterModal = registerModal(backdrop, closeDialog);
 
     // name
     const nameInput = document.createElement("input");
@@ -584,6 +622,7 @@ export class CamBar {
       ? [
           ["profile-outside", "Cut (outside)"],
           ["profile-inside",  "Cut (inside)"],
+          ["score",           "Score / Fold (low power)"],
           ["engrave",         "Engrave (centreline)"],
         ]
       : [
@@ -830,6 +869,49 @@ export class CamBar {
       finishAllowRow.style.display = finishChk.checked ? "" : "none";
     });
 
+    // Corner overcut — female (inside profile / pocket) cuts only. A dog-bone
+    // relieves each inside corner so a mating square part seats despite the
+    // tool's corner radius. Visibility is toggled in the combo handler below.
+    const cornerSelect = document.createElement("select");
+    cornerSelect.className = "unit";
+    for (const [v, l] of [["none", "None (leave fillet)"], ["dogbone", "Dog-bone"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      cornerSelect.appendChild(o);
+    }
+    cornerSelect.value = state.cornerStyle;
+    cornerSelect.addEventListener("change", () => { state.cornerStyle = cornerSelect.value as "none" | "dogbone"; });
+    const cornerRow = this.dField("Corner overcut", cornerSelect);
+    cutSec.appendChild(cornerRow);
+
+    // Cut direction — profile contours (mill). Climb vs conventional relative to
+    // the M3 spindle; visibility is set in the combo handler below.
+    const dirSelect = document.createElement("select");
+    dirSelect.className = "unit";
+    for (const [v, l] of [["climb", "Climb"], ["conventional", "Conventional"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      dirSelect.appendChild(o);
+    }
+    dirSelect.value = state.cutDirection;
+    dirSelect.addEventListener("change", () => { state.cutDirection = dirSelect.value as "climb" | "conventional"; });
+    const dirRow = this.dField("Cut direction", dirSelect);
+    cutSec.appendChild(dirRow);
+
+    // Plunge ramp angle — pocket and relief-rough ramp into the cut instead of
+    // plunging straight. Empty = the per-context default (shown as placeholder);
+    // visibility + placeholder are set in the combo handler below.
+    const rampInp = document.createElement("input");
+    rampInp.type = "number"; rampInp.className = "dim"; rampInp.step = "any"; rampInp.min = "0.5"; rampInp.max = "45";
+    rampInp.value = state.rampAngle !== undefined ? String(state.rampAngle) : "";
+    rampInp.addEventListener("change", () => {
+      const v = parseFloat(rampInp.value);
+      state.rampAngle = rampInp.value.trim() === "" || !isFinite(v) ? undefined : Math.max(0.5, Math.min(45, v));
+      if (state.rampAngle !== undefined) rampInp.value = String(state.rampAngle);
+    });
+    const rampRow = this.dField("Plunge ramp angle (°)", rampInp);
+    cutSec.appendChild(rampRow);
+
     // Chamfer — width (bevel face) + side. Depth is derived from the V-bit angle.
     const chamWidthInp = document.createElement("input");
     chamWidthInp.type = "number"; chamWidthInp.className = "dim"; chamWidthInp.step = "any"; chamWidthInp.min = "0";
@@ -960,6 +1042,14 @@ export class CamBar {
       finishRow.style.display      = showFinish ? "" : "none";
       // Roughing always leaves an allowance (no finish-pass checkbox — it's implicit).
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      // Corner overcut is a female-feature relief — inside profiles and pockets only.
+      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      // Cut direction — mill profile contours only (a laser beam has no climb/conventional).
+      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
+      // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
+      const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
+      rampRow.style.display = showRamp ? "" : "none";
+      rampInp.placeholder = "auto";
       updateChamferVisibility();
       // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
       if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit")
@@ -989,6 +1079,11 @@ export class CamBar {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
+      const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
+      rampRow.style.display = showRamp ? "" : "none";
+      rampInp.placeholder = "auto";
     }
     updateChamferVisibility();
     updateTabsVisibility();
@@ -1044,6 +1139,7 @@ export class CamBar {
       else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
       else if (state.combo === "vcarve") { type = "vcarve"; side = "outside"; }
       else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
+      else if (state.combo === "score") { type = "score"; side = "outside"; }
       else if (state.combo === "relief-rough") { type = "relief-rough"; side = "outside"; }
       else { type = "drill"; side = "outside"; }
 
@@ -1074,6 +1170,14 @@ export class CamBar {
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+        // Dog-bone corner relief applies only to female features (inside profile / pocket).
+        cornerStyle: ((state.combo === "profile-inside" || state.combo === "pocket") && state.cornerStyle === "dogbone")
+          ? "dogbone" : undefined,
+        // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
+        rampAngle: ((state.combo === "pocket" || state.combo === "relief-rough") && state.rampAngle !== undefined)
+          ? state.rampAngle : undefined,
+        // Cut direction — mill profile contours only (a laser cut has no climb/conventional).
+        cutDirection: (type === "profile" && !isLaser) ? state.cutDirection : undefined,
         // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
         finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
@@ -1165,21 +1269,26 @@ export class CamBar {
     return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
   }
 
-  private generate(): void {
+  private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     // Text whose font can't be resolved produces no toolpath geometry. Surface
     // that as an explicit choice rather than silently omitting it from the cut.
     const missing = this.missingFontText();
     if (missing.length > 0) {
       const list = missing.map((t) => `  • "${t.text}"`).join("\n");
-      const ok = confirm(
-        `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
-        `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
-      );
+      const ok = await confirmDialog({
+        title: "Missing fonts",
+        message:
+          `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
+          `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
+        confirmLabel: "Generate anyway",
+      });
       if (!ok) return;
     }
     track("gcode_generated", { operation_count: this.doc.operations.length });
-    this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    const n = this.doc.operations.length;
+    const file = this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
 
@@ -1192,15 +1301,18 @@ export class CamBar {
     );
   }
 
-  private download(code: string, name: string): void {
+  /** Trigger a .nc download and return the filename used (for confirmation UI). */
+  private download(code: string, name: string): string {
     const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    const filename = `${safe || "toolpath"}.nc`;
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${safe || "toolpath"}.nc`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    return filename;
   }
 
   // --- helpers ---------------------------------------------------------------
@@ -1214,6 +1326,7 @@ export class CamBar {
       : combo === "vcarve"  ? "V-Carve"
       : combo === "engrave" ? "Engrave"
       : combo === "relief-rough" ? "Relief Roughing"
+      : combo === "score" ? "Score / Fold"
       : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
     return `${prefix} ${n}`;
