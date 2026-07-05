@@ -144,6 +144,14 @@ export interface CAMOperation {
    */
   rampAngle?: number;
   /**
+   * Cut direction for a profile contour, relative to the standard M3 (clockwise)
+   * spindle. `"climb"` (tool travels CW on an outside profile / CCW on an inside
+   * one) gives a better finish on rigid machines; `"conventional"` (the reverse)
+   * pulls less on loose/manual machines. Unset leaves the raw offset winding
+   * untouched (back-compat with pre-toggle files). Profile ops only.
+   */
+  cutDirection?: "climb" | "conventional";
+  /**
    * Corner relief for female (inside) cuts. A round tool leaves a fillet in every
    * inside corner of a pocket / inside profile, so a mating square part won't
    * seat. `"dogbone"` adds a diagonal overcut at each such corner so the tool

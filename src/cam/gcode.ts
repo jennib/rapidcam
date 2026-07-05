@@ -7,6 +7,20 @@ import { textToContours } from "./textOutlines";
 import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addDogbones } from "./dogbone";
+
+/**
+ * Reorient a profile toolpath loop so it travels in the requested cut direction,
+ * assuming a clockwise (M3) spindle. Climb keeps the freshly-cut wall behind the
+ * tool; the winding that achieves it flips with the cut side:
+ *   climb → CCW inside, CW outside;   conventional → the reverse.
+ * Unset leaves the loop as-is (byte-identical to pre-toggle output).
+ */
+function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
+  if (op.cutDirection !== "climb" && op.cutDirection !== "conventional") return loop;
+  const wantCCW = op.cutDirection === "climb" ? op.side === "inside" : op.side === "outside";
+  const isCCW = signedArea(loop) >= 0;
+  return isCCW === wantCCW ? loop : [...loop].reverse();
+}
 import { contourParallelClear } from "./clearing";
 import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -199,7 +213,8 @@ function profilePolygon(
   const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
   const prep = (raw: Vec2[]): Vec2[] => {
     const db = dogbone ? addDogbones(raw, toolR) : raw;
-    return useLead ? startAtLongestEdgeMid(db) : db;
+    const dir = orientForCut(db, op);
+    return useLead ? startAtLongestEdgeMid(dir) : dir;
   };
 
   for (const rawPath of roughPaths) {

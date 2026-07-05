@@ -74,6 +74,7 @@ interface OpState {
   tabHeight: number;
   stepover: number;
   cornerStyle: "none" | "dogbone";
+  cutDirection: "climb" | "conventional";
   /** Plunge ramp angle override (deg); undefined = per-context default. */
   rampAngle?: number;
   pocketStrategy: "offset" | "raster";
@@ -554,6 +555,10 @@ export class CamBar {
       tabHeight:    existing?.tabs?.height  ?? 2,
       stepover:     existing?.stepover ?? DEFAULTS.stepover,
       cornerStyle:  existing?.cornerStyle ?? "none",
+      // New profiles default to climb (best on rigid CNC); an existing profile
+      // without the field defaults to whatever its raw winding already cuts, so
+      // re-applying an old op doesn't silently flip its direction.
+      cutDirection: existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
       rampAngle:    existing?.rampAngle,
       pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
       leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
@@ -879,6 +884,20 @@ export class CamBar {
     const cornerRow = this.dField("Corner overcut", cornerSelect);
     cutSec.appendChild(cornerRow);
 
+    // Cut direction — profile contours (mill). Climb vs conventional relative to
+    // the M3 spindle; visibility is set in the combo handler below.
+    const dirSelect = document.createElement("select");
+    dirSelect.className = "unit";
+    for (const [v, l] of [["climb", "Climb"], ["conventional", "Conventional"]] as const) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l;
+      dirSelect.appendChild(o);
+    }
+    dirSelect.value = state.cutDirection;
+    dirSelect.addEventListener("change", () => { state.cutDirection = dirSelect.value as "climb" | "conventional"; });
+    const dirRow = this.dField("Cut direction", dirSelect);
+    cutSec.appendChild(dirRow);
+
     // Plunge ramp angle — pocket and relief-rough ramp into the cut instead of
     // plunging straight. Empty = the per-context default (shown as placeholder);
     // visibility + placeholder are set in the combo handler below.
@@ -1025,6 +1044,8 @@ export class CamBar {
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       // Corner overcut is a female-feature relief — inside profiles and pockets only.
       cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      // Cut direction — mill profile contours only (a laser beam has no climb/conventional).
+      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
       // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
       const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
       rampRow.style.display = showRamp ? "" : "none";
@@ -1059,6 +1080,7 @@ export class CamBar {
       finishRow.style.display      = showFinish ? "" : "none";
       finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
       const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
       rampRow.style.display = showRamp ? "" : "none";
       rampInp.placeholder = "auto";
@@ -1154,6 +1176,8 @@ export class CamBar {
         // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
         rampAngle: ((state.combo === "pocket" || state.combo === "relief-rough") && state.rampAngle !== undefined)
           ? state.rampAngle : undefined,
+        // Cut direction — mill profile contours only (a laser cut has no climb/conventional).
+        cutDirection: (type === "profile" && !isLaser) ? state.cutDirection : undefined,
         // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
         finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
