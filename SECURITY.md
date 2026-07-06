@@ -5,6 +5,7 @@
 RapidCAM is a client-side web application. It runs entirely in the browser — there is no server component, no user accounts, and no data is transmitted anywhere. The attack surface is limited to:
 
 - Malicious SVG files imported by the user
+- Malicious DXF files imported by the user
 - Malicious `.rapidcam` project files opened by the user
 
 ## Reporting a vulnerability
