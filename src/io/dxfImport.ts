@@ -250,8 +250,12 @@ function parseSpline(
   }
   const closed = (flags & 1) !== 0;
 
+  // Cap the degree: NURBS evaluation (de Boor) is O(degree²) per sample, so an
+  // unclamped code-71 from a hostile file would blow up. Real splines are cubic
+  // (3), occasionally higher; anything absurd falls back to the polyline
+  // approximation below rather than being evaluated.
   const validNurbs =
-    ctrl.length > degree && degree >= 1 && knots.length === ctrl.length + degree + 1;
+    ctrl.length > degree && degree >= 1 && degree <= 20 && knots.length === ctrl.length + degree + 1;
   if (!validNurbs) {
     // Fit-points-only splines (or malformed knot vectors): a polyline through
     // the fit points is on-curve but coarse; through control points it's a hull.
@@ -319,7 +323,17 @@ interface ParseCtx {
   /** Skipped entity type → count (summarized into one warning at the end). */
   skipped: Map<string, number>;
   extrusionWarned: boolean;
+  /** Remaining entities the parse may still emit. Bounds nested-block fan-out:
+   *  the `depth > 8` guard stops infinite recursion, but not exponential
+   *  expansion (a block of many INSERTs of a block of many INSERTs…). */
+  budget: number;
+  budgetWarned: boolean;
 }
+
+/** Hard ceiling on total emitted entities — defends against a malformed or
+ *  hostile DXF whose nested blocks would otherwise expand to an OOM. Real
+ *  drawings are far below this. */
+const MAX_ENTITIES = 1_000_000;
 
 const SKIP_SILENTLY = new Set(["SEQEND", "VIEWPORT", "ATTDEF", "ATTRIB"]);
 
@@ -332,6 +346,13 @@ function parseEntityRange(
 ): void {
   let i = nextEntityStart(ctx.tags, start);
   while (i < end) {
+    if (ctx.budget <= 0) {
+      if (!ctx.budgetWarned) {
+        ctx.warnings.push(`DXF exceeds the ${MAX_ENTITIES.toLocaleString()}-entity limit — remaining entities skipped`);
+        ctx.budgetWarned = true;
+      }
+      return;
+    }
     const type = ctx.tags[i].value.trim().toUpperCase();
     let next = nextEntityStart(ctx.tags, i + 1);
 
@@ -348,7 +369,9 @@ function parseEntityRange(
       if (next < end && ctx.tags[next].value.trim().toUpperCase() === "SEQEND") {
         next = nextEntityStart(ctx.tags, next + 1);
       }
+      const before = out.length;
       emitPolyline(verts, (flags & 1) !== 0, out);
+      ctx.budget -= out.length - before;
       i = next;
       continue;
     }
@@ -368,6 +391,10 @@ function parseEntityRange(
       ctx.extrusionWarned = true;
     }
 
+    // INSERT expands via its own recursive parseEntityRange, which decrements
+    // the shared budget as it emits — so count every case here EXCEPT insert
+    // (which would otherwise double-count the entities it already tallied).
+    const before = out.length;
     switch (type) {
       case "LINE":
         out.push(new LineEntity(
@@ -405,6 +432,7 @@ function parseEntityRange(
         if (!SKIP_SILENTLY.has(type)) bumpSkip(ctx, type);
         break;
     }
+    if (type !== "INSERT") ctx.budget -= out.length - before;
     i = next;
   }
 }
@@ -458,8 +486,12 @@ function parseInsert(
   };
   const inner: Entity[] = [];
   parseEntityRange(ctx, block.start, block.end, inner, depth + 1);
-  for (const e of inner) xformEntity(e, t);
-  out.push(...inner);
+  // Push one at a time (not `out.push(...inner)`): a large block spread as
+  // function arguments overflows the call stack.
+  for (const e of inner) {
+    xformEntity(e, t);
+    out.push(e);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -544,7 +576,7 @@ export function importDxf(text: string): DxfImportResult {
 
   const unitScale = readUnits(tags, warnings);
 
-  const ctx: ParseCtx = { tags, blocks, warnings, skipped: new Map(), extrusionWarned: false };
+  const ctx: ParseCtx = { tags, blocks, warnings, skipped: new Map(), extrusionWarned: false, budget: MAX_ENTITIES, budgetWarned: false };
   const entities: Entity[] = [];
   parseEntityRange(ctx, entStart, entEnd, entities, 0);
 

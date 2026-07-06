@@ -323,7 +323,9 @@ function processElement(el: Element, sc: SvgScale, out: Entity[]): void {
 
       case "path": {
         const d = child.getAttribute("d") ?? "";
-        if (d) out.push(...parsePath(d, sc));
+        // Push one at a time (not `out.push(...parsePath())`): a very long path
+        // spread as function arguments would overflow the call stack.
+        if (d) for (const e of parsePath(d, sc)) out.push(e);
         break;
       }
 
