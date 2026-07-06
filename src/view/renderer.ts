@@ -21,7 +21,7 @@ import { dimensionLayout } from "../model/dimensions";
 import { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
-import { Overlay, PreviewShape, DiagnosticMarker } from "./overlay";
+import { Overlay, PreviewShape, DiagnosticMarker, StitchPreview } from "./overlay";
 import { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 
@@ -78,6 +78,7 @@ export class Renderer {
     this.drawSnap(view, overlay);
     this.drawTransformBox(view, overlay);
     if (overlay.diagnostics && overlay.diagnostics.length) this.drawDiagnostics(view, overlay.diagnostics);
+    if (overlay.stitchPreview) this.drawStitchPreview(view, overlay.stitchPreview);
   }
 
   // --- grid ----------------------------------------------------------------
@@ -889,6 +890,40 @@ export class Renderer {
           break;
         }
       }
+    }
+    ctx.restore();
+  }
+
+  /** Stitch: tile-grid outlines and registration-feature markers over the design. */
+  private drawStitchPreview(view: Viewport, preview: StitchPreview): void {
+    const ctx = this.ctx;
+    ctx.save();
+    // Tile boundaries.
+    ctx.strokeStyle = "#2f9e8f";
+    ctx.fillStyle = "rgba(47,158,143,0.06)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 5]);
+    for (const t of preview.tiles) {
+      const a = view.worldToScreen(t.min);
+      const b = view.worldToScreen(t.max);
+      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+      const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
+    }
+    // Registration features.
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#2f9e8f";
+    ctx.fillStyle = "#2f9e8f";
+    ctx.lineWidth = 1.5;
+    for (const f of preview.features) {
+      const s = view.worldToScreen(f);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }

@@ -34,11 +34,19 @@ export interface DiagnosticMarker {
   kind: "gap" | "open-contour" | "duplicate" | "degenerate";
 }
 
+/** Stitch tiled-milling preview: the tile grid and registration features (world coords). */
+export interface StitchPreview {
+  tiles: Bounds[];
+  features: Vec2[];
+}
+
 export interface Overlay {
   /** In-progress geometry drawn in the preview style. */
   previews: PreviewShape[];
   /** Located import problems to highlight (Babel diagnose mode), if any. */
   diagnostics?: DiagnosticMarker[] | null;
+  /** Stitch tiled-milling preview (tile grid + registration features), if any. */
+  stitchPreview?: StitchPreview | null;
   /** Active snap point to highlight, if any. */
   snap: SnapPoint | null;
   /** Rubber-band selection rectangle, in world coords. */

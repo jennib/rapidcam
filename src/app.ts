@@ -13,7 +13,7 @@ import { Geo } from "./model/constraints";
 import { Dimension, dimensionLayout } from "./model/dimensions";
 import { Viewport } from "./view/viewport";
 import { Renderer } from "./view/renderer";
-import { Overlay, DiagnosticMarker } from "./view/overlay";
+import { Overlay, DiagnosticMarker, StitchPreview } from "./view/overlay";
 import { SnapEngine, SnapResult } from "./input/snapping";
 import { solve, PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, ToolPointerEvent } from "./tools/tool";
@@ -82,6 +82,8 @@ export class App {
   private currentHoverConstraint: EntityId | null = null;
   /** Babel diagnose-mode markers over located DXF-import problems, if any. */
   private dxfDiagnostics: DiagnosticMarker[] | null = null;
+  /** Stitch tiled-milling preview (tile grid + registration features), if any. */
+  private stitchPreview: StitchPreview | null = null;
   private renderScheduled = false;
 
   private project: ProjectManager;
@@ -250,7 +252,10 @@ export class App {
       this.project.pushHistory,
       () => this.project.undoRedo("undo")
     );
-    new CamBar(dom.cambar, this.doc, this.project.pushHistory);
+    new CamBar(dom.cambar, this.doc, this.project.pushHistory, (p) => {
+      this.stitchPreview = p;
+      this.requestRender();
+    });
     new VariablesBar(dom.variablesbar, this.doc, () => this.onVariablesChanged(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
@@ -499,6 +504,7 @@ export class App {
       hoverConstraint: this.currentHoverConstraint,
       transformBox: to.transformBox,
       diagnostics: this.dxfDiagnostics,
+      stitchPreview: this.stitchPreview,
     };
     this.renderer.render(this.doc, this.view, overlay);
     this.statusBar.setZoom(this.view.scale);
