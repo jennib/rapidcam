@@ -8,6 +8,8 @@ import { stitchGCode } from "../src/cam/stitch";
 
 const cutMoves = (p: GProgram): GMoveEvent[] =>
   p.events.filter((e): e is GMoveEvent => e.kind === "move" && e.motion !== 0);
+const allMoves = (p: GProgram): GMoveEvent[] =>
+  p.events.filter((e): e is GMoveEvent => e.kind === "move");
 
 const base = {
   name: "t", toolType: "end-mill" as const, side: "outside" as const,
@@ -43,6 +45,37 @@ test("splits a design wider than the bed into tiles, each in its own local origi
     }
   }
   expect(res.tiles.map((t) => t.name)).toEqual(["sign_c1_r1", "sign_c2_r1"]);
+});
+
+test("emits shared dowel holes into both tiles at the seam (in each tile's local coords)", () => {
+  const g = rectProfileGCode(20, 20, 280, 80);
+  const res = stitchGCode(g, {
+    tileW: 150, tileH: 150, registration: "holes",
+    registrationOptions: { holeDepth: 4 }, // distinct from the -3 cut depth
+  });
+  expect(res.tiles).toHaveLength(2);
+
+  for (const tile of res.tiles) {
+    expect(tile.gcode).toContain("Stitch registration (holes)");
+    const holes = allMoves(parseProgram(tile.gcode)).filter((m) => m.motion === 1 && m.hasZ && Math.abs(m.z + 4) < 1e-6);
+    expect(holes).toHaveLength(2); // two features on the shared seam
+  }
+  // The seam (world x=167) lands at the right tile's left edge (x≈0) and the
+  // left tile's right edge (x≈150).
+  const left = res.tiles.find((t) => t.col === 0)!;
+  const right = res.tiles.find((t) => t.col === 1)!;
+  const rapidXs = (t: typeof left) =>
+    allMoves(parseProgram(t.gcode)).filter((m) => m.motion === 0 && m.hasX).map((m) => m.x);
+  expect(rapidXs(left).some((x) => Math.abs(x - 150) < 0.5)).toBe(true);
+  expect(rapidXs(right).some((x) => Math.abs(x - 0) < 0.5)).toBe(true);
+});
+
+test("registration defaults to none, and crosshairs scribe instead of drilling", () => {
+  const g = rectProfileGCode(20, 20, 280, 80);
+  expect(stitchGCode(g, { tileW: 150, tileH: 150 }).tiles[0].gcode).not.toContain("Stitch registration");
+
+  const cross = stitchGCode(g, { tileW: 150, tileH: 150, registration: "crosshairs" });
+  expect(cross.tiles[0].gcode).toContain("Stitch registration (crosshairs)");
 });
 
 test("a design that already fits the bed comes back as a single unchanged file", () => {

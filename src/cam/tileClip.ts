@@ -200,6 +200,8 @@ export interface ClipResult {
   program: GProgram;
   /** True if the tile contains any cutting. */
   hasCuts: boolean;
+  /** Safe retract height (program coords) recovered from the source rapids. */
+  safeZ: number;
   warnings: string[];
 }
 
@@ -246,7 +248,7 @@ export function clipProgramToTile(program: GProgram, rect: Bounds): ClipResult {
   if (hasVaryingZ) {
     warnings.push("a toolpath varies continuously in Z (relief / v-carve / helical) — its seam entry is approximated by a plunge");
   }
-  return { program: { events }, hasCuts, warnings };
+  return { program: { events }, hasCuts, safeZ, warnings };
 }
 
 /** Convenience: clip raw G-code text to a tile and return the parsed result. */

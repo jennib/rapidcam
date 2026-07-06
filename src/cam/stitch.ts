@@ -13,8 +13,11 @@
  */
 
 import { planTiles, type StitchOptions, type StitchPlan } from "./tiling";
-import { parseProgram, emitProgram, unsupportedMotions } from "./gcodeMotion";
+import { parseProgram, emitProgram, unsupportedMotions, type GEvent } from "./gcodeMotion";
 import { clipProgramToTile, programCutBounds } from "./tileClip";
+import { registrationEvents, type RegistrationMode, type RegistrationOptions } from "./registration";
+import type { Vec2 } from "../core/vec2";
+import type { Bounds } from "../model/entities";
 
 export interface StitchTile {
   index: number;
@@ -37,6 +40,22 @@ export interface StitchResult {
 export interface StitchGCodeOptions extends StitchOptions {
   /** Base name for the tile files (default "toolpaths"). */
   name?: string;
+  /** Registration features to emit into each tile. Default "none". */
+  registration?: RegistrationMode;
+  /** Registration geometry overrides (depths, sizes, rates). */
+  registrationOptions?: Omit<RegistrationOptions, "mode" | "safeZ">;
+}
+
+const EPS = 1e-6;
+const inRect = (p: Vec2, r: Bounds) =>
+  p.x >= r.min.x - EPS && p.x <= r.max.x + EPS && p.y >= r.min.y - EPS && p.y <= r.max.y + EPS;
+
+/** Splice a tile's registration section in just before its first cutting move. */
+function withRegistration(events: GEvent[], reg: GEvent[]): GEvent[] {
+  if (reg.length === 0) return events;
+  const at = events.findIndex((e) => e.kind === "move");
+  const i = at < 0 ? events.length : at;
+  return [...events.slice(0, i), ...reg, ...events.slice(i)];
 }
 
 function tileHeader(name: string, col: number, row: number, plan: StitchPlan, o: StitchGCodeOptions): string {
@@ -83,11 +102,20 @@ export function stitchGCode(gcode: string, opts: StitchGCodeOptions): StitchResu
     };
   }
 
+  const regMode = opts.registration ?? "none";
   const tiles: StitchTile[] = [];
   for (const cell of plan.tiles) {
     const clip = clipProgramToTile(program, cell.rect);
     if (!clip.hasCuts) continue; // nothing of the design reaches this tile
-    const body = emitProgram(clip.program, { dx: cell.rect.min.x, dy: cell.rect.min.y });
+
+    // Features on this tile's seams — shared with neighbours, drilled/scored so
+    // the stock can be realigned. Emitted in program coords, then translated.
+    const reg = registrationEvents(
+      plan.features.filter((f) => inRect(f, cell.rect)),
+      { mode: regMode, safeZ: clip.safeZ, ...opts.registrationOptions },
+    );
+    const body = emitProgram({ events: withRegistration(clip.program.events, reg) },
+      { dx: cell.rect.min.x, dy: cell.rect.min.y });
     tiles.push({
       index: cell.index,
       row: cell.row,
