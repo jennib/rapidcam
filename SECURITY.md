@@ -9,7 +9,7 @@ RapidCAM is a client-side web application. It runs entirely in the browser — t
 
 ## Reporting a vulnerability
 
-If you find a security issue, please **do not open a public issue**. Instead, email **jenni.b@gmail.com** with:
+If you find a security issue, please **do not open a public issue**. Instead, report it privately through GitHub's [Report a vulnerability](https://github.com/jennib/rapidcam/security/advisories/new) form, including:
 
 - A description of the vulnerability
 - Steps to reproduce
