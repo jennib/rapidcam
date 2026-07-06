@@ -197,8 +197,8 @@ const p3 = { x: 100, y: 104 };
 
   // Pass ordering: finishing the shallow wall (Z-1.5) happens BEFORE clearing
   // the deep level (Z-3). The old code did all clearing first.
-  const finishShallow = all.findIndex(l => l === "; finishing walls Z-1.5");
-  const clearDeep     = all.findIndex(l => l === "; clearing pass Z-3");
+  const finishShallow = all.indexOf("; finishing walls Z-1.5");
+  const clearDeep     = all.indexOf("; clearing pass Z-3");
   check("finish@Z-1.5 precedes clearing@Z-3 (interleaved by depth)",
     finishShallow >= 0 && clearDeep >= 0 && finishShallow < clearDeep,
     `finish@-1.5=${finishShallow}, clear@-3=${clearDeep}`);

@@ -7,7 +7,7 @@
  * round values of the display unit (10mm, 20mm… or 0.5in, 1in…).
  */
 
-import { Unit, toMM } from "../core/units";
+import { type Unit, toMM } from "../core/units";
 import { niceStepUp } from "../core/geom";
 
 export interface GridSpec {

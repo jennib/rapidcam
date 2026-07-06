@@ -69,7 +69,9 @@ function closeTopModal(): void {
 export function closeAllModals(): void {
   // Copy: each close() mutates the stack via its disposer.
   for (const entry of [...stack]) entry.close();
-  document.querySelectorAll<HTMLElement>(ESCAPABLE_SELECTOR).forEach((el) => el.remove());
+  document.querySelectorAll<HTMLElement>(ESCAPABLE_SELECTOR).forEach((el) => {
+    el.remove();
+  });
 }
 
 // Capture phase so this beats the app's window-level keydown handler.

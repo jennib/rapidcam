@@ -6,8 +6,8 @@
  * set is pre-filtered by bounding box so this stays cheap on every mouse move.
  */
 
-import { Vec2 } from "./vec2";
-import {
+import type { Vec2 } from "./vec2";
+import type {
   Entity,
   LineEntity,
   CircleEntity,

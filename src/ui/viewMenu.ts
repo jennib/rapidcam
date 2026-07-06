@@ -59,7 +59,7 @@ export class ViewMenu {
     this.item("Fit View", "F", () => { this.close(); this.cb.onFit(); });
     this.separator();
     const dimsOn = this.cb.areDimensionsVisible();
-    this.item((dimsOn ? "✓ " : "   ") + "Dimensions", "", () => { this.close(); this.cb.onToggleDimensions(); });
+    this.item(`${dimsOn ? "✓ " : "   "}Dimensions`, "", () => { this.close(); this.cb.onToggleDimensions(); });
     const checked = this.cb.is3DVisible();
     this.item((checked ? "✓ " : "   ") + this.cb.previewLabel(), "", () => { this.close(); this.cb.onToggle3D(); });
   }

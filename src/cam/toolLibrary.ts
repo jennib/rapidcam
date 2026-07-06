@@ -1,4 +1,4 @@
-import { type ToolDef } from "./types";
+import type { ToolDef } from "./types";
 import { StorageKeys } from "../core/storageKeys";
 
 const STORAGE_KEY = StorageKeys.toolLibrary;

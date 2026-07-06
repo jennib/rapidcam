@@ -22,7 +22,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
 import { contourParallelClear } from "./clearing";
-import { n, X, Y, Z, depthPasses, PostProcessor } from "./postprocessors/base";
+import { n, X, Y, Z, depthPasses, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
@@ -1356,7 +1356,7 @@ export interface GCodeOptions {
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
 function customLines(block: string | undefined): string[] {
-  if (!block || !block.trim()) return [];
+  if (!block?.trim()) return [];
   return block.replace(/\s+$/, "").split(/\r?\n/);
 }
 

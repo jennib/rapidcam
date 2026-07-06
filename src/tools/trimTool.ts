@@ -25,19 +25,19 @@
  * flattened for intersection purposes when they act as cutters.
  */
 
-import { Vec2 } from "../core/vec2";
+import type { Vec2 } from "../core/vec2";
 import {
   LineEntity, CircleEntity, ArcEntity, PolylineEntity, RectEntity, BezierEntity,
-  TextEntity, PointEntity, Entity,
+  TextEntity, PointEntity, type Entity,
 } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
+import type { CADDocument } from "../model/document";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import {
   segSegIntersect, segCircleIntersect, circleCircleIntersect,
   closestPointOnSegment, distToSegment, distToCircle, distToArc,
   angleInArc, flattenBezier, evalBezier, splitBezier, TAU,
 } from "../core/geom";
-import { PreviewShape } from "../view/overlay";
+import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
 const HIT_PX  = 12;

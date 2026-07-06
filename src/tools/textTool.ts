@@ -1,6 +1,6 @@
-import { Vec2 } from "../core/vec2";
+import type { Vec2 } from "../core/vec2";
 import { TextEntity } from "../model/entities";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { openTextDialog } from "../ui/textEditDialog";
 import { defaultFontId } from "../core/fontManager";

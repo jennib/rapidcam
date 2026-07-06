@@ -4,9 +4,9 @@
  * ExtendTool wraps these with hit-testing, preview, and document mutation.
  */
 
-import { Vec2, dist, sub, dot, normalize } from "../core/vec2";
+import { type Vec2, dist, sub, dot, normalize } from "../core/vec2";
 import {
-  Entity, LineEntity, ArcEntity, CircleEntity, PolylineEntity, RectEntity, BezierEntity,
+  type Entity, LineEntity, ArcEntity, CircleEntity, PolylineEntity, RectEntity, BezierEntity,
 } from "../model/entities";
 import { segSegIntersect, segCircleIntersect, circleCircleIntersect, angleInArc, flattenBezier, TAU } from "../core/geom";
 

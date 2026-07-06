@@ -1,7 +1,7 @@
 /** The CAD document: canvas definition, geometry, constraints, dimensions. */
 
-import { Unit } from "../core/units";
-import { Vec2, dist } from "../core/vec2";
+import type { Unit } from "../core/units";
+import { type Vec2, dist } from "../core/vec2";
 
 // --- origin types ------------------------------------------------------------
 
@@ -70,15 +70,15 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 
   return { ox, oy, zOffset };
 }
-import { Entity, EntityId, SnapPoint, Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity, RasterImageEntity } from "./entities";
+import { type Entity, type EntityId, type SnapPoint, type Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, type PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity, RasterImageEntity } from "./entities";
 import type { CAMOperation, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
-import { Constraint, PointRef, SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, Geo } from "./constraints";
-import { Dimension, dimensionHitDistance } from "./dimensions";
-import { Variable } from "./variables";
-import { ScalarBinding } from "./bindings";
-import { PatternDef, clonePatternDef } from "./patterns";
+import { type Constraint, type PointRef, type SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, type Geo } from "./constraints";
+import { type Dimension, dimensionHitDistance } from "./dimensions";
+import type { Variable } from "./variables";
+import type { ScalarBinding } from "./bindings";
+import { type PatternDef, clonePatternDef } from "./patterns";
 import { updateCounter, nextId } from "./ids";
 
 export interface GroupDef {

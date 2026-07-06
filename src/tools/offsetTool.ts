@@ -4,10 +4,10 @@
  * and rectangles.  Key: O.
  */
 
-import { Vec2, dist } from "../core/vec2";
+import { type Vec2, dist } from "../core/vec2";
 import {
-  Entity,
-  EntityId,
+  type Entity,
+  type EntityId,
   LineEntity,
   CircleEntity,
   ArcEntity,
@@ -16,8 +16,8 @@ import {
 } from "../model/entities";
 import { distToSegment } from "../core/geom";
 import { offsetPolygon } from "../cam/offset";
-import { PreviewShape } from "../view/overlay";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { PreviewShape } from "../view/overlay";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 // ---------------------------------------------------------------------------

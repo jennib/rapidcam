@@ -1,5 +1,5 @@
-import { Unit, parseLength, formatLength } from "../core/units";
-import { type CADDocument, type OriginX, type OriginY, type OriginZ } from "../model/document";
+import { type Unit, parseLength, formatLength } from "../core/units";
+import type { CADDocument, OriginX, OriginY, OriginZ } from "../model/document";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
@@ -59,13 +59,16 @@ export class SettingsBar {
 
     // Canvas size
     const canvasGroup = this.group("Canvas Size");
-    canvasGroup.appendChild(this.field("Width", (this.widthInput = this.dimInput())));
-    canvasGroup.appendChild(this.field("Height", (this.heightInput = this.dimInput())));
+    this.widthInput = this.dimInput();
+    canvasGroup.appendChild(this.field("Width", this.widthInput));
+    this.heightInput = this.dimInput();
+    canvasGroup.appendChild(this.field("Height", this.heightInput));
     this.content.appendChild(canvasGroup);
 
     // Material
     const stockGroup = this.group("Material");
-    stockGroup.appendChild(this.field("Stock thickness", (this.stockInput = this.dimInput())));
+    this.stockInput = this.dimInput();
+    stockGroup.appendChild(this.field("Stock thickness", this.stockInput));
     this.content.appendChild(stockGroup);
 
     // Origin (WCS)
@@ -123,8 +126,10 @@ export class SettingsBar {
 
     // Job metadata (informational; written to the G-code header)
     const jobGroup = this.group("Job");
-    jobGroup.appendChild(this.field("Job", (this.jobInput = this.textInput("part / job name"))));
-    jobGroup.appendChild(this.field("Revision", (this.revisionInput = this.textInput("e.g. A"))));
+    this.jobInput = this.textInput("part / job name");
+    jobGroup.appendChild(this.field("Job", this.jobInput));
+    this.revisionInput = this.textInput("e.g. A");
+    jobGroup.appendChild(this.field("Revision", this.revisionInput));
     this.notesInput = document.createElement("textarea");
     this.notesInput.className = "dim"; this.notesInput.rows = 2;
     this.notesInput.placeholder = "notes (optional)";

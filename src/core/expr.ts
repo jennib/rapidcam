@@ -12,7 +12,7 @@ export function evalExpr(expr: string, vars: VarMap): number | null {
     const p = new Parser(expr.trim(), vars);
     const v = p.parseExpr();
     if (!p.done()) return null;
-    return isFinite(v) ? v : null;
+    return Number.isFinite(v) ? v : null;
   } catch {
     return null;
   }
@@ -77,7 +77,7 @@ class Parser {
     if (this.pos < this.src.length && this.src[this.pos] === "^") {
       this.pos++;
       const exp = this.parseUnary(); // right-associative via recursion in parseUnary
-      return Math.pow(base, exp);
+      return base ** exp;
     }
     return base;
   }

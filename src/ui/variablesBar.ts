@@ -1,4 +1,4 @@
-import { CADDocument } from "../model/document";
+import type { CADDocument } from "../model/document";
 import { makeVariable, isValidName, isDuplicateName, varMap } from "../model/variables";
 import { parseLength } from "../core/units";
 import { evalExpr } from "../core/expr";

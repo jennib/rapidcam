@@ -37,7 +37,7 @@ export interface ScalarBinding {
 /** The binding's target in the scalar's internal unit, or null if unresolvable. */
 export function bindingTarget(b: ScalarBinding, vars: VarMap): number | null {
   const t = evalExpr(b.expr, vars);
-  if (t === null || !isFinite(t)) return null;
+  if (t === null || !Number.isFinite(t)) return null;
   return t * (b.scale ?? 1);
 }
 

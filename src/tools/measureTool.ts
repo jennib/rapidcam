@@ -8,10 +8,10 @@
  * vertices, midpoints, centres, intersections, etc.
  */
 
-import { Vec2, dist } from "../core/vec2";
-import { Unit, formatLength, formatLengthWithUnit } from "../core/units";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
-import { PreviewShape } from "../view/overlay";
+import { type Vec2, dist } from "../core/vec2";
+import { type Unit, formatLength, formatLengthWithUnit } from "../core/units";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
 export class MeasureTool implements Tool {

@@ -1,7 +1,7 @@
 /** Transient visuals layered on top of the document: tool previews, snap marker, selection box. */
 
-import { Vec2 } from "../core/vec2";
-import { SnapPoint, EntityId, Bounds } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
+import type { SnapPoint, EntityId, Bounds } from "../model/entities";
 
 export type PreviewShape =
   | { kind: "line"; a: Vec2; b: Vec2 }

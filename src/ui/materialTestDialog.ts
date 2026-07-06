@@ -44,7 +44,7 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   const num = (label: string, get: () => number, set: (v: number) => void): HTMLElement => {
     const inp = document.createElement("input");
     inp.type = "number"; inp.className = "dim"; inp.step = "any"; inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v); });
     const el = row(label, inp);
     body.appendChild(el);
     return el;

@@ -1,10 +1,10 @@
 /** Bottom status bar: live cursor coordinates, zoom, and snap toggles. */
 
-import { Vec2 } from "../core/vec2";
+import type { Vec2 } from "../core/vec2";
 import { fromMM } from "../core/units";
-import { CADDocument } from "../model/document";
-import { SnapEngine } from "../input/snapping";
-import { SolveResult } from "../solver/solver";
+import type { CADDocument } from "../model/document";
+import type { SnapEngine } from "../input/snapping";
+import type { SolveResult } from "../solver/solver";
 
 export class StatusBar {
   private coordEl!: HTMLElement;
@@ -86,7 +86,7 @@ export class StatusBar {
   }
 
   setSolveStatus(res: SolveResult | null): void {
-    if (!res || !res.hasConstraints) {
+    if (!res?.hasConstraints) {
       this.solveEl.textContent = "";
       this.solveEl.style.color = "";
       return;

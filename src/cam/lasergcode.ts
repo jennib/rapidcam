@@ -44,7 +44,7 @@ export interface LaserGCodeOptions {
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
 function customLines(block: string | undefined): string[] {
-  if (!block || !block.trim()) return [];
+  if (!block?.trim()) return [];
   return block.replace(/\s+$/, "").split(/\r?\n/);
 }
 
@@ -365,7 +365,6 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
     if (ent instanceof BezierEntity) {
       if (profile) items.push({ kind: "note", text: `bezier (${ent.id}) skipped in profile — beziers are open paths` });
       else items.push({ kind: "poly", pts: flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), closed: false });
-      continue;
     }
   }
   return items;

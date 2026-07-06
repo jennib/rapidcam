@@ -57,9 +57,9 @@ async function gunzip(bytes: Uint8Array): Promise<string> {
 async function encodeDesign(file: RcamFile): Promise<string> {
   const json = JSON.stringify(file);
   if (typeof CompressionStream !== "undefined") {
-    return "g" + bytesToBase64Url(await gzip(json));
+    return `g${bytesToBase64Url(await gzip(json))}`;
   }
-  return "r" + bytesToBase64Url(new TextEncoder().encode(json));
+  return `r${bytesToBase64Url(new TextEncoder().encode(json))}`;
 }
 
 async function decodeDesign(payload: string): Promise<RcamFile> {

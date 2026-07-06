@@ -1,5 +1,5 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import { type MachineKind, type OriginDef, type OriginX, type OriginY, type OriginZ } from "../model/document";
+import type { MachineKind, OriginDef, OriginX, OriginY, OriginZ } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
@@ -41,7 +41,7 @@ export function openNewProjectDialog(
       // Explicitly delete name to ensure we never load or reuse a saved project name as a default
       delete defaults.name;
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore parse errors
   }
 
@@ -52,7 +52,7 @@ export function openNewProjectDialog(
   try {
     const lk = localStorage.getItem(StorageKeys.lastMachineKind);
     if (lk === "mill" || lk === "laser") lastMachineKind = lk;
-  } catch (e) {
+  } catch (_e) {
     // Ignore
   }
 
@@ -257,7 +257,7 @@ export function openNewProjectDialog(
     }
 
     // Remember the machine type for next time, regardless of "Save as default".
-    try { localStorage.setItem(StorageKeys.lastMachineKind, cfg.machineKind); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(StorageKeys.lastMachineKind, cfg.machineKind); } catch (_e) { /* ignore */ }
 
     // Persist the machine coolant capability (global, applies to all projects).
     setMachineHasCoolant(coolantChk.checked);

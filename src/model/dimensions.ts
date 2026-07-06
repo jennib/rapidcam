@@ -14,7 +14,7 @@
  */
 
 import {
-  Vec2,
+  type Vec2,
   sub,
   add,
   scale,
@@ -28,9 +28,9 @@ import {
   angle as vecAngle,
 } from "../core/vec2";
 import { distToSegment } from "../core/geom";
-import { Unit, formatLengthWithUnit, formatAngle } from "../core/units";
-import { EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
-import { Geo, PointRef } from "./constraints";
+import { type Unit, formatLengthWithUnit, formatAngle } from "../core/units";
+import { type EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
+import type { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
 export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength" | "line-distance" | "circle-gap";
@@ -341,7 +341,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
         segments: isArcEnt ? [[edge, end]] : [[g.center, end]],
         arrows: [{ tip: edge, dir: u }],
         textPos: end,
-        label: "R" + formatLengthWithUnit(displayVal, unit),
+        label: `R${formatLengthWithUnit(displayVal, unit)}`,
       };
     }
     const e2 = sub(g.center, scale(u, g.radius));
@@ -351,7 +351,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
         ? [{ tip: edge, dir: u }]
         : [{ tip: edge, dir: u }, { tip: e2, dir: scale(u, -1) }],
       textPos: end,
-      label: "⌀" + formatLengthWithUnit(displayVal, unit),
+      label: `⌀${formatLengthWithUnit(displayVal, unit)}`,
     };
   }
 
@@ -395,7 +395,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
         { tip: add(a.center, scale(d2, R)), dir: arrow2Dir },
       ],
       textPos: add(a.center, scale({ x: Math.cos(midAngle), y: Math.sin(midAngle) }, R + 2)),
-      label: "∩" + formatLengthWithUnit(displayVal, unit),
+      label: `∩${formatLengthWithUnit(displayVal, unit)}`,
       arc: { center: a.center, radius: R, startDir: d1, endDir: d2, ccw: true },
     };
   }

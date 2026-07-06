@@ -1,5 +1,5 @@
 import { loadLibrary, saveLibrary, removeTool } from "../cam/toolLibrary";
-import { ToolDef, ToolType, TOOL_TYPE_LABELS } from "../cam/types";
+import { type ToolDef, type ToolType, TOOL_TYPE_LABELS } from "../cam/types";
 import { buildToolDiagram } from "./toolDiagram";
 import { registerModal, confirmDialog } from "./modal";
 
@@ -252,11 +252,11 @@ export function openToolLibraryDialog(): void {
       inp.value = get() !== undefined ? String(get()) : "";
       inp.addEventListener("change", () => {
         const v = parseFloat(inp.value);
-        if (isFinite(v)) set(v);
+        if (Number.isFinite(v)) set(v);
       });
       if (live) inp.addEventListener("input", () => {
         const v = parseFloat(inp.value);
-        if (isFinite(v)) { set(v); redrawDiagram(); }
+        if (Number.isFinite(v)) { set(v); redrawDiagram(); }
       });
       return makeField(label, inp);
     };

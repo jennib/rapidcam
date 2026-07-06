@@ -24,7 +24,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity, PointEntity,
+  type Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity, PointEntity,
 } from "../model/entities";
 
 export interface DxfImportResult {
@@ -281,7 +281,7 @@ function parseEllipse(m: Map<number, number>, out: Entity[], warnings: string[])
   const c = { x: num(m, 10), y: num(m, 20) };
   const major = { x: num(m, 11), y: num(m, 21) }; // endpoint relative to center
   const ratio = num(m, 40, 1);
-  let u0 = num(m, 41, 0);
+  const u0 = num(m, 41, 0);
   let u1 = num(m, 42, Math.PI * 2);
   if (u1 <= u0) u1 += Math.PI * 2;
   const full = Math.abs(u1 - u0 - Math.PI * 2) < 1e-9;
@@ -353,7 +353,7 @@ function parseEntityRange(
 
     // Paper-space entities are layout furniture, not part geometry.
     if (num(m, 67, 0) === 1) {
-      bumpSkip(ctx, "paper-space " + type);
+      bumpSkip(ctx, `paper-space ${type}`);
       i = next;
       continue;
     }

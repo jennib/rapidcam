@@ -1,4 +1,4 @@
-import { CADDocument, LayerDef } from "../model/document";
+import type { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
 import { confirmDialog } from "./modal";
 

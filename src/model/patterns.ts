@@ -11,7 +11,7 @@
  * Spacing fields accept numeric expressions that can reference document variables.
  */
 
-import { EntityId, Entity } from "./entities";
+import type { EntityId, Entity } from "./entities";
 import { nextId } from "./ids";
 
 export interface LinearPatternParams {

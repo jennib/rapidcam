@@ -5,11 +5,11 @@
  * Key: B
  */
 
-import { Vec2 } from "../core/vec2";
-import { BezierEntity, SnapPoint } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
+import { BezierEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
-import { PreviewShape } from "../view/overlay";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { PreviewShape } from "../view/overlay";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 type Phase = "p0" | "p3" | "p1" | "p2";

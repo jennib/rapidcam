@@ -7,12 +7,12 @@
  * reflection since the result is not axis-aligned.
  */
 
-import { Vec2, dot, sub } from "../core/vec2";
+import { type Vec2, dot, sub } from "../core/vec2";
 import {
-  Entity, LineEntity, CircleEntity, ArcEntity,
+  type Entity, LineEntity, CircleEntity, ArcEntity,
   PolylineEntity, BezierEntity, RectEntity,
 } from "../model/entities";
-import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { ICONS } from "./icons";
 
 // ---------------------------------------------------------------------------

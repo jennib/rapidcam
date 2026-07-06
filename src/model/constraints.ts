@@ -12,8 +12,8 @@
  * numerical solver well-conditioned across mixed constraint types.
  */
 
-import { Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
-import { Entity, EntityId, LineEntity, CircleEntity, ArcEntity, PolylineEntity } from "./entities";
+import { type Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
+import { type Entity, type EntityId, LineEntity, CircleEntity, ArcEntity, PolylineEntity } from "./entities";
 import { angleInArc } from "../core/geom";
 import { nextId } from "./ids";
 

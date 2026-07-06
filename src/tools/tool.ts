@@ -1,12 +1,12 @@
 /** Tool framework: the interface every tool implements, plus the manager that routes input. */
 
-import { Vec2 } from "../core/vec2";
-import { SnapPoint } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Dimension } from "../model/dimensions";
-import { Viewport } from "../view/viewport";
-import { PreviewShape, TransformBox } from "../view/overlay";
-import { PinMap } from "../solver/solver";
+import type { Vec2 } from "../core/vec2";
+import type { SnapPoint } from "../model/entities";
+import type { CADDocument } from "../model/document";
+import type { Dimension } from "../model/dimensions";
+import type { Viewport } from "../view/viewport";
+import type { PreviewShape, TransformBox } from "../view/overlay";
+import type { PinMap } from "../solver/solver";
 
 export interface ToolContext {
   doc: CADDocument;
@@ -24,7 +24,7 @@ export interface ToolContext {
   /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
    *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
    *  If `onTab` is provided, Tab calls it instead of moving browser focus. */
-  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void, onTab?: () => void): void;
+  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | undefined, onCancel: () => void, onTab?: () => void): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;
 }

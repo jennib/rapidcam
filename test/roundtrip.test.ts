@@ -36,7 +36,7 @@ function buildKitchenSink(): CADDocument {
   const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 40, y: 0 }));
   const circle = doc.add(new CircleEntity({ x: 60, y: 30 }, 8));
   const rect = doc.add(new RectEntity({ x: 80, y: 20 }, { x: 120, y: 50 }));
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 60 }, { x: 20, y: 60 }, { x: 20, y: 80 }], true));
+  const _poly = doc.add(new PolylineEntity([{ x: 0, y: 60 }, { x: 20, y: 60 }, { x: 20, y: 80 }], true));
   const arc = doc.add(new ArcEntity({ x: 120, y: 100 }, 10, 0, Math.PI / 2));
   doc.add(new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 110 }, { x: 20, y: 110 }, { x: 30, y: 100 }));
   const text = doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 140, y: 10 }, 0.25));

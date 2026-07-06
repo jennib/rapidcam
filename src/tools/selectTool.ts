@@ -1,15 +1,15 @@
-import { Vec2, dist, sub } from "../core/vec2";
-import { Bounds, LineEntity, TextEntity, PolylineEntity } from "../model/entities";
-import { PointRef, pointRefKey, Constraint, constraintAnchors, ConstraintType, SegmentRef } from "../model/constraints";
-import { CADDocument, DocSnapshot } from "../model/document";
-import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
-import { Viewport } from "../view/viewport";
-import { dimensionHitDistance, dimensionOffsetFromCursor, Dimension, dimensionLayout } from "../model/dimensions";
-import { Geo } from "../model/constraints";
+import { type Vec2, dist, sub } from "../core/vec2";
+import { type Bounds, type LineEntity, TextEntity, PolylineEntity } from "../model/entities";
+import { type PointRef, pointRefKey, type Constraint, constraintAnchors, type ConstraintType, type SegmentRef } from "../model/constraints";
+import type { CADDocument, DocSnapshot } from "../model/document";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
+import type { Viewport } from "../view/viewport";
+import { dimensionHitDistance, dimensionOffsetFromCursor, type Dimension, dimensionLayout } from "../model/dimensions";
+import type { Geo } from "../model/constraints";
 import { distToSegment } from "../core/geom";
-import { PinMap } from "../solver/solver";
+import type { PinMap } from "../solver/solver";
 import { selectionBounds, applyScale, applyRotate } from "../core/transform";
-import { TransformBox, TransformHandle } from "../view/overlay";
+import type { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 import { buildConstraintsFor } from "../ui/constraintBar";
 import { openTextDialog } from "../ui/textEditDialog";
@@ -378,7 +378,7 @@ export class SelectTool implements Tool {
       if (id === "e" || id === "w") sy = 1;
       
       if (e.shiftKey) {
-        let maxAbs = Math.max(Math.abs(sx), Math.abs(sy));
+        const maxAbs = Math.max(Math.abs(sx), Math.abs(sy));
         if (id === "n" || id === "s") sx = maxAbs * Math.sign(sx); // wait, for N/S shift shouldn't constrain width if it's 1
         if (id !== "n" && id !== "s" && id !== "e" && id !== "w") {
           sx = maxAbs * Math.sign(sx);

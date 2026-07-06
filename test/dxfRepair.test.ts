@@ -5,7 +5,7 @@ import {
 } from "../src/io/dxfRepair";
 import { collectClosedLoops } from "../src/cam/loops";
 import {
-  Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity,
+  type Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity,
 } from "../src/model/entities";
 
 const line = (ax: number, ay: number, bx: number, by: number) =>

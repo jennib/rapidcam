@@ -59,7 +59,7 @@ export function describeEntity(e: Entity, doc: CADDocument): string {
   if (e instanceof PolylineEntity)
     return `Polyline — ${e.points.length} pts${e.closed ? " (closed)" : " (open)"}`;
   if (e instanceof TextEntity)
-    return `Text — "${e.text.length > 20 ? e.text.slice(0, 20) + "…" : e.text}"`;
+    return `Text — "${e.text.length > 20 ? `${e.text.slice(0, 20)}…` : e.text}"`;
   return "Entity";
 }
 

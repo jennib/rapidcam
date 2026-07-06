@@ -9,7 +9,7 @@
  * All coordinates are in document millimetres, in a Y-up world frame.
  */
 
-import { Vec2, clone, add, mid, dist, sub } from "../core/vec2";
+import { type Vec2, clone, add, mid, dist, sub } from "../core/vec2";
 import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flattenBezier, bezierBounds } from "../core/geom";
 import { nextId } from "./ids";
 

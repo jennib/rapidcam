@@ -13,14 +13,14 @@
  * so the rest of the sketch reflows around them.
  */
 
-import { Vec2 } from "../core/vec2";
-import { CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
-import { Entity, ArcEntity, RasterImageEntity } from "../model/entities";
-import { Constraint, Geo, constraintResiduals } from "../model/constraints";
+import type { Vec2 } from "../core/vec2";
+import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
+import { type Entity, ArcEntity, RasterImageEntity } from "../model/entities";
+import { type Constraint, type Geo, constraintResiduals } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
 import { bindingTarget, bindingResidualAt } from "../model/bindings";
 import { solveLinearSystem, matrixRank, determinedVariables } from "./linalg";
-import { EntityId } from "../model/entities";
+import type { EntityId } from "../model/entities";
 
 export interface SolveResult {
   hasConstraints: boolean;
@@ -263,7 +263,9 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   if (n === 0 || residuals().length === 0) return finish();
 
   // --- Levenberg-Marquardt -------------------------------------------------
-  const setX = (x: number[]) => vars.forEach((v, i) => v.set(x[i]));
+  const setX = (x: number[]) => vars.forEach((v, i) => {
+      v.set(x[i]);
+    });
   const evalR = (x: number[]): number[] => {
     setX(x);
     return residuals();
@@ -441,7 +443,7 @@ export function computeEntityDofStatus(
   const geo: Geo = (id) => byId.get(id);
 
   // Solver didn't converge → everything is in conflict
-  if (lastResult && lastResult.hasConstraints && !lastResult.converged) {
+  if (lastResult?.hasConstraints && !lastResult.converged) {
     for (const e of doc.entities) statusMap.set(e.id, "conflict");
     return statusMap;
   }
@@ -499,7 +501,9 @@ export function computeEntityDofStatus(
   const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
 
   const evalR = (x: number[]): number[] => {
-    vars.forEach((v, i) => v.set(x[i]));
+    vars.forEach((v, i) => {
+      v.set(x[i]);
+    });
     const out: number[] = [];
     for (const c of active) for (const r of constraintResiduals(c, geo)) out.push(r);
     for (const d of drivingDims) for (const r of dimensionResiduals(d, geo)) out.push(r);
@@ -587,7 +591,9 @@ export function constraintJacobianRankChange(
   const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
 
   const buildEvalR = (includeExtras: boolean) => (x: number[]): number[] => {
-    vars.forEach((v, i) => v.set(x[i]));
+    vars.forEach((v, i) => {
+      v.set(x[i]);
+    });
     const out: number[] = [];
     for (const c of active) for (const v of constraintResiduals(c, geo)) out.push(v);
     for (const d of drivingDims) for (const v of dimensionResiduals(d, geo)) out.push(v);

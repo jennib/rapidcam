@@ -6,10 +6,10 @@
  *   Escape               → cancel
  */
 
-import { Vec2, distSq, dist } from "../core/vec2";
-import { PolylineEntity, SnapPoint } from "../model/entities";
+import { type Vec2, distSq, dist } from "../core/vec2";
+import { PolylineEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { orthoSnap } from "../input/snapping";
 
