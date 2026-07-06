@@ -1629,9 +1629,11 @@ export class CamBar {
     const toolNumRow  = this.numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
     const diamRow     = this.syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { fork(); state.diameter = v; i.value = String(v); hooks.updateVBitHint(); });
     const spindleRow  = this.syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { fork(); state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
-    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { fork(); state.feedrate = v; i.value = String(v); });
-    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { fork(); state.plungeRate = v; i.value = String(v); });
-    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { fork(); state.safeZ = v; i.value = String(v); });
+    // Clamp cutting rates to >= 1 (F0 faults/stalls the controller) and Safe Z to
+    // > 0 (a negative "safe" height turns every retract into a rapid into the stock).
+    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { fork(); state.feedrate = Math.max(1, v); i.value = String(state.feedrate); });
+    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { fork(); state.plungeRate = Math.max(1, v); i.value = String(state.plungeRate); });
+    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { fork(); state.safeZ = Math.max(0.1, v); i.value = String(state.safeZ); });
 
     const vAngleInp = document.createElement("input");
     vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";

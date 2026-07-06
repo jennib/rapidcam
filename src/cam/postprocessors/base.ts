@@ -12,10 +12,14 @@ export function Z(v: number, zOff: number): string { return n(v + zOff); }
 
 export function depthPasses(op: CAMOperation): number[] {
   const total = Math.abs(op.depth);
-  const count = Math.max(1, Math.ceil(total / op.stepdown));
+  // A zero/negative stepdown would make `total / step` non-finite and the pass
+  // count Infinity — an unbounded loop that hangs the browser. Fall back to a
+  // single full-depth pass, matching every other stepdown consumer.
+  const step = op.stepdown > 0 ? op.stepdown : total;
+  const count = step > 0 ? Math.max(1, Math.ceil(total / step)) : 1;
   const passes: number[] = [];
   for (let i = 1; i <= count; i++) {
-    passes.push(-Math.min(i * op.stepdown, total));
+    passes.push(-Math.min(i * step, total));
   }
   return passes;
 }
