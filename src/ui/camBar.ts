@@ -17,6 +17,8 @@ import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
+import { openStitchDialog } from "./stitchDialog";
+import type { StitchPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
 import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
@@ -132,6 +134,7 @@ export class CamBar {
     private host: HTMLElement,
     private doc: CADDocument,
     private pushHistory?: () => void,
+    private onStitchPreview?: (p: StitchPreview | null) => void,
   ) {
     this.build();
     // Re-render the ops list whenever the document is replaced (file open, undo/redo).
@@ -210,6 +213,29 @@ export class CamBar {
     this.exportSelBtn = exportSelBtn;
     this.content.appendChild(exportSelBtn);
     this.updateExportSelBtn();
+
+    // Tile a design too big for the machine bed into per-tile files (Stitch).
+    if (this.onStitchPreview) {
+      const stitchBtn = document.createElement("button");
+      stitchBtn.className = "cam-add-btn";
+      stitchBtn.style.cssText = "width:100%;margin-top:6px;";
+      stitchBtn.textContent = "Tile for small machine…";
+      stitchBtn.title = "Split a design larger than the machine bed into per-tile G-code";
+      stitchBtn.addEventListener("click", () => this.openStitch());
+      this.content.appendChild(stitchBtn);
+    }
+  }
+
+  private openStitch(): void {
+    if (this.doc.operations.length === 0) { toast("No toolpaths to tile — add some first."); return; }
+    if (this.doc.machineKind === "laser") { toast("Stitch tiling is for milling jobs."); return; }
+    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    openStitchDialog({
+      gcode,
+      doc: this.doc,
+      baseName: "toolpaths",
+      onPreview: (p) => this.onStitchPreview?.(p),
+    });
   }
 
   private updateExportSelBtn(): void {
