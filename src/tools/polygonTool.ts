@@ -3,11 +3,11 @@
  * [ / ] keys change the number of sides (min 3, max 64).
  */
 
-import { Vec2, dist, sub, angle as vecAngle } from "../core/vec2";
+import { type Vec2, dist, sub, angle as vecAngle } from "../core/vec2";
 import { PolylineEntity } from "../model/entities";
 import { regularPolygonPoints } from "../core/geom";
 import { parseLength } from "../core/units";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 type Phase = "center" | "radius";

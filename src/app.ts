@@ -6,17 +6,17 @@
 
 import { CADDocument } from "./model/document";
 import { nextId } from "./model/ids";
-import { Vec2 } from "./core/vec2";
+import type { Vec2 } from "./core/vec2";
 import { ProjectManager } from "./io/projectManager";
-import { Bounds, EntityId } from "./model/entities";
-import { Geo } from "./model/constraints";
-import { Dimension, dimensionLayout } from "./model/dimensions";
+import type { Bounds, EntityId } from "./model/entities";
+import type { Geo } from "./model/constraints";
+import { type Dimension, dimensionLayout } from "./model/dimensions";
 import { Viewport } from "./view/viewport";
 import { Renderer } from "./view/renderer";
-import { Overlay, DiagnosticMarker, StitchPreview } from "./view/overlay";
-import { SnapEngine, SnapResult } from "./input/snapping";
-import { solve, PinMap, computeEntityDofStatus } from "./solver/solver";
-import { ToolManager, ToolPointerEvent } from "./tools/tool";
+import type { Overlay, DiagnosticMarker, StitchPreview } from "./view/overlay";
+import { SnapEngine, type SnapResult } from "./input/snapping";
+import { solve, type PinMap, computeEntityDofStatus } from "./solver/solver";
+import { ToolManager, type ToolPointerEvent } from "./tools/tool";
 import { TOOL_SHORTCUTS } from "./tools/shortcuts";
 import { SelectTool, pickConstraintAt } from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
@@ -55,7 +55,7 @@ import { LayersBar } from "./ui/layersBar";
 import { CamBar } from "./ui/camBar";
 import { DimEditor } from "./ui/dimEditor";
 import { VariablesBar } from "./ui/variablesBar";
-import { ContextMenu, ContextMenuEntry } from "./ui/contextMenu";
+import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { isModalOpen, closeAllModals } from "./ui/modal";
@@ -133,7 +133,7 @@ export class App {
         closeAllModals();
       },
       onDiagnostics: (diags) => {
-        this.dxfDiagnostics = diags && diags.length
+        this.dxfDiagnostics = diags?.length
           ? diags.map((d) => ({ pos: d.pos, kind: d.kind }))
           : null;
         this.requestRender();
@@ -322,7 +322,7 @@ export class App {
       // Default 55/45 split — set canvas-host to a fixed pixel width
       const totalW = canvasHost.parentElement!.clientWidth;
       canvasHost.style.flex = "none";
-      canvasHost.style.width = Math.round(totalW * 0.55) + "px";
+      canvasHost.style.width = `${Math.round(totalW * 0.55)}px`;
 
       if (!this.webglPreview) {
         this.webglPreview = new WebGLPreview(webglHost);
@@ -386,7 +386,7 @@ export class App {
     window.addEventListener("mousemove", (e) => {
       if (!dragging) return;
       const newW = Math.max(200, startW + (e.clientX - startX));
-      canvasHost.style.width = newW + "px";
+      canvasHost.style.width = `${newW}px`;
     });
 
     window.addEventListener("mouseup", () => {
@@ -703,7 +703,7 @@ export class App {
 
 
 
-  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | void, onCancel: () => void, onTab?: () => void): void {
+  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | undefined, onCancel: () => void, onTab?: () => void): void {
     this.closeValueEditor();
     const pos = this.view.worldToScreen(worldPos);
     const input = document.createElement("input");

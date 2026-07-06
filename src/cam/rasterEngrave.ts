@@ -247,7 +247,7 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   const levelFor = (gray: number): number => {
     const g = clamp01(invert ? 1 - gray : gray);
     if (g >= whiteThreshold) return 0;
-    const curved = gamma === 1 ? 1 - g : Math.pow(1 - g, gamma);
+    const curved = gamma === 1 ? 1 - g : (1 - g) ** gamma;
     const q = Math.round(curved / levelStep) * levelStep;
     return q > 0 ? q : 0;
   };

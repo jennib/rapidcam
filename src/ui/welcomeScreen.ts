@@ -36,7 +36,7 @@ export function showWelcomeScreen(
     if (draftRaw) {
       draft = JSON.parse(draftRaw);
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore parse errors
   }
 

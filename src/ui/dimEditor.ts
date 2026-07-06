@@ -10,9 +10,9 @@
  * passed back to the caller as the optional `expr` argument on `onCommit`.
  */
 
-import { Unit, parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
-import { Dimension } from "../model/dimensions";
-import { evalExpr, VarMap } from "../core/expr";
+import { type Unit, parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
+import type { Dimension } from "../model/dimensions";
+import { evalExpr, type VarMap } from "../core/expr";
 
 /** Return true to close the editor; false to flash red and keep it open. */
 export type CommitFn = (value: number, expr?: string) => boolean;

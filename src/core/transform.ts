@@ -1,6 +1,6 @@
-import { Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, RasterImageEntity } from "../model/entities";
+import { type Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, RasterImageEntity } from "../model/entities";
 import type { Bounds } from "../model/entities";
-import { Vec2, dist } from "./vec2";
+import { type Vec2, dist } from "./vec2";
 
 export function selectionBounds(entities: Entity[]): Bounds | null {
   if (entities.length === 0) return null;

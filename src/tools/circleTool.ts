@@ -1,9 +1,9 @@
 /** Circle tool: click centre, click to set radius. */
 
-import { Vec2, dist } from "../core/vec2";
-import { CircleEntity, SnapPoint } from "../model/entities";
+import { type Vec2, dist } from "../core/vec2";
+import { CircleEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 export class CircleTool implements Tool {

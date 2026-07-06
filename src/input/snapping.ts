@@ -7,10 +7,10 @@
  * to the nearest minor grid intersection.
  */
 
-import { Vec2, dist } from "../core/vec2";
-import { SnapPoint, EntityId } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Viewport } from "../view/viewport";
+import { type Vec2, dist } from "../core/vec2";
+import type { SnapPoint, EntityId } from "../model/entities";
+import type { CADDocument } from "../model/document";
+import type { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
 import { intersectionsNear } from "../core/intersect";
 

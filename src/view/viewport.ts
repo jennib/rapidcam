@@ -11,8 +11,8 @@
  * the renderer; everything here is in CSS pixels.
  */
 
-import { Vec2 } from "../core/vec2";
-import { Bounds } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
+import type { Bounds } from "../model/entities";
 
 export class Viewport {
   scale = 3; // px per mm

@@ -1,13 +1,13 @@
-import { CADDocument, GroupDef } from "../model/document";
+import type { CADDocument, GroupDef } from "../model/document";
 import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../core/transform";
 import { nextId } from "../model/ids";
 import { listFonts } from "../core/fontManager";
 import { getImageEntry } from "../core/imageManager";
 import {
-  Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, RasterImageEntity, Bounds,
+  type Entity, TextEntity, CircleEntity, ArcEntity, LineEntity, RectEntity, PolylineEntity, RasterImageEntity, type Bounds,
 } from "../model/entities";
-import { Dimension, DimensionType, makeDimension } from "../model/dimensions";
-import { Constraint, ConstraintType, PointRef } from "../model/constraints";
+import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
+import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
 import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
 import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
@@ -371,7 +371,7 @@ export class PropertiesBar {
     inp.type = "text"; inp.style.flex = "1"; inp.value = value.toFixed(decimals);
     inp.addEventListener("change", () => {
       const v = parseFloat(inp.value);
-      if (isNaN(v)) { inp.value = value.toFixed(decimals); return; }
+      if (Number.isNaN(v)) { inp.value = value.toFixed(decimals); return; }
       onCommit(v);
     });
     row.append(lbl, inp);
@@ -539,7 +539,7 @@ export class PropertiesBar {
     const inB = document.createElement("input"); inB.type = "text"; inB.value = b.toFixed(2);
     const apply = () => {
       const va = parseFloat(inA.value), vb = parseFloat(inB.value);
-      if (isNaN(va) || isNaN(vb)) { inA.value = a.toFixed(2); inB.value = b.toFixed(2); return; }
+      if (Number.isNaN(va) || Number.isNaN(vb)) { inA.value = a.toFixed(2); inB.value = b.toFixed(2); return; }
       onCommit(va, vb);
     };
     inA.addEventListener("change", apply);
@@ -612,7 +612,7 @@ export class PropertiesBar {
     const sizeUnit = document.createElement("span"); sizeUnit.textContent = "mm";
     sizeIn.addEventListener("change", () => {
       const v = parseFloat(sizeIn.value);
-      if (isNaN(v) || v <= 0) return;
+      if (Number.isNaN(v) || v <= 0) return;
       this.pushHistory();
       entity.sizeMM = v;
       this.doc.emitChange();
@@ -628,7 +628,7 @@ export class PropertiesBar {
     const angleUnit = document.createElement("span"); angleUnit.textContent = "°";
     angleIn.addEventListener("change", () => {
       const v = parseFloat(angleIn.value);
-      if (isNaN(v)) return;
+      if (Number.isNaN(v)) return;
       this.pushHistory();
       entity.angle = v * Math.PI / 180;
       this.doc.emitChange();
@@ -670,7 +670,7 @@ export class PropertiesBar {
     const sweepRow = document.createElement("div");
     sweepRow.className = "props-row";
     const swLbl = document.createElement("span"); swLbl.textContent = "Sweep";
-    const swVal = document.createElement("input"); swVal.type = "text"; swVal.value = toDeg(span).toFixed(1) + "°"; swVal.disabled = true;
+    const swVal = document.createElement("input"); swVal.type = "text"; swVal.value = `${toDeg(span).toFixed(1)}°`; swVal.disabled = true;
     sweepRow.append(swLbl, swVal);
     sec.appendChild(sweepRow);
 
@@ -994,7 +994,7 @@ export class PropertiesBar {
     const applyPos = () => {
       const newX = parseFloat(inX.value);
       const newY = parseFloat(inY.value);
-      if (isNaN(newX) || isNaN(newY)) return;
+      if (Number.isNaN(newX) || Number.isNaN(newY)) return;
       const dx = newX - x;
       const dy = newY - y;
       if (dx === 0 && dy === 0) return;
@@ -1039,13 +1039,13 @@ export class PropertiesBar {
     inW.addEventListener("input", () => {
       if (!this.scaleLocked) return;
       const newW = parseInput(inW.value, w);
-      if (!isNaN(newW) && w !== 0) inH.value = (newW * (h / w)).toFixed(2);
+      if (!Number.isNaN(newW) && w !== 0) inH.value = (newW * (h / w)).toFixed(2);
     });
 
     inH.addEventListener("input", () => {
       if (!this.scaleLocked) return;
       const newH = parseInput(inH.value, h);
-      if (!isNaN(newH) && h !== 0) inW.value = (newH * (w / h)).toFixed(2);
+      if (!Number.isNaN(newH) && h !== 0) inW.value = (newH * (w / h)).toFixed(2);
     });
 
     row.append(lblW, inW, btnLock, lblH, inH);
@@ -1057,7 +1057,7 @@ export class PropertiesBar {
     btnApply.addEventListener("click", () => {
       const newW = parseInput(inW.value, w);
       const newH = parseInput(inH.value, h);
-      if (isNaN(newW) || isNaN(newH) || newW <= 0 || newH <= 0 || w === 0 || h === 0) return;
+      if (Number.isNaN(newW) || Number.isNaN(newH) || newW <= 0 || newH <= 0 || w === 0 || h === 0) return;
       this.pushHistory();
       applyScale(this.doc.selected, minX, minY, newW / w, newH / h);
       this.solve();
@@ -1088,7 +1088,7 @@ export class PropertiesBar {
     btnApply.textContent = "Apply Rotation";
     btnApply.addEventListener("click", () => {
       const angle = parseFloat(inA.value) * Math.PI / 180;
-      if (isNaN(angle) || angle === 0) return;
+      if (Number.isNaN(angle) || angle === 0) return;
       this.pushHistory();
       applyRotate(this.doc.selected, cx, cy, angle, (oldE, newE) => {
         const idx = this.doc.entities.findIndex(x => x.id === oldE.id);

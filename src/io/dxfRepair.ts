@@ -27,7 +27,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  Entity,
+  type Entity,
   LineEntity,
   CircleEntity,
   ArcEntity,

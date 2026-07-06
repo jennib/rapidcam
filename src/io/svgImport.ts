@@ -16,7 +16,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  Entity, LineEntity, PolylineEntity, BezierEntity,
+  type Entity, LineEntity, PolylineEntity, BezierEntity,
   CircleEntity, RectEntity,
 } from "../model/entities";
 
@@ -31,7 +31,6 @@ function unitToMm(value: number, unit: string): number {
     case "in": return value * 25.4;
     case "pt": return value * (25.4 / 72);
     case "pc": return value * (25.4 / 6);
-    case "px":
     default:   return value * (25.4 / 96); // unitless = px at 96 dpi
   }
 }
@@ -51,7 +50,7 @@ interface SvgScale {
 function computeScale(svgEl: Element): SvgScale {
   const vbAttr = svgEl.getAttribute("viewBox") ?? "";
   const vbParts = vbAttr.trim().split(/[\s,]+/).map(Number);
-  const hasVb = vbParts.length >= 4 && vbParts.every(isFinite);
+  const hasVb = vbParts.length >= 4 && vbParts.every(Number.isFinite);
   const vbW = hasVb ? vbParts[2] : null;
   const vbH = hasVb ? vbParts[3] : null;
 
@@ -103,9 +102,10 @@ function absY(y: number, sc: SvgScale): number { return sc.H - y * sc.scaleY; }
 function tokenizePath(d: string): Array<string | number> {
   const re = /([MmZzLlHhVvCcSsQqTtAa])|([+-]?(?:[0-9]*\.)?[0-9]+(?:[eE][+-]?[0-9]+)?)/g;
   const out: Array<string | number> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d)) !== null) {
+  let m = re.exec(d);
+  while (m !== null) {
     out.push(m[1] !== undefined ? m[1] : parseFloat(m[2]));
+    m = re.exec(d);
   }
   return out;
 }
@@ -293,7 +293,7 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
 // ---------------------------------------------------------------------------
 
 function parsePointsList(attr: string, sc: SvgScale): Vec2[] {
-  const nums = attr.trim().split(/[\s,]+/).map(Number).filter(isFinite);
+  const nums = attr.trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
   const out: Vec2[] = [];
   for (let j = 0; j + 1 < nums.length; j += 2) {
     out.push(absXY(nums[j], nums[j + 1], sc));

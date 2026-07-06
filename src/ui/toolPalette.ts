@@ -1,6 +1,6 @@
 /** Left-hand tool palette. Builds a button per tool and reflects the active one. */
 
-import { ToolManager } from "../tools/tool";
+import type { ToolManager } from "../tools/tool";
 import { shortcutForTool } from "../tools/shortcuts";
 
 // Tool IDs after which a visual separator is inserted.

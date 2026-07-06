@@ -7,16 +7,16 @@
  * New dimensions are driving; double-click one (any tool) to edit its value.
  */
 
-import { Vec2, dist, mid, normalize, sub, cross, dot } from "../core/vec2";
+import { type Vec2, dist, mid, normalize, sub, cross, dot } from "../core/vec2";
 import { distToSegment, angleInArc } from "../core/geom";
-import { Unit } from "../core/units";
-import { Entity, LineEntity, RectEntity, CircleEntity, ArcEntity } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Geo, PointRef } from "../model/constraints";
+import type { Unit } from "../core/units";
+import { type Entity, type LineEntity, type RectEntity, CircleEntity, ArcEntity } from "../model/entities";
+import type { CADDocument } from "../model/document";
+import type { Geo, PointRef } from "../model/constraints";
 import {
-  Dimension,
-  DimensionType,
-  LinearDimType,
+  type Dimension,
+  type DimensionType,
+  type LinearDimType,
   makeDimension,
   dimensionLayout,
   dimensionMeasure,
@@ -28,8 +28,8 @@ import {
 function isCircular(e: Entity | null): e is Entity {
   return !!e && (e.type === "circle" || e.type === "arc");
 }
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
-import { PreviewShape } from "../view/overlay";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
 type Phase = "first" | "second" | "placeLinear" | "placeCircle" | "secondLine" | "placeAngle";
@@ -195,7 +195,7 @@ export class DimensionTool implements Tool {
             }
           }
           if (newP2) {
-            if (newP1 && newP1.ref.key.startsWith("mid") && newP2.ref.key.startsWith("mid")) {
+            if (newP1?.ref.key.startsWith("mid") && newP2.ref.key.startsWith("mid")) {
               const edge1 = getEdgeEnds(ctx.doc, newP1);
               const edge2 = getEdgeEnds(ctx.doc, newP2);
               if (edge1 && edge2) {

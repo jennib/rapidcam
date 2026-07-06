@@ -64,5 +64,5 @@ for (let k = 1; k < params.count; k++) {
 doc.addPattern(makeCircularPattern([hole.id], instanceIds, params, computeSourceSnapshot(doc.entities, [hole.id])));
 
 const file = serializeDoc(doc, "Bolt Circle Flange");
-writeFileSync("examples/bolt-circle.rcam", JSON.stringify(file, null, 2) + "\n");
+writeFileSync("examples/bolt-circle.rcam", `${JSON.stringify(file, null, 2)}\n`);
 console.log(`Wrote examples/bolt-circle.rcam — ${doc.entities.length - 1} entities, ${doc.patterns.length} pattern, ${doc.variables.length} variables`);

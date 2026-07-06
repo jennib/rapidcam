@@ -4,11 +4,11 @@
  * a solve. Buttons enable/disable based on whether the selection fits the type.
  */
 
-import { CADDocument } from "../model/document";
+import type { CADDocument } from "../model/document";
 import {
-  Constraint,
-  ConstraintType,
-  Geo,
+  type Constraint,
+  type ConstraintType,
+  type Geo,
   CONSTRAINT_GLYPH,
   makeConstraint,
   measureAngleBetweenLines,
@@ -16,9 +16,9 @@ import {
   segmentRef,
   resolveLineGeom,
 } from "../model/constraints";
-import { Entity, LineEntity, CircleEntity, PolylineEntity } from "../model/entities";
+import { type Entity, type LineEntity, type CircleEntity, PolylineEntity } from "../model/entities";
 import { dist } from "../core/vec2";
-import { SolveResult, constraintJacobianRankChange } from "../solver/solver";
+import { type SolveResult, constraintJacobianRankChange } from "../solver/solver";
 
 interface ButtonSpec {
   type: ConstraintType;

@@ -4,7 +4,7 @@
  * Opened from the Edit menu; no toolbar tool needed.
  */
 
-import { CADDocument } from "../model/document";
+import type { CADDocument } from "../model/document";
 import { applyRotate } from "../core/transform";
 import { registerModal } from "./modal";
 
@@ -33,8 +33,8 @@ export function openRectArrayDialog(
   const dyInp   = addField(body, "Y spacing (mm)",   "20", "any");
 
   addFooter(dialog, backdrop, () => {
-    const rows = Math.max(1, parseInt(rowsInp.value) || 1);
-    const cols = Math.max(1, parseInt(colsInp.value) || 1);
+    const rows = Math.max(1, parseInt(rowsInp.value, 10) || 1);
+    const cols = Math.max(1, parseInt(colsInp.value, 10) || 1);
     const dx   = parseFloat(dxInp.value) || 0;
     const dy   = parseFloat(dyInp.value) || 0;
     if (rows === 1 && cols === 1) return;
@@ -89,7 +89,7 @@ export function openCircArrayDialog(
   const cyInp    = addField(body, "Centre Y (mm)",   cy.toFixed(2),    "any");
 
   addFooter(dialog, backdrop, () => {
-    const count   = Math.max(2, parseInt(countInp.value) || 2);
+    const count   = Math.max(2, parseInt(countInp.value, 10) || 2);
     const centerX = parseFloat(cxInp.value) || 0;
     const centerY = parseFloat(cyInp.value) || 0;
     const step    = (2 * Math.PI) / count;

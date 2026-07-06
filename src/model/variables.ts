@@ -1,6 +1,6 @@
-import { Unit } from "../core/units";
+import type { Unit } from "../core/units";
 import { parseLength } from "../core/units";
-import { evalExpr, VarMap } from "../core/expr";
+import { evalExpr, type VarMap } from "../core/expr";
 import { nextId } from "./ids";
 import type { Dimension } from "./dimensions";
 
@@ -34,8 +34,11 @@ export function varMap(variables: Variable[]): Map<string, number> {
 function referencedVars(expr: string, names: Set<string>): string[] {
   const out: string[] = [];
   const re = /[a-zA-Z_][a-zA-Z0-9_]*/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(expr)) !== null) if (names.has(m[0])) out.push(m[0]);
+  let m = re.exec(expr);
+  while (m !== null) {
+    if (names.has(m[0])) out.push(m[0]);
+    m = re.exec(expr);
+  }
   return out;
 }
 
@@ -73,7 +76,7 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit): voi
     const v = byName.get(name)!;
     const len = parseLength(v.expr, displayUnit);
     const val = len ?? evalExpr(v.expr, vm);
-    if (val !== null && isFinite(val)) v.value = val;
+    if (val !== null && Number.isFinite(val)) v.value = val;
     vm.set(name, v.value);
     for (const d of dependents.get(name)!) {
       indeg.set(d, indeg.get(d)! - 1);

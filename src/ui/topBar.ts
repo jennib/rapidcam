@@ -1,7 +1,7 @@
-import { CADDocument } from "../model/document";
-import { FileMenu, FileMenuCallbacks } from "./fileMenu";
-import { EditMenu, EditMenuCallbacks } from "./editMenu";
-import { ViewMenu, ViewMenuCallbacks } from "./viewMenu";
+import type { CADDocument } from "../model/document";
+import { FileMenu, type FileMenuCallbacks } from "./fileMenu";
+import { EditMenu, type EditMenuCallbacks } from "./editMenu";
+import { ViewMenu, type ViewMenuCallbacks } from "./viewMenu";
 import { HelpMenu } from "./helpMenu";
 
 export interface TopBarCallbacks {

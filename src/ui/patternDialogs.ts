@@ -10,9 +10,9 @@
  * document variables (e.g. "pitch", "pitch * 2").
  */
 
-import { CADDocument } from "../model/document";
-import { Entity } from "../model/entities";
-import { PatternDef, LinearPatternParams, CircularPatternParams } from "../model/patterns";
+import type { CADDocument } from "../model/document";
+import type { Entity } from "../model/entities";
+import type { PatternDef, LinearPatternParams, CircularPatternParams } from "../model/patterns";
 import {
   createLinearPattern,
   regenerateLinearPattern,
@@ -164,7 +164,7 @@ function buildCircularDialog(doc: CADDocument, pushHistory: () => void, existing
     if (count === null) {
       alert("Invalid count — enter a whole number or a variable name."); return;
     }
-    if (!isFinite(cx) || !isFinite(cy) || !isFinite(totalAngle)) {
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(totalAngle)) {
       alert("Invalid values."); return;
     }
 
@@ -204,9 +204,9 @@ function resolveSpacing(raw: string, doc: CADDocument): number | null {
   if (!trimmed) return null;
   const vm = varMap(doc.variables);
   const exprVal = evalExpr(trimmed, vm);
-  if (exprVal !== null && isFinite(exprVal)) return exprVal;
+  if (exprVal !== null && Number.isFinite(exprVal)) return exprVal;
   const num = parseFloat(trimmed);
-  return isFinite(num) ? num : null;
+  return Number.isFinite(num) ? num : null;
 }
 
 /** Resolve a count field value to a whole number ≥ min (expression or literal). */
@@ -216,7 +216,7 @@ function resolveCount(raw: string, doc: CADDocument, min: number): number | null
 }
 
 function isPlainNumber(s: string): boolean {
-  return isFinite(parseFloat(s.trim())) && isNaN(Number(s.trim())) === false;
+  return Number.isFinite(parseFloat(s.trim())) && Number.isNaN(Number(s.trim())) === false;
 }
 
 // ---------------------------------------------------------------------------

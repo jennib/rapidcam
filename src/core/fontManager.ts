@@ -8,7 +8,7 @@
 import * as opentype from "opentype.js";
 import type { Font } from "opentype.js";
 
-export { Font };
+export type { Font };
 
 export type FontFormat = "ttf" | "otf" | "woff";
 

@@ -12,14 +12,14 @@
  */
 
 import type { CADDocument } from "./document";
-import { Entity, EntityId } from "./entities";
+import type { Entity, EntityId } from "./entities";
 import { applyRotate } from "../core/transform";
 import { varMap } from "./variables";
 import { evalExpr } from "../core/expr";
 import {
-  PatternDef,
-  LinearPatternParams,
-  CircularPatternParams,
+  type PatternDef,
+  type LinearPatternParams,
+  type CircularPatternParams,
   makeLinearPattern,
   makeCircularPattern,
   computeSourceSnapshot,
@@ -39,7 +39,7 @@ interface Step {
 function resolveExpr(expr: string | undefined, cached: number, vm: ReadonlyMap<string, number>): number {
   if (!expr) return cached;
   const v = evalExpr(expr, vm);
-  return v !== null && isFinite(v) ? v : cached; // keep last good value on a bad/unknown expr
+  return v !== null && Number.isFinite(v) ? v : cached; // keep last good value on a bad/unknown expr
 }
 
 function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPatternParams {

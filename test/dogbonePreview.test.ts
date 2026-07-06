@@ -22,7 +22,7 @@ function op(kind: "pocket", ids: string[], cornerStyle?: "none" | "dogbone"): CA
   };
 }
 
-const carvedCells = (ids: string[], cornerStyle?: "none" | "dogbone"): number => {
+const carvedCells = (_ids: string[], cornerStyle?: "none" | "dogbone"): number => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const ids2 = squarePocket(doc);
   const hm = rasterizeStock([op("pocket", ids2, cornerStyle)], doc);

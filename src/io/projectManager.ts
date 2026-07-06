@@ -1,4 +1,4 @@
-import { CADDocument, DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
+import { type CADDocument, type DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
 import { exportSvg } from "./svgExport";
@@ -307,7 +307,7 @@ export class ProjectManager {
     });
     if (!file) return;
 
-    let decoded;
+    let decoded: Awaited<ReturnType<typeof decodeImageFile>>;
     try {
       decoded = await decodeImageFile(file);
     } catch {
@@ -354,7 +354,7 @@ export class ProjectManager {
     if (!file) return;
 
     const text = await file.text();
-    let result;
+    let result: ReturnType<typeof importDxf>;
     try {
       result = importDxf(text);
     } catch (e) {

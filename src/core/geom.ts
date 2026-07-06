@@ -1,6 +1,6 @@
 /** Geometry helpers used for hit-testing, snapping, and the adaptive grid. */
 
-import { Vec2, sub, dot, lenSq, dist, scale, add } from "./vec2";
+import { type Vec2, sub, dot, lenSq, dist, scale, add } from "./vec2";
 
 export const clamp = (v: number, lo: number, hi: number): number =>
   v < lo ? lo : v > hi ? hi : v;
@@ -65,9 +65,9 @@ export function angleInArc(theta: number, startAngle: number, endAngle: number):
  * Used to choose grid spacing so labels land on sensible values.
  */
 export function niceStepUp(raw: number): number {
-  if (raw <= 0 || !isFinite(raw)) return 1;
+  if (raw <= 0 || !Number.isFinite(raw)) return 1;
   const exp = Math.floor(Math.log10(raw));
-  const base = Math.pow(10, exp);
+  const base = 10 ** exp;
   const f = raw / base; // 1..10
   let nice: number;
   if (f <= 1) nice = 1;

@@ -7,7 +7,7 @@ import { CADDocument } from "../src/model/document";
 import { LineEntity, CircleEntity } from "../src/model/entities";
 import { makeDimension, dimensionMeasure } from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
-import { Geo, makeConstraint } from "../src/model/constraints";
+import { type Geo, makeConstraint } from "../src/model/constraints";
 import { dist } from "../src/core/vec2";
 import { test, expect } from "vitest";
 

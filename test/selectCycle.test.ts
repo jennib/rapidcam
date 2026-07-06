@@ -9,8 +9,8 @@ import { describe, it, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity, RectEntity } from "../src/model/entities";
 import { SelectTool } from "../src/tools/selectTool";
-import { ToolContext, ToolPointerEvent } from "../src/tools/tool";
-import { Vec2 } from "../src/core/vec2";
+import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import type { Vec2 } from "../src/core/vec2";
 
 function makeCtx(doc: CADDocument): ToolContext {
   return {

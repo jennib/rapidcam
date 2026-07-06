@@ -4,13 +4,13 @@
  * Trim. Hover shows a preview of the resulting entity. Key: E.
  */
 
-import { Vec2 } from "../core/vec2";
-import { Entity, LineEntity, ArcEntity, TextEntity, PointEntity } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
+import type { Vec2 } from "../core/vec2";
+import { type Entity, LineEntity, ArcEntity, TextEntity, PointEntity } from "../model/entities";
+import type { CADDocument } from "../model/document";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { distToSegment, distToArc } from "../core/geom";
 import { lineExtension, arcExtension } from "./extend";
-import { PreviewShape } from "../view/overlay";
+import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
 const HIT_PX = 12;

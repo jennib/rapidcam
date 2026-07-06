@@ -133,5 +133,5 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
   if (skippedImages > 0) {
     warnings.push(`${skippedImages} image${skippedImages > 1 ? "s" : ""} skipped — DXF has no raster mapping`);
   }
-  return { dxf: out.join("\n") + "\n", warnings };
+  return { dxf: `${out.join("\n")}\n`, warnings };
 }

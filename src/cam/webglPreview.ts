@@ -658,7 +658,7 @@ export class WebGLPreview {
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
-      throw new Error("WebGL link error: " + gl.getProgramInfoLog(prog));
+      throw new Error(`WebGL link error: ${gl.getProgramInfoLog(prog)}`);
     return prog;
   }
 
@@ -668,7 +668,7 @@ export class WebGLPreview {
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
     if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
-      throw new Error("WebGL shader error: " + gl.getShaderInfoLog(sh));
+      throw new Error(`WebGL shader error: ${gl.getShaderInfoLog(sh)}`);
     return sh;
   }
 

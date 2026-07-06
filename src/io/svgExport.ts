@@ -15,7 +15,7 @@ import type { CADDocument } from "../model/document";
 import {
   LineEntity, CircleEntity, RectEntity,
   PolylineEntity, ArcEntity, BezierEntity,
-  TextEntity, Entity
+  TextEntity, type Entity
 } from "../model/entities";
 
 const TAU = Math.PI * 2;

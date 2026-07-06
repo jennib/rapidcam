@@ -3,8 +3,8 @@ import { segCircleIntersect, circleCircleIntersect, TAU } from "../src/core/geom
 import { LineEntity, CircleEntity, ArcEntity } from "../src/model/entities";
 import { CADDocument } from "../src/model/document";
 import { TrimTool } from "../src/tools/trimTool";
-import { ToolContext, ToolPointerEvent } from "../src/tools/tool";
-import { Vec2 } from "../src/core/vec2";
+import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import type { Vec2 } from "../src/core/vec2";
 
 // --- geometry helpers -------------------------------------------------------
 

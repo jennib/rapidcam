@@ -4,9 +4,9 @@ import {
   LineEntity, CircleEntity, ArcEntity, PolylineEntity, RectEntity, BezierEntity,
 } from "../src/model/entities";
 import { TrimTool } from "../src/tools/trimTool";
-import { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
 import { evalBezier, splitBezier } from "../src/core/geom";
-import { Vec2 } from "../src/core/vec2";
+import type { Vec2 } from "../src/core/vec2";
 
 function makeCtx(doc: CADDocument): ToolContext {
   return {

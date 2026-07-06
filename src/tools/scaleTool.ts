@@ -1,8 +1,8 @@
-import { Vec2, dist } from "../core/vec2";
+import { type Vec2, dist } from "../core/vec2";
 import { applyScale, selectionBounds, getRectanglePolygon } from "../core/transform";
-import { DocSnapshot } from "../model/document";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
-import { TransformBox, TransformHandle } from "../view/overlay";
+import type { DocSnapshot } from "../model/document";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { TransformBox, TransformHandle } from "../view/overlay";
 import { ICONS } from "./icons";
 
 export class ScaleTool implements Tool {

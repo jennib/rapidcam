@@ -139,7 +139,9 @@ function rasterizeOp(
         if (op.type === "pocket") rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else rasProfilePolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
       }
-      lineEnts.forEach(e => lineSegIds.add(e.id));
+      lineEnts.forEach((e) => {
+        lineSegIds.add(e.id);
+      });
     }
   }
 
@@ -261,7 +263,9 @@ function rasChamfer(
     .map((id) => entityMap.get(id))
     .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
   for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) closed(verts);
-  lineEnts.forEach((e) => lineSegIds.add(e.id));
+  lineEnts.forEach((e) => {
+    lineSegIds.add(e.id);
+  });
 
   for (const id of op.entityIds) {
     if (lineSegIds.has(id)) continue;

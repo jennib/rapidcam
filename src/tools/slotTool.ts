@@ -1,10 +1,10 @@
 /** Slot tool: click first centre → click second centre → drag or type width. */
 
-import { Vec2, dist, sub, add, scale, normalize, dot, perp } from "../core/vec2";
-import { ArcEntity, LineEntity, SnapPoint } from "../model/entities";
+import { type Vec2, dist, sub, add, scale, normalize, dot, perp } from "../core/vec2";
+import { ArcEntity, LineEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import { parseLength } from "../core/units";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 type Phase = "first" | "second" | "radius";

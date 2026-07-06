@@ -4,9 +4,9 @@
  * Arcs are tessellated (~2° per step) since PolylineEntity stores linear pts.
  */
 
-import { Vec2, dist, clone } from "../core/vec2";
-import { Entity, EntityId, LineEntity, ArcEntity, PolylineEntity } from "../model/entities";
-import { CADDocument } from "../model/document";
+import { type Vec2, dist, clone } from "../core/vec2";
+import { type Entity, type EntityId, type LineEntity, type ArcEntity, PolylineEntity } from "../model/entities";
+import type { CADDocument } from "../model/document";
 import { TAU } from "../core/geom";
 
 const JOIN_TOL = 0.01; // mm — endpoint-matching tolerance

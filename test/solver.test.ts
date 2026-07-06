@@ -5,7 +5,7 @@
 
 import { CADDocument } from "../src/model/document";
 import { LineEntity, CircleEntity, RectEntity, ArcEntity } from "../src/model/entities";
-import { makeConstraint, constraintResiduals, Geo, tangentContactOutsideArcSweep } from "../src/model/constraints";
+import { makeConstraint, type Geo, tangentContactOutsideArcSweep } from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
 import { test, expect } from "vitest";

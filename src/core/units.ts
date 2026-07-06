@@ -114,11 +114,11 @@ export function parseAngle(input: string): number | null {
   else if (s.endsWith("deg")) { s = s.slice(0, -3).trim(); }
   if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const v = parseFloat(s);
-  if (isNaN(v)) return null;
+  if (Number.isNaN(v)) return null;
   return isDeg ? (v * Math.PI) / 180 : v;
 }
 
 /** Format radians as a degree string, e.g. "45.00°". */
 export function formatAngle(radians: number): string {
-  return ((radians * 180) / Math.PI).toFixed(2) + "°";
+  return `${((radians * 180) / Math.PI).toFixed(2)}°`;
 }

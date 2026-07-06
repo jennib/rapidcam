@@ -4,10 +4,10 @@
  * resulting rectangle is fully parametric (width, height, position all free DOFs).
  */
 
-import { Vec2 } from "../core/vec2";
-import { LineEntity, SnapPoint } from "../model/entities";
+import type { Vec2 } from "../core/vec2";
+import { LineEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
-import { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
 export class RectTool implements Tool {

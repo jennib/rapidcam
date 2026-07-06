@@ -8,8 +8,12 @@ function wireRightPanelTabs(): void {
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
-      tabs.forEach(t => t.classList.toggle("active", t === tab));
-      panels.forEach(p => p.classList.toggle("active", p.dataset.panel === target));
+      tabs.forEach((t) => {
+        t.classList.toggle("active", t === tab);
+      });
+      panels.forEach((p) => {
+        p.classList.toggle("active", p.dataset.panel === target);
+      });
     });
   });
 }

@@ -324,17 +324,17 @@ export class CamBar {
     item.addEventListener("dragend", () => {
       this.dragSrcIdx = null;
       item.classList.remove("tp-dragging");
-      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach(
-        el => el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom"),
-      );
+      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach((el) => {
+        el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+      });
     });
     item.addEventListener("dragover", (e) => {
       if (this.dragSrcIdx === null) return;
       e.preventDefault();
       e.dataTransfer!.dropEffect = "move";
-      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach(
-        el => el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom"),
-      );
+      this.opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach((el) => {
+        el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+      });
       const rect = item.getBoundingClientRect();
       item.classList.add(e.clientY < rect.top + rect.height / 2 ? "tp-drag-over-top" : "tp-drag-over-bottom");
     });
@@ -350,7 +350,7 @@ export class CamBar {
       const insertBefore = e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
       const ops = [...this.doc.operations];
       const [moved] = ops.splice(src, 1);
-      let tgt = src < index ? index - 1 : index;
+      const tgt = src < index ? index - 1 : index;
       ops.splice(insertBefore ? tgt : tgt + 1, 0, moved);
       this.pushHistory?.();
       this.doc.operations = ops;
@@ -684,7 +684,7 @@ export class CamBar {
     depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
     depthInp.value = String(state.depth);
     depthInp.addEventListener("change", () => {
-      const v = parseFloat(depthInp.value); if (isFinite(v)) { state.depth = v; hooks.updateVBitHint(); updateReliefEstimate(); }
+      const v = parseFloat(depthInp.value); if (Number.isFinite(v)) { state.depth = v; hooks.updateVBitHint(); updateReliefEstimate(); }
     });
     const throughBtn = document.createElement("button");
     throughBtn.className = "cbtn";
@@ -720,7 +720,7 @@ export class CamBar {
     stepInp.type = "number"; stepInp.className = "dim"; stepInp.step = "any";
     stepInp.value = String(state.stepdown);
     stepInp.addEventListener("change", () => {
-      const v = parseFloat(stepInp.value); if (isFinite(v)) state.stepdown = v;
+      const v = parseFloat(stepInp.value); if (Number.isFinite(v)) state.stepdown = v;
       updateReliefEstimate();
     });
     const stepRow = this.dField("Stepdown (mm)", stepInp);
@@ -731,7 +731,7 @@ export class CamBar {
     peckInp.type = "number"; peckInp.className = "dim"; peckInp.step = "any"; peckInp.min = "0";
     peckInp.value = String(state.peckDepth);
     peckInp.addEventListener("change", () => {
-      const v = parseFloat(peckInp.value); state.peckDepth = isFinite(v) && v > 0 ? v : 0;
+      const v = parseFloat(peckInp.value); state.peckDepth = Number.isFinite(v) && v > 0 ? v : 0;
     });
     const peckRow = this.dField("Peck depth (mm, 0=off)", peckInp);
     cutSec.appendChild(peckRow);
@@ -741,7 +741,7 @@ export class CamBar {
     stepoverInp.min = "0.01"; stepoverInp.max = "1";
     stepoverInp.value = String(state.stepover);
     stepoverInp.addEventListener("change", () => {
-      const v = parseFloat(stepoverInp.value); if (isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
+      const v = parseFloat(stepoverInp.value); if (Number.isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
     });
     const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
     cutSec.appendChild(stepoverRow);
@@ -752,7 +752,7 @@ export class CamBar {
     vStepInp.type = "number"; vStepInp.className = "dim"; vStepInp.step = "any"; vStepInp.min = "0.01";
     vStepInp.value = String(state.vStep);
     vStepInp.addEventListener("change", () => {
-      const v = parseFloat(vStepInp.value); if (isFinite(v) && v > 0) state.vStep = v;
+      const v = parseFloat(vStepInp.value); if (Number.isFinite(v) && v > 0) state.vStep = v;
     });
     const vStepRow = this.dField("V-carve pitch (mm)", vStepInp);
     cutSec.appendChild(vStepRow);
@@ -766,7 +766,7 @@ export class CamBar {
     vHopInp.value = String(state.vHopClearance);
     vHopInp.title = "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
     vHopInp.addEventListener("change", () => {
-      const v = parseFloat(vHopInp.value); if (isFinite(v) && v >= 0) state.vHopClearance = v;
+      const v = parseFloat(vHopInp.value); if (Number.isFinite(v) && v >= 0) state.vHopClearance = v;
     });
     const vHopRow = this.dField("V-carve hop clearance (mm, 0 = safe Z)", vHopInp);
     cutSec.appendChild(vHopRow);
@@ -779,7 +779,7 @@ export class CamBar {
     reliefLineInp.value = String(state.rasterLineInterval);
     reliefLineInp.title = "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
     reliefLineInp.addEventListener("change", () => {
-      const v = parseFloat(reliefLineInp.value); if (isFinite(v) && v > 0) state.rasterLineInterval = v;
+      const v = parseFloat(reliefLineInp.value); if (Number.isFinite(v) && v > 0) state.rasterLineInterval = v;
       updateReliefEstimate();
     });
     const reliefLineRow = this.dField("Relief stepover (mm)", reliefLineInp);
@@ -790,7 +790,7 @@ export class CamBar {
     reliefDotInp.value = String(state.rasterDotPitch);
     reliefDotInp.title = "Horizontal dot pitch. 0 = square dots (use the stepover).";
     reliefDotInp.addEventListener("change", () => {
-      const v = parseFloat(reliefDotInp.value); if (isFinite(v) && v >= 0) state.rasterDotPitch = v;
+      const v = parseFloat(reliefDotInp.value); if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = v;
     });
     const reliefDotRow = this.dField("Relief dot pitch (mm, 0 = square)", reliefDotInp);
     cutSec.appendChild(reliefDotRow);
@@ -807,7 +807,7 @@ export class CamBar {
     reliefGammaInp.value = String(state.reliefGamma);
     reliefGammaInp.title = "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
     reliefGammaInp.addEventListener("change", () => {
-      const v = parseFloat(reliefGammaInp.value); if (isFinite(v) && v > 0) state.reliefGamma = v;
+      const v = parseFloat(reliefGammaInp.value); if (Number.isFinite(v) && v > 0) state.reliefGamma = v;
     });
     const reliefGammaRow = this.dField("Tone curve (gamma, 1 = linear)", reliefGammaInp);
     cutSec.appendChild(reliefGammaRow);
@@ -885,7 +885,7 @@ export class CamBar {
     finishAllowInp.type = "number"; finishAllowInp.className = "dim"; finishAllowInp.step = "any"; finishAllowInp.min = "0";
     finishAllowInp.value = String(state.finishAllowance);
     finishAllowInp.addEventListener("change", () => {
-      const v = parseFloat(finishAllowInp.value); state.finishAllowance = isFinite(v) && v >= 0 ? v : 0;
+      const v = parseFloat(finishAllowInp.value); state.finishAllowance = Number.isFinite(v) && v >= 0 ? v : 0;
     });
     const finishAllowRow = this.dField("Finish allowance (mm)", finishAllowInp);
     cutSec.appendChild(finishAllowRow);
@@ -932,7 +932,7 @@ export class CamBar {
     rampInp.value = state.rampAngle !== undefined ? String(state.rampAngle) : "";
     rampInp.addEventListener("change", () => {
       const v = parseFloat(rampInp.value);
-      state.rampAngle = rampInp.value.trim() === "" || !isFinite(v) ? undefined : Math.max(0.5, Math.min(45, v));
+      state.rampAngle = rampInp.value.trim() === "" || !Number.isFinite(v) ? undefined : Math.max(0.5, Math.min(45, v));
       if (state.rampAngle !== undefined) rampInp.value = String(state.rampAngle);
     });
     const rampRow = this.dField("Plunge ramp angle (°)", rampInp);
@@ -950,7 +950,7 @@ export class CamBar {
       chamHint.textContent = `→ depth ${depth.toFixed(2)} mm · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
     };
     chamWidthInp.addEventListener("input", () => {
-      const v = parseFloat(chamWidthInp.value); if (isFinite(v) && v >= 0) state.chamferWidth = v;
+      const v = parseFloat(chamWidthInp.value); if (Number.isFinite(v) && v >= 0) state.chamferWidth = v;
       updateChamHint();
     });
     const chamWidthRow = this.dField("Chamfer width (mm)", chamWidthInp);
@@ -1329,7 +1329,7 @@ export class CamBar {
 
   /** Trigger a .nc download and return the filename used (for confirmation UI). */
   private download(code: string, name: string): string {
-    const safe = name.replace(/[^a-z0-9_\-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    const safe = name.replace(/[^a-z0-9_-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
     const filename = `${safe || "toolpath"}.nc`;
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -1388,7 +1388,7 @@ export class CamBar {
     const inp = document.createElement("input");
     inp.type = "number"; inp.className = "dim"; inp.step = "any";
     inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); });
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v); });
     return { el: this.dField(label, inp), inp };
   }
 
@@ -1397,7 +1397,7 @@ export class CamBar {
     const inp = document.createElement("input");
     inp.type = "number"; inp.className = "dim"; inp.step = "any";
     inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v, inp); });
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v, inp); });
     return { el: this.dField(label, inp), inp };
   }
 
@@ -1426,8 +1426,8 @@ export class CamBar {
       const maxTop = Math.max(0, window.innerHeight - 50);
       dialog.style.position = "absolute";
       dialog.style.margin = "0";
-      dialog.style.left = Math.max(0, Math.min(left, maxLeft)) + "px";
-      dialog.style.top = Math.max(0, Math.min(top, maxTop)) + "px";
+      dialog.style.left = `${Math.max(0, Math.min(left, maxLeft))}px`;
+      dialog.style.top = `${Math.max(0, Math.min(top, maxTop))}px`;
     };
 
     let positioned = false;
@@ -1437,7 +1437,7 @@ export class CamBar {
         const { left, top } = JSON.parse(storedPos);
         const lVal = parseFloat(left);
         const tVal = parseFloat(top);
-        if (!isNaN(lVal) && !isNaN(tVal)) { applyPos(lVal, tVal); positioned = true; }
+        if (!Number.isNaN(lVal) && !Number.isNaN(tVal)) { applyPos(lVal, tVal); positioned = true; }
       } catch {
         // Ignore malformed localStorage data
       }
@@ -1464,8 +1464,8 @@ export class CamBar {
     let isDragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
-      dialog.style.left = startLeft + (e.clientX - startX) + "px";
-      dialog.style.top = startTop + (e.clientY - startY) + "px";
+      dialog.style.left = `${startLeft + (e.clientX - startX)}px`;
+      dialog.style.top = `${startTop + (e.clientY - startY)}px`;
     };
     const onMouseUp = () => {
       isDragging = false;
@@ -1484,8 +1484,8 @@ export class CamBar {
       startLeft = rect.left; startTop = rect.top;
       dialog.style.position = "absolute";
       dialog.style.margin = "0";
-      dialog.style.left = startLeft + "px";
-      dialog.style.top = startTop + "px";
+      dialog.style.left = `${startLeft}px`;
+      dialog.style.top = `${startTop}px`;
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     });
@@ -1636,13 +1636,13 @@ export class CamBar {
     const vAngleInp = document.createElement("input");
     vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";
     vAngleInp.value = String(state.vAngle);
-    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (isFinite(v)) { fork(); state.vAngle = v; hooks.updateVBitHint(); } });
+    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (Number.isFinite(v)) { fork(); state.vAngle = v; hooks.updateVBitHint(); } });
     const vAngleRow = this.dField("V Angle (°)", vAngleInp);
 
     const tipAngleInp = document.createElement("input");
     tipAngleInp.type = "number"; tipAngleInp.className = "dim"; tipAngleInp.step = "any";
     tipAngleInp.value = String(state.tipAngle);
-    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (isFinite(v)) { fork(); state.tipAngle = v; } });
+    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (Number.isFinite(v)) { fork(); state.tipAngle = v; } });
     const tipAngleRow = this.dField("Tip Angle (°)", tipAngleInp);
 
     toolContent.appendChild(toolNumRow.el);
@@ -2110,7 +2110,7 @@ export class CamBar {
       const u = this.doc.displayUnit;
       items.forEach((it, idx) => {
         const row = document.createElement("div");
-        row.className = "tp-entity-row" + (it.region ? "" : " tp-entity-disabled");
+        row.className = `tp-entity-row${it.region ? "" : " tp-entity-disabled"}`;
         row.style.cssText = "display:flex;align-items:center;gap:8px;";
 
         const desc = document.createElement("span");
@@ -2206,8 +2206,8 @@ export class CamBar {
         const disabled = inOther; // all entities in ents[] are already valid for this combo
 
         const row = document.createElement("div");
-        row.className = "tp-entity-row" + (disabled ? " tp-entity-disabled" : "");
-        row.style.cssText = "display:flex;align-items:center;" + (indent ? "padding-left:20px;" : "");
+        row.className = `tp-entity-row${disabled ? " tp-entity-disabled" : ""}`;
+        row.style.cssText = `display:flex;align-items:center;${indent ? "padding-left:20px;" : ""}`;
 
         const lbl = document.createElement("label");
         lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${disabled ? "default" : "pointer"};`;
@@ -2263,7 +2263,7 @@ export class CamBar {
         const indeterminate = !disabled && !checked && chain.some(e => thisSet.has(e.id));
 
         const row = document.createElement("div");
-        row.className = "tp-entity-row" + (disabled ? " tp-entity-disabled" : "");
+        row.className = `tp-entity-row${disabled ? " tp-entity-disabled" : ""}`;
         row.style.cssText = "display:flex;align-items:center;";
 
         const lbl = document.createElement("label");
@@ -2351,7 +2351,7 @@ export class CamBar {
             const someChecked = available.some(e => thisSet.has(e.id));
 
             const groupRow = document.createElement("div");
-            groupRow.className = "tp-entity-row" + (isValid ? "" : " tp-entity-disabled");
+            groupRow.className = `tp-entity-row${isValid ? "" : " tp-entity-disabled"}`;
             groupRow.style.cssText = "display:flex;align-items:center;";
 
             const lbl = document.createElement("label");

@@ -11,13 +11,13 @@
  * offsettable PolylineEntity.
  */
 
-import { Vec2, dist } from "../core/vec2";
+import { type Vec2, dist } from "../core/vec2";
 import { LineEntity, ArcEntity, PolylineEntity, RectEntity } from "../model/entities";
-import { CADDocument } from "../model/document";
-import { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
+import type { CADDocument } from "../model/document";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { parseLength, formatLengthWithUnit } from "../core/units";
 import type { Unit } from "../core/units";
-import { PreviewShape } from "../view/overlay";
+import type { PreviewShape } from "../view/overlay";
 import { TAU } from "../core/geom";
 import { ICONS } from "./icons";
 

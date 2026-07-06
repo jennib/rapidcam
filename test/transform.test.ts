@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity } from "../src/model/entities";
+import { LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, } from "../src/model/entities";
 import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../src/core/transform";
 
 describe("transform.ts", () => {

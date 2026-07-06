@@ -113,7 +113,7 @@ export function renderThumbnailSvg(file: RcamFile): string | null {
     }
   }
 
-  if (prims.length === 0 || !isFinite(minX)) return null;
+  if (prims.length === 0 || !Number.isFinite(minX)) return null;
 
   const bw = Math.max(maxX - minX, 0.001), bh = Math.max(maxY - minY, 0.001);
   const pad = Math.max(bw, bh) * 0.08 + 0.5;

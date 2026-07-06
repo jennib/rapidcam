@@ -1,28 +1,28 @@
 /** Canvas renderer. Draws grid, work-area, geometry, and transient overlays. */
 
-import { Vec2 } from "../core/vec2";
-import { Unit, fromMM } from "../core/units";
-import { CADDocument, resolveOrigin, ORIGIN_ENTITY_ID } from "../model/document";
+import type { Vec2 } from "../core/vec2";
+import { type Unit, fromMM } from "../core/units";
+import { type CADDocument, resolveOrigin, ORIGIN_ENTITY_ID } from "../model/document";
 import {
-  Entity,
-  LineEntity,
-  CircleEntity,
-  RectEntity,
+  type Entity,
+  type LineEntity,
+  type CircleEntity,
+  type RectEntity,
   PolylineEntity,
-  ArcEntity,
-  BezierEntity,
-  TextEntity,
-  RasterImageEntity,
+  type ArcEntity,
+  type BezierEntity,
+  type TextEntity,
+  type RasterImageEntity,
 } from "../model/entities";
 import { getFont } from "../core/fontManager";
 import { getImageCanvas } from "../core/imageManager";
-import { constraintAnchors, CONSTRAINT_GLYPH, Geo, constraintEntityIds } from "../model/constraints";
+import { constraintAnchors, CONSTRAINT_GLYPH, type Geo, constraintEntityIds } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
-import { Viewport } from "./viewport";
+import type { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
-import { Overlay, PreviewShape, DiagnosticMarker, StitchPreview } from "./overlay";
-import { EntityStatusMap } from "../solver/solver";
+import type { Overlay, PreviewShape, DiagnosticMarker, StitchPreview } from "./overlay";
+import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 
 export class Renderer {
@@ -77,7 +77,7 @@ export class Renderer {
     this.drawPreviews(view, overlay.previews);
     this.drawSnap(view, overlay);
     this.drawTransformBox(view, overlay);
-    if (overlay.diagnostics && overlay.diagnostics.length) this.drawDiagnostics(view, overlay.diagnostics);
+    if (overlay.diagnostics?.length) this.drawDiagnostics(view, overlay.diagnostics);
     if (overlay.stitchPreview) this.drawStitchPreview(view, overlay.stitchPreview);
   }
 
@@ -620,7 +620,7 @@ export class Renderer {
             break;
           }
           const e = byId.get(eid);
-          if (e && e.selected) {
+          if (e?.selected) {
             shouldShow = true;
             break;
           }
