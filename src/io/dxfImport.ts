@@ -284,10 +284,14 @@ function parseEllipse(m: Map<number, number>, out: Entity[], warnings: string[])
   const u0 = num(m, 41, 0);
   let u1 = num(m, 42, Math.PI * 2);
   if (u1 <= u0) u1 += Math.PI * 2;
-  const full = Math.abs(u1 - u0 - Math.PI * 2) < 1e-9;
+  // A valid ellipse sweeps at most one full turn. Clamp the span to 2π so a
+  // malformed or hostile end-parameter (code 42, e.g. 1e12) can't blow nSeg —
+  // and the tessellation loop below — up to billions of iterations (a hang/OOM
+  // DoS on import).
+  const span = Math.min(u1 - u0, Math.PI * 2);
+  const full = Math.abs(span - Math.PI * 2) < 1e-9;
   // point(u) = c + major·cos u + minor·sin u, minor ⟂ major scaled by ratio
   const minor = { x: -major.y * ratio, y: major.x * ratio };
-  const span = u1 - u0;
   const nSeg = Math.max(8, Math.ceil(64 * (span / (Math.PI * 2))));
   const pts: Vec2[] = [];
   const last = full ? nSeg - 1 : nSeg; // closed loop: skip duplicate end point
