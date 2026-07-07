@@ -41,4 +41,6 @@ export const StorageKeys = {
   lastMachineKind: "rapidcam:lastMachineKind",
   /** Counter for share-prompt throttling (show every Nth export). */
   sharePromptCounter: "rapidcam:sharePromptCounter",
+  /** gSender base URL for the "Send to gSender" handoff (e.g. http://localhost:8000). */
+  gsenderUrl: "rapidcam:gsender:url",
 } as const;

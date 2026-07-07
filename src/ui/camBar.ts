@@ -18,10 +18,11 @@ import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
 import { lintGCode, buildLintContext } from "../cam/lint";
+import { sendToGsender } from "../io/gsender";
 import { openStitchDialog } from "./stitchDialog";
 import type { StitchPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
-import { getCustomGcode, getMachineHasCoolant } from "../core/prefs";
+import { getCustomGcode, getMachineHasCoolant, getGsenderUrl } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -204,6 +205,16 @@ export class CamBar {
     genBtn.textContent = "Generate G-code";
     genBtn.addEventListener("click", () => this.generate());
     this.content.appendChild(genBtn);
+
+    // Hand the program straight to a running gSender (same preflight gate; falls
+    // back to a file download if gSender can't be reached).
+    const sendBtn = document.createElement("button");
+    sendBtn.className = "cam-add-btn";
+    sendBtn.style.cssText = "width:100%;margin-top:6px;";
+    sendBtn.textContent = "Send to gSender";
+    sendBtn.title = "Load these toolpaths into a running gSender over Remote/Wireless Control";
+    sendBtn.addEventListener("click", () => this.sendToGsender());
+    this.content.appendChild(sendBtn);
 
     // Export a chosen subset of toolpaths into a single file (e.g. all the ops
     // that share a tool). Appears only when ≥1 toolpath is checked.
@@ -1328,20 +1339,7 @@ export class CamBar {
 
   private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
-    // Text whose font can't be resolved produces no toolpath geometry. Surface
-    // that as an explicit choice rather than silently omitting it from the cut.
-    const missing = this.missingFontText();
-    if (missing.length > 0) {
-      const list = missing.map((t) => `  • "${t.text}"`).join("\n");
-      const ok = await confirmDialog({
-        title: "Missing fonts",
-        message:
-          `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
-          `available and will be OMITTED from the G-code:\n\n${list}\n\nGenerate anyway?`,
-        confirmLabel: "Generate anyway",
-      });
-      if (!ok) return;
-    }
+    if (!(await this.confirmMissingFonts())) return;
     const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length });
@@ -1349,6 +1347,57 @@ export class CamBar {
     const file = this.download(gcode, "toolpaths");
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
+  }
+
+  /**
+   * Warn (and require confirmation) when a targeted text item uses a font that
+   * can't be resolved — it produces no geometry and would be silently omitted
+   * from the cut. Returns true to proceed, false if the user backs out. Shared by
+   * file export and the gSender handoff.
+   */
+  private async confirmMissingFonts(): Promise<boolean> {
+    const missing = this.missingFontText();
+    if (missing.length === 0) return true;
+    const list = missing.map((t) => `  • "${t.text}"`).join("\n");
+    return confirmDialog({
+      title: "Missing fonts",
+      message:
+        `${missing.length} text item${missing.length > 1 ? "s" : ""} use a font that isn't ` +
+        `available and will be OMITTED from the G-code:\n\n${list}\n\nContinue anyway?`,
+      confirmLabel: "Continue anyway",
+    });
+  }
+
+  /**
+   * Hand the whole program to a running gSender (via its Remote/Wireless Control
+   * server). Same missing-font and Apollo pre-flight gates as file export; on any
+   * connection problem, offers a plain file download so the work is never trapped.
+   */
+  private async sendToGsender(): Promise<void> {
+    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    if (!(await this.confirmMissingFonts())) return;
+    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    if (!(await this.preflight(gcode))) return;
+
+    toast("Sending to gSender…");
+    const res = await sendToGsender(getGsenderUrl(), "rapidcam.nc", gcode);
+    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint });
+    if (res.ok) {
+      toast(`Loaded into gSender on ${res.port} — press Play there to run.`);
+      maybeShowSharePrompt();
+      return;
+    }
+    // Couldn't send — surface why, and offer the file so they're not stuck.
+    const download = await confirmDialog({
+      title: "Couldn't send to gSender",
+      message: `${res.error}\n\nDownload the G-code file instead?`,
+      confirmLabel: "Download file",
+      cancelLabel: "Close",
+    });
+    if (download) {
+      const file = this.download(gcode, "toolpaths");
+      toast(`Exported → ${file}`);
+    }
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */
