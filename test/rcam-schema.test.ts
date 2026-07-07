@@ -274,6 +274,8 @@ function kitchenSinkDoc(): CADDocument {
     },
   ];
   doc.operations.push(...ops);
+  // Cylindrical/rotary wrap setup — exercises the serialized `rotary` block.
+  doc.rotary = { axisWord: "A", diameter: 63.5, wrapAxis: "y", arcTolerance: 0.05 };
   return doc;
 }
 

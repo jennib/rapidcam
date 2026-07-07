@@ -22,6 +22,8 @@ import { sendToGsender } from "../io/gsender";
 import { openStitchDialog } from "./stitchDialog";
 import { openFlipDialog } from "./flipDialog";
 import { generateFlipPrograms, opFace } from "../cam/flip";
+import { openRotaryDialog } from "./rotaryDialog";
+import { generateRotaryProgram } from "../cam/klein";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
@@ -254,6 +256,16 @@ export class CamBar {
       flipBtn.addEventListener("click", () => this.openFlip());
       this.content.appendChild(flipBtn);
     }
+
+    // Rotary (cylindrical wrap): roll the flat program around a cylinder on a 4th
+    // axis. Mill-only; independent of the flip preview overlay.
+    const rotaryBtn = document.createElement("button");
+    rotaryBtn.className = "cam-add-btn";
+    rotaryBtn.style.cssText = "width:100%;margin-top:6px;";
+    rotaryBtn.textContent = "Rotary (wrap)…";
+    rotaryBtn.title = "Set up cylindrical/rotary machining — wrap the design around a 4th-axis cylinder";
+    rotaryBtn.addEventListener("click", () => this.openRotary());
+    this.content.appendChild(rotaryBtn);
   }
 
   private openFlip(): void {
@@ -262,6 +274,15 @@ export class CamBar {
       doc: this.doc,
       pushHistory: this.pushHistory,
       onPreview: (p) => this.onFlipPreview?.(p),
+      onDone: () => this.renderOps(),
+    });
+  }
+
+  private openRotary(): void {
+    if (this.doc.machineKind === "laser") { toast("Rotary machining is for milling jobs."); return; }
+    openRotaryDialog({
+      doc: this.doc,
+      pushHistory: this.pushHistory,
       onDone: () => this.renderOps(),
     });
   }
@@ -1400,13 +1421,40 @@ export class CamBar {
       await this.generateFlip();
       return;
     }
-    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    // Rotary jobs wrap the flat program around a cylinder (single program).
+    let gcode: string;
+    if (this.doc.rotary) {
+      const wrapped = await this.rotaryProgram("Export anyway");
+      if (wrapped === null) return;
+      gcode = wrapped;
+    } else {
+      gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    }
     if (!(await this.preflight(gcode))) return;
-    track("gcode_generated", { operation_count: this.doc.operations.length });
+    track("gcode_generated", { operation_count: this.doc.operations.length, ...(this.doc.rotary ? { rotary: true } : {}) });
     const n = this.doc.operations.length;
-    const file = this.download(gcode, "toolpaths");
+    const file = this.download(gcode, this.doc.rotary ? "toolpaths_rotary" : "toolpaths");
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
+  }
+
+  /**
+   * Build the wrapped rotary program, gating on its pre-flight advisories (bad
+   * diameter, overlap past one turn, a mode clash). Returns the program, or null
+   * if the user backs out at the warning. Shared by file export and gSender send.
+   */
+  private async rotaryProgram(continueLabel: string): Promise<string | null> {
+    const { program, warnings } = generateRotaryProgram(this.doc, this.gcodeOpts());
+    if (warnings.length > 0) {
+      const proceed = await confirmDialog({
+        title: "Rotary wrap setup",
+        message: `${warnings.map((w) => `⚠ ${w}`).join("\n\n")}\n\n${continueLabel}?`,
+        confirmLabel: continueLabel,
+        cancelLabel: "Review first",
+      });
+      if (!proceed) return null;
+    }
+    return program;
   }
 
   /**
@@ -1477,12 +1525,19 @@ export class CamBar {
       await this.sendFlip();
       return;
     }
-    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    let gcode: string;
+    if (this.doc.rotary) {
+      const wrapped = await this.rotaryProgram("Send anyway");
+      if (wrapped === null) return;
+      gcode = wrapped;
+    } else {
+      gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    }
     if (!(await this.preflight(gcode))) return;
 
     toast("Sending to gSender…");
-    const res = await sendToGsender(getGsenderUrl(), "rapidcam.nc", gcode);
-    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint });
+    const res = await sendToGsender(getGsenderUrl(), this.doc.rotary ? "rapidcam_rotary.nc" : "rapidcam.nc", gcode);
+    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint, ...(this.doc.rotary ? { rotary: true } : {}) });
     if (res.ok) {
       toast(res.port
         ? `Loaded into gSender on ${res.port} — press Play there to run.`

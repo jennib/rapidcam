@@ -67,6 +67,13 @@
       ],
       "description": "Optional double-sided (flip) machining setup. When present, operations carry a \"face\" and export produces a top-side and a mirrored bottom-side program. null/omitted = single-sided."
     },
+    "rotary": {
+      "oneOf": [
+        { "$ref": "#/$defs/rotary" },
+        { "type": "null" }
+      ],
+      "description": "Optional cylindrical/rotary wrap setup. When present (mill mode), export rolls the flat program around a cylinder on a 4th axis. null/omitted = flat work."
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
@@ -598,6 +605,19 @@
           "items": { "$ref": "#/$defs/vec2" },
           "description": "Registration hole centres, in world/canvas mm. Must be invariant under the mirror for the flip to align (each pin has a mirror-image partner or sits on the flip-axis centreline)."
         }
+      }
+    },
+
+    "rotary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axisWord", "diameter", "wrapAxis"],
+      "description": "Cylindrical/rotary wrap setup. Export rolls the flat program around a cylinder on a 4th axis: one work axis stays linear (cylinder length), the perpendicular one is emitted as a rotary word in degrees. Mill-only; not combinable with flip.",
+      "properties": {
+        "axisWord": { "enum": ["A", "B"], "description": "Rotary axis word for the wrapped coordinate. \"A\" (about machine X) pairs with wrapAxis \"y\"; \"B\" (about Y) pairs with \"x\"." },
+        "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Cylinder stock diameter, mm. 360° of rotation = π·diameter of surface travel." },
+        "wrapAxis": { "enum": ["x", "y"], "description": "Which work axis rolls around the cylinder. \"y\" (default): Y wraps to rotation, X runs along the length. \"x\": swapped." },
+        "arcTolerance": { "type": "number", "exclusiveMinimum": 0, "description": "Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1." }
       }
     },
 

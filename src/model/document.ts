@@ -72,6 +72,27 @@ export interface FlipSettings {
   pins: { x: number; y: number }[];
 }
 
+/** Rotary axis word letter. `A` rotates about machine X, `B` about machine Y. */
+export type RotaryAxisWord = "A" | "B";
+
+/**
+ * Cylindrical / rotary wrap setup. When present (and mill mode), export rolls the
+ * flat program around a cylinder on a 4th axis: one work axis stays linear (along
+ * the cylinder length) and the perpendicular one is emitted as a rotary word in
+ * degrees. Mill-only; not compatible with `flip`. See cam/klein.ts for the
+ * generation logic and the wrap math.
+ */
+export interface RotarySettings {
+  /** Rotary axis word for the wrapped coordinate: `"A"` (about X) or `"B"` (about Y). */
+  axisWord: RotaryAxisWord;
+  /** Cylinder stock diameter in mm — 360° of rotation = π·diameter of surface travel. Must be > 0. */
+  diameter: number;
+  /** Which work axis rolls around the cylinder: `"y"` (default) or `"x"`; the other runs along the length. */
+  wrapAxis: "x" | "y";
+  /** Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1. */
+  arcTolerance?: number;
+}
+
 /**
  * Free-form job metadata carried with the document. All fields optional; only
  * non-empty fields are serialized and emitted in the G-code header. Purely
@@ -167,6 +188,7 @@ export interface DocSnapshot {
   endPosition?: EndPosition | null;
   toolChangePosition?: EndPosition | null;
   flip?: FlipSettings | null;
+  rotary?: RotarySettings | null;
   metadata?: DocMetadata;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -222,6 +244,12 @@ export class CADDocument {
    * (mirrored) bottom-side program. See {@link FlipSettings} and cam/flip.ts.
    */
   flip: FlipSettings | null = null;
+  /**
+   * Optional cylindrical/rotary wrap setup, or `null` (the default) for flat work.
+   * When set, export rolls the flat program around a cylinder on a 4th axis. Mill
+   * -only; not combinable with `flip`. See {@link RotarySettings} and cam/klein.ts.
+   */
+  rotary: RotarySettings | null = null;
   /**
    * Optional job metadata (job name, revision, notes). Informational only —
    * serialized when non-empty and emitted in the G-code header. See
@@ -720,6 +748,7 @@ export class CADDocument {
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       toolChangePosition: this.toolChangePosition ? { ...this.toolChangePosition } : null,
       flip: this.flip ? { ...this.flip, pins: this.flip.pins.map((p) => ({ ...p })) } : null,
+      rotary: this.rotary ? { ...this.rotary } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -827,6 +856,7 @@ export class CADDocument {
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.toolChangePosition = s.toolChangePosition ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y } : null;
     this.flip = s.flip ? { ...s.flip, pins: (s.flip.pins ?? []).map((p) => ({ ...p })) } : null;
+    this.rotary = s.rotary ? { ...s.rotary } : null;
     this.metadata = s.metadata ? { ...s.metadata } : {};
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
