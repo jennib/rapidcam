@@ -20,7 +20,10 @@ import { generateGCode } from "../cam/gcode";
 import { lintGCode, buildLintContext } from "../cam/lint";
 import { sendToGsender } from "../io/gsender";
 import { openStitchDialog } from "./stitchDialog";
-import type { StitchPreview } from "../view/overlay";
+import { openFlipDialog } from "./flipDialog";
+import { generateFlipPrograms, opFace } from "../cam/flip";
+import { zipStore } from "../io/zip";
+import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
 import { getCustomGcode, getMachineHasCoolant, getGsenderUrl } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
@@ -70,6 +73,8 @@ interface OpState {
   islandIds: Set<string>;
   regionSeeds: Vec2[];
   followPattern: boolean;
+  /** Double-sided: which face this op cuts (only meaningful when doc.flip is set). */
+  face: "top" | "bottom";
   tabsEnabled: boolean;
   tabStrategy: "count" | "spacing";
   tabCount: number;
@@ -137,6 +142,7 @@ export class CamBar {
     private doc: CADDocument,
     private pushHistory?: () => void,
     private onStitchPreview?: (p: StitchPreview | null) => void,
+    private onFlipPreview?: (p: FlipPreview | null) => void,
   ) {
     this.build();
     // Re-render the ops list whenever the document is replaced (file open, undo/redo).
@@ -236,6 +242,28 @@ export class CamBar {
       stitchBtn.addEventListener("click", () => this.openStitch());
       this.content.appendChild(stitchBtn);
     }
+
+    // Double-sided (flip) machining: assign ops a face, bore registration pins,
+    // export a top + mirrored bottom program.
+    if (this.onFlipPreview) {
+      const flipBtn = document.createElement("button");
+      flipBtn.className = "cam-add-btn";
+      flipBtn.style.cssText = "width:100%;margin-top:6px;";
+      flipBtn.textContent = "Two-sided (flip)…";
+      flipBtn.title = "Set up double-sided machining with registration pins";
+      flipBtn.addEventListener("click", () => this.openFlip());
+      this.content.appendChild(flipBtn);
+    }
+  }
+
+  private openFlip(): void {
+    if (this.doc.machineKind === "laser") { toast("Two-sided machining is for milling jobs."); return; }
+    openFlipDialog({
+      doc: this.doc,
+      pushHistory: this.pushHistory,
+      onPreview: (p) => this.onFlipPreview?.(p),
+      onDone: () => this.renderOps(),
+    });
   }
 
   private openStitch(): void {
@@ -424,6 +452,16 @@ export class CamBar {
       : "DRL";
     topRow.appendChild(badge);
 
+    // Double-sided: mark bottom-face ops so they're distinguishable in the list.
+    if (this.doc.flip && opFace(op) === "bottom") {
+      const face = document.createElement("span");
+      face.className = "tp-badge";
+      face.textContent = "▽ B";
+      face.title = "Bottom face — cut after the flip, mirrored";
+      face.style.cssText = "background:#e0a85a;color:#1a1a1a;";
+      topRow.appendChild(face);
+    }
+
     const nameEl = document.createElement("div");
     nameEl.className = "tp-op-name";
     nameEl.textContent = op.name;
@@ -583,6 +621,7 @@ export class CamBar {
       entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
       islandIds:    new Set<string>(existing?.islandIds ?? []),
       followPattern: existing?.followPattern ?? true,
+      face:         (existing?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
       regionSeeds:  existing?.regions?.length
         ? seedsFromRegions(this.doc, existing.regions)
         : existing && comboOf(existing) === "pocket"
@@ -1064,6 +1103,20 @@ export class CamBar {
       body.appendChild(this.dField("Follow pattern (cut all copies)", followChk));
     }
 
+    // Double-sided: choose which face this op cuts. Shown only when the document
+    // has a flip setup (and not for a laser, which is single-sided here).
+    if (this.doc.flip && !isLaser) {
+      const faceSel = document.createElement("select");
+      for (const [v, label] of [["top", "Top (side A — as drawn)"], ["bottom", "Bottom (side B — mirrored)"]] as const) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = label;
+        if (v === state.face) o.selected = true;
+        faceSel.appendChild(o);
+      }
+      faceSel.addEventListener("change", () => { state.face = faceSel.value as "top" | "bottom"; });
+      body.appendChild(this.dField("Face (two-sided)", faceSel));
+    }
+
     typeSelect.addEventListener("change", () => {
       state.combo = typeSelect.value as OpCombo;
       // If the name is still an untouched auto-generated default, rename it
@@ -1199,6 +1252,8 @@ export class CamBar {
         name: state.name || this.autoName(state.combo),
         type, side, entityIds: ids,
         followPattern: state.followPattern ? undefined : false, // omit when following (default)
+        // Double-sided: persist "bottom" only; "top" is the default, so omit it.
+        face: this.doc.flip && state.face === "bottom" ? "bottom" : undefined,
         toolId: state.toolId,
         toolType: state.toolType,
         toolNumber: state.toolNumber,
@@ -1316,8 +1371,8 @@ export class CamBar {
    * user can override ("Export anyway"). Errors colour the confirm red. Returns
    * true to proceed with export.
    */
-  private async preflight(gcode: string): Promise<boolean> {
-    const findings = lintGCode(gcode, buildLintContext(this.doc));
+  private async preflight(gcode: string, ctxOpts?: { extraDepthBelowBottom?: number }): Promise<boolean> {
+    const findings = lintGCode(gcode, buildLintContext(this.doc, ctxOpts));
     if (findings.length === 0) return true;
     const errors = findings.filter((f) => f.severity === "error").length;
     const warnings = findings.length - errors;
@@ -1340,12 +1395,52 @@ export class CamBar {
   private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     if (!(await this.confirmMissingFonts())) return;
+    // Double-sided jobs export two programs (top + mirrored bottom).
+    if (this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
+      await this.generateFlip();
+      return;
+    }
     const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length });
     const n = this.doc.operations.length;
     const file = this.download(gcode, "toolpaths");
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
+    maybeShowSharePrompt();
+  }
+
+  /**
+   * Export a double-sided job: a side-A program (top ops + registration pin
+   * holes) and a mirrored side-B program. Each side is pre-flighted separately —
+   * side A allows the pin holes to reach into the spoilboard. The two files
+   * download as a zip.
+   */
+  private async generateFlip(): Promise<void> {
+    const flip = this.doc.flip!;
+    const { sideA, sideB, warnings, hasPins } = generateFlipPrograms(this.doc, this.gcodeOpts());
+    if (warnings.length > 0) {
+      const proceed = await confirmDialog({
+        title: "Two-sided setup",
+        message: `${warnings.map((w) => `⚠ ${w}`).join("\n\n")}\n\nExport anyway?`,
+        confirmLabel: "Export anyway",
+        cancelLabel: "Review first",
+      });
+      if (!proceed) return;
+    }
+    // Side A may bore pins past the stock bottom by design — allow that depth.
+    if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
+    if (!(await this.preflight(sideB))) return;
+    track("gcode_generated", { operation_count: this.doc.operations.length, flip: true });
+    const bytes = zipStore([
+      { name: "toolpaths_sideA.nc", data: sideA },
+      { name: "toolpaths_sideB.nc", data: sideB },
+    ]);
+    const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "toolpaths_two-sided.zip"; a.click();
+    URL.revokeObjectURL(url);
+    toast("Exported side A + side B → toolpaths_two-sided.zip");
     maybeShowSharePrompt();
   }
 
@@ -1376,6 +1471,12 @@ export class CamBar {
   private async sendToGsender(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     if (!(await this.confirmMissingFonts())) return;
+    // A two-sided job can't run as one program — send side A now, side B after
+    // the operator flips the stock.
+    if (this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
+      await this.sendFlip();
+      return;
+    }
     const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     if (!(await this.preflight(gcode))) return;
 
@@ -1400,6 +1501,64 @@ export class CamBar {
       const file = this.download(gcode, "toolpaths");
       toast(`Exported → ${file}`);
     }
+  }
+
+  /**
+   * Hand a two-sided job to gSender in two steps: side A now, then — after the
+   * operator flips the stock onto the registration pins — side B. Each side is
+   * pre-flighted; on any send failure the file is offered as a download.
+   */
+  private async sendFlip(): Promise<void> {
+    const flip = this.doc.flip!;
+    const { sideA, sideB, warnings, hasPins } = generateFlipPrograms(this.doc, this.gcodeOpts());
+    if (warnings.length > 0) {
+      const proceed = await confirmDialog({
+        title: "Two-sided setup",
+        message: `${warnings.map((w) => `⚠ ${w}`).join("\n\n")}\n\nContinue anyway?`,
+        confirmLabel: "Continue anyway",
+        cancelLabel: "Review first",
+      });
+      if (!proceed) return;
+    }
+    if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
+
+    toast("Sending side A to gSender…");
+    const resA = await sendToGsender(getGsenderUrl(), "sideA.nc", sideA);
+    track("gcode_sent_gsender", { ok: resA.ok, hint: resA.hint, flip: "A" });
+    if (!resA.ok) {
+      const dl = await confirmDialog({
+        title: "Couldn't send side A",
+        message: `${resA.error}\n\nDownload the side A + side B files instead?`,
+        confirmLabel: "Download files",
+        cancelLabel: "Close",
+      });
+      if (dl) await this.generateFlip();
+      return;
+    }
+
+    // Side A is loaded — the operator runs it, then flips before side B.
+    const goB = await confirmDialog({
+      title: "Side A loaded",
+      message:
+        "Side A is loaded in gSender — press Play there to run it.\n\n" +
+        "When it finishes: flip the stock onto the registration pins and re-zero Z on the new top face. " +
+        "Then send side B.",
+      confirmLabel: "Send side B",
+      cancelLabel: "Later",
+    });
+    if (!goB) { toast("Side B not sent — reopen and Send to gSender when ready."); return; }
+    if (!(await this.preflight(sideB))) return;
+    toast("Sending side B to gSender…");
+    const resB = await sendToGsender(getGsenderUrl(), "sideB.nc", sideB);
+    track("gcode_sent_gsender", { ok: resB.ok, hint: resB.hint, flip: "B" });
+    if (resB.ok) { toast("Side B loaded — press Play in gSender to run it."); maybeShowSharePrompt(); return; }
+    const dl = await confirmDialog({
+      title: "Couldn't send side B",
+      message: `${resB.error}\n\nDownload the side B file instead?`,
+      confirmLabel: "Download file",
+      cancelLabel: "Close",
+    });
+    if (dl) { const f = this.download(sideB, "toolpaths_sideB"); toast(`Exported → ${f}`); }
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */

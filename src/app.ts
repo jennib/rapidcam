@@ -13,7 +13,7 @@ import type { Geo } from "./model/constraints";
 import { type Dimension, dimensionLayout } from "./model/dimensions";
 import { Viewport } from "./view/viewport";
 import { Renderer } from "./view/renderer";
-import type { Overlay, DiagnosticMarker, StitchPreview } from "./view/overlay";
+import type { Overlay, DiagnosticMarker, StitchPreview, FlipPreview } from "./view/overlay";
 import { SnapEngine, type SnapResult } from "./input/snapping";
 import { solve, type PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, type ToolPointerEvent } from "./tools/tool";
@@ -62,6 +62,8 @@ import { isModalOpen, closeAllModals } from "./ui/modal";
 import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
+import { buildSideA, buildSideB, opFace } from "./cam/flip";
+import type { CAMOperation } from "./cam/types";
 import { laserPreviewPaths } from "./cam/lasergcode";
 import { initBundledFonts } from "./core/fontManager";
 import { track } from "./analytics";
@@ -84,6 +86,8 @@ export class App {
   private dxfDiagnostics: DiagnosticMarker[] | null = null;
   /** Stitch tiled-milling preview (tile grid + registration features), if any. */
   private stitchPreview: StitchPreview | null = null;
+  /** Flip (double-sided) preview (flip axis + registration pins), if any. */
+  private flipPreview: FlipPreview | null = null;
   private renderScheduled = false;
 
   private project: ProjectManager;
@@ -99,6 +103,10 @@ export class App {
 
   private webglPreview: WebGLPreview | null = null;
   private preview3DVisible = false;
+  /** Which face the 3D preview carves for a double-sided (flip) job. */
+  private preview3DSide: "A" | "B" = "A";
+  /** The A/B side-toggle overlay in the 3D pane (double-sided jobs only). */
+  private sideToggle: HTMLElement | null = null;
   /** Flat laser-path preview (the laser machine's analogue of the 3D preview). */
   private laserPreviewVisible = false;
   private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -252,10 +260,19 @@ export class App {
       this.project.pushHistory,
       () => this.project.undoRedo("undo")
     );
-    new CamBar(dom.cambar, this.doc, this.project.pushHistory, (p) => {
-      this.stitchPreview = p;
-      this.requestRender();
-    });
+    new CamBar(
+      dom.cambar,
+      this.doc,
+      this.project.pushHistory,
+      (p) => {
+        this.stitchPreview = p;
+        this.requestRender();
+      },
+      (p) => {
+        this.flipPreview = p;
+        this.requestRender();
+      },
+    );
     new VariablesBar(dom.variablesbar, this.doc, () => this.onVariablesChanged(), this.project.pushHistory);
 
     this.doc.onChange(this.requestRender);
@@ -327,13 +344,65 @@ export class App {
       if (!this.webglPreview) {
         this.webglPreview = new WebGLPreview(webglHost);
       }
+      this.ensureSideToggle(webglHost);
+      this.updateSideToggle();
       this.schedulePreviewUpdate();
     } else {
       webglHost.classList.add("hidden");
       divider.classList.add("hidden");
       canvasHost.style.flex = "";
       canvasHost.style.width = "";
+      this.updateSideToggle();
     }
+  }
+
+  /** Lazily create the A/B side-toggle overlay in the 3D pane. */
+  private ensureSideToggle(webglHost: HTMLElement): void {
+    if (this.sideToggle) return;
+    const wrap = document.createElement("div");
+    wrap.className = "webgl-side-toggle";
+    const mk = (label: string, side: "A" | "B"): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.side = side;
+      b.title = side === "A" ? "Top face (cut as drawn, with pin holes)" : "Bottom face (flipped and mirrored)";
+      b.addEventListener("click", () => {
+        this.preview3DSide = side;
+        this.updateSideToggle();
+        this.schedulePreviewUpdate();
+      });
+      return b;
+    };
+    wrap.append(mk("Side A", "A"), mk("Side B", "B"));
+    webglHost.appendChild(wrap);
+    this.sideToggle = wrap;
+  }
+
+  /** Show the toggle only for a double-sided job with bottom ops; sync its active state. */
+  private updateSideToggle(): void {
+    if (!this.sideToggle) return;
+    const twoSided = !!this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom");
+    const show = this.preview3DVisible && twoSided;
+    if (!twoSided) this.preview3DSide = "A"; // don't strand the preview on a side that no longer exists
+    this.sideToggle.style.display = show ? "flex" : "none";
+    for (const b of Array.from(this.sideToggle.children) as HTMLElement[]) {
+      b.classList.toggle("active", b.dataset.side === this.preview3DSide);
+    }
+  }
+
+  /**
+   * The (ops, document) the 3D preview should carve, honouring the flip side.
+   * Builds ONLY the requested side (each build clones the document), so a
+   * two-sided preview doesn't pay to construct the face it isn't showing.
+   */
+  private previewInput(): { ops: CAMOperation[]; doc: CADDocument } {
+    const twoSided = !!this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom");
+    if (!twoSided) return { ops: this.doc.operations, doc: this.doc };
+    if (this.preview3DSide === "B") {
+      const sideB = buildSideB(this.doc);
+      if (sideB) return sideB;
+    }
+    return buildSideA(this.doc);
   }
 
   /** Recompute the flat laser overlay now (cut-path geometry → renderer). */
@@ -361,11 +430,13 @@ export class App {
       }, 200);
     }
     if (!this.preview3DVisible || !this.webglPreview) return;
+    this.updateSideToggle(); // a face change / op edit may have added or removed a bottom side
     if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);
     this.previewDebounceTimer = setTimeout(() => {
       this.previewDebounceTimer = null;
       if (this.webglPreview && this.preview3DVisible) {
-        this.webglPreview.render(rasterizeStock(this.doc.operations, this.doc));
+        const { ops, doc } = this.previewInput();
+        this.webglPreview.render(rasterizeStock(ops, doc));
       }
     }, 250);
   }
@@ -505,6 +576,7 @@ export class App {
       transformBox: to.transformBox,
       diagnostics: this.dxfDiagnostics,
       stitchPreview: this.stitchPreview,
+      flipPreview: this.flipPreview,
     };
     this.renderer.render(this.doc, this.view, overlay);
     this.statusBar.setZoom(this.view.scale);

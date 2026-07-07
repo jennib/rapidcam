@@ -285,7 +285,18 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
 }
 
 /** Assemble a {@link LintContext} in emitted coordinates from the document. */
-export function buildLintContext(doc: CADDocument): LintContext {
+export function buildLintContext(
+  doc: CADDocument,
+  opts: {
+    /**
+     * Extra depth (mm) a program is *allowed* to cut below the stock bottom
+     * before the over-deep check fires — for a program that intentionally bores
+     * past the stock (e.g. double-sided registration pin holes into the
+     * spoilboard). Lowers the effective `zBottom` by this much.
+     */
+    extraDepthBelowBottom?: number;
+  } = {},
+): LintContext {
   const { ox, oy, zOffset } = resolveOrigin(doc);
   return {
     bounds: {
@@ -295,7 +306,7 @@ export function buildLintContext(doc: CADDocument): LintContext {
       yMax: doc.canvas.height - oy,
     },
     zTop: zOffset,
-    zBottom: zOffset - doc.stockThickness,
+    zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     machineKind: doc.machineKind === "laser" ? "laser" : "mill",
   };
 }

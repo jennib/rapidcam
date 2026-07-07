@@ -887,6 +887,40 @@ button.cbtn.solve {
   border-color: var(--accent-dim);
 }
 
+/* Double-sided (flip) A/B preview toggle, top-left of the 3D pane. */
+.webgl-side-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  display: none; /* shown by JS only for a two-sided job */
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.webgl-side-toggle button {
+  background: var(--panel);
+  border: none;
+  color: var(--text);
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.75;
+  transition: opacity 0.15s, background 0.15s;
+}
+.webgl-side-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+.webgl-side-toggle button:hover {
+  opacity: 1;
+}
+.webgl-side-toggle button.active {
+  background: var(--accent-dim);
+  color: #fff;
+  opacity: 1;
+}
+
 /* ---------- Canvas ---------- */
 #canvas-host {
   flex: 1 1 auto;

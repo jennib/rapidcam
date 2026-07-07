@@ -808,6 +808,14 @@ export class TextEntity extends Entity {
   sizeMM: number;
   position: Vec2;
   angle: number;
+  /**
+   * Transient world-space reflection applied when this text is expanded to
+   * contours (see textToContours). Used by double-sided machining to mirror
+   * bottom-face text so it engraves backwards and reads correctly from the
+   * reverse. Never serialized — set only on the throwaway clone the flip
+   * generator builds (see cam/flip.ts). `null` = normal, unmirrored text.
+   */
+  mirror: { axis: "h" | "v"; c: number } | null = null;
 
   constructor(text: string, fontId: string, sizeMM: number, position: Vec2, angle = 0, id?: EntityId) {
     super(id);

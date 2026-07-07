@@ -30,6 +30,14 @@ export interface RcamFile {
   /** Optional end-of-program park position (work coords, mm). Omitted when off. */
   endPosition?: { x: number; y: number } | null;
   toolChangePosition?: { x: number; y: number } | null;
+  /** Optional double-sided (flip) machining setup. Omitted when single-sided. */
+  flip?: {
+    axis: "h" | "v";
+    registration: "pins" | "none";
+    pinDiameter: number;
+    pinDepth: number;
+    pins: { x: number; y: number }[];
+  } | null;
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
   metadata?: { job?: string; revision?: string; notes?: string };
   groups?: unknown[];
@@ -194,6 +202,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     ...(doc.machineKind !== "mill" ? { machineKind: doc.machineKind } : {}),
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
     ...(doc.toolChangePosition ? { toolChangePosition: { ...doc.toolChangePosition } } : {}),
+    ...(doc.flip ? { flip: { ...doc.flip, pins: doc.flip.pins.map((p) => ({ ...p })) } } : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
@@ -253,6 +262,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     machineKind: file.machineKind as DocSnapshot["machineKind"],
     endPosition: file.endPosition ?? null,
     toolChangePosition: file.toolChangePosition ?? null,
+    flip: file.flip ?? null,
     metadata: cleanMetadata(file.metadata) ?? {},
     isConstructionMode: false,
     selectedPoints: [],

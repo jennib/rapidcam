@@ -37,6 +37,42 @@ export interface EndPosition {
 }
 
 /**
+ * Double-sided machining setup. When present, operations carry a `face`
+ * ("top" | "bottom", see {@link ../cam/types.CAMOperation}); the top ops are cut
+ * as drawn, then the operator flips the stock and cuts the bottom ops from a
+ * program whose geometry is mirrored about the flip axis so features align
+ * through the part. Registration dowel holes bored at the end of the top-side
+ * program let the flipped stock drop back into exact alignment.
+ *
+ * Mill-only. See cam/flip.ts for the generation logic.
+ */
+export interface FlipSettings {
+  /**
+   * The mirror the flip performs, matching {@link ../core/transform}'s helpers.
+   * "h" = flip left ↔ right (mirror X about the stock's vertical centreline,
+   * applyFlipH); "v" = flip near ↔ far (mirror Y about the horizontal
+   * centreline, applyFlipV).
+   */
+  axis: "h" | "v";
+  /**
+   * How the flipped stock is realigned. "pins" bores dowel holes through the
+   * stock into the spoilboard at the end of the top-side program; "none" leaves
+   * it to the operator (e.g. a fixed fence/corner).
+   */
+  registration: "pins" | "none";
+  /** Dowel-pin (hole) diameter in mm. */
+  pinDiameter: number;
+  /** How far past the stock bottom the pin holes bore into the spoilboard, mm. */
+  pinDepth: number;
+  /**
+   * Registration hole centres, in world/canvas mm. For the flip to align, this
+   * set must be invariant under the mirror (each pin has a mirror-image partner,
+   * or sits on the flip-axis centreline). The default places two on the centreline.
+   */
+  pins: { x: number; y: number }[];
+}
+
+/**
  * Free-form job metadata carried with the document. All fields optional; only
  * non-empty fields are serialized and emitted in the G-code header. Purely
  * informational — affects no geometry or toolpaths.
@@ -130,6 +166,7 @@ export interface DocSnapshot {
   machineKind?: MachineKind;
   endPosition?: EndPosition | null;
   toolChangePosition?: EndPosition | null;
+  flip?: FlipSettings | null;
   metadata?: DocMetadata;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -179,6 +216,12 @@ export class CADDocument {
    * the tool over the work. Ignored with an automatic tool changer and on lasers.
    */
   toolChangePosition: EndPosition | null = null;
+  /**
+   * Double-sided machining setup, or `null` (the default) for single-sided work.
+   * When set, operations may carry a `face` and export produces a top-side and a
+   * (mirrored) bottom-side program. See {@link FlipSettings} and cam/flip.ts.
+   */
+  flip: FlipSettings | null = null;
   /**
    * Optional job metadata (job name, revision, notes). Informational only —
    * serialized when non-empty and emitted in the G-code header. See
@@ -316,6 +359,7 @@ export class CADDocument {
     this.tools = [];
     this.endPosition = null;
     this.toolChangePosition = null;
+    this.flip = null;
     this.metadata = {};
     this.isConstructionMode = false;
     this.selectedPoints = [];
@@ -675,6 +719,7 @@ export class CADDocument {
       machineKind: this.machineKind,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       toolChangePosition: this.toolChangePosition ? { ...this.toolChangePosition } : null,
+      flip: this.flip ? { ...this.flip, pins: this.flip.pins.map((p) => ({ ...p })) } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -781,6 +826,7 @@ export class CADDocument {
     this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.toolChangePosition = s.toolChangePosition ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y } : null;
+    this.flip = s.flip ? { ...s.flip, pins: (s.flip.pins ?? []).map((p) => ({ ...p })) } : null;
     this.metadata = s.metadata ? { ...s.metadata } : {};
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
