@@ -75,13 +75,39 @@ function authHeaders(token: string | undefined): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+/**
+ * True when a failure is very likely the browser blocking active mixed content:
+ * this page is https, but the gSender address is plain http on a non-loopback
+ * host (a remote/shop machine). A blocked fetch throws the same generic error as
+ * a connection failure, so we infer it from the address rather than the error.
+ */
+function mixedContentLikely(base: string): boolean {
+  if (typeof location === "undefined" || location.protocol !== "https:") return false;
+  try {
+    const u = new URL(base);
+    return u.protocol === "http:" && !isLoopbackHost(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /** A message for a thrown fetch error (network down, CORS, timeout, mixed-content). */
 function unreachableMsg(base: string): string {
-  return (
+  const head =
     `Couldn't reach gSender at ${base}. Make sure gSender is running with ` +
-    `Remote/Wireless Control enabled and the address is correct. ` +
-    `(A https page can only reach gSender on http://localhost, not a plain-http LAN address.)`
-  );
+    `Remote/Wireless Control enabled and the address is correct.`;
+  if (mixedContentLikely(base)) {
+    return (
+      `${head} This is a plain-http address on another machine, which your browser ` +
+      `blocks from an https page. Allow "Insecure content" for this site in the ` +
+      `browser's site settings, or open RapidCAM over http on your network.`
+    );
+  }
+  return head;
 }
 
 /** Best-effort token grab. Network failure propagates (a real reachability

@@ -201,8 +201,10 @@ function gsenderField(value: string): { field: HTMLElement; value: string } {
   const status = document.createElement("div");
   status.className = "post-settings-note";
   status.textContent =
-    "In gSender, enable Remote/Wireless Control, then use the address it shows " +
-    "(localhost on the same PC). Chromium reaches http://localhost but not a plain-http LAN address from an https page.";
+    "In gSender, enable Remote/Wireless Control and use the address it shows: " +
+    "localhost:8000 on the same PC, or the machine's IP (e.g. 192.168.1.42:8000) for a shop PC/Pi. " +
+    "Note: from an https page the browser reaches http://localhost but blocks a plain-http LAN address " +
+    "unless you allow “Insecure content” for this site.";
 
   testBtn.addEventListener("click", async () => {
     status.textContent = "Testing…";

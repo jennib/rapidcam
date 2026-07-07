@@ -143,6 +143,32 @@ test("classifies a network failure as unreachable", async () => {
   expect(res.error).toMatch(/Couldn't reach gSender/i);
 });
 
+// --- mixed-content guidance (remote http address on an https page) -----------
+test("adds mixed-content guidance for a remote http address served over https", async () => {
+  const orig = (globalThis as { location?: unknown }).location;
+  (globalThis as { location?: unknown }).location = { protocol: "https:" };
+  try {
+    const { fetch } = fakeFetch({}); // unreachable
+    const res = await sendToGsender("http://192.168.1.42:8000", "j.nc", "G0", fetch);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/Insecure content/i);
+  } finally {
+    (globalThis as { location?: unknown }).location = orig;
+  }
+});
+
+test("no mixed-content guidance for a loopback address", async () => {
+  const orig = (globalThis as { location?: unknown }).location;
+  (globalThis as { location?: unknown }).location = { protocol: "https:" };
+  try {
+    const { fetch } = fakeFetch({});
+    const res = await sendToGsender("http://localhost:8000", "j.nc", "G0", fetch);
+    expect(res.error).not.toMatch(/Insecure content/i);
+  } finally {
+    (globalThis as { location?: unknown }).location = orig;
+  }
+});
+
 // --- load rejected -----------------------------------------------------------
 test("surfaces gSender's message when the load is rejected", async () => {
   const { fetch } = fakeFetch({
