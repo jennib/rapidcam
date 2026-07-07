@@ -17,6 +17,7 @@ import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
+import { lintGCode, buildLintContext } from "../cam/lint";
 import { openStitchDialog } from "./stitchDialog";
 import type { StitchPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
@@ -245,11 +246,13 @@ export class CamBar {
     this.exportSelBtn.textContent = `Export ${n} selected to one file`;
   }
 
-  private exportSelected(): void {
+  private async exportSelected(): Promise<void> {
     const ops = selectedOpsInOrder(this.doc.operations, this.selectedOpIds);
     if (ops.length === 0) return;
+    const gcode = generateGCode(ops, this.doc, this.gcodeOpts());
+    if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
-    const file = this.download(generateGCode(ops, this.doc, this.gcodeOpts()), "toolpaths-selected");
+    const file = this.download(gcode, "toolpaths-selected");
     toast(`Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
@@ -472,8 +475,9 @@ export class CamBar {
       `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>` +
       `<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>` +
       `</svg>`;
-    dlBtn.addEventListener("click", () => {
+    dlBtn.addEventListener("click", async () => {
       const code = generateGCode([op], this.doc, this.gcodeOpts());
+      if (!(await this.preflight(code))) return;
       const file = this.download(code, op.name);
       toast(`Exported "${op.name}" → ${file}`);
     });
@@ -1295,6 +1299,33 @@ export class CamBar {
     return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
   }
 
+  /**
+   * Apollo pre-flight: lint the generated G-code before it reaches the machine.
+   * Clean output exports silently; any findings gate behind a review dialog the
+   * user can override ("Export anyway"). Errors colour the confirm red. Returns
+   * true to proceed with export.
+   */
+  private async preflight(gcode: string): Promise<boolean> {
+    const findings = lintGCode(gcode, buildLintContext(this.doc));
+    if (findings.length === 0) return true;
+    const errors = findings.filter((f) => f.severity === "error").length;
+    const warnings = findings.length - errors;
+    track("gcode_lint", { errors, warnings });
+    const message = [
+      `${findings.length} pre-flight issue${findings.length > 1 ? "s" : ""} found:`,
+      "",
+      ...findings.flatMap((f) => [`${f.severity === "error" ? "⛔" : "⚠"} ${f.message}`, ""]),
+      "Export anyway?",
+    ].join("\n");
+    return confirmDialog({
+      title: "Pre-flight check",
+      message,
+      confirmLabel: "Export anyway",
+      cancelLabel: "Review first",
+      danger: errors > 0,
+    });
+  }
+
   private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     // Text whose font can't be resolved produces no toolpath geometry. Surface
@@ -1311,9 +1342,11 @@ export class CamBar {
       });
       if (!ok) return;
     }
+    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length });
     const n = this.doc.operations.length;
-    const file = this.download(generateGCode(this.doc.operations, this.doc, this.gcodeOpts()), "toolpaths");
+    const file = this.download(gcode, "toolpaths");
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
