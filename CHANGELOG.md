@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Two-sided (flip) machining** — machine both faces of a part from a single drawing. Tag each toolpath **Top** or **Bottom** in its dialog, then **Generate G-code** produces a **side-A** program (the top ops, ending with **registration dowel-pin holes** bored through the stock into the spoilboard) and a **side-B** program whose geometry is mirrored about the flip axis so features line up through the part. Flip the stock onto the pins, re-zero, and run side B; the two files download as a zip (or hand them to gSender — side A, flip, then side B). Mirroring is done at the entity level, so leads, tabs, dogbones, and climb/conventional direction all come out correct on the reverse, and bottom-face **text engraves mirror-imaged** so it reads correctly from the back. A pre-flight check warns about asymmetric pins, a boring tool that can't cut a clean hole, and a top-side through-cut that would free the part before the flip. The 3D preview gets an **A/B side toggle** to see each setup as it will sit on the machine. Set it up from **Toolpaths → Two-sided (flip)…** (milling jobs). Adds an optional `flip` block and per-operation `face` to the `.rcam` format.
+
 ## [1.3.0] — 2026-07-04
 
 DXF interchange lands in both directions — bring parts in from Fusion, LightBurn,

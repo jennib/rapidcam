@@ -416,6 +416,12 @@ of those fields act only as a fallback for an unresolved id. `toolNumber` and th
 cut settings (`depth`, `stepdown`, `stepover`, tabs, leads) always stay per-operation.
 Operations with no `toolId` use their inline fields directly.
 
+For a double-sided job (the top-level `flip` setting, see
+[Top-level shape](#top-level-shape)), an operation may carry an optional
+**`face`** (`"top"` | `"bottom"`,
+default `"top"`): `"bottom"` ops are cut in the flipped setup, with their geometry
+mirrored about the flip axis. It is ignored when `flip` is absent.
+
 | `type` | Notes |
 |--------|-------|
 | `profile` | contours a closed shape; uses `side` (`"outside"`/`"inside"`), optional `tabs`, `leadIn`, `leadOut`. Optional `finishPass` leaves `finishAllowance` mm of stock during roughing and removes it in a final full-depth wall lap |
