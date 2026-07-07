@@ -1,9 +1,11 @@
 import {
   getCustomGcode, setCustomGcode,
   getMachineHasCoolant, setMachineHasCoolant,
+  getGsenderUrl, setGsenderUrl, DEFAULT_GSENDER_URL,
 } from "../core/prefs";
 import type { CADDocument, MachineKind } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+import { testGsenderConnection } from "../io/gsender";
 import { registerModal } from "./modal";
 
 const MILL_POST_OPTIONS: [string, string][] = [["linuxcnc", "LinuxCNC"], ["grbl", "GRBL / FluidNC"]];
@@ -106,6 +108,11 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const startArea = textareaField("Program start", current.start, "e.g. G54 ; work offset");
   const endArea = textareaField("Program end", current.end, "e.g. G0 X0 Y0 ; park");
 
+  // "Send to gSender" address. Machine-wide (localStorage), like coolant/custom
+  // G-code. Includes a live "Test" so the operator can confirm reachability
+  // before relying on it mid-job.
+  const gsField = gsenderField(getGsenderUrl());
+
   const buttons = document.createElement("div");
   buttons.className = "post-settings-buttons";
   const cancel = document.createElement("button");
@@ -127,6 +134,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
+    setGsenderUrl(gsField.value);
     close();
     doc.emitChange();
     opts.onSaved?.();
@@ -136,7 +144,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
 
   container.append(
     closeBtn, title, kindField, ppField, tcRow, coolantRow,
-    note, startArea.field, endArea.field, buttons,
+    note, startArea.field, endArea.field, gsField.field, buttons,
   );
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
@@ -162,6 +170,57 @@ function checkRow(label: string, check: HTMLInputElement): HTMLElement {
   text.textContent = label;
   row.append(check, text);
   return row;
+}
+
+/**
+ * gSender address input + a live "Test" button. Test probes the (unsaved)
+ * address and reports whether gSender answered and what's connected, so the
+ * operator isn't relying on an address they've never confirmed.
+ */
+function gsenderField(value: string): { field: HTMLElement; value: string } {
+  const field = document.createElement("div");
+  field.className = "post-settings-field";
+
+  const lab = document.createElement("label");
+  lab.textContent = "Send to gSender — address";
+
+  const row = document.createElement("div");
+  row.className = "post-settings-row";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "unit post-settings-select";
+  input.style.flex = "1";
+  input.value = value;
+  input.placeholder = DEFAULT_GSENDER_URL;
+
+  const testBtn = document.createElement("button");
+  testBtn.className = "btn";
+  testBtn.type = "button";
+  testBtn.textContent = "Test";
+
+  const status = document.createElement("div");
+  status.className = "post-settings-note";
+  status.textContent =
+    "In gSender, enable Remote/Wireless Control and use the address it shows: " +
+    "localhost:8000 on the same PC, or the machine's IP (e.g. 192.168.1.42:8000) for a shop PC/Pi. " +
+    "Note: from an https page the browser reaches http://localhost but blocks a plain-http LAN address " +
+    "unless you allow “Insecure content” for this site.";
+
+  testBtn.addEventListener("click", async () => {
+    status.textContent = "Testing…";
+    const res = await testGsenderConnection(input.value || DEFAULT_GSENDER_URL);
+    if (!res.ok) {
+      status.textContent = `✗ ${res.error}`;
+    } else if (res.ports.length === 0) {
+      status.textContent = "✓ gSender is reachable, but no CNC is connected yet.";
+    } else {
+      status.textContent = `✓ gSender is reachable — connected: ${res.ports.join(", ")}.`;
+    }
+  });
+
+  row.append(input, testBtn);
+  field.append(lab, row, status);
+  return { field, get value() { return input.value; } };
 }
 
 function textareaField(label: string, value: string, placeholder: string): {

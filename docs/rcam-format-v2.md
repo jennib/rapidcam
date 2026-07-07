@@ -135,6 +135,22 @@ shop, not the design — so they are not stored in the file either.
 rapids to at safe Z just before `M30`; `{ "x": 0, "y": 0 }` parks at the WCS
 origin. `null` (or omitted) leaves the tool wherever the last toolpath ended.
 
+`toolChangePosition` is an optional `{ "x", "y" }` (work coordinates, mm) the
+tool rapids to at safe Z before a *manual* tool change, so the operator can reach
+the spindle. `null`/omitted leaves the tool over the work; ignored with an
+automatic tool changer and on lasers.
+
+`flip` is an optional double-sided machining setup. When present, each operation
+carries a `face` (`"top"` | `"bottom"`, absent = `"top"`): the top ops are cut as
+drawn, then the stock is flipped and the bottom ops are cut from a program whose
+geometry is mirrored about the flip axis so features align through the part. Its
+fields are `axis` (`"h"` = flip left↔right / mirror X, `"v"` = flip near↔far /
+mirror Y), `registration` (`"pins"` bores dowel holes through the stock into the
+spoilboard at the end of the top-side program, `"none"` leaves realignment to the
+operator), `pinDiameter` and `pinDepth` (mm), and `pins` (an array of `{ "x", "y" }`
+hole centres in world mm; must be invariant under the mirror). Mill-only.
+`null`/omitted = single-sided.
+
 `metadata` is optional informational job data — `job`, `revision`, and `notes`,
 all optional strings. It affects no geometry or toolpaths; non-empty fields are
 written as comments in the G-code header (`; Job: …`, `; Revision: …`,

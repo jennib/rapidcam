@@ -93,6 +93,15 @@ export interface CAMOperation {
    * out and cut only the literal `entityIds`. Default (undefined) = follow.
    */
   followPattern?: boolean;
+  /**
+   * Double-sided machining: which face of the stock this op cuts. `"bottom"`
+   * ops are machined in a second setup after the stock is flipped, with their
+   * geometry mirrored about the flip axis so features line up through the part
+   * (see {@link ../model/document.FlipSettings} and cam/flip.ts). Absent/`"top"`
+   * (the default) = the first setup, cut as drawn. Ignored unless the document
+   * has `flip` enabled.
+   */
+  face?: "top" | "bottom";
   // tool
   /**
    * Optional reference into the document's `tools` library. When set and it

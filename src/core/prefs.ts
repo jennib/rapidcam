@@ -10,6 +10,12 @@ import { StorageKeys } from "./storageKeys";
 const START_KEY = StorageKeys.gcodeCustomStart;
 const END_KEY = StorageKeys.gcodeCustomEnd;
 const HAS_COOLANT_KEY = StorageKeys.machineHasCoolant;
+const GSENDER_URL_KEY = StorageKeys.gsenderUrl;
+
+/** Where gSender's server listens for the "Send to gSender" handoff. On the same
+ *  machine this is localhost:8000 (gSender's default when Remote/Wireless Control
+ *  is enabled); on a shop network it's the LAN address gSender shows you. */
+export const DEFAULT_GSENDER_URL = "http://localhost:8000";
 
 export interface CustomGcode {
   /** Lines injected once near the top of the program (after G21/G90/G17). */
@@ -47,6 +53,26 @@ export function setMachineHasCoolant(v: boolean): void {
   try {
     if (v) localStorage.setItem(HAS_COOLANT_KEY, "1");
     else localStorage.removeItem(HAS_COOLANT_KEY);
+  } catch {
+    /* private mode / storage disabled — preference simply doesn't persist */
+  }
+}
+
+/** The configured gSender address, or the localhost default when unset. */
+export function getGsenderUrl(): string {
+  try {
+    return localStorage.getItem(GSENDER_URL_KEY) || DEFAULT_GSENDER_URL;
+  } catch {
+    return DEFAULT_GSENDER_URL;
+  }
+}
+
+export function setGsenderUrl(url: string): void {
+  try {
+    const v = url.trim();
+    // Store only a non-default override; clearing/matching the default tidies up.
+    if (v && v !== DEFAULT_GSENDER_URL) localStorage.setItem(GSENDER_URL_KEY, v);
+    else localStorage.removeItem(GSENDER_URL_KEY);
   } catch {
     /* private mode / storage disabled — preference simply doesn't persist */
   }

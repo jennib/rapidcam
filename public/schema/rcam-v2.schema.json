@@ -53,6 +53,20 @@
       ],
       "description": "Optional end-of-program park position in work coordinates (mm); the program rapids here at safe Z before M30. { x: 0, y: 0 } parks at the WCS origin. null/omitted leaves the tool where the last toolpath ended."
     },
+    "toolChangePosition": {
+      "oneOf": [
+        { "$ref": "#/$defs/vec2" },
+        { "type": "null" }
+      ],
+      "description": "Optional park position in work coordinates (mm) the tool rapids to at safe Z before a manual tool change. null/omitted leaves the tool over the work. Ignored with an automatic tool changer and on lasers."
+    },
+    "flip": {
+      "oneOf": [
+        { "$ref": "#/$defs/flip" },
+        { "type": "null" }
+      ],
+      "description": "Optional double-sided (flip) machining setup. When present, operations carry a \"face\" and export produces a top-side and a mirrored bottom-side program. null/omitted = single-sided."
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
@@ -569,6 +583,24 @@
       }
     },
 
+    "flip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "registration", "pinDiameter", "pinDepth", "pins"],
+      "description": "Double-sided machining setup. Operations carry a \"face\"; the top ops cut as drawn, then the stock is flipped and the bottom ops cut from a program mirrored about the flip axis. Mill-only.",
+      "properties": {
+        "axis": { "enum": ["h", "v"], "description": "The mirror the flip performs. \"h\" = flip left ↔ right (mirror X about the stock's vertical centreline); \"v\" = flip near ↔ far (mirror Y about the horizontal centreline)." },
+        "registration": { "enum": ["pins", "none"], "description": "How the flipped stock is realigned. \"pins\" bores dowel holes through the stock into the spoilboard at the end of the top-side program; \"none\" leaves it to the operator (e.g. a fixed fence)." },
+        "pinDiameter": { "type": "number", "exclusiveMinimum": 0, "description": "Dowel-pin (hole) diameter, mm." },
+        "pinDepth": { "type": "number", "minimum": 0, "description": "How far past the stock bottom the pin holes bore into the spoilboard, mm." },
+        "pins": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vec2" },
+          "description": "Registration hole centres, in world/canvas mm. Must be invariant under the mirror for the flip to align (each pin has a mirror-image partner or sits on the flip-axis centreline)."
+        }
+      }
+    },
+
     "operation": {
       "type": "object",
       "additionalProperties": false,
@@ -580,10 +612,11 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve", "relief-rough"] },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve", "relief-rough", "score"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Profile only; ignored otherwise." },
         "followPattern": { "type": "boolean", "description": "When the op's geometry belongs to a pattern, the toolpath covers the whole pattern and follows its count. Set false to cut only the literal entityIds. Default (omitted) = follow." },
+        "face": { "enum": ["top", "bottom"], "description": "Double-sided machining: which face of the stock this op cuts. \"bottom\" ops are machined after the stock is flipped, with geometry mirrored about the flip axis. Absent/\"top\" = the first setup, cut as drawn. Ignored unless the document has \"flip\" set." },
         "toolId": { "type": "string", "description": "Optional reference to a tool id in the top-level \"tools\" array. When it resolves, that tool's geometry/feeds override the inline toolType/diameter/vAngle/tipAngle/feedrate/plungeRate/spindleSpeed/safeZ fields below (which remain as a fallback). toolNumber and the cut settings (depth/stepdown/stepover) always stay per-operation." },
         "toolType": { "enum": ["end-mill", "ball-nose", "v-bit", "drill"] },
         "toolNumber": { "type": "integer", "minimum": 1, "description": "T-number (1-based)." },
@@ -599,6 +632,9 @@
         "stepdown": { "type": "number", "exclusiveMinimum": 0, "description": "mm per depth pass (ignored for drill)." },
         "peckDepth": { "type": "number", "exclusiveMinimum": 0, "description": "Drill only: peck increment (mm). Drills the hole in steps, fully retracting between pecks (G83-style). Omitted/0 = single full-depth plunge." },
         "finishPass": { "type": "boolean", "description": "Profile/pocket: leave a thin radial skin during roughing and remove it in a final full-depth wall pass, cleaning the ridges between depth levels. Default false." },
+        "rampAngle": { "type": "number", "description": "Entry ramp angle (degrees off horizontal) for ops that descend gradually (pocket helix/linear entry, relief-rough ramp). Overrides each mechanism's built-in default; clamped 0.5–45°. Omitted = the default." },
+        "cutDirection": { "enum": ["climb", "conventional"], "description": "Profile only: cut direction relative to an M3 (CW) spindle. \"climb\" (CW outside / CCW inside) finishes cleanly on rigid machines; \"conventional\" is the reverse. Omitted = leave the raw offset winding untouched." },
+        "cornerStyle": { "enum": ["none", "dogbone"], "description": "Inside profile / pocket only: corner relief. \"dogbone\" adds a diagonal overcut at each convex inside corner so a mating square part seats. Default \"none\"." },
         "finishAllowance": { "type": "number", "minimum": 0, "description": "Stock (mm) left for a finishing pass. For profile/pocket: radial wall stock left during roughing, used only when finishPass is true (clamped below the tool radius). For relief-rough: the depth of material left above the final relief surface for the ball-nose finish pass to remove. Default 0.2." },
         "chamferWidth": { "type": "number", "exclusiveMinimum": 0, "description": "Chamfer only: horizontal width (mm) of the bevel face. The plunge depth is derived from this and the V-bit angle (depth = width / tan(½·vAngle)). Requires a v-bit tool." },
         "chamferSide": { "enum": ["on", "outside", "inside"], "description": "Chamfer only: which side of the contour the bevel sits on (\"on\" = centred on the edge). Default \"on\"." },

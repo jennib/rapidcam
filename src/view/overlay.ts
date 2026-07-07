@@ -40,6 +40,14 @@ export interface StitchPreview {
   features: Vec2[];
 }
 
+/** Flip (double-sided) preview: the flip axis line and registration pin holes (world coords). */
+export interface FlipPreview {
+  /** The mirror line the flip reflects about. */
+  axis: { a: Vec2; b: Vec2 };
+  /** Registration pin-hole centres. */
+  pins: Vec2[];
+}
+
 export interface Overlay {
   /** In-progress geometry drawn in the preview style. */
   previews: PreviewShape[];
@@ -47,6 +55,8 @@ export interface Overlay {
   diagnostics?: DiagnosticMarker[] | null;
   /** Stitch tiled-milling preview (tile grid + registration features), if any. */
   stitchPreview?: StitchPreview | null;
+  /** Flip (double-sided) preview (flip axis + registration pins), if any. */
+  flipPreview?: FlipPreview | null;
   /** Active snap point to highlight, if any. */
   snap: SnapPoint | null;
   /** Rubber-band selection rectangle, in world coords. */

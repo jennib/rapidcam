@@ -21,7 +21,7 @@ import { dimensionLayout } from "../model/dimensions";
 import type { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
-import type { Overlay, PreviewShape, DiagnosticMarker, StitchPreview } from "./overlay";
+import type { Overlay, PreviewShape, DiagnosticMarker, StitchPreview, FlipPreview } from "./overlay";
 import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 
@@ -79,6 +79,7 @@ export class Renderer {
     this.drawTransformBox(view, overlay);
     if (overlay.diagnostics?.length) this.drawDiagnostics(view, overlay.diagnostics);
     if (overlay.stitchPreview) this.drawStitchPreview(view, overlay.stitchPreview);
+    if (overlay.flipPreview) this.drawFlipPreview(view, overlay.flipPreview);
   }
 
   // --- grid ----------------------------------------------------------------
@@ -924,6 +925,38 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(s.x, s.y, 1.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Flip (double-sided): the mirror axis and registration pin-hole markers. */
+  private drawFlipPreview(view: Viewport, preview: FlipPreview): void {
+    const ctx = this.ctx;
+    ctx.save();
+    // The flip/mirror axis — a dash-dot centreline.
+    const a = view.worldToScreen(preview.axis.a);
+    const b = view.worldToScreen(preview.axis.b);
+    ctx.strokeStyle = "#e0a85a";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 4, 2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // Registration pin holes — a ring with a cross-hair centre.
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#e0a85a";
+    ctx.fillStyle = "#e0a85a";
+    ctx.lineWidth = 1.5;
+    for (const p of preview.pins) {
+      const s = view.worldToScreen(p);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(s.x - 8, s.y); ctx.lineTo(s.x + 8, s.y);
+      ctx.moveTo(s.x, s.y - 8); ctx.lineTo(s.x, s.y + 8);
+      ctx.stroke();
     }
     ctx.restore();
   }

@@ -74,6 +74,22 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
     }
   }
   if (current.length > 1) contours.push({ points: current, closed: true });
+
+  // Double-sided: reflect the finished world-space contours about the flip axis
+  // so bottom-face text engraves as a true mirror image (angle-correct, since we
+  // reflect the final geometry, not the glyphs' local frame). Reversing each
+  // contour keeps its winding consistent after the reflection.
+  if (ent.mirror) {
+    const { axis, c } = ent.mirror;
+    for (const contour of contours) {
+      for (const p of contour.points) {
+        if (axis === "h") p.x = 2 * c - p.x;
+        else p.y = 2 * c - p.y;
+      }
+      contour.points.reverse();
+    }
+  }
+
   return contours;
 }
 
