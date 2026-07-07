@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/c4c5327a-c474-4d0b-95a6-56a732f8f3a5
+
 # RapidCAM
 
 **Open-source CAD/CAM for desktop CNC — right in your browser.**
@@ -6,7 +10,11 @@ Sketch a part, lock it down with real parametric constraints, generate toolpaths
 
 ### 👉 [Try it now at rapidcam.app](https://rapidcam.app) — nothing to install
 
-![RapidCAM Overview](docs/videos/Rapidcamapp%20Overview-1080P.mp4)
+
+
+https://github.com/user-attachments/assets/6753a256-a2f8-4cdc-8431-06228fa648a0
+
+
 
 | Sketch editor | Constraint solver | CAM toolpaths |
 |---|---|---|
