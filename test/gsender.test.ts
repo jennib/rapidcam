@@ -39,47 +39,73 @@ test("normalizeGsenderUrl defaults scheme and trims trailing slash", () => {
   expect(normalizeGsenderUrl("")).toBe("");
 });
 
-// --- happy path --------------------------------------------------------------
-test("sendToGsender signs in, discovers the port, and posts the program", async () => {
+/** Read a multipart FormData field as text (the `gcode` part is a Blob). */
+async function formText(body: unknown, field: string): Promise<string | null> {
+  const fd = body as FormData;
+  const v = fd.get(field);
+  if (v == null) return null;
+  return typeof v === "string" ? v : await (v as Blob).text();
+}
+
+// --- happy path (machine connected) -----------------------------------------
+test("sendToGsender signs in, discovers the port, and posts the program to /api/file", async () => {
   const { fetch, calls } = fakeFetch({
     "/api/signin": () => ({ _json: { token: "tok123" } }),
     "/api/controllers": () => ({ _json: [{ port: "COM3", state: "Idle" }] }),
-    "/api/gcode": () => ({ _json: { name: "part.nc" } }),
+    "/api/file": () => ({ _json: { msg: "Successfully loaded file" } }),
   });
   const res = await sendToGsender("localhost:8000", "part.nc", "G0 X0\nM30", fetch);
   expect(res.ok).toBe(true);
   expect(res.port).toBe("COM3");
 
-  const load = calls.find((c) => c.url.endsWith("/api/gcode"))!;
+  const load = calls.find((c) => c.url.endsWith("/api/file"))!;
   expect(load.init?.method).toBe("POST");
-  const body = JSON.parse(load.init!.body as string);
-  expect(body).toEqual({ port: "COM3", name: "part.nc", gcode: "G0 X0\nM30" });
-  // The token from signin is forwarded as a bearer.
-  expect((load.init!.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
+  expect(await formText(load.init!.body, "gcode")).toBe("G0 X0\nM30");
+  expect(await formText(load.init!.body, "port")).toBe("COM3");
+  // The token from signin is forwarded as a bearer; Content-Type is left to the
+  // browser so it can set the multipart boundary.
+  const headers = load.init!.headers as Record<string, string>;
+  expect(headers.Authorization).toBe("Bearer tok123");
+  expect(headers["Content-Type"]).toBeUndefined();
 });
 
 test("works even when signin returns no token (auth bypassed) — no Authorization header", async () => {
   const { fetch, calls } = fakeFetch({
     "/api/signin": () => ({ ok: false, status: 404 }),
     "/api/controllers": () => ({ _json: [{ port: "/dev/ttyUSB0" }] }),
-    "/api/gcode": () => ({ _json: {} }),
+    "/api/file": () => ({ _json: {} }),
   });
   const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
   expect(res.ok).toBe(true);
-  const load = calls.find((c) => c.url.endsWith("/api/gcode"))!;
+  const load = calls.find((c) => c.url.endsWith("/api/file"))!;
   expect((load.init!.headers as Record<string, string>).Authorization).toBeUndefined();
 });
 
-// --- no machine connected ----------------------------------------------------
-test("reports no-controller when gSender is up but nothing is connected", async () => {
-  const { fetch } = fakeFetch({
+// --- no machine connected: STILL sends (loads into the workspace) ------------
+test("sends successfully with no machine connected — file lands in gSender, no port", async () => {
+  const { fetch, calls } = fakeFetch({
     "/api/signin": () => ({ _json: { token: "t" } }),
     "/api/controllers": () => ({ _json: [] }),
+    "/api/file": () => ({ _json: { msg: "Successfully loaded file" } }),
   });
   const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
-  expect(res.ok).toBe(false);
-  expect(res.hint).toBe("no-controller");
-  expect(res.error).toMatch(/no CNC is connected/i);
+  expect(res.ok).toBe(true);
+  expect(res.port).toBeUndefined();
+  const load = calls.find((c) => c.url.endsWith("/api/file"))!;
+  expect(load).toBeTruthy();                              // it still posted the file
+  expect(await formText(load.init!.body, "port")).toBeNull(); // with no port field
+});
+
+test("a controllers-list hiccup doesn't block the send (posts unconnected)", async () => {
+  const { fetch, calls } = fakeFetch({
+    "/api/signin": () => ({ _json: { token: "t" } }),
+    "/api/controllers": () => ({ ok: false, status: 500 }),
+    "/api/file": () => ({ _json: {} }),
+  });
+  const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
+  expect(res.ok).toBe(true);
+  expect(res.port).toBeUndefined();
+  expect(calls.some((c) => c.url.endsWith("/api/file"))).toBe(true);
 });
 
 // --- unreachable -------------------------------------------------------------
@@ -96,12 +122,12 @@ test("surfaces gSender's message when the load is rejected", async () => {
   const { fetch } = fakeFetch({
     "/api/signin": () => ({ _json: { token: "t" } }),
     "/api/controllers": () => ({ _json: [{ port: "COM3" }] }),
-    "/api/gcode": () => ({ ok: false, status: 400, _json: { msg: "Controller not found" } }),
+    "/api/file": () => ({ ok: false, status: 400, _json: { msg: "Bad file" } }),
   });
   const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
   expect(res.ok).toBe(false);
   expect(res.hint).toBe("rejected");
-  expect(res.error).toMatch(/Controller not found/);
+  expect(res.error).toMatch(/Bad file/);
 });
 
 // --- test connection ---------------------------------------------------------

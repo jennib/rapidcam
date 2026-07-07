@@ -1383,7 +1383,9 @@ export class CamBar {
     const res = await sendToGsender(getGsenderUrl(), "rapidcam.nc", gcode);
     track("gcode_sent_gsender", { ok: res.ok, hint: res.hint });
     if (res.ok) {
-      toast(`Loaded into gSender on ${res.port} — press Play there to run.`);
+      toast(res.port
+        ? `Loaded into gSender on ${res.port} — press Play there to run.`
+        : "Loaded into gSender — connect your machine and press Play there.");
       maybeShowSharePrompt();
       return;
     }
