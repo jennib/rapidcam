@@ -37,7 +37,7 @@ export interface GsenderSendResult {
   /** User-facing explanation on failure. */
   error?: string;
   /** Coarse failure class for the caller's UX. */
-  hint?: "unreachable" | "rejected";
+  hint?: "unreachable" | "rejected" | "busy";
 }
 
 export interface GsenderTestResult {
@@ -101,12 +101,19 @@ async function signin(base: string, fetchImpl: FetchLike): Promise<string | unde
   }
 }
 
-/** Connected controllers' serial ports, via GET /api/controllers. */
-async function fetchPorts(base: string, token: string | undefined, fetchImpl: FetchLike): Promise<string[]> {
+/** The slice of a gSender controller status we care about. */
+interface GsenderController {
+  port?: string;
+  /** 'idle' | 'running' | 'paused' — whether a job is currently streaming. */
+  workflow?: { state?: string };
+}
+
+/** Connected controllers, via GET /api/controllers. */
+async function fetchControllers(base: string, token: string | undefined, fetchImpl: FetchLike): Promise<GsenderController[]> {
   const res = await timedFetch(fetchImpl, `${base}/api/controllers`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(`status ${res.status}`);
   const list = await res.json();
-  return Array.isArray(list) ? list.map((c) => c?.port).filter((p): p is string => !!p) : [];
+  return Array.isArray(list) ? list : [];
 }
 
 /**
@@ -119,7 +126,9 @@ export async function testGsenderConnection(baseUrl: string, fetchImpl: FetchLik
   if (!base) return { ok: false, ports: [], error: "No gSender address set." };
   try {
     const token = await signin(base, fetchImpl);
-    const ports = await fetchPorts(base, token, fetchImpl);
+    const ports = (await fetchControllers(base, token, fetchImpl))
+      .map((c) => c.port)
+      .filter((p): p is string => !!p);
     return { ok: true, ports };
   } catch {
     return { ok: false, ports: [], error: unreachableMsg(base) };
@@ -154,12 +163,28 @@ export async function sendToGsender(
   // Best-effort: if a machine is connected, pass its port so gSender also loads
   // the program onto the sender (ready to run). No connection is fine — the file
   // still lands in the workspace, so a discovery hiccup never blocks the send.
-  let port: string | undefined;
+  let active: GsenderController | undefined;
   try {
-    port = (await fetchPorts(base, token, fetchImpl))[0];
+    active = (await fetchControllers(base, token, fetchImpl)).find((c) => !!c.port);
   } catch {
     /* couldn't list controllers — send unconnected; the POST below is the verdict */
   }
+
+  // Refuse to load over a live job. gSender's load path resets the sender's line
+  // counters with NO running-guard of its own (loadFile's guard is bypassed on
+  // this route), so a send mid-cut would desync/corrupt the running program. The
+  // idle case (even with a file already open) is a normal silent replace.
+  const wf = active?.workflow?.state;
+  if (wf === "running" || wf === "paused") {
+    return {
+      ok: false,
+      hint: "busy",
+      error:
+        `gSender is currently ${wf} a job on ${active!.port}. Loading a new file would ` +
+        `interrupt it — stop or finish that job in gSender first, then send again.`,
+    };
+  }
+  const port = active?.port;
 
   try {
     const form = new FormData();

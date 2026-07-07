@@ -51,7 +51,7 @@ async function formText(body: unknown, field: string): Promise<string | null> {
 test("sendToGsender signs in, discovers the port, and posts the program to /api/file", async () => {
   const { fetch, calls } = fakeFetch({
     "/api/signin": () => ({ _json: { token: "tok123" } }),
-    "/api/controllers": () => ({ _json: [{ port: "COM3", state: "Idle" }] }),
+    "/api/controllers": () => ({ _json: [{ port: "COM3", workflow: { state: "idle" } }] }),
     "/api/file": () => ({ _json: { msg: "Successfully loaded file" } }),
   });
   const res = await sendToGsender("localhost:8000", "part.nc", "G0 X0\nM30", fetch);
@@ -106,6 +106,32 @@ test("a controllers-list hiccup doesn't block the send (posts unconnected)", asy
   expect(res.ok).toBe(true);
   expect(res.port).toBeUndefined();
   expect(calls.some((c) => c.url.endsWith("/api/file"))).toBe(true);
+});
+
+// --- busy: never load over a running/paused job ------------------------------
+test("refuses to send while gSender is running a job (would reset the sender mid-cut)", async () => {
+  const { fetch, calls } = fakeFetch({
+    "/api/signin": () => ({ _json: { token: "t" } }),
+    "/api/controllers": () => ({ _json: [{ port: "COM3", workflow: { state: "running" } }] }),
+    "/api/file": () => ({ _json: {} }),
+  });
+  const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
+  expect(res.ok).toBe(false);
+  expect(res.hint).toBe("busy");
+  expect(res.error).toMatch(/running a job/i);
+  // Crucially, it must NOT have posted the file.
+  expect(calls.some((c) => c.url.endsWith("/api/file"))).toBe(false);
+});
+
+test("also refuses while a job is paused", async () => {
+  const { fetch } = fakeFetch({
+    "/api/signin": () => ({ _json: { token: "t" } }),
+    "/api/controllers": () => ({ _json: [{ port: "COM3", workflow: { state: "paused" } }] }),
+    "/api/file": () => ({ _json: {} }),
+  });
+  const res = await sendToGsender("localhost:8000", "j.nc", "G0", fetch);
+  expect(res.ok).toBe(false);
+  expect(res.hint).toBe("busy");
 });
 
 // --- unreachable -------------------------------------------------------------
