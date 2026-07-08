@@ -137,6 +137,9 @@ export class CamBar {
   private libBtn: HTMLButtonElement | null = null;
   /** "Material Test" button — shown only in laser mode. */
   private testBtn: HTMLButtonElement | null = null;
+  /** Tile (stitch) + Two-sided (flip) buttons — hidden for a rotary machine (flat-mill only). */
+  private stitchBtn: HTMLButtonElement | null = null;
+  private flipBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -242,6 +245,7 @@ export class CamBar {
       stitchBtn.title = "Split a design larger than the machine bed into per-tile G-code";
       stitchBtn.addEventListener("click", () => this.openStitch());
       this.content.appendChild(stitchBtn);
+      this.stitchBtn = stitchBtn;
     }
 
     // Double-sided (flip) machining: assign ops a face, bore registration pins,
@@ -254,8 +258,22 @@ export class CamBar {
       flipBtn.title = "Set up double-sided machining with registration pins";
       flipBtn.addEventListener("click", () => this.openFlip());
       this.content.appendChild(flipBtn);
+      this.flipBtn = flipBtn;
     }
 
+    this.updateModeButtons();
+  }
+
+  /**
+   * Show/hide the flat-mill-only workflow buttons (Tile, Two-sided) by machine
+   * type: a rotary job reaches the whole cylinder by rotating (no flip) and isn't
+   * bed-tiled in the wrap direction, so neither applies — hide rather than
+   * show-then-block. Re-run from renderOps so a machine-type change takes effect.
+   */
+  private updateModeButtons(): void {
+    const rotary = this.doc.machineKind === "mill-rotary";
+    if (this.stitchBtn) this.stitchBtn.style.display = rotary ? "none" : "";
+    if (this.flipBtn) this.flipBtn.style.display = rotary ? "none" : "";
   }
 
   private openFlip(): void {
@@ -307,6 +325,8 @@ export class CamBar {
     const laser = this.doc.machineKind === "laser";
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
     if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
+    // Tile/Two-sided are flat-mill-only — hidden for a rotary job.
+    this.updateModeButtons();
 
     // Drop selections for ops that no longer exist (deleted).
     const live = new Set(this.doc.operations.map((o) => o.id));

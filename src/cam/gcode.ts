@@ -81,7 +81,7 @@ function finishAllowance(op: CAMOperation): number {
 
 function profilePolygon(
   verts: Vec2[], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  ox: number, oy: number, zOff: number, stockThickness: number,
 ): string[] {
   const toolR = op.diameter / 2;
   // Normalise winding to CCW so "outside" (+toolR) always expands and "inside"
@@ -102,7 +102,11 @@ function profilePolygon(
   const tabs      = op.tabs;
   const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
   const hasTabs   = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
-  const tabZOff   = hasTabs ? op.depth + tabs!.height : 0;
+  // Tabs leave `height` mm of material measured from the STOCK BOTTOM, not the cut
+  // floor: a through-cut (depth past the stock) would otherwise sink the tab into
+  // the spoilboard, holding nothing. `max` keeps a shallow profile's tab at its own
+  // floor (its cut never reaches the stock bottom).
+  const tabZOff   = hasTabs ? Math.max(op.depth, -stockThickness) + tabs!.height : 0;
 
   const liType = op.leadIn?.type  ?? "none";
   const loType = op.leadOut?.type ?? "none";
@@ -1191,7 +1195,7 @@ function toolpathBody(
       for (const { verts } of polygons) {
         if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
         else if (op.type === "chamfer") lines.push(...chamferPolygon(verts, op, ox, oy, zOff));
-        else lines.push(...profilePolygon(verts, op, ox, oy, zOff));
+        else lines.push(...profilePolygon(verts, op, ox, oy, zOff, doc.stockThickness));
       }
       if (leftover.length > 0)
         lines.push(`; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`);
@@ -1236,7 +1240,7 @@ function toolpathBody(
         else if (op.type === "pocket" && c.closed)
           lines.push(...pocketPolygon(c.points, islands, op, ox, oy, zOff));
         else if (op.type === "profile" && c.closed)
-          lines.push(...profilePolygon(c.points, op, ox, oy, zOff));
+          lines.push(...profilePolygon(c.points, op, ox, oy, zOff, doc.stockThickness));
       }
       continue;
     }
@@ -1321,9 +1325,9 @@ function toolpathBody(
       if (ent instanceof CircleEntity)
         lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
       else if (ent instanceof RectEntity)
-        lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOff));
+        lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...profilePolygon(ent.points, op, ox, oy, zOff));
+        lines.push(...profilePolygon(ent.points, op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity)
         lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
       else if (ent instanceof LineEntity)

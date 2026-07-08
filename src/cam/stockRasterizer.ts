@@ -636,7 +636,9 @@ function rasProfilePolygon(
   const tabs    = op.tabs;
   const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
   const hasTabs = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
-  const tabZOff = hasTabs ? op.depth + tabs!.height : 0;
+  // Match the G-code: tab height is measured from the stock bottom, not the cut
+  // floor, so a through-cut's tabs stay in real material. See cam/gcode.ts.
+  const tabZOff = hasTabs ? Math.max(op.depth, -stockT) + tabs!.height : 0;
 
   // Lead-in/out lengths (linear approximation of the cut path — enough to carve
   // the lead grooves into the height field so the preview matches the G-code).
