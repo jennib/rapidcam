@@ -113,6 +113,19 @@ export interface DocMetadata {
 }
 
 /**
+ * The physical material being cut, as a first-class object. `box` is the flat
+ * case (a rectangular blank); `cylinder` is the rotary case (a rod on the 4th
+ * axis, whose unrolled surface is the canvas). In Phase 1 this is a DERIVED VIEW
+ * over `canvas` + `stockThickness` (+ `rotary`) — see {@link CADDocument.stock} —
+ * so persistence and G-code are unchanged. A later phase promotes it to the stored
+ * source of truth (positioned within a work area, alongside fixtures). See the
+ * `workholding-stock-workarea` design note.
+ */
+export type Stock =
+  | { kind: "box"; width: number; height: number; thickness: number }
+  | { kind: "cylinder"; length: number; diameter: number; wall: number };
+
+/**
  * Resolve the named origin into concrete offsets used by G-code generation.
  * ox / oy: subtract from canvas coords to get G-code coords.
  * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
@@ -131,6 +144,17 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
   const zOffset = doc.origin.z === "top" ? 0 : doc.stockThickness;
 
   return { ox, oy, zOffset };
+}
+
+/**
+ * The stock's extent in the XY work plane (mm) — the unrolled surface for a
+ * cylinder. Today it *is* the canvas (byte-exact, so routing the size-readers
+ * through here changes no output); a later phase computes it from the positioned
+ * stock's bounding box within a larger work area instead. Read this, not
+ * `doc.canvas`, so that later phase can move the stock without touching consumers.
+ */
+export function stockFootprint(doc: CADDocument): { width: number; height: number } {
+  return { width: doc.canvas.width, height: doc.canvas.height };
 }
 import { type Entity, type EntityId, type SnapPoint, type Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, type PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity, RasterImageEntity } from "./entities";
 import type { CAMOperation, ToolDef } from "../cam/types";
@@ -215,6 +239,23 @@ export class CADDocument {
   displayUnit: Unit;
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
+  /**
+   * The material as a first-class {@link Stock} — a DERIVED VIEW over `canvas` +
+   * `stockThickness` (+ `rotary`), so nothing about storage or output changes.
+   * `box` for a flat blank; `cylinder` for a rotary rod (its unrolled surface is
+   * the canvas, so diameter = wrapped-canvas-dimension / π). Read this — and
+   * {@link stockFootprint} — instead of `canvas`/`stockThickness` in CAM, preview,
+   * and bounds code so a later phase can make the stock a positioned, stored object.
+   */
+  get stock(): Stock {
+    if (this.machineKind === "mill-rotary") {
+      const wrapX = this.rotary?.wrapAxis === "x";
+      const length = wrapX ? this.canvas.height : this.canvas.width;
+      const circumference = wrapX ? this.canvas.width : this.canvas.height;
+      return { kind: "cylinder", length, diameter: circumference / Math.PI, wall: this.stockThickness };
+    }
+    return { kind: "box", width: this.canvas.width, height: this.canvas.height, thickness: this.stockThickness };
+  }
   /** Whether the machine has an automatic tool changer (emits T/M6 commands in G-code). */
   hasToolChanger = false;
   /**
