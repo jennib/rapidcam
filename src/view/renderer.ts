@@ -350,11 +350,15 @@ export class Renderer {
                 ? COLORS.entityPatternStale
                 : dofStatus === "conflict"
                   ? COLORS.entityConflict
-                  : layer.color;
+                  : layer.fixture
+                    ? COLORS.fixture
+                    : layer.color;
       const width = 1.5;
       this.ctx.save();
       if (e.isConstruction) {
         this.ctx.setLineDash([5, 5]);
+      } else if (layer.fixture) {
+        this.ctx.setLineDash([2, 3]); // fixtures: keep-out, not a cut path
       }
       this.drawEntity(e, view, color, width);
       this.ctx.restore();

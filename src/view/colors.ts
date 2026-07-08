@@ -14,6 +14,9 @@ export const COLORS = {
   // a lighter fill + brighter border so the stock reads as distinct from the work area.
   stock: "#2c3644",
   stockBorder: "#6f8fb0",
+  // Geometry on a fixture (workholding) layer — a hazard amber, drawn dashed, so a
+  // clamp reads as a keep-out and never as a cut path.
+  fixture: "#d98634",
 
   entity: "#cdd2da",
   entityConstruction: "#8b909c",
