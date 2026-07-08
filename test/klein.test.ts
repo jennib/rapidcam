@@ -126,6 +126,21 @@ test("generateRotaryProgram wraps a real circle profile: banner, no arcs, resolv
   expect(Math.max(...aVals)).toBeLessThanOrEqual(360.001);
 });
 
+test("generateRotaryProgram falls back to default settings when doc.rotary is null", () => {
+  // A rotary machine (machineKind) with no per-job cylinder yet — the new-project
+  // path — must still wrap, using a stock-derived default diameter.
+  const doc = new CADDocument({ width: 200, height: 100 });
+  doc.machineKind = "mill-rotary";
+  const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 20));
+  doc.operations = [profileOp("p", [c.id], { side: "outside", depth: -3 })];
+  expect(doc.rotary).toBeNull();
+
+  const { program } = generateRotaryProgram(doc);
+  expect(program).toMatch(/Rotary \/ cylindrical wrap/);
+  expect(program).not.toMatch(/\bG[23]\b/);
+  expect([...program.matchAll(/A(-?[\d.]+)/g)].length).toBeGreaterThan(0);
+});
+
 // --- validation --------------------------------------------------------------
 
 test("validateRotary flags overlap past one full turn", () => {

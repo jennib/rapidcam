@@ -3,8 +3,9 @@ import {
   getMachineHasCoolant, setMachineHasCoolant,
   getGsenderUrl, setGsenderUrl, DEFAULT_GSENDER_URL,
 } from "../core/prefs";
-import type { CADDocument, MachineKind } from "../model/document";
+import type { CADDocument, MachineKind, RotarySettings } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+import { defaultRotarySettings, circumference, wrapAngleDeg, ARC_TOL_DEFAULT } from "../cam/klein";
 import { testGsenderConnection } from "../io/gsender";
 import { registerModal } from "./modal";
 
@@ -48,7 +49,11 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   // G-code generator runs and which toolpath fields the CAM dialog shows.
   const kindSelect = document.createElement("select");
   kindSelect.className = "unit post-settings-select";
-  for (const [v, l] of [["mill", "CNC Mill / Router"], ["laser", "Laser"]] as const) {
+  for (const [v, l] of [
+    ["mill", "CNC Mill / Router"],
+    ["mill-rotary", "CNC Mill — Rotary / 4th axis"],
+    ["laser", "Laser"],
+  ] as const) {
     const o = document.createElement("option");
     o.value = v; o.textContent = l;
     kindSelect.appendChild(o);
@@ -73,6 +78,66 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   coolantCheck.checked = getMachineHasCoolant();
   const coolantRow = checkRow("Machine has coolant (show coolant options & emit M7/M8/M9)", coolantCheck);
 
+  // Rotary (4th axis) — the per-job cylinder for a "mill-rotary" machine. Shown
+  // only when that machine type is selected; the params live on doc.rotary, the
+  // mode is the machine type itself (see cam/klein.ts).
+  const rbase: RotarySettings = doc.rotary ?? defaultRotarySettings(doc);
+  const wrapSelect = smallSelect([["y", "Y wraps · X = length"], ["x", "X wraps · Y = length"]], rbase.wrapAxis);
+  const rWordSelect = smallSelect([["A", "A (rotates about X)"], ["B", "B (rotates about Y)"]], rbase.axisWord);
+  const diaInput = smallNumber(rbase.diameter, "0.5");
+  const tolInput = smallNumber(rbase.arcTolerance ?? ARC_TOL_DEFAULT, "0.01");
+  const fitBtn = document.createElement("button");
+  fitBtn.type = "button";
+  fitBtn.className = "btn";
+  fitBtn.textContent = "Fit to design";
+  fitBtn.title = "Pick a diameter so the design wraps exactly once around the cylinder";
+  const diaWrap = document.createElement("div");
+  diaWrap.className = "post-settings-row";
+  diaWrap.append(diaInput, fitBtn);
+  const rotaryInfo = document.createElement("div");
+  rotaryInfo.className = "post-settings-note";
+  const rotaryNote = document.createElement("p");
+  rotaryNote.className = "post-settings-note";
+  rotaryNote.innerHTML =
+    "The design is rolled around a cylinder on the 4th axis. Touch <b>Z</b> off on the <b>top</b> of the " +
+    "cylinder; the rotary word (A/B, degrees) replaces the wrapped axis and arcs are flattened into the wrap.";
+  const rotarySection = document.createElement("div");
+  rotarySection.append(
+    labeledRow("Wrap axis", wrapSelect),
+    labeledRow("Rotary axis word", rWordSelect),
+    labeledRow("Cylinder diameter (mm)", diaWrap),
+    labeledRow("Arc tolerance (mm)", tolInput),
+    rotaryInfo, rotaryNote,
+  );
+
+  const readRotary = (): RotarySettings => ({
+    axisWord: rWordSelect.value as "A" | "B",
+    diameter: Math.max(0.1, Number(diaInput.value) || rbase.diameter),
+    wrapAxis: wrapSelect.value as "x" | "y",
+    arcTolerance: Math.max(0.001, Number(tolInput.value) || ARC_TOL_DEFAULT),
+  });
+  const updateRotaryInfo = (): void => {
+    const s = readRotary();
+    const span = s.wrapAxis === "y" ? doc.canvas.height : doc.canvas.width;
+    const turns = span / circumference(s);
+    rotaryInfo.innerHTML =
+      `Circumference <b>${circumference(s).toFixed(1)}mm</b> = 360° on ${s.axisWord}. ` +
+      `Design ${s.wrapAxis.toUpperCase()} span ${span.toFixed(1)}mm → <b>${wrapAngleDeg(span, s).toFixed(1)}°</b>` +
+      (turns > 1.0001 ? ` <span style="color:#e5a13a">⚠ past one full turn — the ends overlap</span>` : "");
+  };
+  // Pair the rotary word with the wrap axis the usual way; "Fit" sizes the
+  // cylinder so the design wraps exactly once.
+  wrapSelect.addEventListener("change", () => {
+    rWordSelect.value = wrapSelect.value === "y" ? "A" : "B";
+    updateRotaryInfo();
+  });
+  fitBtn.addEventListener("click", () => {
+    const span = wrapSelect.value === "y" ? doc.canvas.height : doc.canvas.width;
+    diaInput.value = String(Math.max(1, Math.ceil((span / Math.PI) * 10) / 10));
+    updateRotaryInfo();
+  });
+  for (const el of [wrapSelect, rWordSelect, diaInput, tolInput]) el.addEventListener("input", updateRotaryInfo);
+
   // Remember each machine type's post pick so toggling doesn't lose it.
   let millPost  = MILL_POST_OPTIONS.some(([v]) => v === doc.postProcessor) ? doc.postProcessor : "linuxcnc";
   let laserPost = laserPostOptions().some(([v]) => v === doc.postProcessor) ? doc.postProcessor : DEFAULT_LASER_POST.id;
@@ -95,6 +160,11 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     fillPosts(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcRow.style.display = laser ? "none" : "";
     coolantRow.style.display = laser ? "none" : "";
+    // Rotary is a mill (spindle + Z), so the mill posts / tool-changer / coolant
+    // rows all apply; only the cylinder params are rotary-specific.
+    const rotary = kindSelect.value === "mill-rotary";
+    rotarySection.style.display = rotary ? "" : "none";
+    if (rotary) updateRotaryInfo();
   };
   kindSelect.addEventListener("change", applyKindVisibility);
   applyKindVisibility();
@@ -125,11 +195,17 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   save.addEventListener("click", () => {
     // Controller fields live on the document — push history only if they change.
     const kind = kindSelect.value as MachineKind;
-    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind) {
+    // The rotary cylinder params are the document's stock for a rotary machine;
+    // clear them when the machine isn't rotary so a flat/laser file carries no
+    // stale wrap settings.
+    const newRotary = kind === "mill-rotary" ? readRotary() : null;
+    const rotaryChanged = JSON.stringify(doc.rotary ?? null) !== JSON.stringify(newRotary);
+    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind || rotaryChanged) {
       opts.pushHistory();
       doc.postProcessor = ppSelect.value;
       doc.hasToolChanger = tcCheck.checked;
       doc.machineKind = kind;
+      doc.rotary = newRotary;
     }
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
@@ -143,7 +219,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   buttons.appendChild(save);
 
   container.append(
-    closeBtn, title, kindField, ppField, tcRow, coolantRow,
+    closeBtn, title, kindField, ppField, tcRow, coolantRow, rotarySection,
     note, startArea.field, endArea.field, gsField.field, buttons,
   );
   backdrop.appendChild(container);
@@ -161,6 +237,31 @@ function labeledRow(label: string, control: HTMLElement): HTMLElement {
   lab.textContent = label;
   field.append(lab, control);
   return field;
+}
+
+/** A compact dropdown styled to match the dialog's other selects. */
+function smallSelect<T extends string>(options: [T, string][], value: T): HTMLSelectElement {
+  const s = document.createElement("select");
+  s.className = "unit post-settings-select";
+  for (const [v, l] of options) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = l;
+    if (v === value) o.selected = true;
+    s.appendChild(o);
+  }
+  return s;
+}
+
+/** A compact number input styled to match the dialog's selects. */
+function smallNumber(value: number, step: string): HTMLInputElement {
+  const i = document.createElement("input");
+  i.type = "number";
+  i.min = "0";
+  i.step = step;
+  i.value = String(value);
+  i.className = "unit post-settings-select";
+  i.style.width = "90px";
+  return i;
 }
 
 function checkRow(label: string, check: HTMLInputElement): HTMLElement {

@@ -51,7 +51,7 @@ export function openNewProjectDialog(
   let lastMachineKind: MachineKind | undefined;
   try {
     const lk = localStorage.getItem(StorageKeys.lastMachineKind);
-    if (lk === "mill" || lk === "laser") lastMachineKind = lk;
+    if (lk === "mill" || lk === "laser" || lk === "mill-rotary") lastMachineKind = lk;
   } catch (_e) {
     // Ignore
   }
@@ -138,7 +138,7 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
-  const mkSel = sel([["mill", "CNC Mill / Router"], ["laser", "Laser"]]);
+  const mkSel = sel([["mill", "CNC Mill / Router"], ["mill-rotary", "CNC Mill — Rotary / 4th axis"], ["laser", "Laser"]]);
   mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel(MILL_POST_OPTIONS);

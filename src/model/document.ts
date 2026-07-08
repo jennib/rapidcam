@@ -12,12 +12,16 @@ export type OriginZ = "top" | "bed";
 /**
  * The kind of machine the document outputs for. "mill" is the default 3-axis
  * spindle path (G-code with Z plunge/retract); "laser" is a fixed-Z 2D cutting
- * head (beam on/off, power + passes, no Z). Other fixed-Z cutters (waterjet,
- * plasma) would join this union as additional post-processors — see
- * cam/laserposts/. Gates which G-code generator runs and which op fields the
- * UI shows.
+ * head (beam on/off, power + passes, no Z). "mill-rotary" is a mill with a 4th
+ * (rotary) axis: it generates the ordinary flat mill program, then rolls it
+ * around a cylinder — the per-job cylinder parameters live in {@link RotarySettings}
+ * (`doc.rotary`), while this field is the *mode* switch (see cam/klein.ts). Other
+ * fixed-Z cutters (waterjet, plasma) would join this union as additional
+ * post-processors — see cam/laserposts/. Gates which G-code generator runs and
+ * which op fields the UI shows; "mill-rotary" behaves like "mill" everywhere
+ * except that export wraps the finished program.
  */
-export type MachineKind = "mill" | "laser";
+export type MachineKind = "mill" | "laser" | "mill-rotary";
 
 export interface OriginDef {
   x: OriginX;
@@ -76,11 +80,12 @@ export interface FlipSettings {
 export type RotaryAxisWord = "A" | "B";
 
 /**
- * Cylindrical / rotary wrap setup. When present (and mill mode), export rolls the
- * flat program around a cylinder on a 4th axis: one work axis stays linear (along
- * the cylinder length) and the perpendicular one is emitted as a rotary word in
- * degrees. Mill-only; not compatible with `flip`. See cam/klein.ts for the
- * generation logic and the wrap math.
+ * Cylindrical / rotary wrap parameters — the per-job cylinder for a `mill-rotary`
+ * machine. The *mode* is {@link MachineKind} (`doc.machineKind === "mill-rotary"`);
+ * these are the stock/wrap params it uses: one work axis stays linear (along the
+ * cylinder length) and the perpendicular one is emitted as a rotary word in
+ * degrees. Not compatible with `flip`. See cam/klein.ts for the generation logic
+ * and the wrap math.
  */
 export interface RotarySettings {
   /** Rotary axis word for the wrapped coordinate: `"A"` (about X) or `"B"` (about Y). */
@@ -245,9 +250,10 @@ export class CADDocument {
    */
   flip: FlipSettings | null = null;
   /**
-   * Optional cylindrical/rotary wrap setup, or `null` (the default) for flat work.
-   * When set, export rolls the flat program around a cylinder on a 4th axis. Mill
-   * -only; not combinable with `flip`. See {@link RotarySettings} and cam/klein.ts.
+   * Per-job cylinder parameters for a `mill-rotary` machine (see {@link MachineKind}),
+   * or `null` when unset — in which case a `mill-rotary` export falls back to
+   * {@link RotarySettings} defaults derived from the stock. Ignored unless
+   * `machineKind === "mill-rotary"`. Not combinable with `flip`. See cam/klein.ts.
    */
   rotary: RotarySettings | null = null;
   /**
