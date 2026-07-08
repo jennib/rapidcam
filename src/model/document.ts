@@ -203,6 +203,19 @@ export interface LayerDef {
   color: string;
   visible: boolean;
   locked: boolean;
+  /**
+   * When true, closed shapes on this layer are **workholding** (clamps / fixtures),
+   * not parts to cut: they aren't machined, and pre-flight flags any move that would
+   * hit one. See cam/fixtures.ts. Default absent/false.
+   */
+  fixture?: boolean;
+  /**
+   * Fixture layers only: how far the clamp stands above the stock top, mm. A rapid
+   * clears the clamp only above this height; any move over the footprint below it is
+   * a collision. Absent = treat as full-height (blocks any pass) — set a real value
+   * to allow rapids over short clamps.
+   */
+  fixtureHeight?: number;
 }
 
 type EntitySnapshot =
