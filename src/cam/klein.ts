@@ -140,23 +140,47 @@ function parseMove(code: string): Move | null {
   return { g, x: words.X, y: words.Y, z: words.Z, i: words.I, j: words.J, f: words.F };
 }
 
+export interface WrapOptions {
+  /**
+   * Emit **inverse-time feed** (G93): a feed move's `F` becomes `feed ÷ path-length`
+   * (the move then takes `path-length ÷ feed` minutes), which is how a controller
+   * reads a combined linear + rotary move at the intended *surface* speed — a plain
+   * mm/min `F` is ambiguous once an axis is angular. `G94` (feed-per-minute) is
+   * restored before program end. Default false: leave the authored mm/min feeds as
+   * they are (a pure geometric wrap). {@link generateRotaryProgram} enables it.
+   */
+  inverseTimeFeed?: boolean;
+}
+
 /**
  * Rewrite one finished linear-mode program (mill work coordinates) so the wrapped
  * axis is emitted as rotary degrees and arcs are linearised. Non-motion lines
- * (comments, spindle, tool changes, plane/units) pass through untouched. Pure —
- * no document access; the caller supplies the settings.
+ * (comments, spindle, tool changes, plane/units) pass through untouched. With
+ * `inverseTimeFeed`, feed moves are re-fed in G93 inverse-time (see {@link WrapOptions}).
+ * Pure — no document access; the caller supplies the settings.
  */
-export function wrapGCode(program: string, settings: RotarySettings): string {
+export function wrapGCode(program: string, settings: RotarySettings, opts: WrapOptions = {}): string {
+  const inverseTime = opts.inverseTimeFeed === true;
   const tol = settings.arcTolerance && settings.arcTolerance > 0 ? settings.arcTolerance : ARC_TOL_DEFAULT;
   const wrapX = settings.wrapAxis === "x";
   const keep = wrapX ? "Y" : "X";       // the linear axis we leave alone
   const A = settings.axisWord;
 
-  // Current tool position in work coords (needed to reconstruct arcs).
+  // Current tool position in work coords (needed to reconstruct arcs); modal feed
+  // carried across moves so a G1 that omits F still knows its surface feed.
   let cx = 0, cy = 0, cz = 0;
+  let curFeed = 0;
+  let g93 = false;
   const out: string[] = [];
 
   const ang = (coord: number) => wrapAngleDeg(coord, settings);
+  const emitG93 = (): void => { if (inverseTime && !g93) { out.push("G93 ; inverse-time feed (rotary combined moves)"); g93 = true; } };
+  // Inverse-time F for a segment of flat length L (mm) at surface feed f (mm/min):
+  // the move takes L/f minutes, so F = 1/time = f/L. Unrolling is an isometry —
+  // flat length equals the true surface distance — so L is just the flat move
+  // length (Z included). Null for a zero-length move (no F word needed).
+  const invF = (L: number, f: number): number | null => (L < 1e-9 || f <= 0 ? null : f / L);
+
   // Format a flattened arc point as a wrapped linear move.
   const wrappedPoint = (x: number, y: number, z: number | undefined, f: number | undefined): string => {
     const linCoord = wrapX ? y : x;      // the axis kept linear
@@ -175,21 +199,34 @@ export function wrapGCode(program: string, settings: RotarySettings): string {
     const comment = semi >= 0 ? ` ${rawLine.slice(semi)}` : "";
 
     const mv = codePart.trim() ? parseMove(codePart) : null;
-    if (!mv) { out.push(rawLine); continue; }
+    if (!mv) {
+      // Restore feed-per-minute just before the program ends, so the machine isn't
+      // left in inverse-time mode after the job.
+      if (inverseTime && g93 && /^\s*M30\b/.test(codePart)) { out.push("G94 ; feed per minute"); g93 = false; }
+      out.push(rawLine);
+      continue;
+    }
+    if (mv.f !== undefined) curFeed = mv.f;
 
     // Resolve the move's endpoint against modal state (omitted words hold).
     const nx = mv.x ?? cx, ny = mv.y ?? cy, nz = mv.z ?? cz;
 
     if (mv.g === 2 || mv.g === 3) {
       // Arc: reconstruct centre from I/J (offsets from the start point), flatten
-      // to chords, and emit each as a wrapped linear move.
+      // to chords, and emit each as a wrapped linear move. Under inverse time each
+      // chord carries its own F (a per-move quantity), else only the first does.
       const ci = cx + (mv.i ?? 0), cj = cy + (mv.j ?? 0);
       const helical = mv.z !== undefined && Math.abs(nz - cz) > 1e-9;
       const pts = flattenArc(cx, cy, nx, ny, ci, cj, mv.g === 2, tol, helical ? cz : undefined, helical ? nz : undefined);
-      let first = true;
+      emitG93();
+      let px = cx, py = cy, pz = cz, first = true;
       for (const p of pts) {
-        out.push(wrappedPoint(p.x, p.y, p.z, first ? mv.f : undefined) + (first ? comment : ""));
-        first = false;
+        const pz2 = p.z !== undefined ? p.z : cz;
+        const f = inverseTime
+          ? (invF(Math.hypot(p.x - px, p.y - py, pz2 - pz), curFeed) ?? undefined)
+          : (first ? mv.f : undefined);
+        out.push(wrappedPoint(p.x, p.y, p.z, f) + (first ? comment : ""));
+        px = p.x; py = p.y; pz = pz2; first = false;
       }
     } else {
       // Linear move (G0/G1): swap only the wrapped word, preserving which words
@@ -199,12 +236,20 @@ export function wrapGCode(program: string, settings: RotarySettings): string {
       if (mv.x !== undefined) parts.push(wrapX ? `${A}${n(ang(mv.x))}` : `X${n(mv.x)}`);
       if (mv.y !== undefined) parts.push(wrapX ? `Y${n(mv.y)}` : `${A}${n(ang(mv.y))}`);
       if (mv.z !== undefined) parts.push(`Z${n(mv.z)}`);
-      if (mv.f !== undefined) parts.push(`F${n(mv.f)}`);
+      if (inverseTime && mv.g === 1) {
+        emitG93();
+        const f = invF(Math.hypot(nx - cx, ny - cy, nz - cz), curFeed);
+        if (f !== null) parts.push(`F${n(f)}`);
+      } else if (mv.f !== undefined) {
+        parts.push(`F${n(mv.f)}`);
+      }
       out.push(`${cmd} ${parts.join(" ")}${comment}`.trimEnd());
     }
 
     cx = nx; cy = ny; cz = nz;
   }
+  // Fallback: restore G94 if the program had no M30 to anchor it.
+  if (inverseTime && g93) out.push("G94 ; feed per minute");
   return out.join("\n");
 }
 
@@ -227,7 +272,7 @@ function rotaryBanner(doc: CADDocument, s: RotarySettings): string {
     `; The design's ${s.wrapAxis.toUpperCase()} is wrapped around the cylinder; ${lengthAxis} runs along its length.`,
     `; ${s.axisWord}0 is at the ${s.wrapAxis.toUpperCase()} work origin; touch Z off on the TOP of the cylinder (cuts at top-dead-centre).`,
     `; Design ${s.wrapAxis.toUpperCase()} span ${n(span)}mm → ${n(wrapAngleDeg(span, s))}° of rotation.`,
-    `; Feeds are the authored surface feed (mm/min); a rotary-aware controller (or G93) handles combined moves.`,
+    `; Feeds use inverse-time mode (G93): each move's F = surface-feed ÷ path-length; G94 (feed/min) is restored at the end.`,
   ].join("\n");
 }
 
@@ -269,6 +314,6 @@ export function generateRotaryProgram(doc: CADDocument, opts: GCodeOptions = {})
   // so the wrap sees work coordinates — A0 at the wrapped-axis origin.
   void resolveOrigin(doc);
   const flat = generateGCode(doc.operations, doc, opts);
-  const program = `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s)}`;
+  const program = `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s, { inverseTimeFeed: true })}`;
   return { program, warnings };
 }

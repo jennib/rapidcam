@@ -141,6 +141,67 @@ test("generateRotaryProgram falls back to default settings when doc.rotary is nu
   expect([...program.matchAll(/A(-?[\d.]+)/g)].length).toBeGreaterThan(0);
 });
 
+// --- inverse-time feed (G93) -------------------------------------------------
+
+test("inverse-time feed: F = surface-feed ÷ path-length, framed by G93 … G94", () => {
+  const flat = [
+    "G90",
+    "G0 X0 Y0",
+    "G1 Z-2 F300",      // plunge, length 2mm  → F = 300/2  = 150
+    "G1 X30 Y0 F1200",  // pure length move 30mm → F = 1200/30 = 40
+    "G1 X30 Y40",       // modal feed 1200, wrapped move 40mm → F = 1200/40 = 30
+    "M5",
+    "M30",
+  ].join("\n");
+  const w = wrapGCode(flat, UNIT, { inverseTimeFeed: true }).split("\n");
+
+  const iG93 = w.findIndex((l) => /^G93\b/.test(l));
+  const iG94 = w.findIndex((l) => /^G94\b/.test(l));
+  const iM30 = w.findIndex((l) => /^M30\b/.test(l));
+  expect(iG93).toBeGreaterThanOrEqual(0);
+  expect(iG94).toBeGreaterThan(iG93);      // restored…
+  expect(iG94).toBeLessThan(iM30);         // …before program end
+
+  expect(w).toContain("G1 Z-2 F150");                         // plunge inverse-time
+  expect(w.find((l) => l.startsWith("G1 X30 A0"))).toMatch(/\bF40\b/);  // length move
+  expect(w.find((l) => l.startsWith("G1 X30 A40"))).toMatch(/\bF30\b/); // wrapped move
+});
+
+test("inverse-time feed: every arc chord carries its own F", () => {
+  const flat = ["G0 X5 Y0", "G1 Z-1 F200", "G3 X0 Y5 I-5 J0 F600", "M30"].join("\n");
+  const w = wrapGCode(flat, UNIT, { inverseTimeFeed: true });
+  const chords = w.split("\n").filter((l) => /^G1 /.test(l) && /A-?[\d.]/.test(l));
+  expect(chords.length).toBeGreaterThan(1);                      // arc was flattened
+  expect(chords.every((l) => /\bF[\d.]+/.test(l))).toBe(true);   // each chord commands a feed
+  expect(w).toMatch(/^G93\b/m);
+  expect(w).toMatch(/^G94\b/m);
+});
+
+test("default (no option) leaves feeds as authored mm/min — no G93", () => {
+  const flat = ["G0 X0 Y0", "G1 X30 Y0 F1200", "M30"].join("\n");
+  const w = wrapGCode(flat, UNIT);
+  expect(w).not.toMatch(/G9[34]\b/);
+  expect(w).toContain("G1 X30 A0 F1200"); // untouched authored feed
+});
+
+test("generateRotaryProgram emits inverse-time feed (G93 … G94 before M30)", () => {
+  const doc = new CADDocument({ width: 200, height: 100 });
+  const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 30));
+  doc.machineKind = "mill-rotary";
+  doc.rotary = { axisWord: "A", diameter: 100, wrapAxis: "y" };
+  doc.operations = [profileOp("p", [c.id], { depth: -3 })];
+
+  const { program } = generateRotaryProgram(doc);
+  const lines = program.split("\n");
+  expect(program).toMatch(/^G93\b/m);
+  expect(program).toMatch(/^G94\b/m);
+  expect(lines.findIndex((l) => /^G94\b/.test(l))).toBeLessThan(lines.findIndex((l) => /^M30\b/.test(l)));
+  // Every wrapped feed move commands a feed (inverse-time is per-move).
+  const cutMoves = lines.filter((l) => /^G1 /.test(l) && /A-?[\d.]/.test(l));
+  expect(cutMoves.length).toBeGreaterThan(4);
+  expect(cutMoves.every((l) => /\bF[\d.]+/.test(l))).toBe(true);
+});
+
 // --- validation --------------------------------------------------------------
 
 test("validateRotary flags overlap past one full turn", () => {
