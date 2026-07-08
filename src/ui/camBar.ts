@@ -23,6 +23,7 @@ import { openStitchDialog } from "./stitchDialog";
 import { openFlipDialog } from "./flipDialog";
 import { generateFlipPrograms, opFace } from "../cam/flip";
 import { generateRotaryProgram } from "../cam/klein";
+import { formatExportName, timeStamp } from "../cam/exportName";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
@@ -147,6 +148,8 @@ export class CamBar {
     private pushHistory?: () => void,
     private onStitchPreview?: (p: StitchPreview | null) => void,
     private onFlipPreview?: (p: FlipPreview | null) => void,
+    /** Current project name, used to build descriptive export filenames. */
+    private getProjectName?: () => string,
   ) {
     this.build();
     // Re-render the ops list whenever the document is replaced (file open, undo/redo).
@@ -293,7 +296,7 @@ export class CamBar {
     openStitchDialog({
       gcode,
       doc: this.doc,
-      baseName: "toolpaths",
+      baseName: `${this.projectName()}_tiles_${timeStamp()}`,
       onPreview: (p) => this.onStitchPreview?.(p),
     });
   }
@@ -311,7 +314,7 @@ export class CamBar {
     const gcode = generateGCode(ops, this.doc, this.gcodeOpts());
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
-    const file = this.download(gcode, "toolpaths-selected");
+    const file = this.download(gcode, this.exportName(`selected-${ops.length}`));
     toast(`Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
@@ -549,7 +552,9 @@ export class CamBar {
     dlBtn.addEventListener("click", async () => {
       const code = generateGCode([op], this.doc, this.gcodeOpts());
       if (!(await this.preflight(code))) return;
-      const file = this.download(code, op.name);
+      // Prefix with the toolpath's 1-based list position so two same-named ops
+      // (e.g. several "Pocket"s) get distinct, order-matching filenames.
+      const file = this.download(code, this.exportName(`op${index + 1}-${op.name}`));
       toast(`Exported "${op.name}" → ${file}`);
     });
 
@@ -1436,7 +1441,7 @@ export class CamBar {
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length, ...(isRotary ? { rotary: true } : {}) });
     const n = this.doc.operations.length;
-    const file = this.download(gcode, isRotary ? "toolpaths_rotary" : "toolpaths");
+    const file = this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
   }
@@ -1482,16 +1487,23 @@ export class CamBar {
     if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
     if (!(await this.preflight(sideB))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length, flip: true });
+    // One timestamp for the whole two-sided export so the two programs and the
+    // zip read as a matched set.
+    const project = this.projectName();
+    const stamp = timeStamp();
+    const nameA = formatExportName({ project, scope: "sideA", stamp });
+    const nameB = formatExportName({ project, scope: "sideB", stamp });
+    const zipName = formatExportName({ project, scope: "two-sided", stamp, ext: "zip" });
     const bytes = zipStore([
-      { name: "toolpaths_sideA.nc", data: sideA },
-      { name: "toolpaths_sideB.nc", data: sideB },
+      { name: nameA, data: sideA },
+      { name: nameB, data: sideB },
     ]);
     const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "toolpaths_two-sided.zip"; a.click();
+    a.href = url; a.download = zipName; a.click();
     URL.revokeObjectURL(url);
-    toast("Exported side A + side B → toolpaths_two-sided.zip");
+    toast(`Exported side A + side B → ${zipName}`);
     maybeShowSharePrompt();
   }
 
@@ -1540,7 +1552,9 @@ export class CamBar {
     if (!(await this.preflight(gcode))) return;
 
     toast("Sending to gSender…");
-    const res = await sendToGsender(getGsenderUrl(), isRotary ? "rapidcam_rotary.nc" : "rapidcam.nc", gcode);
+    // One name for both the send and any fallback download below.
+    const jobName = this.exportName(isRotary ? "all-rotary" : "all");
+    const res = await sendToGsender(getGsenderUrl(), jobName, gcode);
     track("gcode_sent_gsender", { ok: res.ok, hint: res.hint, ...(isRotary ? { rotary: true } : {}) });
     if (res.ok) {
       toast(res.port
@@ -1557,7 +1571,7 @@ export class CamBar {
       cancelLabel: "Close",
     });
     if (download) {
-      const file = this.download(gcode, "toolpaths");
+      const file = this.download(gcode, jobName);
       toast(`Exported → ${file}`);
     }
   }
@@ -1581,8 +1595,14 @@ export class CamBar {
     }
     if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
 
+    // One timestamp so side A and side B read as a matched pair.
+    const project = this.projectName();
+    const stamp = timeStamp();
+    const nameA = formatExportName({ project, scope: "sideA", stamp });
+    const nameB = formatExportName({ project, scope: "sideB", stamp });
+
     toast("Sending side A to gSender…");
-    const resA = await sendToGsender(getGsenderUrl(), "sideA.nc", sideA);
+    const resA = await sendToGsender(getGsenderUrl(), nameA, sideA);
     track("gcode_sent_gsender", { ok: resA.ok, hint: resA.hint, flip: "A" });
     if (!resA.ok) {
       const dl = await confirmDialog({
@@ -1608,7 +1628,7 @@ export class CamBar {
     if (!goB) { toast("Side B not sent — reopen and Send to gSender when ready."); return; }
     if (!(await this.preflight(sideB))) return;
     toast("Sending side B to gSender…");
-    const resB = await sendToGsender(getGsenderUrl(), "sideB.nc", sideB);
+    const resB = await sendToGsender(getGsenderUrl(), nameB, sideB);
     track("gcode_sent_gsender", { ok: resB.ok, hint: resB.hint, flip: "B" });
     if (resB.ok) { toast("Side B loaded — press Play in gSender to run it."); maybeShowSharePrompt(); return; }
     const dl = await confirmDialog({
@@ -1617,7 +1637,7 @@ export class CamBar {
       confirmLabel: "Download file",
       cancelLabel: "Close",
     });
-    if (dl) { const f = this.download(sideB, "toolpaths_sideB"); toast(`Exported → ${f}`); }
+    if (dl) { const f = this.download(sideB, nameB); toast(`Exported → ${f}`); }
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */
@@ -1629,10 +1649,23 @@ export class CamBar {
     );
   }
 
-  /** Trigger a .nc download and return the filename used (for confirmation UI). */
-  private download(code: string, name: string): string {
-    const safe = name.replace(/[^a-z0-9_-]/gi, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
-    const filename = `${safe || "toolpath"}.nc`;
+  /** The current project name for export filenames ("untitled" if unsaved). */
+  private projectName(): string {
+    const n = this.getProjectName?.()?.trim();
+    return n && n !== "Untitled" ? n : "untitled";
+  }
+
+  /**
+   * Build a descriptive export filename (see {@link formatExportName}). A
+   * multi-file export (two-sided) instead shares one timeStamp() across its
+   * files so they read as a set — see generateFlip.
+   */
+  private exportName(scope: string, ext = "nc"): string {
+    return formatExportName({ project: this.projectName(), scope, ext });
+  }
+
+  /** Trigger a download under the given (already-final) filename; returns it. */
+  private download(code: string, filename: string): string {
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
