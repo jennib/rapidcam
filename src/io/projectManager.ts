@@ -110,6 +110,7 @@ export class ProjectManager {
         this.doc.hasToolChanger = cfg.hasToolChanger;
         this.doc.postProcessor = cfg.postProcessor;
         this.doc.machineKind = cfg.machineKind;
+        this.doc.rotary = cfg.rotary ?? null;
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
         localStorage.removeItem(StorageKeys.autosaveDraft);
