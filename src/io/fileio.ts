@@ -38,6 +38,13 @@ export interface RcamFile {
     pinDepth: number;
     pins: { x: number; y: number }[];
   } | null;
+  /** Optional cylindrical/rotary wrap setup. Omitted for flat work. */
+  rotary?: {
+    axisWord: "A" | "B";
+    diameter: number;
+    wrapAxis: "x" | "y";
+    arcTolerance?: number;
+  } | null;
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
   metadata?: { job?: string; revision?: string; notes?: string };
   groups?: unknown[];
@@ -203,6 +210,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
     ...(doc.toolChangePosition ? { toolChangePosition: { ...doc.toolChangePosition } } : {}),
     ...(doc.flip ? { flip: { ...doc.flip, pins: doc.flip.pins.map((p) => ({ ...p })) } } : {}),
+    ...(doc.rotary ? { rotary: { ...doc.rotary } } : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
     layers: snap.layers as unknown[],
@@ -263,6 +271,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     endPosition: file.endPosition ?? null,
     toolChangePosition: file.toolChangePosition ?? null,
     flip: file.flip ?? null,
+    rotary: file.rotary ?? null,
     metadata: cleanMetadata(file.metadata) ?? {},
     isConstructionMode: false,
     selectedPoints: [],

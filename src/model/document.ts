@@ -12,12 +12,16 @@ export type OriginZ = "top" | "bed";
 /**
  * The kind of machine the document outputs for. "mill" is the default 3-axis
  * spindle path (G-code with Z plunge/retract); "laser" is a fixed-Z 2D cutting
- * head (beam on/off, power + passes, no Z). Other fixed-Z cutters (waterjet,
- * plasma) would join this union as additional post-processors — see
- * cam/laserposts/. Gates which G-code generator runs and which op fields the
- * UI shows.
+ * head (beam on/off, power + passes, no Z). "mill-rotary" is a mill with a 4th
+ * (rotary) axis: it generates the ordinary flat mill program, then rolls it
+ * around a cylinder — the per-job cylinder parameters live in {@link RotarySettings}
+ * (`doc.rotary`), while this field is the *mode* switch (see cam/klein.ts). Other
+ * fixed-Z cutters (waterjet, plasma) would join this union as additional
+ * post-processors — see cam/laserposts/. Gates which G-code generator runs and
+ * which op fields the UI shows; "mill-rotary" behaves like "mill" everywhere
+ * except that export wraps the finished program.
  */
-export type MachineKind = "mill" | "laser";
+export type MachineKind = "mill" | "laser" | "mill-rotary";
 
 export interface OriginDef {
   x: OriginX;
@@ -70,6 +74,28 @@ export interface FlipSettings {
    * or sits on the flip-axis centreline). The default places two on the centreline.
    */
   pins: { x: number; y: number }[];
+}
+
+/** Rotary axis word letter. `A` rotates about machine X, `B` about machine Y. */
+export type RotaryAxisWord = "A" | "B";
+
+/**
+ * Cylindrical / rotary wrap parameters — the per-job cylinder for a `mill-rotary`
+ * machine. The *mode* is {@link MachineKind} (`doc.machineKind === "mill-rotary"`);
+ * these are the stock/wrap params it uses: one work axis stays linear (along the
+ * cylinder length) and the perpendicular one is emitted as a rotary word in
+ * degrees. Not compatible with `flip`. See cam/klein.ts for the generation logic
+ * and the wrap math.
+ */
+export interface RotarySettings {
+  /** Rotary axis word for the wrapped coordinate: `"A"` (about X) or `"B"` (about Y). */
+  axisWord: RotaryAxisWord;
+  /** Cylinder stock diameter in mm — 360° of rotation = π·diameter of surface travel. Must be > 0. */
+  diameter: number;
+  /** Which work axis rolls around the cylinder: `"y"` (default) or `"x"`; the other runs along the length. */
+  wrapAxis: "x" | "y";
+  /** Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1. */
+  arcTolerance?: number;
 }
 
 /**
@@ -167,6 +193,7 @@ export interface DocSnapshot {
   endPosition?: EndPosition | null;
   toolChangePosition?: EndPosition | null;
   flip?: FlipSettings | null;
+  rotary?: RotarySettings | null;
   metadata?: DocMetadata;
   groups?: GroupDef[];
   layers?: LayerDef[];
@@ -222,6 +249,13 @@ export class CADDocument {
    * (mirrored) bottom-side program. See {@link FlipSettings} and cam/flip.ts.
    */
   flip: FlipSettings | null = null;
+  /**
+   * Per-job cylinder parameters for a `mill-rotary` machine (see {@link MachineKind}),
+   * or `null` when unset — in which case a `mill-rotary` export falls back to
+   * {@link RotarySettings} defaults derived from the stock. Ignored unless
+   * `machineKind === "mill-rotary"`. Not combinable with `flip`. See cam/klein.ts.
+   */
+  rotary: RotarySettings | null = null;
   /**
    * Optional job metadata (job name, revision, notes). Informational only —
    * serialized when non-empty and emitted in the G-code header. See
@@ -720,6 +754,7 @@ export class CADDocument {
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       toolChangePosition: this.toolChangePosition ? { ...this.toolChangePosition } : null,
       flip: this.flip ? { ...this.flip, pins: this.flip.pins.map((p) => ({ ...p })) } : null,
+      rotary: this.rotary ? { ...this.rotary } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
@@ -827,6 +862,7 @@ export class CADDocument {
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.toolChangePosition = s.toolChangePosition ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y } : null;
     this.flip = s.flip ? { ...s.flip, pins: (s.flip.pins ?? []).map((p) => ({ ...p })) } : null;
+    this.rotary = s.rotary ? { ...s.rotary } : null;
     this.metadata = s.metadata ? { ...s.metadata } : {};
     this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];

@@ -1,5 +1,5 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import type { MachineKind, OriginDef, OriginX, OriginY, OriginZ } from "../model/document";
+import type { MachineKind, OriginDef, OriginX, OriginY, OriginZ, RotarySettings } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
@@ -9,14 +9,20 @@ const MILL_POST_OPTIONS: [string, string][] = [["grbl", "GRBL / FluidNC"], ["lin
 
 export interface NewProjectConfig {
   name: string;
-  width: number;         // mm
-  height: number;        // mm
-  stockThickness: number; // mm
+  width: number;         // mm — along the cylinder axis for a rotary job
+  height: number;        // mm — the wrapped/circumference span for a rotary job (π·diameter)
+  stockThickness: number; // mm — radial wall / max cut depth for a rotary job
   displayUnit: Unit;
   origin: OriginDef;
   hasToolChanger: boolean;
   postProcessor: string;
   machineKind: MachineKind;
+  /**
+   * Per-job cylinder params, present only for a `mill-rotary` machine. `width`
+   * is the cylinder length and `height` is its circumference (π·diameter), so the
+   * unrolled surface matches the drawing canvas. See {@link RotarySettings}.
+   */
+  rotary?: RotarySettings;
 }
 
 /**
@@ -51,7 +57,7 @@ export function openNewProjectDialog(
   let lastMachineKind: MachineKind | undefined;
   try {
     const lk = localStorage.getItem(StorageKeys.lastMachineKind);
-    if (lk === "mill" || lk === "laser") lastMachineKind = lk;
+    if (lk === "mill" || lk === "laser" || lk === "mill-rotary") lastMachineKind = lk;
   } catch (_e) {
     // Ignore
   }
@@ -64,6 +70,8 @@ export function openNewProjectDialog(
     width:  initial.width  ?? defaults.width ?? 200,
     height: initial.height ?? defaults.height ?? 150,
     thick:  initial.stockThickness ?? defaults.stockThickness ?? 10,
+    // Rotary cylinder diameter (mm) — from a saved rotary default, else a sensible rod.
+    diameter: initial.rotary?.diameter ?? defaults.rotary?.diameter ?? 50,
   };
 
   // ---- scaffold ----
@@ -112,15 +120,23 @@ export function openNewProjectDialog(
   unitSel.value = unit;
   body.appendChild(row("Units", unitSel));
 
-  // -- stock --
+  // -- stock -- (a rotary job's stock is a cylinder: Length × Diameter, with the
+  // wall/depth as the radial cut allowance; see applyMachineKind for the relabel)
   const stockSec = sec("Stock");
   const wInp = dimInp(formatLength(vals.width,  unit));
   const hInp = dimInp(formatLength(vals.height, unit));
+  const dInp = dimInp(formatLength(vals.diameter, unit));
   const tInp = dimInp(formatLength(vals.thick,  unit));
-  stockSec.appendChild(row("Width",     wInp));
-  stockSec.appendChild(row("Height",    hInp));
-  stockSec.appendChild(row("Thickness", tInp));
+  const wRow = row("Width", wInp);
+  const hRow = row("Height", hInp);
+  const dRow = row("Diameter", dInp);
+  const tRow = row("Thickness", tInp);
+  stockSec.append(wRow, hRow, dRow, tRow);
   body.appendChild(stockSec);
+  const setRowLabel = (rowEl: HTMLElement, text: string): void => {
+    const l = rowEl.querySelector("label");
+    if (l) l.textContent = text;
+  };
 
   // -- origin --
   const originSec = sec("Origin (WCS)");
@@ -138,7 +154,7 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
-  const mkSel = sel([["mill", "CNC Mill / Router"], ["laser", "Laser"]]);
+  const mkSel = sel([["mill", "CNC Mill / Router"], ["mill-rotary", "CNC Mill — Rotary / 4th axis"], ["laser", "Laser"]]);
   mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel(MILL_POST_OPTIONS);
@@ -180,12 +196,20 @@ export function openNewProjectDialog(
   });
   const applyMachineKind = () => {
     const laser = mkSel.value === "laser";
+    const rotary = mkSel.value === "mill-rotary";
     fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcChk.disabled = laser;
     coolantChk.disabled = laser;
     // A laser has no Z, so the Z-origin choice is meaningless — gray it out.
     ozSel.disabled = laser;
     for (const r of [tcRow, coolantRow, ozRow]) r.style.opacity = laser ? "0.45" : "";
+    // A rotary job's stock is a cylinder: Length (along the axis) × Diameter, with
+    // the wall/depth as the radial cut allowance. The circumference (π·diameter)
+    // becomes the wrapped canvas dimension at creation.
+    setRowLabel(wRow, rotary ? "Length (mm)" : "Width");
+    setRowLabel(tRow, rotary ? "Wall / cut depth" : "Thickness");
+    hRow.style.display = rotary ? "none" : "";
+    dRow.style.display = rotary ? "" : "none";
   };
   mkSel.addEventListener("change", applyMachineKind);
   applyMachineKind();
@@ -215,16 +239,32 @@ export function openNewProjectDialog(
   createBtn.className = "btn tp-apply-btn";
   createBtn.textContent = "Create Project";
   createBtn.addEventListener("click", () => {
-    const w = parseLength(wInp.value, unit);
-    const h = parseLength(hInp.value, unit);
+    const rotary = mkSel.value === "mill-rotary";
     const t = parseLength(tInp.value, unit);
-    if (!w || w <= 0) { highlight(wInp); return; }
-    if (!h || h <= 0) { highlight(hInp); return; }
     if (!t || t <= 0) { highlight(tInp); return; }
+
+    // A rotary job defines a cylinder (length × diameter); its circumference
+    // becomes the wrapped canvas dimension so the unrolled surface = the drawing.
+    let width: number, height: number, rotarySettings: RotarySettings | undefined;
+    if (rotary) {
+      const len = parseLength(wInp.value, unit);
+      const dia = parseLength(dInp.value, unit);
+      if (!len || len <= 0) { highlight(wInp); return; }
+      if (!dia || dia <= 0) { highlight(dInp); return; }
+      width = len;
+      height = Math.PI * dia;
+      rotarySettings = { axisWord: "A", diameter: dia, wrapAxis: "y" };
+    } else {
+      const w = parseLength(wInp.value, unit);
+      const h = parseLength(hInp.value, unit);
+      if (!w || w <= 0) { highlight(wInp); return; }
+      if (!h || h <= 0) { highlight(hInp); return; }
+      width = w; height = h;
+    }
 
     const cfg: NewProjectConfig = {
       name: nameInput.value.trim() || "Untitled",
-      width: w, height: h, stockThickness: t,
+      width, height, stockThickness: t,
       displayUnit: unit,
       origin: {
         x: oxSel.value as OriginX,
@@ -234,6 +274,7 @@ export function openNewProjectDialog(
       hasToolChanger: tcChk.checked,
       postProcessor: ppSel.value,
       machineKind: mkSel.value as MachineKind,
+      ...(rotarySettings ? { rotary: rotarySettings } : {}),
     };
 
     if (saveDefaultChk.checked) {
@@ -247,6 +288,7 @@ export function openNewProjectDialog(
           hasToolChanger: cfg.hasToolChanger,
           postProcessor: cfg.postProcessor,
           machineKind: cfg.machineKind,
+          ...(cfg.rotary ? { rotary: cfg.rotary } : {}),
         };
         // Explicitly ensure the project name is never saved with the default settings
         delete defaultsToSave.name;
@@ -275,10 +317,12 @@ export function openNewProjectDialog(
   unitSel.addEventListener("change", () => {
     const w = parseLength(wInp.value, unit) ?? vals.width;
     const h = parseLength(hInp.value, unit) ?? vals.height;
+    const d = parseLength(dInp.value, unit) ?? vals.diameter;
     const t = parseLength(tInp.value, unit) ?? vals.thick;
     unit = unitSel.value as Unit;
     wInp.value = formatLength(w, unit);
     hInp.value = formatLength(h, unit);
+    dInp.value = formatLength(d, unit);
     tInp.value = formatLength(t, unit);
   });
 

@@ -40,6 +40,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Disable broken Microsoft repos
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

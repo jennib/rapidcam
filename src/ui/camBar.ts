@@ -22,6 +22,7 @@ import { sendToGsender } from "../io/gsender";
 import { openStitchDialog } from "./stitchDialog";
 import { openFlipDialog } from "./flipDialog";
 import { generateFlipPrograms, opFace } from "../cam/flip";
+import { generateRotaryProgram } from "../cam/klein";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
@@ -254,10 +255,11 @@ export class CamBar {
       flipBtn.addEventListener("click", () => this.openFlip());
       this.content.appendChild(flipBtn);
     }
+
   }
 
   private openFlip(): void {
-    if (this.doc.machineKind === "laser") { toast("Two-sided machining is for milling jobs."); return; }
+    if (this.doc.machineKind !== "mill") { toast("Two-sided machining is for flat (non-rotary) milling jobs."); return; }
     openFlipDialog({
       doc: this.doc,
       pushHistory: this.pushHistory,
@@ -268,7 +270,7 @@ export class CamBar {
 
   private openStitch(): void {
     if (this.doc.operations.length === 0) { toast("No toolpaths to tile — add some first."); return; }
-    if (this.doc.machineKind === "laser") { toast("Stitch tiling is for milling jobs."); return; }
+    if (this.doc.machineKind !== "mill") { toast("Stitch tiling is for flat (non-rotary) milling jobs."); return; }
     const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     openStitchDialog({
       gcode,
@@ -1395,18 +1397,47 @@ export class CamBar {
   private async generate(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     if (!(await this.confirmMissingFonts())) return;
-    // Double-sided jobs export two programs (top + mirrored bottom).
-    if (this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
+    const isRotary = this.doc.machineKind === "mill-rotary";
+    // Double-sided jobs export two programs (top + mirrored bottom). Not for a
+    // rotary job (flip and the wrap are mutually exclusive).
+    if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
       await this.generateFlip();
       return;
     }
-    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    // Rotary jobs wrap the flat program around a cylinder (single program).
+    let gcode: string;
+    if (isRotary) {
+      const wrapped = await this.rotaryProgram("Export anyway");
+      if (wrapped === null) return;
+      gcode = wrapped;
+    } else {
+      gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    }
     if (!(await this.preflight(gcode))) return;
-    track("gcode_generated", { operation_count: this.doc.operations.length });
+    track("gcode_generated", { operation_count: this.doc.operations.length, ...(isRotary ? { rotary: true } : {}) });
     const n = this.doc.operations.length;
-    const file = this.download(gcode, "toolpaths");
+    const file = this.download(gcode, isRotary ? "toolpaths_rotary" : "toolpaths");
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
     maybeShowSharePrompt();
+  }
+
+  /**
+   * Build the wrapped rotary program, gating on its pre-flight advisories (bad
+   * diameter, overlap past one turn, a mode clash). Returns the program, or null
+   * if the user backs out at the warning. Shared by file export and gSender send.
+   */
+  private async rotaryProgram(continueLabel: string): Promise<string | null> {
+    const { program, warnings } = generateRotaryProgram(this.doc, this.gcodeOpts());
+    if (warnings.length > 0) {
+      const proceed = await confirmDialog({
+        title: "Rotary wrap setup",
+        message: `${warnings.map((w) => `⚠ ${w}`).join("\n\n")}\n\n${continueLabel}?`,
+        confirmLabel: continueLabel,
+        cancelLabel: "Review first",
+      });
+      if (!proceed) return null;
+    }
+    return program;
   }
 
   /**
@@ -1471,18 +1502,26 @@ export class CamBar {
   private async sendToGsender(): Promise<void> {
     if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
     if (!(await this.confirmMissingFonts())) return;
+    const isRotary = this.doc.machineKind === "mill-rotary";
     // A two-sided job can't run as one program — send side A now, side B after
-    // the operator flips the stock.
-    if (this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
+    // the operator flips the stock. (Not for a rotary job.)
+    if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
       await this.sendFlip();
       return;
     }
-    const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    let gcode: string;
+    if (isRotary) {
+      const wrapped = await this.rotaryProgram("Send anyway");
+      if (wrapped === null) return;
+      gcode = wrapped;
+    } else {
+      gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
+    }
     if (!(await this.preflight(gcode))) return;
 
     toast("Sending to gSender…");
-    const res = await sendToGsender(getGsenderUrl(), "rapidcam.nc", gcode);
-    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint });
+    const res = await sendToGsender(getGsenderUrl(), isRotary ? "rapidcam_rotary.nc" : "rapidcam.nc", gcode);
+    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint, ...(isRotary ? { rotary: true } : {}) });
     if (res.ok) {
       toast(res.port
         ? `Loaded into gSender on ${res.port} — press Play there to run.`

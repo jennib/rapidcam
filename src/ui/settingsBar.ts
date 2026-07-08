@@ -1,9 +1,13 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import type { CADDocument, OriginX, OriginY, OriginZ } from "../model/document";
+import type { CADDocument, OriginX, OriginY, OriginZ, RotarySettings } from "../model/document";
+import { defaultRotarySettings } from "../cam/klein";
 
 export class SettingsBar {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
+  private canvasGroup!: HTMLElement;
+  private widthField!: HTMLElement;
+  private heightField!: HTMLElement;
   private stockInput!: HTMLInputElement;
   private originXSelect!: HTMLSelectElement;
   private originYSelect!: HTMLSelectElement;
@@ -57,13 +61,16 @@ export class SettingsBar {
     this.content.className = "settings-content";
     this.host.appendChild(this.content);
 
-    // Canvas size
-    const canvasGroup = this.group("Canvas Size");
+    // Canvas size. For a rotary job the canvas is the unrolled cylinder surface,
+    // so these two fields relabel to Length + Diameter (see refresh/commitSize).
+    this.canvasGroup = this.group("Canvas Size");
     this.widthInput = this.dimInput();
-    canvasGroup.appendChild(this.field("Width", this.widthInput));
+    this.widthField = this.field("Width", this.widthInput);
+    this.canvasGroup.appendChild(this.widthField);
     this.heightInput = this.dimInput();
-    canvasGroup.appendChild(this.field("Height", this.heightInput));
-    this.content.appendChild(canvasGroup);
+    this.heightField = this.field("Height", this.heightInput);
+    this.canvasGroup.appendChild(this.heightField);
+    this.content.appendChild(this.canvasGroup);
 
     // Material
     const stockGroup = this.group("Material");
@@ -318,10 +325,40 @@ export class SettingsBar {
     return sel;
   }
 
+  /** The active rotary cylinder for this doc, or null when it's not a rotary machine. */
+  private rotarySettings(): RotarySettings | null {
+    return this.doc.machineKind === "mill-rotary" ? (this.doc.rotary ?? defaultRotarySettings(this.doc)) : null;
+  }
+
+  private setFieldLabel(field: HTMLElement, text: string): void {
+    const l = field.querySelector("label");
+    if (l) l.textContent = text;
+  }
+
   private commitSize(): void {
     const u = this.doc.displayUnit;
     const w = parseLength(this.widthInput.value, u);
     const h = parseLength(this.heightInput.value, u);
+    const rot = this.rotarySettings();
+    if (rot) {
+      // The two fields are Length (linear axis) and Diameter (wrapped axis). The
+      // wrapped canvas dimension is locked to the circumference (π·⌀), so editing
+      // the diameter resizes the cylinder surface and keeps doc.rotary in sync.
+      const wrapX = rot.wrapAxis === "x";
+      const diaVal = wrapX ? w : h;   // the wrapped field holds the diameter
+      const lenVal = wrapX ? h : w;   // the other field holds the length
+      if ((diaVal !== null && diaVal > 0) || (lenVal !== null && lenVal > 0)) this.pushHistory();
+      if (diaVal !== null && diaVal > 0) {
+        this.doc.rotary = { ...rot, diameter: diaVal };
+        const circ = Math.PI * diaVal;
+        if (wrapX) this.doc.canvas.width = circ; else this.doc.canvas.height = circ;
+      }
+      if (lenVal !== null && lenVal > 0) {
+        if (wrapX) this.doc.canvas.height = lenVal; else this.doc.canvas.width = lenVal;
+      }
+      this.doc.emitChange();
+      return;
+    }
     if ((w !== null && w > 0) || (h !== null && h > 0)) this.pushHistory();
     if (w !== null && w > 0) this.doc.canvas.width = w;
     if (h !== null && h > 0) this.doc.canvas.height = h;
@@ -330,10 +367,27 @@ export class SettingsBar {
 
   private refresh(): void {
     const u = this.doc.displayUnit;
-    if (document.activeElement !== this.widthInput)
-      this.widthInput.value = formatLength(this.doc.canvas.width, u);
-    if (document.activeElement !== this.heightInput)
-      this.heightInput.value = formatLength(this.doc.canvas.height, u);
+    const rot = this.rotarySettings();
+    if (rot) {
+      // Present the canvas as the cylinder: one field is the Diameter (= wrapped
+      // dimension / π), the other the Length (the linear axis).
+      const wrapX = rot.wrapAxis === "x";
+      const diaInput = wrapX ? this.widthInput : this.heightInput;
+      const lenInput = wrapX ? this.heightInput : this.widthInput;
+      this.setFieldLabel(wrapX ? this.widthField : this.heightField, "Diameter");
+      this.setFieldLabel(wrapX ? this.heightField : this.widthField, "Length");
+      const dia = (wrapX ? this.doc.canvas.width : this.doc.canvas.height) / Math.PI;
+      const len = wrapX ? this.doc.canvas.height : this.doc.canvas.width;
+      if (document.activeElement !== diaInput) diaInput.value = formatLength(dia, u);
+      if (document.activeElement !== lenInput) lenInput.value = formatLength(len, u);
+    } else {
+      this.setFieldLabel(this.widthField, "Width");
+      this.setFieldLabel(this.heightField, "Height");
+      if (document.activeElement !== this.widthInput)
+        this.widthInput.value = formatLength(this.doc.canvas.width, u);
+      if (document.activeElement !== this.heightInput)
+        this.heightInput.value = formatLength(this.doc.canvas.height, u);
+    }
     if (document.activeElement !== this.stockInput)
       this.stockInput.value = formatLength(this.doc.stockThickness, u);
     this.originXSelect.value = this.doc.origin.x;
