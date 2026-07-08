@@ -126,24 +126,43 @@ export type Stock =
   | { kind: "cylinder"; length: number; diameter: number; wall: number };
 
 /**
+ * A flat stock blank positioned *within* the work area (`canvas`): lower-left at
+ * (`x`,`y`), sized `width`×`height`, all in work-area mm. When a document has one
+ * (`doc.stockRect`), the material is this rectangle rather than the whole canvas —
+ * so the canvas can be larger (room for fixtures) and the WCS origin datums land
+ * on the stock, not the work-area corner. `null` (the default/legacy) means the
+ * stock fills the work area. Box/flat only; a rotary cylinder ignores it.
+ */
+export interface StockRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
  * Resolve the named origin into concrete offsets used by G-code generation.
- * ox / oy: subtract from canvas coords to get G-code coords.
- * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
+ * ox / oy: subtract from canvas coords to get G-code coords. When the stock is a
+ * positioned {@link StockRect}, the datums are relative to the stock (its corner /
+ * centre), so zeroing on the physical blank is correct even when it sits inside a
+ * larger work area. zOffset: add to all Z (0 for top-of-stock, thickness for bed).
  */
 export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffset: number } {
   const { width, height } = stockFootprint(doc);
+  const sx = doc.stockRect?.x ?? 0;
+  const sy = doc.stockRect?.y ?? 0;
   const s = doc.stock;
   const thickness = s.kind === "cylinder" ? s.wall : s.thickness;
 
   const ox =
-    doc.origin.x === "left"   ? 0 :
-    doc.origin.x === "right"  ? width :
-    width / 2;
+    doc.origin.x === "left"   ? sx :
+    doc.origin.x === "right"  ? sx + width :
+    sx + width / 2;
 
   const oy =
-    doc.origin.y === "front"  ? 0 :
-    doc.origin.y === "back"   ? height :
-    height / 2;
+    doc.origin.y === "front"  ? sy :
+    doc.origin.y === "back"   ? sy + height :
+    sy + height / 2;
 
   const zOffset = doc.origin.z === "top" ? 0 : thickness;
 
@@ -151,13 +170,14 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
 }
 
 /**
- * The stock's extent in the XY work plane (mm) — the unrolled surface for a
- * cylinder. Today it *is* the canvas (byte-exact, so routing the size-readers
- * through here changes no output); a later phase computes it from the positioned
- * stock's bounding box within a larger work area instead. Read this, not
- * `doc.canvas`, so that later phase can move the stock without touching consumers.
+ * The stock's extent in the XY work plane (mm) — the positioned {@link StockRect}
+ * when present, else the whole canvas (legacy: stock fills the work area). A rotary
+ * cylinder always uses the canvas (its unrolled surface). Read this, not
+ * `doc.canvas`, in any code that means "how big is the material".
  */
 export function stockFootprint(doc: CADDocument): { width: number; height: number } {
+  const r = doc.stockRect;
+  if (r && doc.machineKind !== "mill-rotary") return { width: r.width, height: r.height };
   return { width: doc.canvas.width, height: doc.canvas.height };
 }
 import { type Entity, type EntityId, type SnapPoint, type Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, type PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity, RasterImageEntity } from "./entities";
@@ -214,6 +234,7 @@ export interface DocSnapshot {
   // absent in snapshots deserialized from old .rcam files (handled in restore)
   canvas?: CanvasSize;
   stockThickness?: number;
+  stockRect?: StockRect | null;
   hasToolChanger?: boolean;
   origin?: OriginDef;
   postProcessor?: string;
@@ -244,12 +265,18 @@ export class CADDocument {
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
   /**
-   * The material as a first-class {@link Stock} — a DERIVED VIEW over `canvas` +
-   * `stockThickness` (+ `rotary`), so nothing about storage or output changes.
-   * `box` for a flat blank; `cylinder` for a rotary rod (its unrolled surface is
-   * the canvas, so diameter = wrapped-canvas-dimension / π). Read this — and
-   * {@link stockFootprint} — instead of `canvas`/`stockThickness` in CAM, preview,
-   * and bounds code so a later phase can make the stock a positioned, stored object.
+   * Optional positioned flat stock within the work area (`canvas`). `null` (the
+   * default/legacy) = the stock fills the work area. When set, the material is this
+   * rectangle: the canvas can be larger (room for fixtures) and the WCS origin is
+   * relative to the stock. Ignored for a rotary cylinder. See {@link StockRect}.
+   */
+  stockRect: StockRect | null = null;
+  /**
+   * The material as a first-class {@link Stock} — a derived view. Size comes from
+   * `stockRect` when set, else the whole `canvas`; thickness from `stockThickness`;
+   * `cylinder` for a rotary rod (its unrolled surface is the canvas, so
+   * diameter = wrapped-canvas-dimension / π). Read this — and {@link stockFootprint}
+   * — instead of `canvas`/`stockThickness` in CAM, preview, and bounds code.
    */
   get stock(): Stock {
     if (this.machineKind === "mill-rotary") {
@@ -258,7 +285,13 @@ export class CADDocument {
       const circumference = wrapX ? this.canvas.width : this.canvas.height;
       return { kind: "cylinder", length, diameter: circumference / Math.PI, wall: this.stockThickness };
     }
-    return { kind: "box", width: this.canvas.width, height: this.canvas.height, thickness: this.stockThickness };
+    const r = this.stockRect;
+    return {
+      kind: "box",
+      width: r?.width ?? this.canvas.width,
+      height: r?.height ?? this.canvas.height,
+      thickness: this.stockThickness,
+    };
   }
   /** Whether the machine has an automatic tool changer (emits T/M6 commands in G-code). */
   hasToolChanger = false;
@@ -792,6 +825,7 @@ export class CADDocument {
       selectedDimensionId: this.selectedDimensionId,
       canvas: { ...this.canvas },
       stockThickness: this.stockThickness,
+      stockRect: this.stockRect ? { ...this.stockRect } : null,
       hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
       postProcessor: this.postProcessor,
@@ -900,6 +934,7 @@ export class CADDocument {
     this.selectedDimensionId = s.selectedDimensionId ?? null;
     if (s.canvas)       this.canvas         = { ...s.canvas };
     if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
+    this.stockRect = s.stockRect ? { ...s.stockRect } : null;
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin)       this.origin         = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;

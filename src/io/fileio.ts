@@ -22,6 +22,8 @@ export interface RcamFile {
   canvas: { width: number; height: number };
   displayUnit: string;
   stockThickness?: number;
+  /** Optional positioned flat stock within the work area (canvas). Omitted = fills the work area. */
+  stockRect?: { x: number; y: number; width: number; height: number } | null;
   hasToolChanger?: boolean;
   origin?: { x: string; y: string; z: string };
   postProcessor?: string;
@@ -203,6 +205,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     canvas: { ...doc.canvas },
     displayUnit: doc.displayUnit,
     stockThickness: doc.stockThickness,
+    ...(doc.stockRect ? { stockRect: { ...doc.stockRect } } : {}),
     hasToolChanger: doc.hasToolChanger,
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
     postProcessor: doc.postProcessor,
@@ -264,6 +267,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     activeLayerId: file.activeLayerId,
     canvas: file.canvas,
     stockThickness: file.stockThickness,
+    stockRect: file.stockRect ?? null,
     hasToolChanger: file.hasToolChanger,
     origin: file.origin as DocSnapshot["origin"],
     postProcessor: file.postProcessor,
