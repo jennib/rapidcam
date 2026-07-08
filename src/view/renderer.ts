@@ -192,6 +192,26 @@ export class Renderer {
     ctx.strokeStyle = COLORS.workAreaBorder;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+
+    // A positioned flat blank (doc.stockRect) is drawn inside the work area as a
+    // distinct, lighter block — the material — so it's clear which region is stock
+    // and which is spare work area (e.g. room for fixtures). Rotary ignores it.
+    const r = doc.stockRect;
+    if (r && doc.machineKind !== "mill-rotary") {
+      const ra = view.worldToScreen({ x: r.x, y: r.y });
+      const rb = view.worldToScreen({ x: r.x + r.width, y: r.y + r.height });
+      const rx = Math.min(ra.x, rb.x);
+      const ry = Math.min(ra.y, rb.y);
+      const rw = Math.abs(rb.x - ra.x);
+      const rh = Math.abs(rb.y - ra.y);
+      ctx.fillStyle = COLORS.stock;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = COLORS.stockBorder;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(Math.round(rx) + 0.5, Math.round(ry) + 0.5, Math.round(rw), Math.round(rh));
+    }
     ctx.restore();
   }
 

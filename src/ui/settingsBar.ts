@@ -9,6 +9,13 @@ export class SettingsBar {
   private widthField!: HTMLElement;
   private heightField!: HTMLElement;
   private stockInput!: HTMLInputElement;
+  private stockRectGroup!: HTMLElement;
+  private stockFillsCheck!: HTMLInputElement;
+  private stockWInput!: HTMLInputElement;
+  private stockHInput!: HTMLInputElement;
+  private stockXInput!: HTMLInputElement;
+  private stockYInput!: HTMLInputElement;
+  private stockRectFields!: HTMLElement[];
   private originXSelect!: HTMLSelectElement;
   private originYSelect!: HTMLSelectElement;
   private originZSelect!: HTMLSelectElement;
@@ -61,9 +68,10 @@ export class SettingsBar {
     this.content.className = "settings-content";
     this.host.appendChild(this.content);
 
-    // Canvas size. For a rotary job the canvas is the unrolled cylinder surface,
-    // so these two fields relabel to Length + Diameter (see refresh/commitSize).
-    this.canvasGroup = this.group("Canvas Size");
+    // Work area — the drawing/travel frame. For a rotary job it's the unrolled
+    // cylinder surface, so these two fields relabel to Length + Diameter (see
+    // refresh/commitSize); the group title also follows in refresh().
+    this.canvasGroup = this.group("Work area");
     this.widthInput = this.dimInput();
     this.widthField = this.field("Width", this.widthInput);
     this.canvasGroup.appendChild(this.widthField);
@@ -71,6 +79,27 @@ export class SettingsBar {
     this.heightField = this.field("Height", this.heightInput);
     this.canvasGroup.appendChild(this.heightField);
     this.content.appendChild(this.canvasGroup);
+
+    // Stock — an optional flat blank positioned inside the work area. "Fills work
+    // area" (default) = the whole frame is stock; unchecking reveals a sized/offset
+    // blank (doc.stockRect). Hidden for a rotary job (the cylinder is the stock).
+    this.stockRectGroup = this.group("Stock");
+    this.stockFillsCheck = document.createElement("input");
+    this.stockFillsCheck.type = "checkbox";
+    this.stockFillsCheck.className = "settings-checkbox";
+    this.stockRectGroup.appendChild(this.field("Fills work area", this.stockFillsCheck));
+    this.stockWInput = this.dimInput();
+    this.stockHInput = this.dimInput();
+    this.stockXInput = this.dimInput();
+    this.stockYInput = this.dimInput();
+    this.stockRectFields = [
+      this.field("Width", this.stockWInput),
+      this.field("Height", this.stockHInput),
+      this.field("Offset X", this.stockXInput),
+      this.field("Offset Y", this.stockYInput),
+    ];
+    for (const f of this.stockRectFields) this.stockRectGroup.appendChild(f);
+    this.content.appendChild(this.stockRectGroup);
 
     // Material
     const stockGroup = this.group("Material");
@@ -160,6 +189,9 @@ export class SettingsBar {
       const v = parseLength(this.stockInput.value, this.doc.displayUnit);
       if (v !== null && v > 0) { this.pushHistory(); this.doc.stockThickness = v; this.doc.emitChange(); }
     });
+    this.stockFillsCheck.addEventListener("change", () => this.commitStockRect());
+    for (const el of [this.stockWInput, this.stockHInput, this.stockXInput, this.stockYInput])
+      el.addEventListener("change", () => this.commitStockRect());
     this.originXSelect.addEventListener("change", () => {
       this.pushHistory();
       this.doc.origin.x = this.originXSelect.value as OriginX;
@@ -335,6 +367,38 @@ export class SettingsBar {
     if (l) l.textContent = text;
   }
 
+  private setGroupTitle(group: HTMLElement, text: string): void {
+    const t = group.querySelector(".settings-section-title");
+    if (t) t.textContent = text;
+  }
+
+  /**
+   * Commit the positioned-stock rectangle. "Fills work area" (checked) clears it
+   * (doc.stockRect = null → the material is the whole work area). Otherwise the
+   * rect is read from the fields, defaulting any blank/invalid entry to the current
+   * stock (or the full work area on first use).
+   */
+  private commitStockRect(): void {
+    this.pushHistory();
+    if (this.stockFillsCheck.checked) {
+      this.doc.stockRect = null;
+    } else {
+      const u = this.doc.displayUnit;
+      const cur = this.doc.stockRect;
+      const w = parseLength(this.stockWInput.value, u);
+      const h = parseLength(this.stockHInput.value, u);
+      const x = parseLength(this.stockXInput.value, u);
+      const y = parseLength(this.stockYInput.value, u);
+      this.doc.stockRect = {
+        x: x ?? cur?.x ?? 0,
+        y: y ?? cur?.y ?? 0,
+        width:  w !== null && w > 0 ? w : (cur?.width  ?? this.doc.canvas.width),
+        height: h !== null && h > 0 ? h : (cur?.height ?? this.doc.canvas.height),
+      };
+    }
+    this.doc.emitChange();
+  }
+
   private commitSize(): void {
     const u = this.doc.displayUnit;
     const w = parseLength(this.widthInput.value, u);
@@ -369,8 +433,9 @@ export class SettingsBar {
     const u = this.doc.displayUnit;
     const rot = this.rotarySettings();
     if (rot) {
-      // Present the canvas as the cylinder: one field is the Diameter (= wrapped
-      // dimension / π), the other the Length (the linear axis).
+      // Present the cylinder: one field is the Diameter (= wrapped dimension / π),
+      // the other the Length (the linear axis).
+      this.setGroupTitle(this.canvasGroup, "Cylinder");
       const wrapX = rot.wrapAxis === "x";
       const diaInput = wrapX ? this.widthInput : this.heightInput;
       const lenInput = wrapX ? this.heightInput : this.widthInput;
@@ -381,6 +446,7 @@ export class SettingsBar {
       if (document.activeElement !== diaInput) diaInput.value = formatLength(dia, u);
       if (document.activeElement !== lenInput) lenInput.value = formatLength(len, u);
     } else {
+      this.setGroupTitle(this.canvasGroup, "Work area");
       this.setFieldLabel(this.widthField, "Width");
       this.setFieldLabel(this.heightField, "Height");
       if (document.activeElement !== this.widthInput)
@@ -390,6 +456,26 @@ export class SettingsBar {
     }
     if (document.activeElement !== this.stockInput)
       this.stockInput.value = formatLength(this.doc.stockThickness, u);
+
+    // Stock (positioned blank) — hidden for a rotary job. The checkbox reflects
+    // whether the stock fills the work area; the fields show the effective blank
+    // (the rect, or the whole work area when it fills) and disable when it fills.
+    this.stockRectGroup.style.display = rot ? "none" : "";
+    if (!rot) {
+      const r = this.doc.stockRect;
+      const fills = r === null;
+      this.stockFillsCheck.checked = fills;
+      const ex = r ?? { x: 0, y: 0, width: this.doc.canvas.width, height: this.doc.canvas.height };
+      const vals: [HTMLInputElement, number][] = [
+        [this.stockWInput, ex.width], [this.stockHInput, ex.height],
+        [this.stockXInput, ex.x], [this.stockYInput, ex.y],
+      ];
+      for (const [inp, v] of vals) {
+        inp.disabled = fills;
+        if (document.activeElement !== inp) inp.value = formatLength(v, u);
+      }
+      for (const f of this.stockRectFields) f.style.opacity = fills ? "0.45" : "";
+    }
     this.originXSelect.value = this.doc.origin.x;
     this.originYSelect.value = this.doc.origin.y;
     this.originZSelect.value = this.doc.origin.z;
