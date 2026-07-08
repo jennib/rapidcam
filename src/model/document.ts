@@ -131,17 +131,21 @@ export type Stock =
  * zOffset: add to all Z values (0 for top-of-stock, stockThickness for bed).
  */
 export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffset: number } {
+  const { width, height } = stockFootprint(doc);
+  const s = doc.stock;
+  const thickness = s.kind === "cylinder" ? s.wall : s.thickness;
+
   const ox =
     doc.origin.x === "left"   ? 0 :
-    doc.origin.x === "right"  ? doc.canvas.width :
-    doc.canvas.width / 2;
+    doc.origin.x === "right"  ? width :
+    width / 2;
 
   const oy =
     doc.origin.y === "front"  ? 0 :
-    doc.origin.y === "back"   ? doc.canvas.height :
-    doc.canvas.height / 2;
+    doc.origin.y === "back"   ? height :
+    height / 2;
 
-  const zOffset = doc.origin.z === "top" ? 0 : doc.stockThickness;
+  const zOffset = doc.origin.z === "top" ? 0 : thickness;
 
   return { ox, oy, zOffset };
 }

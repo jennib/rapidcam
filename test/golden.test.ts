@@ -49,6 +49,18 @@ function rotaryGcode(): string {
   return generateRotaryProgram(doc).program;
 }
 
+// Non-default origin (center / center / bed) — exercises resolveOrigin's non-zero
+// ox/oy branches and the stock thickness in zOffset, which the front-left-top
+// goldens leave at 0. This is the doc that actually covers the resolveOrigin repoint.
+function centerBedGcode(): string {
+  const doc = new CADDocument({ width: 120, height: 90 });
+  doc.stockThickness = 8;
+  doc.origin = { x: "center", y: "center", z: "bed" };
+  const c = doc.add(new CircleEntity({ x: 60, y: 45 }, 20));
+  doc.operations = [profileOp("op1", [c.id], { side: "inside", depth: -8, stepdown: 4 })];
+  return generateGCode(doc.operations, doc);
+}
+
 // Laser — the fixed-Z beam generator path.
 function laserGcode(): string {
   const doc = new CADDocument({ width: 100, height: 80 });
@@ -63,6 +75,7 @@ const GOLDEN = {
   enclosure: "85f1724a4b9f293747ecc9baad964c66f11db46caff21c11ddf101997e06b938",
   rotary: "bf90f91c331927a4bcf232e2dc3b864ae358a2c0895ff8e6cf6e290bb5fbd213",
   laser: "3fa20c36c4f7380c21ea923b6c73ef959e8b47e49b0c1499a540456d25e6ff5e",
+  centerBed: "1c20474a673e1e05e9469261c2dc4ff68b6676d909926a4247f7524e1f04959f",
 };
 
 test("golden: flat-mill (Enclosure Lid) G-code is byte-stable", () => {
@@ -73,4 +86,7 @@ test("golden: rotary wrap G-code is byte-stable", () => {
 });
 test("golden: laser G-code is byte-stable", () => {
   expect(sha(laserGcode())).toBe(GOLDEN.laser);
+});
+test("golden: center/bed-origin G-code is byte-stable", () => {
+  expect(sha(centerBedGcode())).toBe(GOLDEN.centerBed);
 });
