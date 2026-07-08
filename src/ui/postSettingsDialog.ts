@@ -5,7 +5,7 @@ import {
 } from "../core/prefs";
 import type { CADDocument, MachineKind, RotarySettings } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
-import { defaultRotarySettings, circumference, wrapAngleDeg, ARC_TOL_DEFAULT } from "../cam/klein";
+import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/klein";
 import { testGsenderConnection } from "../io/gsender";
 import { registerModal } from "./modal";
 
@@ -86,26 +86,19 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const rWordSelect = smallSelect([["A", "A (rotates about X)"], ["B", "B (rotates about Y)"]], rbase.axisWord);
   const diaInput = smallNumber(rbase.diameter, "0.5");
   const tolInput = smallNumber(rbase.arcTolerance ?? ARC_TOL_DEFAULT, "0.01");
-  const fitBtn = document.createElement("button");
-  fitBtn.type = "button";
-  fitBtn.className = "btn";
-  fitBtn.textContent = "Fit to design";
-  fitBtn.title = "Pick a diameter so the design wraps exactly once around the cylinder";
-  const diaWrap = document.createElement("div");
-  diaWrap.className = "post-settings-row";
-  diaWrap.append(diaInput, fitBtn);
   const rotaryInfo = document.createElement("div");
   rotaryInfo.className = "post-settings-note";
   const rotaryNote = document.createElement("p");
   rotaryNote.className = "post-settings-note";
   rotaryNote.innerHTML =
-    "The design is rolled around a cylinder on the 4th axis. Touch <b>Z</b> off on the <b>top</b> of the " +
-    "cylinder; the rotary word (A/B, degrees) replaces the wrapped axis and arcs are flattened into the wrap.";
+    "The canvas is the unrolled cylinder surface, so the diameter <b>is</b> the stock: the wrapped stock " +
+    "dimension stays locked to the circumference (π·⌀). Touch <b>Z</b> off on the <b>top</b> of the cylinder; " +
+    "the rotary word (A/B, degrees) replaces the wrapped axis and arcs are flattened into the wrap.";
   const rotarySection = document.createElement("div");
   rotarySection.append(
     labeledRow("Wrap axis", wrapSelect),
     labeledRow("Rotary axis word", rWordSelect),
-    labeledRow("Cylinder diameter (mm)", diaWrap),
+    labeledRow("Cylinder diameter (mm)", diaInput),
     labeledRow("Arc tolerance (mm)", tolInput),
     rotaryInfo, rotaryNote,
   );
@@ -118,22 +111,14 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   });
   const updateRotaryInfo = (): void => {
     const s = readRotary();
-    const span = s.wrapAxis === "y" ? doc.canvas.height : doc.canvas.width;
-    const turns = span / circumference(s);
+    const length = s.wrapAxis === "y" ? doc.canvas.width : doc.canvas.height;
     rotaryInfo.innerHTML =
-      `Circumference <b>${circumference(s).toFixed(1)}mm</b> = 360° on ${s.axisWord}. ` +
-      `Design ${s.wrapAxis.toUpperCase()} span ${span.toFixed(1)}mm → <b>${wrapAngleDeg(span, s).toFixed(1)}°</b>` +
-      (turns > 1.0001 ? ` <span style="color:#e5a13a">⚠ past one full turn — the ends overlap</span>` : "");
+      `⌀${s.diameter} → circumference <b>${circumference(s).toFixed(1)}mm</b> = 360° on ${s.axisWord} ` +
+      `(the wrapped stock dimension). Cylinder length ${length.toFixed(1)}mm on ${s.wrapAxis === "y" ? "X" : "Y"}.`;
   };
-  // Pair the rotary word with the wrap axis the usual way; "Fit" sizes the
-  // cylinder so the design wraps exactly once.
+  // Pair the rotary word with the wrap axis the usual way.
   wrapSelect.addEventListener("change", () => {
     rWordSelect.value = wrapSelect.value === "y" ? "A" : "B";
-    updateRotaryInfo();
-  });
-  fitBtn.addEventListener("click", () => {
-    const span = wrapSelect.value === "y" ? doc.canvas.height : doc.canvas.width;
-    diaInput.value = String(Math.max(1, Math.ceil((span / Math.PI) * 10) / 10));
     updateRotaryInfo();
   });
   for (const el of [wrapSelect, rWordSelect, diaInput, tolInput]) el.addEventListener("input", updateRotaryInfo);
@@ -199,13 +184,19 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     // clear them when the machine isn't rotary so a flat/laser file carries no
     // stale wrap settings.
     const newRotary = kind === "mill-rotary" ? readRotary() : null;
+    // The canvas IS the unrolled cylinder surface, so the wrapped dimension is
+    // locked to the circumference (π·⌀). Changing the diameter here resizes it.
+    const wrapKey: "width" | "height" | null = newRotary ? (newRotary.wrapAxis === "x" ? "width" : "height") : null;
+    const lockedWrap = newRotary ? Math.PI * newRotary.diameter : null;
+    const canvasChanged = wrapKey !== null && Math.abs(doc.canvas[wrapKey] - lockedWrap!) > 1e-6;
     const rotaryChanged = JSON.stringify(doc.rotary ?? null) !== JSON.stringify(newRotary);
-    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind || rotaryChanged) {
+    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind || rotaryChanged || canvasChanged) {
       opts.pushHistory();
       doc.postProcessor = ppSelect.value;
       doc.hasToolChanger = tcCheck.checked;
       doc.machineKind = kind;
       doc.rotary = newRotary;
+      if (wrapKey !== null) doc.canvas[wrapKey] = lockedWrap!;
     }
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
