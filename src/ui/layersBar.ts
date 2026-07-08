@@ -158,6 +158,44 @@ export class LayersBar {
       };
       row.appendChild(lockBtn);
 
+      // Fixture (workholding) toggle — closed shapes on a fixture layer are clamps
+      // / keep-outs: not machined, and pre-flight flags any move that would hit one.
+      const fixBtn = document.createElement("button");
+      fixBtn.className = "icon-btn";
+      fixBtn.style.padding = "2px";
+      fixBtn.innerHTML = "🗜";
+      fixBtn.style.opacity = layer.fixture ? "1" : "0.35";
+      fixBtn.title = layer.fixture
+        ? "Workholding layer (clamps / keep-outs) — click to make it a normal layer"
+        : "Mark as a workholding (fixture) layer";
+      fixBtn.onclick = () => {
+        this.pushHistory();
+        layer.fixture = !layer.fixture;
+        if (layer.fixture && !(layer.fixtureHeight && layer.fixtureHeight > 0)) layer.fixtureHeight = 20;
+        else if (!layer.fixture) layer.fixtureHeight = undefined;
+        this.doc.emitChange();
+      };
+      row.appendChild(fixBtn);
+
+      // Clamp height (mm above the stock top) — shown only for a fixture layer.
+      if (layer.fixture) {
+        const htInp = document.createElement("input");
+        htInp.type = "number";
+        htInp.min = "0";
+        htInp.step = "1";
+        htInp.value = String(layer.fixtureHeight ?? 20);
+        htInp.className = "dim";
+        htInp.style.width = "42px";
+        htInp.title = "Clamp height above the stock top (mm) — rapids must clear this";
+        htInp.onchange = () => {
+          this.pushHistory();
+          const v = parseFloat(htInp.value);
+          layer.fixtureHeight = Number.isFinite(v) && v > 0 ? v : undefined;
+          this.doc.emitChange();
+        };
+        row.appendChild(htInp);
+      }
+
       // Delete button
       const delBtn = document.createElement("button");
       delBtn.className = "icon-btn danger";

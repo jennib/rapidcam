@@ -1,5 +1,5 @@
 import type { Vec2 } from "../core/vec2";
-import { type CADDocument, resolveOrigin } from "../model/document";
+import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
 import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity } from "../model/entities";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
@@ -1385,6 +1385,7 @@ export function generateGCode(
   const ops = rawOps.map((op) => resolveOpTool(expandOpPatternTargets(op, doc), doc.tools));
 
   const { ox, oy, zOffset } = resolveOrigin(doc);
+  const foot = stockFootprint(doc);
   const pp = getPostProcessor(doc.postProcessor ?? "linuxcnc");
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
@@ -1420,7 +1421,7 @@ export function generateGCode(
     `; Post-processor: ${pp.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}  Z: ${zLabel}`,
-    `; Stock: ${doc.canvas.width} × ${doc.canvas.height} × ${doc.stockThickness}mm`,
+    `; Stock: ${foot.width} × ${foot.height} × ${doc.stockThickness}mm`,
     `; Tools: ${toolSummary}`,
     "G21 ; metric",
     "G90 ; absolute",

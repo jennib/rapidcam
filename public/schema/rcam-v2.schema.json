@@ -33,6 +33,23 @@
       "exclusiveMinimum": 0,
       "description": "Stock thickness in mm. Default 10 if omitted."
     },
+    "stockRect": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number", "description": "Lower-left X of the stock within the work area (canvas), mm." },
+            "y": { "type": "number", "description": "Lower-left Y of the stock within the work area (canvas), mm." },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        { "type": "null" }
+      ],
+      "description": "Optional positioned flat stock blank within the work area (canvas). Omitted/null = the stock fills the work area (legacy). Ignored for a rotary cylinder."
+    },
     "hasToolChanger": {
       "type": "boolean",
       "description": "Whether the machine has an automatic tool changer (emits T/M6). Default false."
@@ -203,7 +220,9 @@
         "name": { "type": "string" },
         "color": { "type": "string", "description": "CSS hex colour, e.g. \"#cdd2da\"." },
         "visible": { "type": "boolean" },
-        "locked": { "type": "boolean" }
+        "locked": { "type": "boolean" },
+        "fixture": { "type": "boolean", "description": "When true, closed shapes on this layer are workholding (clamps/fixtures): not machined, and pre-flight flags any move that would hit one." },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Fixture layers only: clamp height above the stock top, mm. A rapid clears the clamp only above this. Omitted = full-height (blocks any pass)." }
       }
     },
 

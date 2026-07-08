@@ -22,7 +22,8 @@
  */
 
 import type { CADDocument } from "../model/document";
-import { resolveOrigin } from "../model/document";
+import { resolveOrigin, stockFootprint } from "../model/document";
+import { fixturePolygons, type Fixture } from "./fixtures";
 
 export type LintSeverity = "error" | "warning";
 
@@ -43,6 +44,8 @@ export interface LintContext {
   zTop: number;
   /** Emitted Z of the stock bottom (below this cuts into the spoilboard). */
   zBottom: number;
+  /** Workholding keep-outs in emitted (post-origin) coords; empty when none. */
+  fixtures?: Fixture[];
   machineKind: "mill" | "laser";
 }
 
@@ -260,6 +263,67 @@ function checkMissingToolChange(gcode: string): LintFinding | null {
   };
 }
 
+/** Ray-cast point-in-polygon (footprint edges, work/emitted mm). */
+function pointInPoly(x: number, y: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Whether segments AB and CD properly intersect (shared parametric solve). */
+function segCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+  const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (Math.abs(den) < 1e-12) return false;
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/** Whether the segment A→B touches a polygon (endpoint inside, or crosses an edge). */
+function segHitsPoly(ax: number, ay: number, bx: number, by: number, poly: { x: number; y: number }[]): boolean {
+  if (pointInPoly(ax, ay, poly) || pointInPoly(bx, by, poly)) return true;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    if (segCross(ax, ay, bx, by, poly[j].x, poly[j].y, poly[i].x, poly[i].y)) return true;
+  }
+  return false;
+}
+
+/**
+ * ERROR: a move drives the tool over a fixture/clamp footprint at a height that
+ * would hit it. A clamp's top is `zTop + height` above the stock; a move whose
+ * lowest Z sits below that (a cut, or a rapid at a safe-Z shorter than the clamp)
+ * and whose path enters the footprint is a collision.
+ */
+function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
+  const fixtures = ctx.fixtures;
+  if (!fixtures || fixtures.length === 0) return null;
+  let count = 0;
+  let first: number | undefined;
+  for (const m of moves) {
+    const lowZ = Math.min(m.pz, m.z);
+    for (const f of fixtures) {
+      if (lowZ >= ctx.zTop + f.height - EPS) continue; // clears the clamp top
+      if (segHitsPoly(m.px, m.py, m.x, m.y, f.poly)) {
+        count++;
+        if (first === undefined) first = m.line;
+        break;
+      }
+    }
+  }
+  if (count === 0) return null;
+  return {
+    code: "fixture-collision",
+    severity: "error",
+    line: first,
+    message:
+      `${count} move${count > 1 ? "s" : ""} pass over a fixture/clamp (first at line ${first}) below its height — ` +
+      `the tool or holder would hit it. Move the clamp clear of the toolpaths, raise safe Z above the clamp, or keep cuts off it.`,
+  };
+}
+
 /**
  * Lint a generated G-code program against its document-derived context. Returns
  * findings ordered errors-first; an empty array means the program passed.
@@ -275,6 +339,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
     findings.push(checkRapidThroughStock(moves, ctx));
     findings.push(checkOverDeep(moves, ctx));
     findings.push(checkFastPlunge(moves));
+    findings.push(checkFixtures(moves, ctx));
     findings.push(checkMissingToolChange(gcode));
   }
 
@@ -298,15 +363,24 @@ export function buildLintContext(
   } = {},
 ): LintContext {
   const { ox, oy, zOffset } = resolveOrigin(doc);
+  const { width, height } = stockFootprint(doc);
+  // Fixture footprints shifted into emitted (post-origin) coords to match the moves.
+  const fixtures: Fixture[] = doc.machineKind === "laser"
+    ? []
+    : fixturePolygons(doc).map((f) => ({
+        poly: f.poly.map((p) => ({ x: p.x - ox, y: p.y - oy })),
+        height: f.height,
+      }));
   return {
     bounds: {
       xMin: 0 - ox,
-      xMax: doc.canvas.width - ox,
+      xMax: width - ox,
       yMin: 0 - oy,
-      yMax: doc.canvas.height - oy,
+      yMax: height - oy,
     },
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
+    fixtures,
     machineKind: doc.machineKind === "laser" ? "laser" : "mill",
   };
 }

@@ -14,7 +14,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
-import type { CADDocument } from "../model/document";
+import { type CADDocument, stockFootprint } from "../model/document";
 import {
   LineEntity, CircleEntity, RectEntity,
   PolylineEntity, ArcEntity, BezierEntity, TextEntity, RasterImageEntity,
@@ -49,8 +49,7 @@ export interface HeightMap {
 }
 
 export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap {
-  const stockW = doc.canvas.width;
-  const stockH = doc.canvas.height;
+  const { width: stockW, height: stockH } = stockFootprint(doc);
   const stockT = doc.stockThickness;
   const gridW  = Math.ceil(stockW * RES);
   const gridH  = Math.ceil(stockH * RES);
