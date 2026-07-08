@@ -22,7 +22,7 @@
  */
 
 import type { CADDocument } from "../model/document";
-import { resolveOrigin } from "../model/document";
+import { resolveOrigin, stockFootprint } from "../model/document";
 
 export type LintSeverity = "error" | "warning";
 
@@ -298,12 +298,13 @@ export function buildLintContext(
   } = {},
 ): LintContext {
   const { ox, oy, zOffset } = resolveOrigin(doc);
+  const { width, height } = stockFootprint(doc);
   return {
     bounds: {
       xMin: 0 - ox,
-      xMax: doc.canvas.width - ox,
+      xMax: width - ox,
       yMin: 0 - oy,
-      yMax: doc.canvas.height - oy,
+      yMax: height - oy,
     },
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),

@@ -13,7 +13,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import { flattenBezier } from "../core/geom";
-import { type CADDocument, resolveOrigin } from "../model/document";
+import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
 import {
   type Entity,
   LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity,
@@ -558,6 +558,7 @@ export function generateLaserGCode(
   // resolution — laser ops carry their own power/feed, not a tool library entry.)
   const ops = rawOps.map((op) => expandOpPatternTargets(op, doc));
   const { ox, oy } = resolveOrigin(doc); // Z origin is irrelevant for a laser
+  const foot = stockFootprint(doc);
   const post = getLaserPost(doc.postProcessor);
   const maxPower = opts.laserMaxPower;
 
@@ -576,7 +577,7 @@ export function generateLaserGCode(
     `; Laser post-processor: ${post.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}`,
-    `; Stock: ${doc.canvas.width} × ${doc.canvas.height}mm`,
+    `; Stock: ${foot.width} × ${foot.height}mm`,
     "G21 ; metric",
     "G90 ; absolute",
     "G17 ; XY plane",

@@ -25,7 +25,7 @@
  * engrave, v-carve, drill, relief — wraps for free. Mill-only.
  */
 
-import { type CADDocument, resolveOrigin, type RotarySettings } from "../model/document";
+import { type CADDocument, resolveOrigin, stockFootprint, type RotarySettings } from "../model/document";
 import { generateGCode, type GCodeOptions } from "./gcode";
 import { n } from "./postprocessors/base";
 
@@ -38,7 +38,7 @@ export const ARC_TOL_DEFAULT = 0.1;
 export function defaultRotarySettings(doc: CADDocument): RotarySettings {
   // Guess a diameter that would make the design span exactly one wrap on the
   // circumference — the common intent (a label that goes all the way round).
-  const span = doc.canvas.height; // default wrapAxis "y"
+  const span = stockFootprint(doc).height; // default wrapAxis "y"
   // Round the diameter UP to 0.1mm so the circumference is ≥ the span — a design
   // that fills the stock then wraps just under one turn, not just over it (which
   // would immediately trip validateRotary's overlap warning).
@@ -265,7 +265,8 @@ export interface RotaryProgram {
 function rotaryBanner(doc: CADDocument, s: RotarySettings): string {
   const c = circumference(s);
   const lengthAxis = s.wrapAxis === "y" ? "X" : "Y";
-  const span = s.wrapAxis === "y" ? doc.canvas.height : doc.canvas.width;
+  const foot = stockFootprint(doc);
+  const span = s.wrapAxis === "y" ? foot.height : foot.width;
   return [
     `; === Rotary / cylindrical wrap ===`,
     `; Stock: cylinder ⌀${n(s.diameter)}mm  (circumference ${n(c)}mm = 360° on ${s.axisWord})`,
@@ -293,7 +294,8 @@ export function validateRotary(doc: CADDocument): string[] {
     out.push("Cylinder diameter must be greater than 0 — set the rotary stock diameter.");
 
   if (s.diameter > 0) {
-    const span = s.wrapAxis === "y" ? doc.canvas.height : doc.canvas.width;
+    const foot = stockFootprint(doc);
+    const span = s.wrapAxis === "y" ? foot.height : foot.width;
     const turns = span / circumference(s);
     if (turns > 1.0001)
       out.push(`The design spans ${n(wrapAngleDeg(span, s))}° (${n(turns)} turns) around the cylinder — past one full wrap, so the ends overlap. Increase the diameter, or shrink the design along ${s.wrapAxis.toUpperCase()}.`);
