@@ -35,11 +35,94 @@ uniform sampler2D uHeightMap;
 uniform vec2 uTexelSize;  // 1/gridW, 1/gridH
 uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
+uniform vec2 uStockXZ;
 
 in vec2 vUV;
 in float vHeight;
 
 out vec4 fragColor;
+
+// --- Procedural wood grain ---
+
+float hash21(vec2 p) {
+  float h = dot(p, vec2(127.1, 311.7));
+  return fract(sin(h) * 43758.5453123);
+}
+
+// 2D value noise
+float noise2D(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
+    f.y
+  );
+}
+
+// Fractal Brownian motion — multiple octaves of noise stacked
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  vec2 shift = vec2(100.0);
+  for (int i = 0; i < 5; i++) {
+    v += a * noise2D(p);
+    p = p * 2.0 + shift;
+    a *= 0.5;
+  }
+  return v;
+}
+
+// Returns 0..1 where higher = lighter grain line.
+// Produces realistic wood grain with growth rings, earlywood/latewood bands,
+// and subtle medullary ray flecks.
+float woodGrain(vec2 worldXZ) {
+  float x = worldXZ.x;
+  float z = worldXZ.y;
+
+  // ---- Primary growth rings (annual rings) ----
+  // Wide ring spacing: ~8-25mm per ring, wobbled with low-freq noise
+  float ringFreq = 0.28;
+  float ringWobble = fbm(vec2(x * 0.12, z * 0.35)) * 4.5;
+  float rings = sin(z * ringFreq + ringWobble) * 0.5 + 0.5;
+
+  // Add sub-ring banding: dense latewood / porous earlywood variation
+  float latewoodEdge = sin(z * ringFreq * 5.5 + ringWobble * 2.1) * 0.5 + 0.5;
+  latewoodEdge = smoothstep(0.48, 0.52, latewoodEdge);
+
+  // ---- Fine grain lines ----
+  // Lots of tight parallel lines that undulate across the board
+  float fineFreq = 2.8;
+  float fineWobble = fbm(vec2(x * 0.3, z * 0.8)) * 1.8;
+  float fineLines = sin(z * fineFreq + fineWobble) * 0.5 + 0.5;
+
+  // ---- Figure / curl along the length ----
+  // Wavy chatoyance running perpendicular to grain
+  float figure = sin(x * 0.55 + fbm(worldXZ * 0.38) * 3.0) * 0.5 + 0.5;
+
+  // ---- Medullary ray flecks ----
+  // Small bright speckles running radially (across the grain)
+  float rayNoise = fbm(vec2(x * 1.9, z * 0.22));
+  float rays = smoothstep(0.72, 0.78, rayNoise) * 0.35;
+
+  // ---- Cathedral arches (curved grain on quarter/rift sawn faces) ----
+  // Gentle arcs that bow the grain upward, like growth rings of the tree
+  float arch = sin(z * 0.35 + abs(x) * 0.06 + fbm(vec2(x * 0.08, z * 0.15)) * 2.5) * 0.5 + 0.5;
+  float archBlend = smoothstep(80.0, 200.0, abs(x)); // more arch near edges, flat in middle
+
+  // Blend flat grain with arched grain based on distance from centre
+  float ringPattern = mix(rings, arch, archBlend * 0.45);
+
+  // Composite: primary rings + fine lines + figure + rays
+  float result = ringPattern       * 0.50
+               + latewoodEdge      * 0.16
+               + fineLines         * 0.20
+               + figure            * 0.14
+               + rays              * 0.35;  // subtle bright speckles
+
+  return clamp(result, 0.0, 1.0);
+}
 
 void main() {
   // Finite-difference surface normal
@@ -55,54 +138,61 @@ void main() {
 
   // Color based on how much material was REMOVED from the top.
   // depthFrac = 0 → uncut surface; depthFrac = 1 → cut all the way through.
-  // This makes even shallow pockets read as bright machined wood against the
-  // darker uncut surface, regardless of stock thickness.
   float cutDepth  = uStockT - vHeight;
   float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
 
   vec3 deep     = vec3(0.05, 0.025, 0.008); // dark shadow at base of deep cuts
   vec3 machined = vec3(0.82, 0.63,  0.32);  // bright fresh-cut wood
-  vec3 uncut    = vec3(0.38, 0.24,  0.08);  // natural top surface — noticeably darker
+  vec3 uncut    = vec3(0.38, 0.24,  0.08);  // natural top surface
 
   vec3 baseColor;
   if (depthFrac < 0.005) {
-    // Uncut surface
     baseColor = uncut;
   } else if (depthFrac < 0.08) {
-    // Transition from uncut to machined at the very start of a cut
     baseColor = mix(uncut, machined, depthFrac / 0.08);
   } else if (depthFrac < 0.80) {
-    // Machined floor — constant bright wood; gentle darkening toward deep
     baseColor = mix(machined, machined * 0.7, smoothstep(0.08, 0.80, depthFrac));
   } else {
-    // Deep cuts: darken toward shadow
     baseColor = mix(machined * 0.7, deep, smoothstep(0.80, 1.0, depthFrac));
   }
 
-  // Three-light rig — key from upper-right-front, fill from upper-left-back, top bounce.
-  // Lights are in the same Y-up world space as the mesh normal.
-  vec3 L1 = normalize(vec3( 0.6,  1.4,  0.8));
-  vec3 L2 = normalize(vec3(-0.8,  1.0, -0.5));
-  vec3 L3 = normalize(vec3( 0.1,  1.0,  0.3));
+  // Wood grain modulation — reconstruct world XZ from UV
+  float wx = (vUV.x - 0.5) * uStockXZ.x;
+  float wz = (0.5 - vUV.y) * uStockXZ.y;
+  float grain = woodGrain(vec2(wx, wz));
+  // Subtle tint: keep the base albedo, let grain darken/lighten it gently.
+  baseColor = baseColor * (0.86 + grain * 0.24);
+
+  // Three-light rig with specular highlight
+  vec3 L1 = normalize(vec3( 0.6,  1.4,  0.8));  // key: upper-right-front
+  vec3 L2 = normalize(vec3(-0.8,  1.0, -0.5));  // fill: upper-left-back
+  vec3 L3 = normalize(vec3( 0.1,  1.0,  0.3));  // bounce: above
 
   float d1 = max(dot(normal, L1), 0.0);
   float d2 = max(dot(normal, L2), 0.0);
   float d3 = max(dot(normal, L3), 0.0);
 
-  float light = 0.28               // ambient — lower for more contrast
-              + d1 * 0.82          // key
-              + d2 * 0.32          // fill
-              + d3 * 0.20;         // bounce
+  // Blinn-Phong specular (view from above-front, typical orbit angle).
+  // Kept low and tight so it reads as a soft sheen, not a hard glint on the
+  // stair-stepped raster walls.
+  vec3 viewDir = normalize(vec3(0.35, 1.0, 0.55));
+  vec3 halfVec = normalize(L1 + viewDir);
+  float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
+
+  float light = 0.24               // ambient
+              + d1 * 0.86          // key
+              + d2 * 0.28          // fill
+              + d3 * 0.18          // bounce
+              + spec * 0.12;       // specular
 
   vec3 col = baseColor * light;
 
-  // Gamma correction: linear → sRGB so the display looks correct.
+  // Gamma correction: linear → sRGB
   col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
 
-  // Edge highlight: cut walls have large height gradients — add a warm rim
-  // so shallow cuts read clearly. Lower threshold catches finer detail.
+  // Edge highlight: cut walls catch warm rim light
   float gradMag = length(vec2(gradX, gradZ));
-  float edge = smoothstep(0.4, 4.0, gradMag) * 0.55;
+  float edge = smoothstep(0.6, 5.0, gradMag) * 0.38;
   col = clamp(col + vec3(edge * 0.88, edge * 0.72, edge * 0.45), 0.0, 1.0);
 
   fragColor = vec4(col, 1.0);
@@ -119,8 +209,8 @@ function mat4(): Mat4 { return new Float32Array(16); }
 function perspective(m: Mat4, fovY: number, aspect: number, near: number, far: number): Mat4 {
   const f = 1 / Math.tan(fovY / 2);
   m.fill(0);
-  m[0]  = f / aspect;
-  m[5]  = f;
+  m[0] = f / aspect;
+  m[5] = f;
   m[10] = (far + near) / (near - far);
   m[11] = -1;
   m[14] = (2 * far * near) / (near - far);
@@ -129,23 +219,23 @@ function perspective(m: Mat4, fovY: number, aspect: number, near: number, far: n
 
 function lookAt(m: Mat4, eye: number[], center: number[], up: number[]): Mat4 {
   const fx = center[0] - eye[0], fy = center[1] - eye[1], fz = center[2] - eye[2];
-  const fl = Math.sqrt(fx*fx + fy*fy + fz*fz);
-  const f0 = fx/fl, f1 = fy/fl, f2 = fz/fl;
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz);
+  const f0 = fx / fl, f1 = fy / fl, f2 = fz / fl;
 
-  const s0 = f1*up[2] - f2*up[1];
-  const s1 = f2*up[0] - f0*up[2];
-  const s2 = f0*up[1] - f1*up[0];
-  const sl = Math.sqrt(s0*s0 + s1*s1 + s2*s2);
-  const sx = s0/sl, sy = s1/sl, sz = s2/sl;
+  const s0 = f1 * up[2] - f2 * up[1];
+  const s1 = f2 * up[0] - f0 * up[2];
+  const s2 = f0 * up[1] - f1 * up[0];
+  const sl = Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2);
+  const sx = s0 / sl, sy = s1 / sl, sz = s2 / sl;
 
-  const u0 = sy*f2 - sz*f1;
-  const u1 = sz*f0 - sx*f2;
-  const u2 = sx*f1 - sy*f0;
+  const u0 = sy * f2 - sz * f1;
+  const u1 = sz * f0 - sx * f2;
+  const u2 = sx * f1 - sy * f0;
 
-  m[ 0] = sx;  m[ 4] = sy;  m[ 8] = sz;  m[12] = -(sx*eye[0] + sy*eye[1] + sz*eye[2]);
-  m[ 1] = u0;  m[ 5] = u1;  m[ 9] = u2;  m[13] = -(u0*eye[0] + u1*eye[1] + u2*eye[2]);
-  m[ 2] = -f0; m[ 6] = -f1; m[10] = -f2; m[14] = f0*eye[0]  + f1*eye[1]  + f2*eye[2];
-  m[ 3] = 0;   m[ 7] = 0;   m[11] = 0;   m[15] = 1;
+  m[0] = sx; m[4] = sy; m[8] = sz; m[12] = -(sx * eye[0] + sy * eye[1] + sz * eye[2]);
+  m[1] = u0; m[5] = u1; m[9] = u2; m[13] = -(u0 * eye[0] + u1 * eye[1] + u2 * eye[2]);
+  m[2] = -f0; m[6] = -f1; m[10] = -f2; m[14] = f0 * eye[0] + f1 * eye[1] + f2 * eye[2];
+  m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
   return m;
 }
 
@@ -153,8 +243,8 @@ function mul4(out: Mat4, a: Mat4, b: Mat4): Mat4 {
   for (let i = 0; i < 4; i++) {
     for (let j = 0; j < 4; j++) {
       let s = 0;
-      for (let k = 0; k < 4; k++) s += a[k*4+i] * b[j*4+k];
-      out[j*4+i] = s;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + i] * b[j * 4 + k];
+      out[j * 4 + i] = s;
     }
   }
   return out;
@@ -163,25 +253,25 @@ function mul4(out: Mat4, a: Mat4, b: Mat4): Mat4 {
 /** Invert a 4×4 matrix (column-major). Returns null if singular. */
 function inv4(m: Mat4): Mat4 | null {
   const o = new Float32Array(16);
-  const m00=m[0],m10=m[1],m20=m[2],m30=m[3];
-  const m01=m[4],m11=m[5],m21=m[6],m31=m[7];
-  const m02=m[8],m12=m[9],m22=m[10],m32=m[11];
-  const m03=m[12],m13=m[13],m23=m[14],m33=m[15];
-  const b00=m00*m11-m10*m01, b01=m00*m21-m20*m01, b02=m00*m31-m30*m01;
-  const b03=m10*m21-m20*m11, b04=m10*m31-m30*m11, b05=m20*m31-m30*m21;
-  const b06=m02*m13-m12*m03, b07=m02*m23-m22*m03, b08=m02*m33-m32*m03;
-  const b09=m12*m23-m22*m13, b10=m12*m33-m32*m13, b11=m22*m33-m32*m23;
-  const det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;
+  const m00 = m[0], m10 = m[1], m20 = m[2], m30 = m[3];
+  const m01 = m[4], m11 = m[5], m21 = m[6], m31 = m[7];
+  const m02 = m[8], m12 = m[9], m22 = m[10], m32 = m[11];
+  const m03 = m[12], m13 = m[13], m23 = m[14], m33 = m[15];
+  const b00 = m00 * m11 - m10 * m01, b01 = m00 * m21 - m20 * m01, b02 = m00 * m31 - m30 * m01;
+  const b03 = m10 * m21 - m20 * m11, b04 = m10 * m31 - m30 * m11, b05 = m20 * m31 - m30 * m21;
+  const b06 = m02 * m13 - m12 * m03, b07 = m02 * m23 - m22 * m03, b08 = m02 * m33 - m32 * m03;
+  const b09 = m12 * m23 - m22 * m13, b10 = m12 * m33 - m32 * m13, b11 = m22 * m33 - m32 * m23;
+  const det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
   if (Math.abs(det) < 1e-14) return null;
   const id = 1 / det;
-  o[0] =( m11*b11-m21*b10+m31*b09)*id; o[1] =(-m10*b11+m20*b10-m30*b09)*id;
-  o[2] =( m13*b05-m23*b04+m33*b03)*id; o[3] =(-m12*b05+m22*b04-m32*b03)*id;
-  o[4] =(-m01*b11+m21*b08-m31*b07)*id; o[5] =( m00*b11-m20*b08+m30*b07)*id;
-  o[6] =(-m03*b05+m23*b02-m33*b01)*id; o[7] =( m02*b05-m22*b02+m32*b01)*id;
-  o[8] =( m01*b10-m11*b08+m31*b06)*id; o[9] =(-m00*b10+m10*b08-m30*b06)*id;
-  o[10]=( m03*b04-m13*b02+m33*b00)*id; o[11]=(-m02*b04+m12*b02-m32*b00)*id;
-  o[12]=(-m01*b09+m11*b07-m21*b06)*id; o[13]=( m00*b09-m10*b07+m20*b06)*id;
-  o[14]=(-m03*b03+m13*b01-m23*b00)*id; o[15]=( m02*b03-m12*b01+m22*b00)*id;
+  o[0] = (m11 * b11 - m21 * b10 + m31 * b09) * id; o[1] = (-m10 * b11 + m20 * b10 - m30 * b09) * id;
+  o[2] = (m13 * b05 - m23 * b04 + m33 * b03) * id; o[3] = (-m12 * b05 + m22 * b04 - m32 * b03) * id;
+  o[4] = (-m01 * b11 + m21 * b08 - m31 * b07) * id; o[5] = (m00 * b11 - m20 * b08 + m30 * b07) * id;
+  o[6] = (-m03 * b05 + m23 * b02 - m33 * b01) * id; o[7] = (m02 * b05 - m22 * b02 + m32 * b01) * id;
+  o[8] = (m01 * b10 - m11 * b08 + m31 * b06) * id; o[9] = (-m00 * b10 + m10 * b08 - m30 * b06) * id;
+  o[10] = (m03 * b04 - m13 * b02 + m33 * b00) * id; o[11] = (-m02 * b04 + m12 * b02 - m32 * b00) * id;
+  o[12] = (-m01 * b09 + m11 * b07 - m21 * b06) * id; o[13] = (m00 * b09 - m10 * b07 + m20 * b06) * id;
+  o[14] = (-m03 * b03 + m13 * b01 - m23 * b00) * id; o[15] = (m02 * b03 - m12 * b01 + m22 * b00) * id;
   return o;
 }
 
@@ -198,19 +288,19 @@ function unprojectToY(
   if (!invMVP) return null;
 
   // Two NDC points on the ray (near and far)
-  const ndcX =  (px / canvasW) * 2 - 1;
+  const ndcX = (px / canvasW) * 2 - 1;
   const ndcY = -(py / canvasH) * 2 + 1; // flip Y: CSS y=0 is top
 
   const unproj = (ndcZ: number): [number, number, number] => {
-    const ix = invMVP[0]*ndcX + invMVP[4]*ndcY + invMVP[8]*ndcZ  + invMVP[12];
-    const iy = invMVP[1]*ndcX + invMVP[5]*ndcY + invMVP[9]*ndcZ  + invMVP[13];
-    const iz = invMVP[2]*ndcX + invMVP[6]*ndcY + invMVP[10]*ndcZ + invMVP[14];
-    const iw = invMVP[3]*ndcX + invMVP[7]*ndcY + invMVP[11]*ndcZ + invMVP[15];
-    return [ix/iw, iy/iw, iz/iw];
+    const ix = invMVP[0] * ndcX + invMVP[4] * ndcY + invMVP[8] * ndcZ + invMVP[12];
+    const iy = invMVP[1] * ndcX + invMVP[5] * ndcY + invMVP[9] * ndcZ + invMVP[13];
+    const iz = invMVP[2] * ndcX + invMVP[6] * ndcY + invMVP[10] * ndcZ + invMVP[14];
+    const iw = invMVP[3] * ndcX + invMVP[7] * ndcY + invMVP[11] * ndcZ + invMVP[15];
+    return [ix / iw, iy / iw, iz / iw];
   };
 
   const near = unproj(-1);
-  const far  = unproj( 1);
+  const far = unproj(1);
   const dy = far[1] - near[1];
   if (Math.abs(dy) < 1e-6) return null; // ray parallel to plane
   const t = (targetY - near[1]) / dy;
@@ -232,30 +322,114 @@ function unprojectToY(
 const VERT_BOX = `#version 300 es
 precision highp float;
 uniform mat4 uMVP;
+uniform vec2 uStockXZ;
 in vec3 aPos;
 in vec3 aNorm;
 out vec3 vNorm;
+out vec2 vWorldXZ;
 void main() {
   vNorm = aNorm;
+  vWorldXZ = aPos.xz;
   gl_Position = uMVP * vec4(aPos, 1.0);
 }`;
 
 const FRAG_BOX = `#version 300 es
 precision highp float;
+
+uniform vec2 uStockXZ;
+
 in vec3 vNorm;
+in vec2 vWorldXZ;
 out vec4 fragColor;
+
+float hash21(vec2 p) {
+  float h = dot(p, vec2(127.1, 311.7));
+  return fract(sin(h) * 43758.5453123);
+}
+
+float noise2D(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
+    f.y
+  );
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  vec2 shift = vec2(100.0);
+  for (int i = 0; i < 5; i++) {
+    v += a * noise2D(p);
+    p = p * 2.0 + shift;
+    a *= 0.5;
+  }
+  return v;
+}
+
+float woodGrain(vec2 worldXZ) {
+  float x = worldXZ.x;
+  float z = worldXZ.y;
+
+  float ringFreq = 0.28;
+  float ringWobble = fbm(vec2(x * 0.12, z * 0.35)) * 4.5;
+  float rings = sin(z * ringFreq + ringWobble) * 0.5 + 0.5;
+
+  float latewoodEdge = sin(z * ringFreq * 5.5 + ringWobble * 2.1) * 0.5 + 0.5;
+  latewoodEdge = smoothstep(0.48, 0.52, latewoodEdge);
+
+  float fineFreq = 2.8;
+  float fineWobble = fbm(vec2(x * 0.3, z * 0.8)) * 1.8;
+  float fineLines = sin(z * fineFreq + fineWobble) * 0.5 + 0.5;
+
+  float figure = sin(x * 0.55 + fbm(worldXZ * 0.38) * 3.0) * 0.5 + 0.5;
+
+  float rayNoise = fbm(vec2(x * 1.9, z * 0.22));
+  float rays = smoothstep(0.72, 0.78, rayNoise) * 0.35;
+
+  float arch = sin(z * 0.35 + abs(x) * 0.06 + fbm(vec2(x * 0.08, z * 0.15)) * 2.5) * 0.5 + 0.5;
+  float archBlend = smoothstep(80.0, 200.0, abs(x));
+
+  float ringPattern = mix(rings, arch, archBlend * 0.45);
+
+  float result = ringPattern       * 0.44
+               + latewoodEdge      * 0.18
+               + fineLines         * 0.22
+               + figure            * 0.10
+               + rays              * 1.0;
+
+  return clamp(result, 0.0, 1.0);
+}
+
 void main() {
   vec3 base = vec3(0.82, 0.68, 0.38);
+  // Modulate with wood grain
+  float grain = woodGrain(vWorldXZ);
+  base = base * (0.68 + grain * 0.64);
+
+  // Improved lighting matching the top-surface shader
   vec3 L1 = normalize(vec3(0.6, 1.0, 0.4));
-  vec3 L2 = normalize(vec3(-0.3, 0.8, -0.5));
+  vec3 L2 = normalize(vec3(-0.8, 1.0, -0.5));
   vec3 n = normalize(vNorm);
-  float d = max(dot(n, L1), 0.0) * 0.65 + max(dot(n, L2), 0.0) * 0.25 + 0.25;
+
+  float d1 = max(dot(n, L1), 0.0);
+  float d2 = max(dot(n, L2), 0.0);
+
+  // Blinn-Phong specular
+  vec3 viewDir = normalize(vec3(0.35, 1.0, 0.55));
+  vec3 halfVec = normalize(L1 + viewDir);
+  float spec = pow(max(dot(n, halfVec), 0.0), 48.0);
+
+  float d = 0.22 + d1 * 0.75 + d2 * 0.22 + spec * 0.28;
   fragColor = vec4(pow(clamp(base * d, 0.0, 1.0), vec3(1.0/2.2)), 1.0);
 }`;
 
-const DEFAULT_YAW   = Math.PI / 4;
+const DEFAULT_YAW = Math.PI / 4;
 const DEFAULT_PITCH = Math.atan(1 / Math.sqrt(2)); // ~35.26° isometric
-const DEFAULT_ZOOM  = 1.0;
+const DEFAULT_ZOOM = 1.0;
 
 export class WebGLPreview {
   private canvas: HTMLCanvasElement;
@@ -278,11 +452,11 @@ export class WebGLPreview {
   private stockT = 0;
 
   // Orbit state
-  private yaw   = DEFAULT_YAW;
+  private yaw = DEFAULT_YAW;
   private pitch = DEFAULT_PITCH;
-  private zoom  = DEFAULT_ZOOM;
+  private zoom = DEFAULT_ZOOM;
   private dragging = false;
-  private panning  = false;
+  private panning = false;
   private lastMx = 0;
   private lastMy = 0;
   // Pan offset applied to the camera target (world-space)
@@ -311,9 +485,9 @@ export class WebGLPreview {
     if (!gl) { this.showError("WebGL 2 not supported in this browser."); return; }
     this.gl = gl;
 
-    this.program    = this.buildProgram(VERT, FRAG);
+    this.program = this.buildProgram(VERT, FRAG);
     this.boxProgram = this.buildProgram(VERT_BOX, FRAG_BOX);
-    this.heightTex  = this.createHeightTexture();
+    this.heightTex = this.createHeightTexture();
     this.bindOrbitControls();
 
     new ResizeObserver(() => this.handleResize()).observe(host);
@@ -325,16 +499,16 @@ export class WebGLPreview {
     if (!gl) return;
 
     const needsMesh = this.indexCount === 0 || this.gridW !== hm.gridW || this.gridH !== hm.gridH;
-    const needsBox  = this.boxVAO === null || hm.stockW !== this.stockW || hm.stockH !== this.stockH || hm.stockT !== this.stockT;
+    const needsBox = this.boxVAO === null || hm.stockW !== this.stockW || hm.stockH !== this.stockH || hm.stockT !== this.stockT;
 
-    this.gridW  = hm.gridW;
-    this.gridH  = hm.gridH;
+    this.gridW = hm.gridW;
+    this.gridH = hm.gridH;
     this.stockW = hm.stockW;
     this.stockH = hm.stockH;
     this.stockT = hm.stockT;
 
     if (needsMesh) this.buildMesh(hm.gridW, hm.gridH);
-    if (needsBox)  this.buildBoxMesh();
+    if (needsBox) this.buildBoxMesh();
 
     // Upload height data as R32F texture
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
@@ -357,12 +531,12 @@ export class WebGLPreview {
   }
 
   resetView(): void {
-    this.yaw   = DEFAULT_YAW;
+    this.yaw = DEFAULT_YAW;
     this.pitch = DEFAULT_PITCH;
-    this.zoom  = DEFAULT_ZOOM;
-    this.panX  = 0;
-    this.panY  = 0;
-    this.panZ  = 0;
+    this.zoom = DEFAULT_ZOOM;
+    this.panX = 0;
+    this.panY = 0;
+    this.panZ = 0;
     this.draw();
   }
 
@@ -374,7 +548,7 @@ export class WebGLPreview {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width  = Math.round(w * dpr);
+    this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
     if (this.gl) {
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -434,23 +608,23 @@ export class WebGLPreview {
     const gl = this.gl;
     const hw = this.stockW / 2;
     const hd = this.stockH / 2;
-    const t  = this.stockT;
+    const t = this.stockT;
 
     // Interleaved: [x,y,z, nx,ny,nz] per vertex; 5 faces (no top — height map is the top)
     const verts: number[] = [];
     const idx: number[] = [];
 
-    const addFace = (corners: [number,number,number][], norm: [number,number,number]) => {
+    const addFace = (corners: [number, number, number][], norm: [number, number, number]) => {
       const base = verts.length / 6;
       for (const [x, y, z] of corners) verts.push(x, y, z, ...norm);
-      idx.push(base, base+1, base+2, base, base+2, base+3);
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     };
 
-    addFace([[-hw,0,-hd],[hw,0,-hd],[hw,0,hd],[-hw,0,hd]],   [0,-1,0]); // bottom
-    addFace([[-hw,0,hd],[hw,0,hd],[hw,t,hd],[-hw,t,hd]],      [0,0,1]);  // front
-    addFace([[hw,0,-hd],[-hw,0,-hd],[-hw,t,-hd],[hw,t,-hd]],  [0,0,-1]); // back
-    addFace([[-hw,0,-hd],[-hw,0,hd],[-hw,t,hd],[-hw,t,-hd]], [-1,0,0]); // left
-    addFace([[hw,0,hd],[hw,0,-hd],[hw,t,-hd],[hw,t,hd]],       [1,0,0]); // right
+    addFace([[-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd]], [0, -1, 0]); // bottom
+    addFace([[-hw, 0, hd], [hw, 0, hd], [hw, t, hd], [-hw, t, hd]], [0, 0, 1]);  // front
+    addFace([[hw, 0, -hd], [-hw, 0, -hd], [-hw, t, -hd], [hw, t, -hd]], [0, 0, -1]); // back
+    addFace([[-hw, 0, -hd], [-hw, 0, hd], [-hw, t, hd], [-hw, t, -hd]], [-1, 0, 0]); // left
+    addFace([[hw, 0, hd], [hw, 0, -hd], [hw, t, -hd], [hw, t, hd]], [1, 0, 0]); // right
 
     if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
     this.boxVAO = gl.createVertexArray()!;
@@ -465,10 +639,10 @@ export class WebGLPreview {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
 
     const stride = 6 * 4;
-    const aPos  = gl.getAttribLocation(this.boxProgram, "aPos");
+    const aPos = gl.getAttribLocation(this.boxProgram, "aPos");
     const aNorm = gl.getAttribLocation(this.boxProgram, "aNorm");
     gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos,  3, gl.FLOAT, false, stride, 0);
+    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(aNorm);
     gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, stride, 3 * 4);
 
@@ -502,7 +676,7 @@ export class WebGLPreview {
     gl.useProgram(this.program);
 
     // Camera
-    const diag = Math.sqrt(this.stockW**2 + this.stockH**2 + this.stockT**2);
+    const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
     const baseDist = diag * 1.4;
     const dist = baseDist / this.zoom;
     const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
@@ -525,14 +699,16 @@ export class WebGLPreview {
     };
     gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "uMVP"), false, MVP);
     set("uStockXZ", this.stockW, this.stockH);
-    set("uStockT",  this.stockT);
+    set("uStockT", this.stockT);
     set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
-    set("uCellMM",  this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
+    set("uCellMM", this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
 
     // Draw stock box (bottom + 4 sides) first so depth test closes the solid
     if (this.boxVAO && this.boxIndexCount > 0) {
       gl.useProgram(this.boxProgram);
       gl.uniformMatrix4fv(gl.getUniformLocation(this.boxProgram, "uMVP"), false, MVP);
+      const stockXZLoc = gl.getUniformLocation(this.boxProgram, "uStockXZ");
+      if (stockXZLoc) gl.uniform2f(stockXZLoc, this.stockW, this.stockH);
       gl.bindVertexArray(this.boxVAO);
       gl.drawElements(gl.TRIANGLES, this.boxIndexCount, gl.UNSIGNED_SHORT, 0);
       gl.bindVertexArray(null);
@@ -542,9 +718,9 @@ export class WebGLPreview {
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "uMVP"), false, MVP);
     set("uStockXZ", this.stockW, this.stockH);
-    set("uStockT",  this.stockT);
+    set("uStockT", this.stockT);
     set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
-    set("uCellMM",  this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
+    set("uCellMM", this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
     gl.uniform1i(gl.getUniformLocation(this.program, "uHeightMap"), 0);
@@ -580,18 +756,18 @@ export class WebGLPreview {
       this.lastMy = e.clientY;
 
       if (this.dragging) {
-        this.yaw   -= dx * 0.006;
-        this.pitch  = Math.max(0.08, Math.min(Math.PI / 2 - 0.05, this.pitch + dy * 0.006));
+        this.yaw -= dx * 0.006;
+        this.pitch = Math.max(0.08, Math.min(Math.PI / 2 - 0.05, this.pitch + dy * 0.006));
       } else {
         // Pan: translate target in camera right/up directions.
         // right = (cos(yaw), 0, -sin(yaw))
         // up    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch))
-        const diag     = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-        const dist     = diag * 1.4 / this.zoom;
-        const speed    = dist / (this.canvas.height || 1);
+        const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+        const dist = diag * 1.4 / this.zoom;
+        const speed = dist / (this.canvas.height || 1);
         const ry = this.yaw, rp = this.pitch;
-        const rightX =  Math.cos(ry),                         rightZ = -Math.sin(ry);
-        const upX    = -Math.sin(ry) * Math.sin(rp), upY = Math.cos(rp), upZ = -Math.cos(ry) * Math.sin(rp);
+        const rightX = Math.cos(ry), rightZ = -Math.sin(ry);
+        const upX = -Math.sin(ry) * Math.sin(rp), upY = Math.cos(rp), upZ = -Math.cos(ry) * Math.sin(rp);
         this.panX -= dx * speed * rightX;
         this.panZ -= dx * speed * rightZ;
         this.panX += dy * speed * upX;
@@ -615,24 +791,24 @@ export class WebGLPreview {
 
     c.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const factor  = e.deltaY > 0 ? 0.92 : 1.0 / 0.92;
+      const factor = e.deltaY > 0 ? 0.92 : 1.0 / 0.92;
       const newZoom = Math.max(0.15, Math.min(8, this.zoom * factor));
       if (newZoom === this.zoom) return;
 
       // Zoom toward the point under the cursor on the stock top face (Y = stockT).
       // Build the current MVP before applying the zoom change.
-      const diag     = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-      const dist     = diag * 1.4 / this.zoom;
-      const target   = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
-      const eye      = [
+      const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+      const dist = diag * 1.4 / this.zoom;
+      const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
+      const eye = [
         target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
         target[1] + dist * Math.sin(this.pitch),
         target[2] + dist * Math.cos(this.pitch) * Math.cos(this.yaw),
       ];
-      const cssW  = this.host.clientWidth  || 1;
-      const cssH  = this.host.clientHeight || 1;
-      const V   = mat4(); lookAt(V, eye, target, [0, 1, 0]);
-      const P   = mat4(); perspective(P, 0.6, cssW / cssH, 0.1, diag * 10);
+      const cssW = this.host.clientWidth || 1;
+      const cssH = this.host.clientHeight || 1;
+      const V = mat4(); lookAt(V, eye, target, [0, 1, 0]);
+      const P = mat4(); perspective(P, 0.6, cssW / cssH, 0.1, diag * 10);
       const MVP = mat4(); mul4(MVP, P, V);
 
       const hit = unprojectToY(e.offsetX, e.offsetY, cssW, cssH, MVP, this.stockT);
