@@ -292,10 +292,11 @@ function segHitsPoly(ax: number, ay: number, bx: number, by: number, poly: { x: 
 }
 
 /**
- * ERROR: a move drives the tool over a fixture/clamp footprint at a height that
- * would hit it. A clamp's top is `zTop + height` above the stock; a move whose
- * lowest Z sits below that (a cut, or a rapid at a safe-Z shorter than the clamp)
- * and whose path enters the footprint is a collision.
+ * ERROR: the toolpath crosses a fixture/clamp footprint at a height that would hit
+ * it. A clamp's top is `zTop + height` above the stock; a move whose lowest Z sits
+ * below that (a cut, or a rapid at a safe-Z shorter than the clamp) and whose path
+ * enters the footprint is a collision. This tests the tool's *path* only — the
+ * holder/collet is intentionally not modelled.
  */
 function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
   const fixtures = ctx.fixtures;
@@ -319,8 +320,8 @@ function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
     severity: "error",
     line: first,
     message:
-      `${count} move${count > 1 ? "s" : ""} pass over a fixture/clamp (first at line ${first}) below its height — ` +
-      `the tool or holder would hit it. Move the clamp clear of the toolpaths, raise safe Z above the clamp, or keep cuts off it.`,
+      `The toolpath crosses the workholding: ${count} move${count > 1 ? "s" : ""} take the tool over a fixture/clamp ` +
+      `(first at line ${first}) below the clamp height. Move the clamp clear of the toolpaths, raise safe Z above the clamp, or keep cuts off it.`,
   };
 }
 

@@ -272,6 +272,7 @@ export class App {
         this.flipPreview = p;
         this.requestRender();
       },
+      () => this.project.currentFileName,
     );
     new VariablesBar(dom.variablesbar, this.doc, () => this.onVariablesChanged(), this.project.pushHistory);
 
