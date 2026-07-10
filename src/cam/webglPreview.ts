@@ -1030,7 +1030,13 @@ export class WebGLPreview {
 
       if (this.dragging) {
         this.yaw -= dx * 0.006;
-        this.pitch = Math.max(0.08, Math.min(Math.PI / 2 - 0.05, this.pitch + dy * 0.006));
+        // Flat stock is machined from the top, so orbit stays in the upper
+        // hemisphere. A cylinder is cut all the way around, so let the camera go
+        // below the horizon to inspect the underside — stopping just shy of ±90°
+        // to avoid the look-straight-down gimbal (up-vector degeneracy).
+        const limit = Math.PI / 2 - 0.05;
+        const minPitch = this.rotary ? -limit : 0.08;
+        this.pitch = Math.max(minPitch, Math.min(limit, this.pitch + dy * 0.006));
       } else {
         // Pan: translate target in camera right/up directions.
         // right = (cos(yaw), 0, -sin(yaw))
