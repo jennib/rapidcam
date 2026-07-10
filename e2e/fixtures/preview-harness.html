@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WebGL preview harness</title>
+  <style>
+    html, body { margin: 0; background: #1e2024; }
+    /* Fixed size → deterministic backing store for screenshot comparison. */
+    #host { width: 640px; height: 480px; position: relative; }
+  </style>
+</head>
+<body>
+  <div id="host"></div>
+  <script type="module">
+    import { WebGLPreview } from "/src/cam/webglPreview.ts";
+
+    // Build a synthetic height map with a rotated rectangular pocket (vertical
+    // walls) plus a few diagonal grooves. The walls run at an angle to the raster
+    // grid — the worst case for stair-stepping — so a regression that reintroduces
+    // crenellation is plainly visible in the rendered frame.
+    window.__renderPreview = (opts = {}) => {
+      const { stockW = 120, stockH = 80, stockT = 12, angleDeg = 25, RES = 4 } = opts;
+      const gridW = Math.ceil(stockW * RES), gridH = Math.ceil(stockH * RES);
+      const data = new Float32Array(gridW * gridH).fill(stockT);
+      const cx = stockW / 2, cy = stockH / 2;
+      const a = angleDeg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+
+      const carve = (hw, hh, depth) => {
+        const floor = stockT - depth;
+        for (let r = 0; r < gridH; r++) {
+          for (let c = 0; c < gridW; c++) {
+            const x = c / (gridW - 1) * stockW - cx;
+            const y = r / (gridH - 1) * stockH - cy;
+            const lx = x * ca + y * sa, ly = -x * sa + y * ca;
+            if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) {
+              const i = r * gridW + c;
+              if (floor < data[i]) data[i] = floor;
+            }
+          }
+        }
+      };
+      carve(34, 19, 6); // main pocket
+      for (let r = 0; r < gridH; r++) {
+        for (let c = 0; c < gridW; c++) {
+          const x = c / (gridW - 1) * stockW - cx;
+          const y = r / (gridH - 1) * stockH - cy;
+          const lx = x * ca + y * sa, ly = -x * sa + y * ca;
+          if (Math.abs(ly) < 15 && Math.abs(((lx + 60) % 12) - 6) < 1.2) {
+            const i = r * gridW + c;
+            data[i] = Math.min(data[i], stockT - 9); // engraved grooves
+          }
+        }
+      }
+
+      const host = document.getElementById("host");
+      host.querySelectorAll("canvas,button,.webgl-status").forEach((n) => n.remove());
+      try {
+        const p = new WebGLPreview(host);
+        p.render({ data, gridW, gridH, stockW, stockH, stockT });
+        // Grab the frame *synchronously*, in the same task as the draw, so the
+        // WebGL drawing buffer is still intact (the context has no
+        // preserveDrawingBuffer, so it is cleared once we yield). Screenshotting
+        // this static <img> is deterministic and immune to compositor timing.
+        const canvas = host.querySelector("canvas");
+        const url = canvas.toDataURL("image/png");
+        let img = document.getElementById("preview-shot");
+        if (!img) {
+          img = document.createElement("img");
+          img.id = "preview-shot";
+          img.style.cssText = "display:block;width:640px;height:480px;";
+          document.body.appendChild(img);
+        }
+        host.style.display = "none";
+        img.src = url;
+        return true;
+      } catch (e) {
+        window.__err = String((e && e.message) || e);
+        return false;
+      }
+    };
+
+    window.__harnessReady = true;
+  </script>
+</body>
+</html>
