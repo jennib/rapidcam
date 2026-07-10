@@ -5,18 +5,36 @@ import { PolylineEntity, RectEntity } from "../src/model/entities";
 import type { CAMOperation } from "../src/cam/types";
 
 const profileOp = (entityIds: string[], over: Partial<CAMOperation> = {}): CAMOperation => ({
-  id: "p1", name: "prof", type: "profile", side: "outside", entityIds,
-  toolType: "end-mill", toolNumber: 1, diameter: 6,
-  feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-  safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4, ...over,
+  id: "p1",
+  name: "prof",
+  type: "profile",
+  side: "outside",
+  entityIds,
+  toolType: "end-mill",
+  toolNumber: 1,
+  diameter: 6,
+  feedrate: 1000,
+  plungeRate: 300,
+  spindleSpeed: 18000,
+  safeZ: 5,
+  depth: -2,
+  stepdown: 2,
+  stepover: 0.4,
+  ...over,
 });
 
 // Walk the program, tracking the current XY, and reconstruct every G2/G3 arc:
 // centre = current + (I,J); endpoint = (X,Y). Returns centres + endpoint radii.
-function arcsOf(gcode: string): { centres: { x: number; y: number }[]; endRadii: number[]; arcCount: number } {
+function arcsOf(gcode: string): {
+  centres: { x: number; y: number }[];
+  endRadii: number[];
+  arcCount: number;
+} {
   const centres: { x: number; y: number }[] = [];
   const endRadii: number[] = [];
-  let cx = 0, cy = 0, arcCount = 0;
+  let cx = 0,
+    cy = 0,
+    arcCount = 0;
   for (const line of gcode.split("\n")) {
     const mx = line.match(/X(-?\d+(?:\.\d+)?)/);
     const my = line.match(/Y(-?\d+(?:\.\d+)?)/);
@@ -26,7 +44,8 @@ function arcsOf(gcode: string): { centres: { x: number; y: number }[]; endRadii:
       const mi = line.match(/I(-?\d+(?:\.\d+)?)/);
       const mj = line.match(/J(-?\d+(?:\.\d+)?)/);
       if (mi && mj) {
-        const ccx = cx + parseFloat(mi[1]), ccy = cy + parseFloat(mj[1]);
+        const ccx = cx + parseFloat(mi[1]),
+          ccy = cy + parseFloat(mj[1]);
         centres.push({ x: ccx, y: ccy });
         endRadii.push(Math.hypot(nx - ccx, ny - ccy));
         arcCount++;
@@ -40,7 +59,8 @@ function arcsOf(gcode: string): { centres: { x: number; y: number }[]; endRadii:
 
 describe("profile arc-fitting", () => {
   it("posts a circular polyline profile as reconstructable G2/G3 arcs", () => {
-    const R = 20, N = 64;
+    const R = 20,
+      N = 64;
     const pts = Array.from({ length: N }, (_, i) => {
       const a = (i / N) * 2 * Math.PI;
       return { x: 50 + R * Math.cos(a), y: 50 + R * Math.sin(a) };
@@ -50,8 +70,8 @@ describe("profile arc-fitting", () => {
     const out = generateGCode([profileOp([poly.id], { side: "outside" })], doc);
 
     const { centres, endRadii, arcCount } = arcsOf(out);
-    expect(arcCount).toBeGreaterThan(0);                      // it actually used arcs
-    expect(arcCount).toBeLessThan(N / 2);                     // ...far fewer than the facets
+    expect(arcCount).toBeGreaterThan(0); // it actually used arcs
+    expect(arcCount).toBeLessThan(N / 2); // ...far fewer than the facets
 
     // Every arc shares one centre (the circle's), and every endpoint sits on the
     // tool-compensated radius R + toolR = 23 mm. Wrong I/J would fail this.
@@ -64,22 +84,31 @@ describe("profile arc-fitting", () => {
   });
 
   it("arc-fits the material runs of a TABBED circular profile, keeping tab bridges straight", () => {
-    const R = 20, N = 64;
+    const R = 20,
+      N = 64;
     const pts = Array.from({ length: N }, (_, i) => {
       const a = (i / N) * 2 * Math.PI;
       return { x: 50 + R * Math.cos(a), y: 50 + R * Math.sin(a) };
     });
     const doc = new CADDocument({ width: 120, height: 120 });
     const poly = doc.add(new PolylineEntity(pts, true));
-    const out = generateGCode([profileOp([poly.id], {
-      side: "outside",
-      tabs: { enabled: true, strategy: "count", count: 3, spacing: 0, width: 5, height: 1 },
-    })], doc);
+    const out = generateGCode(
+      [
+        profileOp([poly.id], {
+          side: "outside",
+          tabs: { enabled: true, strategy: "count", count: 3, spacing: 0, width: 5, height: 1 },
+        }),
+      ],
+      doc,
+    );
 
     // Arcs now appear between tabs (previously a tabbed profile was all G1)...
     const { centres, endRadii, arcCount } = arcsOf(out);
     expect(arcCount).toBeGreaterThan(0);
-    for (const c of centres) { expect(c.x).toBeCloseTo(centres[0].x, 0); expect(c.y).toBeCloseTo(centres[0].y, 0); }
+    for (const c of centres) {
+      expect(c.x).toBeCloseTo(centres[0].x, 0);
+      expect(c.y).toBeCloseTo(centres[0].y, 0);
+    }
     for (const r of endRadii) expect(r).toBeCloseTo(23, 0);
 
     // ...and the 3 tab bridges still ride up to depth + height = -1 as straight G1.

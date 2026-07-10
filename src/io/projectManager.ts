@@ -1,12 +1,23 @@
 import { type CADDocument, type DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
-import { openFile, saveFile, applyFile, serializeDoc, pushRecent, trySetItem, stripEmbeddedFonts } from "./fileio";
+import {
+  openFile,
+  saveFile,
+  applyFile,
+  serializeDoc,
+  pushRecent,
+  trySetItem,
+  stripEmbeddedFonts,
+} from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import { importDxf } from "./dxfImport";
 import {
-  repairImportedEntities, summarizeRepairs,
-  diagnoseImportedEntities, summarizeDiagnostics, type DxfDiagnostic,
+  repairImportedEntities,
+  summarizeRepairs,
+  diagnoseImportedEntities,
+  summarizeDiagnostics,
+  type DxfDiagnostic,
 } from "./dxfRepair";
 import { exportDxf } from "./dxfExport";
 import type { RecentEntry, RcamFile } from "./fileio";
@@ -44,9 +55,12 @@ export class ProjectManager {
 
   constructor(
     private doc: CADDocument,
-    private cb: ProjectManagerCallbacks
+    private cb: ProjectManagerCallbacks,
   ) {
-    this.doc.onChange(() => { this.markDirty(); this.scheduleAutosave(); });
+    this.doc.onChange(() => {
+      this.markDirty();
+      this.scheduleAutosave();
+    });
     this.updateTitle();
   }
 
@@ -148,7 +162,7 @@ export class ProjectManager {
   }
 
   async fileSave(): Promise<void> {
-    if ('showSaveFilePicker' in window) {
+    if ("showSaveFilePicker" in window) {
       if (this.currentFileHandle) {
         try {
           const data = await this.writeToHandle(this.currentFileHandle);
@@ -164,11 +178,15 @@ export class ProjectManager {
 
       try {
         const handle = await (window as any).showSaveFilePicker({
-          suggestedName: this.currentFileName.endsWith(".rcam") ? this.currentFileName : `${this.currentFileName}.rcam`,
-          types: [{
-            description: "RapidCAM Project (.rcam)",
-            accept: { "application/json": [".rcam"] }
-          }]
+          suggestedName: this.currentFileName.endsWith(".rcam")
+            ? this.currentFileName
+            : `${this.currentFileName}.rcam`,
+          types: [
+            {
+              description: "RapidCAM Project (.rcam)",
+              accept: { "application/json": [".rcam"] },
+            },
+          ],
         });
         this.currentFileHandle = handle;
         this.currentFileName = handle.name.replace(/\.rcam$/i, "");
@@ -179,7 +197,7 @@ export class ProjectManager {
         track("project_saved");
         return;
       } catch (e) {
-        if ((e as Error).name === 'AbortError') return;
+        if ((e as Error).name === "AbortError") return;
       }
     }
 
@@ -199,7 +217,7 @@ export class ProjectManager {
     if (tooLong) {
       alert(
         "This design is too large to share as a link.\n\n" +
-        "Use File ▸ Save to share the .rcam file instead.",
+          "Use File ▸ Save to share the .rcam file instead.",
       );
       return;
     }
@@ -222,7 +240,12 @@ export class ProjectManager {
   }
 
   /** Shared load path for open-file, open-recent, and draft-restore. */
-  loadDocument(file: RcamFile, name: string, handle: FileSystemFileHandle | null = null, clearDraft = true): void {
+  loadDocument(
+    file: RcamFile,
+    name: string,
+    handle: FileSystemFileHandle | null = null,
+    clearDraft = true,
+  ): void {
     this.isDocumentLoading = true;
     this.history = new History<DocSnapshot>();
     this.cb.onCloseEditors();
@@ -251,8 +274,8 @@ export class ProjectManager {
     const list = missing.map((t) => `  • "${t.text}"  (font: ${t.fontId})`).join("\n");
     alert(
       `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
-      `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
-      `omitted from G-code until the font is re-added.`,
+        `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
+        `omitted from G-code until the font is re-added.`,
     );
   }
 
@@ -280,9 +303,14 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         const data = await this.writeToHandle(this.currentFileHandle);
-        trySetItem(StorageKeys.autosaveDraft, JSON.stringify({
-          name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
-        }));
+        trySetItem(
+          StorageKeys.autosaveDraft,
+          JSON.stringify({
+            name: this.currentFileName,
+            savedAt: Date.now(),
+            data: stripEmbeddedFonts(data),
+          }),
+        );
         return;
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
@@ -290,9 +318,14 @@ export class ProjectManager {
     }
 
     const data = serializeDoc(this.doc, this.currentFileName);
-    trySetItem(StorageKeys.autosaveDraft, JSON.stringify({
-      name: this.currentFileName, savedAt: Date.now(), data: stripEmbeddedFonts(data),
-    }));
+    trySetItem(
+      StorageKeys.autosaveDraft,
+      JSON.stringify({
+        name: this.currentFileName,
+        savedAt: Date.now(),
+        data: stripEmbeddedFonts(data),
+      }),
+    );
   }
 
   async imageImport(): Promise<void> {
@@ -301,7 +334,12 @@ export class ProjectManager {
     input.accept = "image/png,image/jpeg,image/webp,image/bmp,image/gif";
     const file = await new Promise<File | null>((resolve) => {
       let settled = false;
-      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      const settle = (v: File | null) => {
+        if (!settled) {
+          settled = true;
+          resolve(v);
+        }
+      };
       input.addEventListener("cancel", () => settle(null));
       input.addEventListener("change", () => settle(input.files?.[0] ?? null));
       input.click();
@@ -327,8 +365,10 @@ export class ProjectManager {
       // and centre it on the canvas. The user can then resize/reposition or set an
       // exact size in the properties panel.
       const maxDim = Math.min(this.doc.canvas.width, this.doc.canvas.height) * 0.6;
-      const widthMM = decoded.width >= decoded.height ? maxDim : (maxDim * decoded.width) / decoded.height;
-      const heightMM = decoded.height >= decoded.width ? maxDim : (maxDim * decoded.height) / decoded.width;
+      const widthMM =
+        decoded.width >= decoded.height ? maxDim : (maxDim * decoded.width) / decoded.height;
+      const heightMM =
+        decoded.height >= decoded.width ? maxDim : (maxDim * decoded.height) / decoded.width;
       const pos = {
         x: this.doc.canvas.width / 2 - widthMM / 2,
         y: this.doc.canvas.height / 2 - heightMM / 2,
@@ -347,7 +387,12 @@ export class ProjectManager {
     input.accept = ".dxf";
     const file = await new Promise<File | null>((resolve) => {
       let settled = false;
-      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      const settle = (v: File | null) => {
+        if (!settled) {
+          settled = true;
+          resolve(v);
+        }
+      };
       input.addEventListener("cancel", () => settle(null));
       input.addEventListener("change", () => settle(input.files?.[0] ?? null));
       input.click();
@@ -367,7 +412,7 @@ export class ProjectManager {
     if (raw.length === 0) {
       alert(
         "No supported geometry found in the DXF file." +
-        (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
+          (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
       );
       return;
     }
@@ -431,10 +476,7 @@ export class ProjectManager {
     const notes = [...repairs, ...warnings];
     if (notes.length) {
       const shown = notes.slice(0, 2).join(" · ");
-      toast(
-        `DXF: ${shown}${notes.length > 2 ? ` · +${notes.length - 2} more` : ""}`,
-        6000,
-      );
+      toast(`DXF: ${shown}${notes.length > 2 ? ` · +${notes.length - 2} more` : ""}`, 6000);
     }
   }
 
@@ -444,7 +486,12 @@ export class ProjectManager {
     input.accept = ".svg,image/svg+xml";
     const file = await new Promise<File | null>((resolve) => {
       let settled = false;
-      const settle = (v: File | null) => { if (!settled) { settled = true; resolve(v); } };
+      const settle = (v: File | null) => {
+        if (!settled) {
+          settled = true;
+          resolve(v);
+        }
+      };
       // `cancel` = picker dismissed with no file; avoids the focus+timeout race
       // that could drop a real selection (see openFile in fileio.ts).
       input.addEventListener("cancel", () => settle(null));
@@ -464,12 +511,12 @@ export class ProjectManager {
       e.selected = true;
       this.doc.entities.push(e);
     }
-    
+
     if (entities.length >= 2) {
       const group = {
         id: nextId("grp"),
         name: "",
-        entityIds: entities.map(e => e.id)
+        entityIds: entities.map((e) => e.id),
       };
       this.doc.groups.push(group);
     }
@@ -498,7 +545,10 @@ export class ProjectManager {
     a.download = `${this.currentFileName}.dxf`;
     a.click();
     URL.revokeObjectURL(url);
-    toast(`Exported ${this.currentFileName}.dxf${warnings.length ? ` · ${warnings[0]}` : ""}`, 5000);
+    toast(
+      `Exported ${this.currentFileName}.dxf${warnings.length ? ` · ${warnings[0]}` : ""}`,
+      5000,
+    );
   }
 
   restoreDraft(): void {

@@ -51,7 +51,9 @@ const MOVE_WORDS = new Set(["G0", "G1", "G2", "G3", "G00", "G01", "G02", "G03"])
 /** Parse RapidCAM mill G-code into position-resolved events. */
 export function parseProgram(gcode: string): GProgram {
   const events: GEvent[] = [];
-  let x = 0, y = 0, z = 0;
+  let x = 0,
+    y = 0,
+    z = 0;
 
   for (const line of gcode.split(/\r?\n/)) {
     const code = line.split(";")[0].trim();
@@ -62,19 +64,36 @@ export function parseProgram(gcode: string): GProgram {
     // text (e.g. a "park for tool change" note) survives.
     if (head && MOVE_WORDS.has(head) && !line.includes(";")) {
       const motion = (parseInt(head.slice(1), 10) % 4) as 0 | 1 | 2 | 3;
-      let hasX = false, hasY = false, hasZ = false;
+      let hasX = false,
+        hasY = false,
+        hasZ = false;
       let i: number | undefined, j: number | undefined, f: number | undefined;
       for (let k = 1; k < tokens.length; k++) {
         const t = tokens[k];
         const v = parseFloat(t.slice(1));
         if (Number.isNaN(v)) continue;
         switch (t[0].toUpperCase()) {
-          case "X": x = v; hasX = true; break;
-          case "Y": y = v; hasY = true; break;
-          case "Z": z = v; hasZ = true; break;
-          case "I": i = v; break;
-          case "J": j = v; break;
-          case "F": f = v; break;
+          case "X":
+            x = v;
+            hasX = true;
+            break;
+          case "Y":
+            y = v;
+            hasY = true;
+            break;
+          case "Z":
+            z = v;
+            hasZ = true;
+            break;
+          case "I":
+            i = v;
+            break;
+          case "J":
+            j = v;
+            break;
+          case "F":
+            f = v;
+            break;
         }
       }
       events.push({ kind: "move", motion, x, y, z, hasX, hasY, hasZ, i, j, f });

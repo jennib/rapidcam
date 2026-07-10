@@ -20,7 +20,9 @@ test("references resolve regardless of declaration order (topological)", () => {
 test("chained references resolve", () => {
   const vars = [V("a", "10"), V("b", "a * 2"), V("c", "b + 5")];
   evaluateVariables(vars, "mm");
-  expect([valueOfVar(vars, "a"), valueOfVar(vars, "b"), valueOfVar(vars, "c")]).toEqual([10, 20, 25]);
+  expect([valueOfVar(vars, "a"), valueOfVar(vars, "b"), valueOfVar(vars, "c")]).toEqual([
+    10, 20, 25,
+  ]);
 });
 
 test("plain lengths keep unit-aware parsing (mm/in/fractions)", () => {
@@ -33,7 +35,8 @@ test("plain lengths keep unit-aware parsing (mm/in/fractions)", () => {
 
 test("a reference cycle leaves the vars at their last value (no infinite loop)", () => {
   const vars = [V("a", "b + 1"), V("b", "a + 1")];
-  vars[0].value = 7; vars[1].value = 9; // pretend last-known values
+  vars[0].value = 7;
+  vars[1].value = 9; // pretend last-known values
   evaluateVariables(vars, "mm");
   expect(valueOfVar(vars, "a")).toBe(7);
   expect(valueOfVar(vars, "b")).toBe(9);

@@ -21,8 +21,13 @@ type Hit =
 
 /** Entities that can serve as extension boundaries (everything but self/construction/markers). */
 function targets(doc: CADDocument, selfId: string): Entity[] {
-  return doc.entities.filter((e) =>
-    e.id !== selfId && !e.isConstruction && !(e instanceof TextEntity) && !(e instanceof PointEntity));
+  return doc.entities.filter(
+    (e) =>
+      e.id !== selfId &&
+      !e.isConstruction &&
+      !(e instanceof TextEntity) &&
+      !(e instanceof PointEntity),
+  );
 }
 
 export class ExtendTool implements Tool {
@@ -39,7 +44,8 @@ export class ExtendTool implements Tool {
       if (ent.isConstruction) continue;
       let d: number;
       if (ent instanceof LineEntity) d = distToSegment(worldPos, ent.a, ent.b);
-      else if (ent instanceof ArcEntity) d = distToArc(worldPos, ent.center, ent.radius, ent.startAngle, ent.endAngle);
+      else if (ent instanceof ArcEntity)
+        d = distToArc(worldPos, ent.center, ent.radius, ent.startAngle, ent.endAngle);
       else continue; // only lines and arcs can be extended
       if (d < thresh && (!best || d < best.d)) best = { ent, d };
     }

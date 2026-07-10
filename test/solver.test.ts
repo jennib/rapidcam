@@ -11,7 +11,9 @@ import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
 import { test, expect } from "vitest";
 
 function check(name: string, ok: boolean, detail = ""): void {
-  test(name, () => { expect(ok, detail).toBe(true); });
+  test(name, () => {
+    expect(ok, detail).toBe(true);
+  });
 }
 const geoOf = (doc: CADDocument): Geo => {
   const m = new Map(doc.entities.map((e) => [e.id, e]));
@@ -24,7 +26,11 @@ const geoOf = (doc: CADDocument): Geo => {
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 37 })) as LineEntity;
   doc.addConstraint(makeConstraint("horizontal", { entities: [l.id] }));
   const r = solve(doc);
-  check("horizontal makes endpoints level", Math.abs(l.a.y - l.b.y) < 1e-4, `Δy=${(l.a.y - l.b.y).toExponential(2)}`);
+  check(
+    "horizontal makes endpoints level",
+    Math.abs(l.a.y - l.b.y) < 1e-4,
+    `Δy=${(l.a.y - l.b.y).toExponential(2)}`,
+  );
   check("horizontal converged", r.converged);
 }
 
@@ -73,7 +79,11 @@ const geoOf = (doc: CADDocument): Geo => {
     }),
   );
   solve(doc);
-  check("coincident: endpoints meet", dist(l1.b, l2.a) < 1e-4, `gap=${dist(l1.b, l2.a).toExponential(2)}`);
+  check(
+    "coincident: endpoints meet",
+    dist(l1.b, l2.a) < 1e-4,
+    `gap=${dist(l1.b, l2.a).toExponential(2)}`,
+  );
 }
 
 // 6) Equal length ----------------------------------------------------------
@@ -83,7 +93,11 @@ const geoOf = (doc: CADDocument): Geo => {
   const l2 = doc.add(new LineEntity({ x: 0, y: 30 }, { x: 40, y: 30 })) as LineEntity;
   doc.addConstraint(makeConstraint("equal", { entities: [l1.id, l2.id] }));
   solve(doc);
-  check("equal length", Math.abs(l1.length - l2.length) < 1e-3, `Δlen=${(l1.length - l2.length).toExponential(2)}`);
+  check(
+    "equal length",
+    Math.abs(l1.length - l2.length) < 1e-3,
+    `Δlen=${(l1.length - l2.length).toExponential(2)}`,
+  );
 }
 
 // 7) Concentric ------------------------------------------------------------
@@ -105,7 +119,11 @@ const geoOf = (doc: CADDocument): Geo => {
   solve(doc);
   const d = sub(l.b, l.a);
   const distToLine = Math.abs(cross(d, sub(c.center, l.a)) / len(d));
-  check("tangent: dist(center,line) ≈ radius", Math.abs(distToLine - c.radius) < 1e-3, `Δ=${(distToLine - c.radius).toExponential(2)}`);
+  check(
+    "tangent: dist(center,line) ≈ radius",
+    Math.abs(distToLine - c.radius) < 1e-3,
+    `Δ=${(distToLine - c.radius).toExponential(2)}`,
+  );
 }
 
 // 9) Point-on-line ---------------------------------------------------------
@@ -113,7 +131,9 @@ const geoOf = (doc: CADDocument): Geo => {
   const doc = new CADDocument({ width: 200, height: 150 });
   const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
   const l2 = doc.add(new LineEntity({ x: 40, y: 25 }, { x: 70, y: 60 })) as LineEntity;
-  doc.addConstraint(makeConstraint("pointOnLine", { points: [{ entityId: l2.id, key: "a" }], entities: [l1.id] }));
+  doc.addConstraint(
+    makeConstraint("pointOnLine", { points: [{ entityId: l2.id, key: "a" }], entities: [l1.id] }),
+  );
   solve(doc);
   const d = sub(l1.b, l1.a);
   const sd = Math.abs(cross(d, sub(l2.a, l1.a)) / len(d));
@@ -141,8 +161,16 @@ const geoOf = (doc: CADDocument): Geo => {
   const pins = new Map([[`${l2.id}:b`, { x: 140, y: 80 }]]);
   const r = solve(doc, pins);
   check("fixed: l1 unchanged", l1.a.x === 0 && l1.b.x === 100 && l1.b.y === 0);
-  check("coincident maintained under drag", dist(l1.b, l2.a) < 1e-3, `gap=${dist(l1.b, l2.a).toExponential(2)}`);
-  check("vertical maintained under drag", Math.abs(l2.a.x - l2.b.x) < 1e-3, `Δx=${(l2.a.x - l2.b.x).toExponential(2)}`);
+  check(
+    "coincident maintained under drag",
+    dist(l1.b, l2.a) < 1e-3,
+    `gap=${dist(l1.b, l2.a).toExponential(2)}`,
+  );
+  check(
+    "vertical maintained under drag",
+    Math.abs(l2.a.x - l2.b.x) < 1e-3,
+    `Δx=${(l2.a.x - l2.b.x).toExponential(2)}`,
+  );
   check("constraint holds X (~100)", Math.abs(l2.b.x - 100) < 1e-2, `x=${l2.b.x.toFixed(4)}`);
   check("free Y follows cursor (~80)", Math.abs(l2.b.y - 80) < 1e-2, `y=${l2.b.y.toFixed(4)}`);
   check("DOF reported", r.dof >= 0, `dof=${r.dof}`);
@@ -153,7 +181,11 @@ const geoOf = (doc: CADDocument): Geo => {
   const doc = new CADDocument({ width: 200, height: 150 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
   solve(doc, new Map([[`${l.id}:b`, { x: 120, y: 40 }]]));
-  check("free drag: endpoint reaches cursor", dist(l.b, { x: 120, y: 40 }) < 1e-2, `gap=${dist(l.b, { x: 120, y: 40 }).toExponential(2)}`);
+  check(
+    "free drag: endpoint reaches cursor",
+    dist(l.b, { x: 120, y: 40 }) < 1e-2,
+    `gap=${dist(l.b, { x: 120, y: 40 }).toExponential(2)}`,
+  );
   check("free drag: other endpoint unmoved", dist(l.a, { x: 0, y: 0 }) < 1e-9);
 }
 
@@ -196,12 +228,20 @@ const geoOf = (doc: CADDocument): Geo => {
   const doc = new CADDocument({ width: 200, height: 150 });
   const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 10, Math.PI / 4, Math.PI / 2)) as ArcEntity;
   const line = doc.add(new LineEntity({ x: 10, y: 0 }, { x: 30, y: 0 })) as LineEntity;
-  doc.addConstraint(makeConstraint("coincident", {
-    points: [{ entityId: arc.id, key: "start" }, { entityId: line.id, key: "a" }],
-  }));
+  doc.addConstraint(
+    makeConstraint("coincident", {
+      points: [
+        { entityId: arc.id, key: "start" },
+        { entityId: line.id, key: "a" },
+      ],
+    }),
+  );
   const r = solve(doc);
-  check("arc coincident: startPoint meets line.a", dist(arc.startPoint, line.a) < 1e-3,
-    `gap=${dist(arc.startPoint, line.a).toExponential(2)}`);
+  check(
+    "arc coincident: startPoint meets line.a",
+    dist(arc.startPoint, line.a) < 1e-3,
+    `gap=${dist(arc.startPoint, line.a).toExponential(2)}`,
+  );
   check("arc coincident converged", r.converged);
 }
 
@@ -212,8 +252,11 @@ const geoOf = (doc: CADDocument): Geo => {
   const circ = doc.add(new CircleEntity({ x: 50, y: 50 }, 40)) as CircleEntity;
   doc.addConstraint(makeConstraint("equal", { entities: [arc.id, circ.id] }));
   solve(doc);
-  check("arc equal radius: radii match", Math.abs(arc.radius - circ.radius) < 1e-3,
-    `Δr=${(arc.radius - circ.radius).toExponential(2)}`);
+  check(
+    "arc equal radius: radii match",
+    Math.abs(arc.radius - circ.radius) < 1e-3,
+    `Δr=${(arc.radius - circ.radius).toExponential(2)}`,
+  );
 }
 
 // 15) Concentric: arc centre merges with circle centre -----------------------
@@ -223,8 +266,11 @@ const geoOf = (doc: CADDocument): Geo => {
   const circ = doc.add(new CircleEntity({ x: 60, y: 80 }, 10)) as CircleEntity;
   doc.addConstraint(makeConstraint("concentric", { entities: [arc.id, circ.id] }));
   solve(doc);
-  check("arc concentric: centres coincide", dist(arc.center, circ.center) < 1e-3,
-    `gap=${dist(arc.center, circ.center).toExponential(2)}`);
+  check(
+    "arc concentric: centres coincide",
+    dist(arc.center, circ.center) < 1e-3,
+    `gap=${dist(arc.center, circ.center).toExponential(2)}`,
+  );
 }
 
 // 16) Tangent: arc tangent to horizontal line --------------------------------
@@ -237,9 +283,11 @@ const geoOf = (doc: CADDocument): Geo => {
   solve(doc);
   const d = sub(line.b, line.a);
   const distToLine = Math.abs(cross(d, sub(arc.center, line.a)) / len(d));
-  check("arc tangent to line: dist(centre, line) ≈ radius",
+  check(
+    "arc tangent to line: dist(centre, line) ≈ radius",
     Math.abs(distToLine - arc.radius) < 1e-2,
-    `dist=${distToLine.toFixed(4)} r=${arc.radius.toFixed(4)}`);
+    `dist=${distToLine.toFixed(4)} r=${arc.radius.toFixed(4)}`,
+  );
 }
 
 // 17) Point-on-arc: line endpoint pulled onto arc ----------------------------
@@ -249,14 +297,19 @@ const geoOf = (doc: CADDocument): Geo => {
   const doc = new CADDocument({ width: 200, height: 150 });
   const arc = doc.add(new ArcEntity({ x: 0, y: 0 }, 20, 0, Math.PI)) as ArcEntity;
   const line = doc.add(new LineEntity({ x: 0, y: 35 }, { x: 50, y: 35 })) as LineEntity;
-  doc.addConstraint(makeConstraint("pointOnArc", {
-    points: [{ entityId: line.id, key: "a" }],
-    entities: [arc.id],
-  }));
+  doc.addConstraint(
+    makeConstraint("pointOnArc", {
+      points: [{ entityId: line.id, key: "a" }],
+      entities: [arc.id],
+    }),
+  );
   solve(doc);
   const d = dist(line.a, arc.center);
-  check("pointOnArc: endpoint lies on arc", Math.abs(d - arc.radius) < 1e-2,
-    `dist=${d.toFixed(4)} r=${arc.radius.toFixed(4)}`);
+  check(
+    "pointOnArc: endpoint lies on arc",
+    Math.abs(d - arc.radius) < 1e-2,
+    `dist=${d.toFixed(4)} r=${arc.radius.toFixed(4)}`,
+  );
 }
 
 // 18) Fixed arc + drag: centre stays, angle follows cursor -------------------
@@ -268,13 +321,21 @@ const geoOf = (doc: CADDocument): Geo => {
   // Drag start endpoint (originally at (20,0)) toward (14, 14) — ~45° on arc.
   const pins = new Map([[`${arc.id}:start`, { x: 14, y: 14 }]]);
   solve(doc, pins);
-  check("fixed arc: centre unmoved", dist(arc.center, { x: 0, y: 0 }) < 1e-2,
-    `centre=${arc.center.x.toFixed(3)},${arc.center.y.toFixed(3)}`);
-  check("fixed arc: radius unmoved", Math.abs(arc.radius - 20) < 1e-2,
-    `r=${arc.radius.toFixed(3)}`);
-  check("fixed arc: start follows drag direction",
+  check(
+    "fixed arc: centre unmoved",
+    dist(arc.center, { x: 0, y: 0 }) < 1e-2,
+    `centre=${arc.center.x.toFixed(3)},${arc.center.y.toFixed(3)}`,
+  );
+  check(
+    "fixed arc: radius unmoved",
+    Math.abs(arc.radius - 20) < 1e-2,
+    `r=${arc.radius.toFixed(3)}`,
+  );
+  check(
+    "fixed arc: start follows drag direction",
     Math.abs(arc.startAngle - Math.PI / 4) < 0.1,
-    `sa=${arc.startAngle.toFixed(3)}`);
+    `sa=${arc.startAngle.toFixed(3)}`,
+  );
 }
 
 // Tangent-to-arc sweep detection (CONSTRAINT_REVIEW #5) ----------------------
@@ -291,8 +352,10 @@ const geoOf = (doc: CADDocument): Geo => {
     const { doc, arc } = mk();
     const l = doc.add(new LineEntity({ x: 10, y: -5 }, { x: 10, y: 5 })) as LineEntity;
     const c = makeConstraint("tangent", { entities: [l.id, arc.id] });
-    check("tangent contact inside sweep → no warning",
-      tangentContactOutsideArcSweep(c, geoOf(doc)) === false);
+    check(
+      "tangent contact inside sweep → no warning",
+      tangentContactOutsideArcSweep(c, geoOf(doc)) === false,
+    );
   }
 
   // Horizontal line tangent at the bottom (contact angle −90°) — outside [0,90°].
@@ -300,8 +363,9 @@ const geoOf = (doc: CADDocument): Geo => {
     const { doc, arc } = mk();
     const l = doc.add(new LineEntity({ x: -5, y: -10 }, { x: 5, y: -10 })) as LineEntity;
     const c = makeConstraint("tangent", { entities: [l.id, arc.id] });
-    check("tangent contact outside sweep → warning",
-      tangentContactOutsideArcSweep(c, geoOf(doc)) === true);
+    check(
+      "tangent contact outside sweep → warning",
+      tangentContactOutsideArcSweep(c, geoOf(doc)) === true,
+    );
   }
 }
-

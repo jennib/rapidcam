@@ -15,7 +15,7 @@ export class ScaleTool implements Tool {
   private dragStartWorld: Vec2 = { x: 0, y: 0 };
   private dragSnapshot: DocSnapshot | null = null;
   private originalBounds: { min: Vec2; max: Vec2 } | null = null;
-  
+
   private marqueeStart: Vec2 = { x: 0, y: 0 };
   private marqueeEnd: Vec2 = { x: 0, y: 0 };
   private currentTransformBox: TransformBox | null = null;
@@ -26,7 +26,7 @@ export class ScaleTool implements Tool {
       this.currentTransformBox = null;
       return;
     }
-    
+
     // Special case for a single line: no box, just handles at endpoints
     if (sel.length === 1 && sel[0].type === "line") {
       const line = sel[0] as any;
@@ -36,8 +36,8 @@ export class ScaleTool implements Tool {
         hideBox: true,
         handles: [
           { type: "scale-arrow", id: "scale-a", pos: line.a },
-          { type: "scale-arrow", id: "scale-b", pos: line.b }
-        ]
+          { type: "scale-arrow", id: "scale-b", pos: line.b },
+        ],
       };
       return;
     }
@@ -55,7 +55,7 @@ export class ScaleTool implements Tool {
           { type: "scale-arrow", id: "scale-1", pos: rectPoly[1] },
           { type: "scale-arrow", id: "scale-2", pos: rectPoly[2] },
           { type: "scale-arrow", id: "scale-3", pos: rectPoly[3] },
-        ]
+        ],
       };
       return;
     }
@@ -66,8 +66,10 @@ export class ScaleTool implements Tool {
       return;
     }
     const pad = 10 / ctx.view.scale; // 10px padding
-    b.min.x -= pad; b.min.y -= pad;
-    b.max.x += pad; b.max.y += pad;
+    b.min.x -= pad;
+    b.min.y -= pad;
+    b.max.x += pad;
+    b.max.y += pad;
 
     const handles: TransformHandle[] = [
       { type: "scale-arrow", id: "scale-nw", pos: { x: b.min.x, y: b.max.y } },
@@ -124,9 +126,11 @@ export class ScaleTool implements Tool {
 
       if (e.shiftKey) {
         if (group) {
-          const groupSelected = group.entityIds.every(id => ctx.doc.entities.find(e => e.id === id)?.selected);
+          const groupSelected = group.entityIds.every(
+            (id) => ctx.doc.entities.find((e) => e.id === id)?.selected,
+          );
           for (const id of group.entityIds) {
-            const ge = ctx.doc.entities.find(x => x.id === id);
+            const ge = ctx.doc.entities.find((x) => x.id === id);
             if (ge) ge.selected = !groupSelected;
           }
         } else {
@@ -137,7 +141,7 @@ export class ScaleTool implements Tool {
           ctx.doc.clearSelection();
           if (group) {
             for (const id of group.entityIds) {
-              const ge = ctx.doc.entities.find(x => x.id === id);
+              const ge = ctx.doc.entities.find((x) => x.id === id);
               if (ge) ge.selected = true;
             }
           } else {
@@ -170,12 +174,12 @@ export class ScaleTool implements Tool {
       const ob = this.originalBounds;
       const cx = (ob.min.x + ob.max.x) / 2;
       const cy = (ob.min.y + ob.max.y) / 2;
-      
+
       const startDist = dist(this.dragStartWorld, { x: cx, y: cy });
       const currentDist = dist(e.worldRaw, { x: cx, y: cy });
-      
+
       const scale = startDist > 1e-4 ? currentDist / startDist : 1;
-      
+
       applyScale(ctx.doc.selected, cx, cy, scale, scale);
       ctx.solve();
       ctx.requestRender();
@@ -190,14 +194,19 @@ export class ScaleTool implements Tool {
       const x1 = Math.max(this.marqueeStart.x, this.marqueeEnd.x);
       const y1 = Math.max(this.marqueeStart.y, this.marqueeEnd.y);
       const rect = { min: { x: x0, y: y0 }, max: { x: x1, y: y1 } };
-      
+
       for (const ent of ctx.doc.entities) {
         const eb = ent.bounds();
-        if (eb.min.x >= rect.min.x && eb.max.x <= rect.max.x && eb.min.y >= rect.min.y && eb.max.y <= rect.max.y) {
+        if (
+          eb.min.x >= rect.min.x &&
+          eb.max.x <= rect.max.x &&
+          eb.min.y >= rect.min.y &&
+          eb.max.y <= rect.max.y
+        ) {
           const group = ctx.doc.groupOf(ent.id);
           if (group) {
             for (const id of group.entityIds) {
-              const ge = ctx.doc.entities.find(x => x.id === id);
+              const ge = ctx.doc.entities.find((x) => x.id === id);
               if (ge) ge.selected = true;
             }
           } else {
@@ -208,7 +217,7 @@ export class ScaleTool implements Tool {
     } else if (this.mode === "dragScale") {
       ctx.doc.emitChange();
     }
-    
+
     this.mode = "idle";
     this.dragSnapshot = null;
     this.updateTransformBox(ctx);
@@ -218,7 +227,10 @@ export class ScaleTool implements Tool {
   getOverlay(): ToolOverlay {
     return {
       previews: [],
-      selectionRect: this.mode === "marquee" ? { a: this.marqueeStart, b: this.marqueeEnd, crossing: false } : null,
+      selectionRect:
+        this.mode === "marquee"
+          ? { a: this.marqueeStart, b: this.marqueeEnd, crossing: false }
+          : null,
       transformBox: this.currentTransformBox,
     };
   }

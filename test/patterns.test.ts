@@ -115,7 +115,11 @@ describe("variable-driven count", () => {
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     // countX cache is intentionally stale (0); the expression "n" is the truth.
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+      countX: 0,
+      countY: 1,
+      spacingX: 20,
+      spacingY: 20,
+      countXExpr: "n",
     });
     expect(pat.params.countX).toBe(3); // resolved from n=3
     const before = pat.instanceIds.flat();
@@ -134,7 +138,11 @@ describe("variable-driven count", () => {
     doc.variables.push({ id: "v", name: "n", expr: "0.4", value: 0.4 } as never);
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 4, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "n",
+      countX: 4,
+      countY: 1,
+      spacingX: 10,
+      spacingY: 10,
+      countXExpr: "n",
     });
     expect(pat.params.countX).toBe(1); // round(0.4)=0 → clamped to ≥1
     expect(pat.instanceIds.flat().length).toBe(0);
@@ -144,7 +152,11 @@ describe("variable-driven count", () => {
     const doc = freshDoc();
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 3, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "missing",
+      countX: 3,
+      countY: 1,
+      spacingX: 10,
+      spacingY: 10,
+      countXExpr: "missing",
     });
     expect(pat.params.countX).toBe(3); // bad expr → keep last good cache
     expect(pat.instanceIds.flat().length).toBe(2);
@@ -157,12 +169,21 @@ describe("auto-regen of param-stale patterns", () => {
     doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+      countX: 0,
+      countY: 1,
+      spacingX: 20,
+      spacingY: 20,
+      countXExpr: "n",
     });
     const before = pat.instanceIds.flat();
     // A non-parametric pattern (no expr) must be left untouched.
     const src2 = doc.add(new CircleEntity({ x: 0, y: 200 }, 5));
-    const pat2 = createCircularPattern(doc, [src2.id], { count: 4, cx: 0, cy: 200, totalAngle: Math.PI * 2 });
+    const pat2 = createCircularPattern(doc, [src2.id], {
+      count: 4,
+      cx: 0,
+      cy: 200,
+      totalAngle: Math.PI * 2,
+    });
     const before2 = pat2.instanceIds.flat();
 
     expect(regenerateStalePatterns(doc)).toBe(false); // nothing changed yet
@@ -186,7 +207,11 @@ describe("auto-regen of param-stale patterns", () => {
     doc.variables.push({ id: "vt", name: "tabs", expr: "5", value: 5 } as never);
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 0, countY: 1, spacingX: 10, spacingY: 10, countXExpr: "tabs",
+      countX: 0,
+      countY: 1,
+      spacingX: 10,
+      spacingY: 10,
+      countXExpr: "tabs",
     });
     expect(pat.params.countX).toBe(5);
 
@@ -224,7 +249,11 @@ describe("regenerateStalePatterns (param OR source staleness)", () => {
     doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+      countX: 0,
+      countY: 1,
+      spacingX: 20,
+      spacingY: 20,
+      countXExpr: "n",
     });
     doc.variables[0].value = 5;
     expect(regenerateStalePatterns(doc)).toBe(true);
@@ -247,7 +276,10 @@ describe("reconcileLoadedPatterns (load-time self-correction)", () => {
     const i1 = doc.add(new CircleEntity({ x: 20, y: 0 }, 5));
     // Hand-authored mismatch: countXExpr n=4 (wants 3 copies) but only 1 listed.
     doc.patterns.push({
-      id: "pat", kind: "linear", sourceIds: [src.id], instanceIds: [[i1.id]],
+      id: "pat",
+      kind: "linear",
+      sourceIds: [src.id],
+      instanceIds: [[i1.id]],
       params: { countX: 4, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
     } as never);
 
@@ -269,17 +301,26 @@ describe("reconcileLoadedPatterns (load-time self-correction)", () => {
   it("applyFile reconciles a mismatched pattern on open (real load path)", () => {
     const doc = freshDoc();
     const file = {
-      version: 2, name: "t", canvas: { width: 500, height: 500 }, displayUnit: "mm",
+      version: 2,
+      name: "t",
+      canvas: { width: 500, height: 500 },
+      displayUnit: "mm",
       variables: [{ id: "v", name: "n", expr: "4", value: 4 }],
       entities: [
         { type: "circle", id: "src", center: { x: 0, y: 0 }, radius: 5 },
         { type: "circle", id: "i1", center: { x: 20, y: 0 }, radius: 5 },
       ],
-      constraints: [], dimensions: [],
-      patterns: [{
-        id: "pat", kind: "linear", sourceIds: ["src"], instanceIds: [["i1"]],
-        params: { countX: 4, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
-      }],
+      constraints: [],
+      dimensions: [],
+      patterns: [
+        {
+          id: "pat",
+          kind: "linear",
+          sourceIds: ["src"],
+          instanceIds: [["i1"]],
+          params: { countX: 4, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
+        },
+      ],
     };
     applyFile(doc, file as never);
     expect(doc.patterns[0].instanceIds.length).toBe(3); // self-corrected to n=4 -> 3 copies
@@ -291,12 +332,22 @@ describe("variable rename rewrites references", () => {
     const doc = freshDoc();
     doc.variables.push({ id: "v", name: "n", expr: "3", value: 3 } as never);
     doc.dimensions.push({
-      id: "d", type: "radius", entities: ["x"], points: [],
-      value: 6, driving: true, offset: 5, expr: "n * 2",
+      id: "d",
+      type: "radius",
+      entities: ["x"],
+      points: [],
+      value: 6,
+      driving: true,
+      offset: 5,
+      expr: "n * 2",
     } as never);
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], {
-      countX: 0, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n",
+      countX: 0,
+      countY: 1,
+      spacingX: 20,
+      spacingY: 20,
+      countXExpr: "n",
     });
 
     doc.renameVariableRefs("n", "holes");
@@ -308,8 +359,14 @@ describe("variable rename rewrites references", () => {
   it("does not touch a similarly-named token (word boundary)", () => {
     const doc = freshDoc();
     doc.dimensions.push({
-      id: "d", type: "radius", entities: ["x"], points: [],
-      value: 6, driving: true, offset: 5, expr: "nn + n",
+      id: "d",
+      type: "radius",
+      entities: ["x"],
+      points: [],
+      value: 6,
+      driving: true,
+      offset: 5,
+      expr: "nn + n",
     } as never);
     doc.renameVariableRefs("n", "m");
     expect(doc.dimensions[0].expr).toBe("nn + m"); // only the standalone n
@@ -323,8 +380,13 @@ describe("reference integrity across regen", () => {
     const pat = createLinearPattern(doc, [src.id], lin(3, 1)); // copies at col 1, 2
     const firstCopyId = pat.instanceIds[0][0];
     doc.dimensions.push({
-      id: "d1", type: "radius", entities: [firstCopyId], points: [],
-      value: 5, driving: false, offset: 5,
+      id: "d1",
+      type: "radius",
+      entities: [firstCopyId],
+      points: [],
+      value: 5,
+      driving: false,
+      offset: 5,
     } as never);
 
     regenerateLinearPattern(doc, pat, lin(2, 1)); // col-1 copy survives

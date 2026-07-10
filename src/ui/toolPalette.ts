@@ -9,7 +9,10 @@ const SEP_AFTER = new Set(["select", "text", "measure"]);
 export class ToolPalette {
   private buttons = new Map<string, HTMLButtonElement>();
 
-  constructor(host: HTMLElement, private manager: ToolManager) {
+  constructor(
+    host: HTMLElement,
+    private manager: ToolManager,
+  ) {
     const tools = manager.list();
     tools.forEach((tool) => {
       const btn = document.createElement("button");

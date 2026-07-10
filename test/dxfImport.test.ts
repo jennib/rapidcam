@@ -1,7 +1,11 @@
 import { test, expect } from "vitest";
 import { importDxf } from "../src/io/dxfImport";
 import {
-  LineEntity, CircleEntity, ArcEntity, PolylineEntity, PointEntity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+  PointEntity,
 } from "../src/model/entities";
 
 // ---------------------------------------------------------------------------
@@ -9,7 +13,10 @@ import {
 // DXF is alternating group-code / value lines; arrays keep fixtures readable.
 // ---------------------------------------------------------------------------
 
-const dxf = (entityTags: (string | number)[], opts: { units?: number; blocks?: (string | number)[] } = {}): string => {
+const dxf = (
+  entityTags: (string | number)[],
+  opts: { units?: number; blocks?: (string | number)[] } = {},
+): string => {
   const lines: (string | number)[] = [];
   if (opts.units !== undefined) {
     lines.push(0, "SECTION", 2, "HEADER", 9, "$INSUNITS", 70, opts.units, 0, "ENDSEC");
@@ -36,10 +43,9 @@ test("LINE maps to LineEntity with exact endpoints", () => {
 });
 
 test("CIRCLE and POINT map directly", () => {
-  const { entities } = importDxf(dxf([
-    0, "CIRCLE", 10, 30, 20, 40, 40, 7.5,
-    0, "POINT", 10, 1, 20, 2,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf([0, "CIRCLE", 10, 30, 20, 40, 40, 7.5, 0, "POINT", 10, 1, 20, 2], { units: 4 }),
+  );
   const c = entities[0] as CircleEntity;
   expect(c).toBeInstanceOf(CircleEntity);
   expect(c.center).toEqual({ x: 30, y: 40 });
@@ -50,9 +56,9 @@ test("CIRCLE and POINT map directly", () => {
 });
 
 test("ARC converts degrees to radians, CCW sweep preserved", () => {
-  const { entities } = importDxf(dxf([
-    0, "ARC", 10, 0, 20, 0, 40, 5, 50, 90, 51, 180,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf([0, "ARC", 10, 0, 20, 0, 40, 5, 50, 90, 51, 180], { units: 4 }),
+  );
   const a = entities[0] as ArcEntity;
   expect(a).toBeInstanceOf(ArcEntity);
   expect(a.center).toEqual({ x: 0, y: 0 });
@@ -67,30 +73,31 @@ test("ARC converts degrees to radians, CCW sweep preserved", () => {
 });
 
 test("closed LWPOLYLINE without bulges stays one closed polyline", () => {
-  const { entities } = importDxf(dxf([
-    0, "LWPOLYLINE", 90, 4, 70, 1,
-    10, 0, 20, 0,
-    10, 100, 20, 0,
-    10, 100, 20, 50,
-    10, 0, 20, 50,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf(
+      [0, "LWPOLYLINE", 90, 4, 70, 1, 10, 0, 20, 0, 10, 100, 20, 0, 10, 100, 20, 50, 10, 0, 20, 50],
+      { units: 4 },
+    ),
+  );
   expect(entities).toHaveLength(1);
   const pl = entities[0] as PolylineEntity;
   expect(pl).toBeInstanceOf(PolylineEntity);
   expect(pl.closed).toBe(true);
   expect(pl.points).toEqual([
-    { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 },
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 50 },
+    { x: 0, y: 50 },
   ]);
 });
 
 test("LWPOLYLINE bulge segment becomes a true arc with correct geometry", () => {
   // Open polyline: (0,0) → bulge 1 (CCW semicircle) → (2,0) → straight → (2,5)
-  const { entities } = importDxf(dxf([
-    0, "LWPOLYLINE", 90, 3, 70, 0,
-    10, 0, 20, 0, 42, 1,
-    10, 2, 20, 0,
-    10, 2, 20, 5,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf([0, "LWPOLYLINE", 90, 3, 70, 0, 10, 0, 20, 0, 42, 1, 10, 2, 20, 0, 10, 2, 20, 5], {
+      units: 4,
+    }),
+  );
   expect(entities).toHaveLength(2);
   const arc = entities.find((e) => e instanceof ArcEntity) as ArcEntity;
   const line = entities.find((e) => e instanceof LineEntity) as LineEntity;
@@ -107,7 +114,7 @@ test("LWPOLYLINE bulge segment becomes a true arc with correct geometry", () => 
   expect(arc.endPoint.x).toBeCloseTo(2, 10);
   expect(arc.endPoint.y).toBeCloseTo(0, 10);
   // CCW sweep from π through 3π/2: the arc's midpoint dips below the chord.
-  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const span = (((arc.endAngle - arc.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   const midA = arc.startAngle + span / 2;
   expect(arc.center.y + arc.radius * Math.sin(midA)).toBeCloseTo(-1, 10);
 
@@ -116,29 +123,53 @@ test("LWPOLYLINE bulge segment becomes a true arc with correct geometry", () => 
 });
 
 test("negative bulge flips the sweep (CW from p1 → stored as CCW from p2)", () => {
-  const { entities } = importDxf(dxf([
-    0, "LWPOLYLINE", 90, 2, 70, 0,
-    10, 0, 20, 0, 42, -1,
-    10, 2, 20, 0,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf([0, "LWPOLYLINE", 90, 2, 70, 0, 10, 0, 20, 0, 42, -1, 10, 2, 20, 0], { units: 4 }),
+  );
   const arc = entities[0] as ArcEntity;
   expect(arc).toBeInstanceOf(ArcEntity);
   // CW arc from (0,0) to (2,0) bulges up; stored CCW it runs (2,0) → (0,0).
   expect(arc.startPoint.x).toBeCloseTo(2, 10);
   expect(arc.endPoint.x).toBeCloseTo(0, 10);
-  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const span = (((arc.endAngle - arc.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   const midA = arc.startAngle + span / 2;
   expect(arc.center.y + arc.radius * Math.sin(midA)).toBeCloseTo(1, 10);
 });
 
 test("legacy POLYLINE/VERTEX/SEQEND parses like LWPOLYLINE", () => {
-  const { entities } = importDxf(dxf([
-    0, "POLYLINE", 66, 1, 70, 1,
-    0, "VERTEX", 10, 0, 20, 0,
-    0, "VERTEX", 10, 10, 20, 0,
-    0, "VERTEX", 10, 10, 20, 10,
-    0, "SEQEND",
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf(
+      [
+        0,
+        "POLYLINE",
+        66,
+        1,
+        70,
+        1,
+        0,
+        "VERTEX",
+        10,
+        0,
+        20,
+        0,
+        0,
+        "VERTEX",
+        10,
+        10,
+        20,
+        0,
+        0,
+        "VERTEX",
+        10,
+        10,
+        20,
+        10,
+        0,
+        "SEQEND",
+      ],
+      { units: 4 },
+    ),
+  );
   expect(entities).toHaveLength(1);
   const pl = entities[0] as PolylineEntity;
   expect(pl.closed).toBe(true);
@@ -148,16 +179,33 @@ test("legacy POLYLINE/VERTEX/SEQEND parses like LWPOLYLINE", () => {
 test("INSERT expands a block with rotation and uniform scale", () => {
   // Block "b" holds a line (0,0)→(10,0) with base point (0,0).
   // Insert at (100,50), scale 2, rotation 90° → line (100,50)→(100,70).
-  const { entities } = importDxf(dxf([
-    0, "INSERT", 2, "b", 10, 100, 20, 50, 41, 2, 42, 2, 50, 90,
-  ], {
-    units: 4,
-    blocks: [
-      0, "BLOCK", 2, "b", 10, 0, 20, 0,
-      0, "LINE", 10, 0, 20, 0, 11, 10, 21, 0,
-      0, "ENDBLK",
-    ],
-  }));
+  const { entities } = importDxf(
+    dxf([0, "INSERT", 2, "b", 10, 100, 20, 50, 41, 2, 42, 2, 50, 90], {
+      units: 4,
+      blocks: [
+        0,
+        "BLOCK",
+        2,
+        "b",
+        10,
+        0,
+        20,
+        0,
+        0,
+        "LINE",
+        10,
+        0,
+        20,
+        0,
+        11,
+        10,
+        21,
+        0,
+        0,
+        "ENDBLK",
+      ],
+    }),
+  );
   expect(entities).toHaveLength(1);
   const l = entities[0] as LineEntity;
   expect(l.a.x).toBeCloseTo(100, 9);
@@ -167,12 +215,12 @@ test("INSERT expands a block with rotation and uniform scale", () => {
 });
 
 test("INSERT with non-uniform scale is skipped with a warning", () => {
-  const { entities, warnings } = importDxf(dxf([
-    0, "INSERT", 2, "b", 10, 0, 20, 0, 41, 2, 42, 3,
-  ], {
-    units: 4,
-    blocks: [0, "BLOCK", 2, "b", 10, 0, 20, 0, ...LINE_00_105, 0, "ENDBLK"],
-  }));
+  const { entities, warnings } = importDxf(
+    dxf([0, "INSERT", 2, "b", 10, 0, 20, 0, 41, 2, 42, 3], {
+      units: 4,
+      blocks: [0, "BLOCK", 2, "b", 10, 0, 20, 0, ...LINE_00_105, 0, "ENDBLK"],
+    }),
+  );
   expect(entities).toHaveLength(0);
   expect(warnings.some((w) => w.includes("non-uniform"))).toBe(true);
 });
@@ -198,13 +246,47 @@ test("missing units assumes mm and warns", () => {
 
 test("SPLINE tessellates to a polyline that interpolates its clamped ends", () => {
   // Degree-2 clamped NURBS: ctrl (0,0), (5,10), (10,0); knots [0,0,0,1,1,1].
-  const { entities, warnings } = importDxf(dxf([
-    0, "SPLINE", 70, 0, 71, 2, 72, 6, 73, 3,
-    40, 0, 40, 0, 40, 0, 40, 1, 40, 1, 40, 1,
-    10, 0, 20, 0,
-    10, 5, 20, 10,
-    10, 10, 20, 0,
-  ], { units: 4 }));
+  const { entities, warnings } = importDxf(
+    dxf(
+      [
+        0,
+        "SPLINE",
+        70,
+        0,
+        71,
+        2,
+        72,
+        6,
+        73,
+        3,
+        40,
+        0,
+        40,
+        0,
+        40,
+        0,
+        40,
+        1,
+        40,
+        1,
+        40,
+        1,
+        10,
+        0,
+        20,
+        0,
+        10,
+        5,
+        20,
+        10,
+        10,
+        10,
+        20,
+        0,
+      ],
+      { units: 4 },
+    ),
+  );
   const pl = entities[0] as PolylineEntity;
   expect(pl).toBeInstanceOf(PolylineEntity);
   expect(pl.points.length).toBeGreaterThan(10);
@@ -222,13 +304,14 @@ test("SPLINE tessellates to a polyline that interpolates its clamped ends", () =
 
 test("ELLIPSE tessellates to a closed polyline with the right extents", () => {
   // Center (10,0), major axis endpoint (+20,0), ratio 0.5 → 40×20 ellipse.
-  const { entities } = importDxf(dxf([
-    0, "ELLIPSE", 10, 10, 20, 0, 11, 20, 21, 0, 40, 0.5,
-  ], { units: 4 }));
+  const { entities } = importDxf(
+    dxf([0, "ELLIPSE", 10, 10, 20, 0, 11, 20, 21, 0, 40, 0.5], { units: 4 }),
+  );
   const pl = entities[0] as PolylineEntity;
   expect(pl).toBeInstanceOf(PolylineEntity);
   expect(pl.closed).toBe(true);
-  const xs = pl.points.map((p) => p.x), ys = pl.points.map((p) => p.y);
+  const xs = pl.points.map((p) => p.x),
+    ys = pl.points.map((p) => p.y);
   expect(Math.max(...xs)).toBeCloseTo(30, 6);
   expect(Math.min(...xs)).toBeCloseTo(-10, 6);
   expect(Math.max(...ys)).toBeCloseTo(10, 1);
@@ -236,11 +319,11 @@ test("ELLIPSE tessellates to a closed polyline with the right extents", () => {
 });
 
 test("unsupported entities are skipped and summarized in warnings", () => {
-  const { entities, warnings } = importDxf(dxf([
-    ...LINE_00_105,
-    0, "MTEXT", 10, 0, 20, 0, 1, "hello",
-    0, "HATCH", 10, 0, 20, 0,
-  ], { units: 4 }));
+  const { entities, warnings } = importDxf(
+    dxf([...LINE_00_105, 0, "MTEXT", 10, 0, 20, 0, 1, "hello", 0, "HATCH", 10, 0, 20, 0], {
+      units: 4,
+    }),
+  );
   expect(entities).toHaveLength(1);
   const w = warnings.find((x) => x.includes("skipped"));
   expect(w).toBeDefined();

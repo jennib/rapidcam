@@ -1,16 +1,26 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import type { MachineKind, OriginDef, OriginX, OriginY, OriginZ, RotarySettings } from "../model/document";
+import type {
+  MachineKind,
+  OriginDef,
+  OriginX,
+  OriginY,
+  OriginZ,
+  RotarySettings,
+} from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
 import { registerModal } from "./modal";
 
-const MILL_POST_OPTIONS: [string, string][] = [["grbl", "GRBL / FluidNC"], ["linuxcnc", "LinuxCNC"]];
+const MILL_POST_OPTIONS: [string, string][] = [
+  ["grbl", "GRBL / FluidNC"],
+  ["linuxcnc", "LinuxCNC"],
+];
 
 export interface NewProjectConfig {
   name: string;
-  width: number;         // mm — along the cylinder axis for a rotary job
-  height: number;        // mm — the wrapped/circumference span for a rotary job (π·diameter)
+  width: number; // mm — along the cylinder axis for a rotary job
+  height: number; // mm — the wrapped/circumference span for a rotary job (π·diameter)
   stockThickness: number; // mm — radial wall / max cut depth for a rotary job
   displayUnit: Unit;
   origin: OriginDef;
@@ -67,9 +77,9 @@ export function openNewProjectDialog(
   let unit: Unit = initial.displayUnit ?? defaults.displayUnit ?? "mm";
   const vals = {
     name: initial.name ?? "Untitled",
-    width:  initial.width  ?? defaults.width ?? 200,
+    width: initial.width ?? defaults.width ?? 200,
     height: initial.height ?? defaults.height ?? 150,
-    thick:  initial.stockThickness ?? defaults.stockThickness ?? 10,
+    thick: initial.stockThickness ?? defaults.stockThickness ?? 10,
     // Rotary cylinder diameter (mm) — from a saved rotary default, else a sensible rod.
     diameter: initial.rotary?.diameter ?? defaults.rotary?.diameter ?? 50,
   };
@@ -79,8 +89,13 @@ export function openNewProjectDialog(
   backdrop.id = "npd-backdrop";
   backdrop.className = "tp-backdrop";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -106,7 +121,8 @@ export function openNewProjectDialog(
   if (opts.hasWork) {
     const warn = document.createElement("div");
     warn.className = "npd-discard-warning";
-    warn.textContent = "⚠ Creating a new project discards the current drawing. Save first if you want to keep it.";
+    warn.textContent =
+      "⚠ Creating a new project discards the current drawing. Save first if you want to keep it.";
     body.appendChild(warn);
   }
 
@@ -116,17 +132,20 @@ export function openNewProjectDialog(
   body.appendChild(row("Project name", nameInput));
 
   // -- units --
-  const unitSel = sel([["mm", "mm"], ["in", "in"]]);
+  const unitSel = sel([
+    ["mm", "mm"],
+    ["in", "in"],
+  ]);
   unitSel.value = unit;
   body.appendChild(row("Units", unitSel));
 
   // -- stock -- (a rotary job's stock is a cylinder: Length × Diameter, with the
   // wall/depth as the radial cut allowance; see applyMachineKind for the relabel)
   const stockSec = sec("Stock");
-  const wInp = dimInp(formatLength(vals.width,  unit));
+  const wInp = dimInp(formatLength(vals.width, unit));
   const hInp = dimInp(formatLength(vals.height, unit));
   const dInp = dimInp(formatLength(vals.diameter, unit));
-  const tInp = dimInp(formatLength(vals.thick,  unit));
+  const tInp = dimInp(formatLength(vals.thick, unit));
   const wRow = row("Width", wInp);
   const hRow = row("Height", hInp);
   const dRow = row("Diameter", dInp);
@@ -140,9 +159,20 @@ export function openNewProjectDialog(
 
   // -- origin --
   const originSec = sec("Origin (WCS)");
-  const oxSel = sel([["left", "Left"], ["center", "Center"], ["right", "Right"]]);
-  const oySel = sel([["front", "Front"], ["center", "Center"], ["back", "Back"]]);
-  const ozSel = sel([["top", "Top of stock"], ["bed", "Bed"]]);
+  const oxSel = sel([
+    ["left", "Left"],
+    ["center", "Center"],
+    ["right", "Right"],
+  ]);
+  const oySel = sel([
+    ["front", "Front"],
+    ["center", "Center"],
+    ["back", "Back"],
+  ]);
+  const ozSel = sel([
+    ["top", "Top of stock"],
+    ["bed", "Bed"],
+  ]);
   oxSel.value = initial.origin?.x ?? defaults.origin?.x ?? "left";
   oySel.value = initial.origin?.y ?? defaults.origin?.y ?? "front";
   ozSel.value = initial.origin?.z ?? defaults.origin?.z ?? "top";
@@ -154,7 +184,11 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
-  const mkSel = sel([["mill", "CNC Mill / Router"], ["mill-rotary", "CNC Mill — Rotary / 4th axis"], ["laser", "Laser"]]);
+  const mkSel = sel([
+    ["mill", "CNC Mill / Router"],
+    ["mill-rotary", "CNC Mill — Rotary / 4th axis"],
+    ["laser", "Laser"],
+  ]);
   mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel(MILL_POST_OPTIONS);
@@ -181,18 +215,25 @@ export function openNewProjectDialog(
   // pick so toggling back and forth doesn't lose it. A laser has no spindle/Z, so
   // the tool-changer and coolant toggles are grayed out.
   const initialPP = initial.postProcessor ?? defaults.postProcessor;
-  let millPost  = (initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP)) ? initialPP : "linuxcnc";
-  let laserPost = (initialPP && laserPostOptions().some(([v]) => v === initialPP)) ? initialPP : DEFAULT_LASER_POST.id;
+  let millPost =
+    initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP) ? initialPP : "linuxcnc";
+  let laserPost =
+    initialPP && laserPostOptions().some(([v]) => v === initialPP)
+      ? initialPP
+      : DEFAULT_LASER_POST.id;
   const fillOptions = (opts: [string, string][], value: string) => {
     ppSel.innerHTML = "";
     for (const [v, l] of opts) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l; ppSel.appendChild(o);
+      o.value = v;
+      o.textContent = l;
+      ppSel.appendChild(o);
     }
     ppSel.value = value;
   };
   ppSel.addEventListener("change", () => {
-    if (mkSel.value === "laser") laserPost = ppSel.value; else millPost = ppSel.value;
+    if (mkSel.value === "laser") laserPost = ppSel.value;
+    else millPost = ppSel.value;
   });
   const applyMachineKind = () => {
     const laser = mkSel.value === "laser";
@@ -241,7 +282,10 @@ export function openNewProjectDialog(
   createBtn.addEventListener("click", () => {
     const rotary = mkSel.value === "mill-rotary";
     const t = parseLength(tInp.value, unit);
-    if (!t || t <= 0) { highlight(tInp); return; }
+    if (!t || t <= 0) {
+      highlight(tInp);
+      return;
+    }
 
     // A rotary job defines a cylinder (length × diameter); its circumference
     // becomes the wrapped canvas dimension so the unrolled surface = the drawing.
@@ -249,22 +293,37 @@ export function openNewProjectDialog(
     if (rotary) {
       const len = parseLength(wInp.value, unit);
       const dia = parseLength(dInp.value, unit);
-      if (!len || len <= 0) { highlight(wInp); return; }
-      if (!dia || dia <= 0) { highlight(dInp); return; }
+      if (!len || len <= 0) {
+        highlight(wInp);
+        return;
+      }
+      if (!dia || dia <= 0) {
+        highlight(dInp);
+        return;
+      }
       width = len;
       height = Math.PI * dia;
       rotarySettings = { axisWord: "A", diameter: dia, wrapAxis: "y" };
     } else {
       const w = parseLength(wInp.value, unit);
       const h = parseLength(hInp.value, unit);
-      if (!w || w <= 0) { highlight(wInp); return; }
-      if (!h || h <= 0) { highlight(hInp); return; }
-      width = w; height = h;
+      if (!w || w <= 0) {
+        highlight(wInp);
+        return;
+      }
+      if (!h || h <= 0) {
+        highlight(hInp);
+        return;
+      }
+      width = w;
+      height = h;
     }
 
     const cfg: NewProjectConfig = {
       name: nameInput.value.trim() || "Untitled",
-      width, height, stockThickness: t,
+      width,
+      height,
+      stockThickness: t,
       displayUnit: unit,
       origin: {
         x: oxSel.value as OriginX,
@@ -299,7 +358,11 @@ export function openNewProjectDialog(
     }
 
     // Remember the machine type for next time, regardless of "Save as default".
-    try { localStorage.setItem(StorageKeys.lastMachineKind, cfg.machineKind); } catch (_e) { /* ignore */ }
+    try {
+      localStorage.setItem(StorageKeys.lastMachineKind, cfg.machineKind);
+    } catch (_e) {
+      /* ignore */
+    }
 
     // Persist the machine coolant capability (global, applies to all projects).
     setMachineHasCoolant(coolantChk.checked);
@@ -334,7 +397,10 @@ export function openNewProjectDialog(
 
   unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
-  setTimeout(() => { nameInput.focus(); nameInput.select(); }, 40);
+  setTimeout(() => {
+    nameInput.focus();
+    nameInput.select();
+  }, 40);
 }
 
 // ---- DOM helpers ------------------------------------------------------------
@@ -361,15 +427,21 @@ function sec(title: string): HTMLElement {
 
 function inp(type: string, value: string): HTMLInputElement {
   const i = document.createElement("input");
-  i.type = type; i.value = value;
+  i.type = type;
+  i.value = value;
   return i;
 }
 
 function dimInp(value: string): HTMLInputElement {
   const i = document.createElement("input");
-  i.type = "text"; i.className = "dim"; i.spellcheck = false; i.value = value;
+  i.type = "text";
+  i.className = "dim";
+  i.spellcheck = false;
+  i.value = value;
   i.style.transition = "border-color 0.15s";
-  i.addEventListener("input", () => { i.style.borderColor = ""; });
+  i.addEventListener("input", () => {
+    i.style.borderColor = "";
+  });
   return i;
 }
 
@@ -378,7 +450,9 @@ function sel(opts: [string, string][]): HTMLSelectElement {
   s.className = "unit";
   for (const [v, l] of opts) {
     const o = document.createElement("option");
-    o.value = v; o.textContent = l; s.appendChild(o);
+    o.value = v;
+    o.textContent = l;
+    s.appendChild(o);
   }
   return s;
 }

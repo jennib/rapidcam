@@ -72,9 +72,13 @@ export class LayersBar {
   private toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
     this.host.classList.toggle("collapsed", this.isCollapsed);
-    this.host.addEventListener("transitionend", () => {
-      window.dispatchEvent(new Event("resize"));
-    }, { once: true });
+    this.host.addEventListener(
+      "transitionend",
+      () => {
+        window.dispatchEvent(new Event("resize"));
+      },
+      { once: true },
+    );
   }
 
   private render(): void {
@@ -86,7 +90,8 @@ export class LayersBar {
       row.style.alignItems = "center";
       row.style.gap = "6px";
       row.style.padding = "4px";
-      row.style.backgroundColor = this.doc.activeLayerId === layer.id ? "rgba(255,255,255,0.1)" : "transparent";
+      row.style.backgroundColor =
+        this.doc.activeLayerId === layer.id ? "rgba(255,255,255,0.1)" : "transparent";
       row.style.borderRadius = "4px";
 
       // Radio button for active layer
@@ -171,7 +176,8 @@ export class LayersBar {
       fixBtn.onclick = () => {
         this.pushHistory();
         layer.fixture = !layer.fixture;
-        if (layer.fixture && !(layer.fixtureHeight && layer.fixtureHeight > 0)) layer.fixtureHeight = 20;
+        if (layer.fixture && !(layer.fixtureHeight && layer.fixtureHeight > 0))
+          layer.fixtureHeight = 20;
         else if (!layer.fixture) layer.fixtureHeight = undefined;
         this.doc.emitChange();
       };
@@ -207,7 +213,7 @@ export class LayersBar {
       delBtn.onclick = async () => {
         if (this.doc.layers.length <= 1) return;
 
-        const entsOnLayer = this.doc.entities.filter(e => e.layerId === layer.id);
+        const entsOnLayer = this.doc.entities.filter((e) => e.layerId === layer.id);
         if (entsOnLayer.length > 0) {
           const ok = await confirmDialog({
             title: "Delete layer?",
@@ -219,18 +225,18 @@ export class LayersBar {
         }
 
         this.pushHistory();
-        
+
         // Remove entities on this layer
-        this.doc.entities = this.doc.entities.filter(e => e.layerId !== layer.id);
-        
+        this.doc.entities = this.doc.entities.filter((e) => e.layerId !== layer.id);
+
         // Remove layer
-        this.doc.layers = this.doc.layers.filter(l => l.id !== layer.id);
-        
+        this.doc.layers = this.doc.layers.filter((l) => l.id !== layer.id);
+
         // Reset active layer if we deleted the active one
         if (this.doc.activeLayerId === layer.id) {
           this.doc.activeLayerId = this.doc.layers[0].id;
         }
-        
+
         this.doc.emitChange();
       };
       row.appendChild(delBtn);

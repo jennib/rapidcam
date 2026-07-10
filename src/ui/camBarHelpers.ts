@@ -22,10 +22,20 @@ import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
 
-export type OpCombo = "profile-outside" | "profile-inside" | "pocket" | "engrave" | "drill" | "chamfer" | "vcarve" | "relief-rough" | "score";
+export type OpCombo =
+  | "profile-outside"
+  | "profile-inside"
+  | "pocket"
+  | "engrave"
+  | "drill"
+  | "chamfer"
+  | "vcarve"
+  | "relief-rough"
+  | "score";
 
 /** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-export const AUTO_NAME_RE = /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold) \d+$/;
+export const AUTO_NAME_RE =
+  /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold) \d+$/;
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -41,10 +51,20 @@ export function comboOf(op: CAMOperation): OpCombo {
  *   strip the image as "invalid for profile", leaving the op with no geometry
  *   (and Apply then rejecting it as an empty selection).
  */
-export function defaultCombo(existing: CAMOperation | null, preSelected: Entity[], isLaser: boolean): OpCombo {
+export function defaultCombo(
+  existing: CAMOperation | null,
+  preSelected: Entity[],
+  isLaser: boolean,
+): OpCombo {
   let combo: OpCombo = existing ? comboOf(existing) : "profile-outside";
   // Laser has no spindle/Z ops; keep only beam-capable types.
-  if (isLaser && combo !== "profile-outside" && combo !== "profile-inside" && combo !== "engrave" && combo !== "score")
+  if (
+    isLaser &&
+    combo !== "profile-outside" &&
+    combo !== "profile-inside" &&
+    combo !== "engrave" &&
+    combo !== "score"
+  )
     combo = "profile-outside";
   if (!existing && preSelected.some((e) => e instanceof RasterImageEntity)) combo = "engrave";
   return combo;
@@ -78,16 +98,29 @@ export interface OpSelectionCheck {
  * required to be absent, so a selection can carry geometry that only some op
  * types accept (an image stays selected when you flip the op to Cut and back).
  */
-export function checkOpSelection(entities: Entity[], selectedIds: Iterable<string>, combo: OpCombo): OpSelectionCheck {
+export function checkOpSelection(
+  entities: Entity[],
+  selectedIds: Iterable<string>,
+  combo: OpCombo,
+): OpSelectionCheck {
   const byId = new Map(entities.map((e) => [e.id, e]));
   const sel: Entity[] = [];
-  for (const id of selectedIds) { const e = byId.get(id); if (e) sel.push(e); }
+  for (const id of selectedIds) {
+    const e = byId.get(id);
+    if (e) sel.push(e);
+  }
   const valid = sel.filter((e) => isValidFor(e, combo));
   if (valid.length > 0) return { validIds: valid.map((e) => e.id), error: null };
   if (sel.some((e) => e instanceof RasterImageEntity))
-    return { validIds: [], error: "An image can only be engraved — set this toolpath's type to Engrave." };
+    return {
+      validIds: [],
+      error: "An image can only be engraved — set this toolpath's type to Engrave.",
+    };
   if (sel.length > 0)
-    return { validIds: [], error: "None of the selected geometry can be used by this operation type." };
+    return {
+      validIds: [],
+      error: "None of the selected geometry can be used by this operation type.",
+    };
   return { validIds: [], error: "Select at least one geometry item." };
 }
 
@@ -131,15 +164,17 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
  * loop, clear of its islands. Used to migrate legacy pocket ops and to seed
  * regions from the canvas selection.
  */
-export function seedsFromEntityIds(doc: CADDocument, entIds: Set<string>, islIds: Set<string>): Vec2[] {
+export function seedsFromEntityIds(
+  doc: CADDocument,
+  entIds: Set<string>,
+  islIds: Set<string>,
+): Vec2[] {
   const loops = collectClosedLoops(doc.entities);
   const boundaries = loops.filter((L) => L.ids.every((id) => entIds.has(id)));
   const islands = loops.filter((L) => L.ids.every((id) => islIds.has(id)));
   const seeds: Vec2[] = [];
   for (const b of boundaries) {
-    const holes = islands
-      .filter((i) => pointInPolygon(i.verts[0], b.verts))
-      .map((i) => i.verts);
+    const holes = islands.filter((i) => pointInPolygon(i.verts[0], b.verts)).map((i) => i.verts);
     const p = interiorPoint(b.verts, holes);
     if (p) seeds.push(p);
   }
@@ -177,11 +212,15 @@ export function seedsFromRegions(doc: CADDocument, regions: RegionRef[]): Vec2[]
   return seeds;
 }
 
-export function findContiguousChain(startId: string, doc: CADDocument, validCombo: OpCombo): string[] {
+export function findContiguousChain(
+  startId: string,
+  doc: CADDocument,
+  validCombo: OpCombo,
+): string[] {
   const chain = new Set<string>();
   const front: Vec2[] = [];
 
-  const startEnt = doc.entities.find(e => e.id === startId);
+  const startEnt = doc.entities.find((e) => e.id === startId);
   if (!startEnt || startEnt.isConstruction) return [];
 
   const getEnds = (e: Entity): Vec2[] => {

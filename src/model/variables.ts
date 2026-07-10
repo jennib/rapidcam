@@ -57,7 +57,10 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit): voi
 
   const dependents = new Map<string, string[]>(); // var → vars that reference it
   const indeg = new Map<string, number>();
-  for (const v of variables) { dependents.set(v.name, []); indeg.set(v.name, 0); }
+  for (const v of variables) {
+    dependents.set(v.name, []);
+    indeg.set(v.name, 0);
+  }
   for (const v of variables) {
     for (const r of new Set(referencedVars(v.expr, names))) {
       indeg.set(v.name, indeg.get(v.name)! + 1);

@@ -7,10 +7,17 @@
  */
 
 import { test, expect } from "vitest";
-import { normalizeGsenderUrl, sendToGsender, testGsenderConnection, type FetchLike } from "../src/io/gsender";
+import {
+  normalizeGsenderUrl,
+  sendToGsender,
+  testGsenderConnection,
+  type FetchLike,
+} from "../src/io/gsender";
 
 /** Build a fake fetch from a URL→handler map. Records the calls it receives. */
-function fakeFetch(routes: Record<string, (init?: RequestInit) => Partial<Response> & { _json?: unknown }>): {
+function fakeFetch(
+  routes: Record<string, (init?: RequestInit) => Partial<Response> & { _json?: unknown }>,
+): {
   fetch: FetchLike;
   calls: { url: string; init?: RequestInit }[];
 } {
@@ -92,7 +99,7 @@ test("sends successfully with no machine connected — file lands in gSender, no
   expect(res.ok).toBe(true);
   expect(res.port).toBeUndefined();
   const load = calls.find((c) => c.url.endsWith("/api/file"))!;
-  expect(load).toBeTruthy();                              // it still posted the file
+  expect(load).toBeTruthy(); // it still posted the file
   expect(await formText(load.init!.body, "port")).toBeNull(); // with no port field
 });
 

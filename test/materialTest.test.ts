@@ -10,8 +10,12 @@ import { RectEntity } from "../src/model/entities";
 
 const params = (over = {}) => ({
   ...MATERIAL_TEST_DEFAULTS,
-  powerMin: 20, powerMax: 100, powerSteps: 5,
-  speedMin: 200, speedMax: 1200, speedSteps: 5,
+  powerMin: 20,
+  powerMax: 100,
+  powerSteps: 5,
+  speedMin: 200,
+  speedMax: 1200,
+  speedSteps: 5,
   origin: { x: 20, y: 15 },
   fontId: "test-font", // non-empty so labels generate without a loaded font
   ...over,
@@ -71,6 +75,6 @@ test("the generated grid posts to laser G-code with the swept powers", () => {
   for (const e of entities) doc.entities.push(e);
 
   const g = generateLaserGCode(operations, doc);
-  expect(g).toContain("M4 S200");  // 20% of default max 1000
+  expect(g).toContain("M4 S200"); // 20% of default max 1000
   expect(g).toContain("M4 S1000"); // 100%
 });

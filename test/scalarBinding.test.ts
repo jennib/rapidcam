@@ -20,12 +20,12 @@ test("a scalar binding drives a circle's radius from a variable formula", () => 
   doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "plateW/2" });
 
   resolve(doc);
-  expect(c.radius).toBeCloseTo(40, 3);      // 80/2
+  expect(c.radius).toBeCloseTo(40, 3); // 80/2
 
   // Changing the variable re-drives the radius on the next solve.
   doc.variables[0].expr = "100";
   resolve(doc);
-  expect(c.radius).toBeCloseTo(50, 3);      // 100/2
+  expect(c.radius).toBeCloseTo(50, 3); // 100/2
 });
 
 test("solve reports constraints when only a binding is present", () => {
@@ -43,7 +43,9 @@ test("bindingResiduals is empty for a broken formula (deleted variable)", () => 
   const c = doc.add(new CircleEntity({ x: 50, y: 50 }, 5));
   const geo = (id: string) => doc.entities.find((e) => e.id === id);
   // no such variable → evalExpr returns null → no residual (radius left alone)
-  expect(bindingResiduals({ id: "b", entityId: c.id, scalarKey: "r", expr: "ghost*2" }, geo, new Map())).toEqual([]);
+  expect(
+    bindingResiduals({ id: "b", entityId: c.id, scalarKey: "r", expr: "ghost*2" }, geo, new Map()),
+  ).toEqual([]);
   const before = c.radius;
   resolve(doc);
   expect(c.radius).toBe(before);
@@ -53,18 +55,29 @@ test("an angle binding applies the degree→radian scale", () => {
   const doc = new CADDocument({ width: 200, height: 200 });
   const a = doc.add(new ArcEntity({ x: 100, y: 100 }, 20, 0, Math.PI / 2));
   doc.variables.push(makeVariable("tilt", "90", "mm"));
-  doc.bindings.push({ id: "b1", entityId: a.id, scalarKey: "sa", expr: "tilt", scale: Math.PI / 180 });
+  doc.bindings.push({
+    id: "b1",
+    entityId: a.id,
+    scalarKey: "sa",
+    expr: "tilt",
+    scale: Math.PI / 180,
+  });
   resolve(doc);
-  expect(a.startAngle).toBeCloseTo(Math.PI / 2, 3);   // 90° → π/2 rad
+  expect(a.startAngle).toBeCloseTo(Math.PI / 2, 3); // 90° → π/2 rad
 });
 
 test("a bound scalar counts toward the entity DOF status (not left under-defined)", () => {
   const doc = new CADDocument({ width: 200, height: 200 });
   const c = doc.add(new CircleEntity({ x: 0, y: 0 }, 10));
   // Pin the centre to the origin so only the radius DOF is left free.
-  doc.constraints.push(makeConstraint("coincident", {
-    points: [{ entityId: c.id, key: "c" }, { entityId: "__origin__", key: "p" }],
-  }));
+  doc.constraints.push(
+    makeConstraint("coincident", {
+      points: [
+        { entityId: c.id, key: "c" },
+        { entityId: "__origin__", key: "p" },
+      ],
+    }),
+  );
   doc.variables.push(makeVariable("r0", "25", "mm"));
   expect(computeEntityDofStatus(doc, resolve(doc)).get(c.id)).toBe("under-defined"); // radius free
 

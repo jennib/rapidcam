@@ -1,7 +1,20 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity, RectEntity, LineEntity, PolylineEntity, RasterImageEntity } from "../src/model/entities";
-import { comboOf, isValidFor, describeEntity, findContiguousChain, defaultCombo, checkOpSelection } from "../src/ui/camBarHelpers";
+import {
+  CircleEntity,
+  RectEntity,
+  LineEntity,
+  PolylineEntity,
+  RasterImageEntity,
+} from "../src/model/entities";
+import {
+  comboOf,
+  isValidFor,
+  describeEntity,
+  findContiguousChain,
+  defaultCombo,
+  checkOpSelection,
+} from "../src/ui/camBarHelpers";
 import type { CAMOperation } from "../src/cam/types";
 
 const img = () => new RasterImageEntity("img-x", { x: 0, y: 0 }, 10, 10, 0);
@@ -36,7 +49,9 @@ test("checkOpSelection: filters to the valid subset, keeping invalid entities se
   const ids = [circle.id, image.id];
 
   // Engrave accepts both; profile accepts only the circle (image filtered, not error).
-  expect(checkOpSelection(entities, ids, "engrave").validIds.sort()).toEqual([circle.id, image.id].sort());
+  expect(checkOpSelection(entities, ids, "engrave").validIds.sort()).toEqual(
+    [circle.id, image.id].sort(),
+  );
   const prof = checkOpSelection(entities, ids, "profile-outside");
   expect(prof.validIds).toEqual([circle.id]);
   expect(prof.error).toBeNull();
@@ -53,7 +68,13 @@ test("checkOpSelection: an image-only selection on a non-engrave op explains why
 
 test("checkOpSelection: distinguishes 'nothing selected' from 'nothing usable'", () => {
   expect(checkOpSelection([], [], "engrave").error).toMatch(/select at least one/i);
-  const open = new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }], false);
+  const open = new PolylineEntity(
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ],
+    false,
+  );
   const r = checkOpSelection([open], [open.id], "profile-outside");
   expect(r.error).toMatch(/none of the selected geometry/i);
 });
@@ -82,7 +103,13 @@ test("isValidFor: drill accepts only circles", () => {
 });
 
 test("isValidFor: open polyline rejected for profile, accepted for engrave", () => {
-  const open = new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }], false);
+  const open = new PolylineEntity(
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ],
+    false,
+  );
   expect(isValidFor(open, "profile-outside")).toBe(false);
   expect(isValidFor(open, "engrave")).toBe(true);
 });

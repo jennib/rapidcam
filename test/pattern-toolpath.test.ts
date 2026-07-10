@@ -20,9 +20,21 @@ function lin(countX: number): LinearPatternParams {
 }
 function drillOp(entityIds: string[]): CAMOperation {
   return {
-    id: "op1", name: "Drill", type: "drill", entityIds, side: "outside",
-    toolType: "drill", toolNumber: 1, diameter: 3, feedrate: 800, plungeRate: 250,
-    spindleSpeed: 18000, safeZ: 5, depth: -5, stepdown: 2, stepover: 0.4,
+    id: "op1",
+    name: "Drill",
+    type: "drill",
+    entityIds,
+    side: "outside",
+    toolType: "drill",
+    toolNumber: 1,
+    diameter: 3,
+    feedrate: 800,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -5,
+    stepdown: 2,
+    stepover: 0.4,
   };
 }
 function freshDoc(): CADDocument {
@@ -35,9 +47,7 @@ describe("CAM ops follow patterns", () => {
     const src = doc.add(new CircleEntity({ x: 0, y: 0 }, 5));
     const pat = createLinearPattern(doc, [src.id], lin(3)); // 2 instances
     const resolved = expandOpPatternTargets(drillOp([src.id]), doc);
-    expect([...resolved.entityIds].sort()).toEqual(
-      [src.id, ...pat.instanceIds.flat()].sort(),
-    );
+    expect([...resolved.entityIds].sort()).toEqual([src.id, ...pat.instanceIds.flat()].sort());
   });
 
   it("follows the count when the pattern grows", () => {

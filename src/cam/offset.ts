@@ -11,13 +11,19 @@ import { inflatePathsD, JoinType, EndType, differenceD, FillRule } from "clipper
 export function startAtLongestEdgeMid(path: Vec2[]): Vec2[] {
   const n = path.length;
   if (n < 3) return path;
-  let k = 0, best = -1;
+  let k = 0,
+    best = -1;
   for (let i = 0; i < n; i++) {
-    const a = path[i], b = path[(i + 1) % n];
+    const a = path[i],
+      b = path[(i + 1) % n];
     const d = Math.hypot(b.x - a.x, b.y - a.y);
-    if (d > best) { best = d; k = i; }
+    if (d > best) {
+      best = d;
+      k = i;
+    }
   }
-  const a = path[k], b = path[(k + 1) % n];
+  const a = path[k],
+    b = path[(k + 1) % n];
   const mid: Vec2 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const out: Vec2[] = [mid];
   for (let i = 1; i <= n; i++) out.push(path[(k + i) % n]); // b … a, closing back to mid
@@ -33,7 +39,9 @@ export function isConcave(pts: Vec2[]): boolean {
   if (n < 4) return false;
   let sign = 0;
   for (let i = 0; i < n; i++) {
-    const a = pts[i], b = pts[(i + 1) % n], c = pts[(i + 2) % n];
+    const a = pts[i],
+      b = pts[(i + 1) % n],
+      c = pts[(i + 2) % n];
     const z = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
     if (Math.abs(z) < 1e-10) continue;
     const s = z > 0 ? 1 : -1;
@@ -63,7 +71,7 @@ export function signedArea(pts: Vec2[]): number {
 export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[][] {
   if (pts.length < 3) return [];
   const result = inflatePathsD([pts], d, JoinType.Miter, EndType.Polygon, miterLimit);
-  return result.map(path => path.map(pt => ({ x: pt.x, y: pt.y })));
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
 }
 
 /**
@@ -75,5 +83,5 @@ export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[][] 
 export function subtractPolygons(subject: Vec2[], clips: Vec2[][]): Vec2[][] {
   if (clips.length === 0) return [subject];
   const result = differenceD([subject], clips, FillRule.NonZero);
-  return result.map(path => path.map(pt => ({ x: pt.x, y: pt.y })));
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
 }

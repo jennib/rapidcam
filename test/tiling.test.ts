@@ -2,8 +2,10 @@ import { test, expect } from "vitest";
 import { planTiles } from "../src/cam/tiling";
 import type { Bounds } from "../src/model/entities";
 
-const B = (w: number, h: number, x = 0, y = 0): Bounds =>
-  ({ min: { x, y }, max: { x: x + w, y: y + h } });
+const B = (w: number, h: number, x = 0, y = 0): Bounds => ({
+  min: { x, y },
+  max: { x: x + w, y: y + h },
+});
 
 test("a design that fits the bed is a single tile with no seams", () => {
   const p = planTiles(B(100, 80), { tileW: 150, tileH: 150 });
@@ -26,7 +28,7 @@ test("a 2x2 grid: tile rects partition the bounds, last row/col are smaller", ()
   const p = planTiles(B(250, 250), { tileW: 150, tileH: 150 });
   expect([p.cols, p.rows]).toEqual([2, 2]);
   const rects = p.tiles.map((t) => t.rect);
-  expect(rects).toContainEqual(B(150, 150, 0, 0));   // full tile
+  expect(rects).toContainEqual(B(150, 150, 0, 0)); // full tile
   expect(rects).toContainEqual(B(100, 150, 150, 0)); // right column narrower
   expect(rects).toContainEqual(B(150, 100, 0, 150)); // bottom row shorter
   expect(rects).toContainEqual(B(100, 100, 150, 150));
@@ -43,7 +45,7 @@ test("a 2x2 grid has 4 seams and deduped features on the seam lines", () => {
   for (const s of p.seams) {
     for (const f of s.features) {
       if (s.orientation === "vertical") {
-        expect(f.x).toBeCloseTo(s.a.x, 9);           // sits on the seam line
+        expect(f.x).toBeCloseTo(s.a.x, 9); // sits on the seam line
         expect(f.y).toBeGreaterThan(Math.min(s.a.y, s.b.y));
         expect(f.y).toBeLessThan(Math.max(s.a.y, s.b.y));
       } else {
@@ -58,7 +60,12 @@ test("a 2x2 grid has 4 seams and deduped features on the seam lines", () => {
 test("each seam joins the correct adjacent tile pair", () => {
   const p = planTiles(B(250, 250), { tileW: 150, tileH: 150 });
   // Tiles are row-major: 0,1 / 2,3.
-  const pairs = p.seams.map((s) => s.tiles.slice().sort((a, b) => a - b).join(","));
+  const pairs = p.seams.map((s) =>
+    s.tiles
+      .slice()
+      .sort((a, b) => a - b)
+      .join(","),
+  );
   expect(pairs).toContain("0,1"); // top row vertical
   expect(pairs).toContain("2,3"); // bottom row vertical
   expect(pairs).toContain("0,2"); // left col horizontal

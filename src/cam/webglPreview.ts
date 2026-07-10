@@ -141,7 +141,9 @@ void main() {
 
 type Mat4 = Float32Array;
 
-function mat4(): Mat4 { return new Float32Array(16); }
+function mat4(): Mat4 {
+  return new Float32Array(16);
+}
 
 function perspective(m: Mat4, fovY: number, aspect: number, near: number, far: number): Mat4 {
   const f = 1 / Math.tan(fovY / 2);
@@ -155,24 +157,42 @@ function perspective(m: Mat4, fovY: number, aspect: number, near: number, far: n
 }
 
 function lookAt(m: Mat4, eye: number[], center: number[], up: number[]): Mat4 {
-  const fx = center[0] - eye[0], fy = center[1] - eye[1], fz = center[2] - eye[2];
+  const fx = center[0] - eye[0],
+    fy = center[1] - eye[1],
+    fz = center[2] - eye[2];
   const fl = Math.sqrt(fx * fx + fy * fy + fz * fz);
-  const f0 = fx / fl, f1 = fy / fl, f2 = fz / fl;
+  const f0 = fx / fl,
+    f1 = fy / fl,
+    f2 = fz / fl;
 
   const s0 = f1 * up[2] - f2 * up[1];
   const s1 = f2 * up[0] - f0 * up[2];
   const s2 = f0 * up[1] - f1 * up[0];
   const sl = Math.sqrt(s0 * s0 + s1 * s1 + s2 * s2);
-  const sx = s0 / sl, sy = s1 / sl, sz = s2 / sl;
+  const sx = s0 / sl,
+    sy = s1 / sl,
+    sz = s2 / sl;
 
   const u0 = sy * f2 - sz * f1;
   const u1 = sz * f0 - sx * f2;
   const u2 = sx * f1 - sy * f0;
 
-  m[0] = sx; m[4] = sy; m[8] = sz; m[12] = -(sx * eye[0] + sy * eye[1] + sz * eye[2]);
-  m[1] = u0; m[5] = u1; m[9] = u2; m[13] = -(u0 * eye[0] + u1 * eye[1] + u2 * eye[2]);
-  m[2] = -f0; m[6] = -f1; m[10] = -f2; m[14] = f0 * eye[0] + f1 * eye[1] + f2 * eye[2];
-  m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
+  m[0] = sx;
+  m[4] = sy;
+  m[8] = sz;
+  m[12] = -(sx * eye[0] + sy * eye[1] + sz * eye[2]);
+  m[1] = u0;
+  m[5] = u1;
+  m[9] = u2;
+  m[13] = -(u0 * eye[0] + u1 * eye[1] + u2 * eye[2]);
+  m[2] = -f0;
+  m[6] = -f1;
+  m[10] = -f2;
+  m[14] = f0 * eye[0] + f1 * eye[1] + f2 * eye[2];
+  m[3] = 0;
+  m[7] = 0;
+  m[11] = 0;
+  m[15] = 1;
   return m;
 }
 
@@ -190,25 +210,53 @@ function mul4(out: Mat4, a: Mat4, b: Mat4): Mat4 {
 /** Invert a 4×4 matrix (column-major). Returns null if singular. */
 function inv4(m: Mat4): Mat4 | null {
   const o = new Float32Array(16);
-  const m00 = m[0], m10 = m[1], m20 = m[2], m30 = m[3];
-  const m01 = m[4], m11 = m[5], m21 = m[6], m31 = m[7];
-  const m02 = m[8], m12 = m[9], m22 = m[10], m32 = m[11];
-  const m03 = m[12], m13 = m[13], m23 = m[14], m33 = m[15];
-  const b00 = m00 * m11 - m10 * m01, b01 = m00 * m21 - m20 * m01, b02 = m00 * m31 - m30 * m01;
-  const b03 = m10 * m21 - m20 * m11, b04 = m10 * m31 - m30 * m11, b05 = m20 * m31 - m30 * m21;
-  const b06 = m02 * m13 - m12 * m03, b07 = m02 * m23 - m22 * m03, b08 = m02 * m33 - m32 * m03;
-  const b09 = m12 * m23 - m22 * m13, b10 = m12 * m33 - m32 * m13, b11 = m22 * m33 - m32 * m23;
+  const m00 = m[0],
+    m10 = m[1],
+    m20 = m[2],
+    m30 = m[3];
+  const m01 = m[4],
+    m11 = m[5],
+    m21 = m[6],
+    m31 = m[7];
+  const m02 = m[8],
+    m12 = m[9],
+    m22 = m[10],
+    m32 = m[11];
+  const m03 = m[12],
+    m13 = m[13],
+    m23 = m[14],
+    m33 = m[15];
+  const b00 = m00 * m11 - m10 * m01,
+    b01 = m00 * m21 - m20 * m01,
+    b02 = m00 * m31 - m30 * m01;
+  const b03 = m10 * m21 - m20 * m11,
+    b04 = m10 * m31 - m30 * m11,
+    b05 = m20 * m31 - m30 * m21;
+  const b06 = m02 * m13 - m12 * m03,
+    b07 = m02 * m23 - m22 * m03,
+    b08 = m02 * m33 - m32 * m03;
+  const b09 = m12 * m23 - m22 * m13,
+    b10 = m12 * m33 - m32 * m13,
+    b11 = m22 * m33 - m32 * m23;
   const det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
   if (Math.abs(det) < 1e-14) return null;
   const id = 1 / det;
-  o[0] = (m11 * b11 - m21 * b10 + m31 * b09) * id; o[1] = (-m10 * b11 + m20 * b10 - m30 * b09) * id;
-  o[2] = (m13 * b05 - m23 * b04 + m33 * b03) * id; o[3] = (-m12 * b05 + m22 * b04 - m32 * b03) * id;
-  o[4] = (-m01 * b11 + m21 * b08 - m31 * b07) * id; o[5] = (m00 * b11 - m20 * b08 + m30 * b07) * id;
-  o[6] = (-m03 * b05 + m23 * b02 - m33 * b01) * id; o[7] = (m02 * b05 - m22 * b02 + m32 * b01) * id;
-  o[8] = (m01 * b10 - m11 * b08 + m31 * b06) * id; o[9] = (-m00 * b10 + m10 * b08 - m30 * b06) * id;
-  o[10] = (m03 * b04 - m13 * b02 + m33 * b00) * id; o[11] = (-m02 * b04 + m12 * b02 - m32 * b00) * id;
-  o[12] = (-m01 * b09 + m11 * b07 - m21 * b06) * id; o[13] = (m00 * b09 - m10 * b07 + m20 * b06) * id;
-  o[14] = (-m03 * b03 + m13 * b01 - m23 * b00) * id; o[15] = (m02 * b03 - m12 * b01 + m22 * b00) * id;
+  o[0] = (m11 * b11 - m21 * b10 + m31 * b09) * id;
+  o[1] = (-m10 * b11 + m20 * b10 - m30 * b09) * id;
+  o[2] = (m13 * b05 - m23 * b04 + m33 * b03) * id;
+  o[3] = (-m12 * b05 + m22 * b04 - m32 * b03) * id;
+  o[4] = (-m01 * b11 + m21 * b08 - m31 * b07) * id;
+  o[5] = (m00 * b11 - m20 * b08 + m30 * b07) * id;
+  o[6] = (-m03 * b05 + m23 * b02 - m33 * b01) * id;
+  o[7] = (m02 * b05 - m22 * b02 + m32 * b01) * id;
+  o[8] = (m01 * b10 - m11 * b08 + m31 * b06) * id;
+  o[9] = (-m00 * b10 + m10 * b08 - m30 * b06) * id;
+  o[10] = (m03 * b04 - m13 * b02 + m33 * b00) * id;
+  o[11] = (-m02 * b04 + m12 * b02 - m32 * b00) * id;
+  o[12] = (-m01 * b09 + m11 * b07 - m21 * b06) * id;
+  o[13] = (m00 * b09 - m10 * b07 + m20 * b06) * id;
+  o[14] = (-m03 * b03 + m13 * b01 - m23 * b00) * id;
+  o[15] = (m02 * b03 - m12 * b01 + m22 * b00) * id;
   return o;
 }
 
@@ -217,9 +265,12 @@ function inv4(m: Mat4): Mat4 | null {
  * Returns null if the ray is nearly parallel to the plane.
  */
 function unprojectToY(
-  px: number, py: number,           // pixel coords (CSS, not device)
-  canvasW: number, canvasH: number, // CSS canvas size
-  MVP: Mat4, targetY: number,
+  px: number,
+  py: number, // pixel coords (CSS, not device)
+  canvasW: number,
+  canvasH: number, // CSS canvas size
+  MVP: Mat4,
+  targetY: number,
 ): [number, number, number] | null {
   const invMVP = inv4(MVP);
   if (!invMVP) return null;
@@ -241,11 +292,7 @@ function unprojectToY(
   const dy = far[1] - near[1];
   if (Math.abs(dy) < 1e-6) return null; // ray parallel to plane
   const t = (targetY - near[1]) / dy;
-  return [
-    near[0] + t * (far[0] - near[0]),
-    targetY,
-    near[2] + t * (far[2] - near[2]),
-  ];
+  return [near[0] + t * (far[0] - near[0]), targetY, near[2] + t * (far[2] - near[2])];
 }
 
 // ---------------------------------------------------------------------------
@@ -421,7 +468,10 @@ export class WebGLPreview {
     // antialias:true → MSAA on the default framebuffer, which cleans up the
     // stepped silhouette where cut walls meet the floor.
     const gl = this.canvas.getContext("webgl2", { antialias: true, depth: true });
-    if (!gl) { this.showError("WebGL 2 not supported in this browser."); return; }
+    if (!gl) {
+      this.showError("WebGL 2 not supported in this browser.");
+      return;
+    }
     this.gl = gl;
 
     this.program = this.buildProgram(VERT, FRAG);
@@ -438,7 +488,11 @@ export class WebGLPreview {
     if (!gl) return;
 
     const needsMesh = this.indexCount === 0 || this.gridW !== hm.gridW || this.gridH !== hm.gridH;
-    const needsBox = this.boxVAO === null || hm.stockW !== this.stockW || hm.stockH !== this.stockH || hm.stockT !== this.stockT;
+    const needsBox =
+      this.boxVAO === null ||
+      hm.stockW !== this.stockW ||
+      hm.stockH !== this.stockH ||
+      hm.stockT !== this.stockT;
 
     this.gridW = hm.gridW;
     this.gridH = hm.gridH;
@@ -451,11 +505,7 @@ export class WebGLPreview {
 
     // Upload height data as R32F texture
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
-    gl.texImage2D(
-      gl.TEXTURE_2D, 0, gl.R32F,
-      hm.gridW, hm.gridH, 0,
-      gl.RED, gl.FLOAT, hm.data,
-    );
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, hm.gridW, hm.gridH, 0, gl.RED, gl.FLOAT, hm.data);
 
     // Scan for any material removal so we can warn when cuts are absent.
     let minH = hm.stockT;
@@ -518,8 +568,12 @@ export class WebGLPreview {
         const tr = tl + 1;
         const bl = tl + gridW;
         const br = bl + 1;
-        indices[ii++] = tl; indices[ii++] = bl; indices[ii++] = tr;
-        indices[ii++] = tr; indices[ii++] = bl; indices[ii++] = br;
+        indices[ii++] = tl;
+        indices[ii++] = bl;
+        indices[ii++] = tr;
+        indices[ii++] = tr;
+        indices[ii++] = bl;
+        indices[ii++] = br;
       }
     }
     this.indexCount = indices.length;
@@ -559,11 +613,51 @@ export class WebGLPreview {
       idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     };
 
-    addFace([[-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd]], [0, -1, 0]); // bottom
-    addFace([[-hw, 0, hd], [hw, 0, hd], [hw, t, hd], [-hw, t, hd]], [0, 0, 1]);  // front
-    addFace([[hw, 0, -hd], [-hw, 0, -hd], [-hw, t, -hd], [hw, t, -hd]], [0, 0, -1]); // back
-    addFace([[-hw, 0, -hd], [-hw, 0, hd], [-hw, t, hd], [-hw, t, -hd]], [-1, 0, 0]); // left
-    addFace([[hw, 0, hd], [hw, 0, -hd], [hw, t, -hd], [hw, t, hd]], [1, 0, 0]); // right
+    addFace(
+      [
+        [-hw, 0, -hd],
+        [hw, 0, -hd],
+        [hw, 0, hd],
+        [-hw, 0, hd],
+      ],
+      [0, -1, 0],
+    ); // bottom
+    addFace(
+      [
+        [-hw, 0, hd],
+        [hw, 0, hd],
+        [hw, t, hd],
+        [-hw, t, hd],
+      ],
+      [0, 0, 1],
+    ); // front
+    addFace(
+      [
+        [hw, 0, -hd],
+        [-hw, 0, -hd],
+        [-hw, t, -hd],
+        [hw, t, -hd],
+      ],
+      [0, 0, -1],
+    ); // back
+    addFace(
+      [
+        [-hw, 0, -hd],
+        [-hw, 0, hd],
+        [-hw, t, hd],
+        [-hw, t, -hd],
+      ],
+      [-1, 0, 0],
+    ); // left
+    addFace(
+      [
+        [hw, 0, hd],
+        [hw, 0, -hd],
+        [hw, t, -hd],
+        [hw, t, hd],
+      ],
+      [1, 0, 0],
+    ); // right
 
     if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
     this.boxVAO = gl.createVertexArray()!;
@@ -629,10 +723,13 @@ export class WebGLPreview {
       target[2] + dist * Math.cos(this.pitch) * Math.cos(this.yaw),
     ];
 
-    const V = mat4(); lookAt(V, eye, target, [0, 1, 0]);
+    const V = mat4();
+    lookAt(V, eye, target, [0, 1, 0]);
     const aspect = this.canvas.width / this.canvas.height;
-    const P = mat4(); perspective(P, 0.6, aspect, 0.1, diag * 10);
-    const MVP = mat4(); mul4(MVP, P, V);
+    const P = mat4();
+    perspective(P, 0.6, aspect, 0.1, diag * 10);
+    const MVP = mat4();
+    mul4(MVP, P, V);
 
     const set = (name: string, ...v: number[]) => {
       const loc = gl.getUniformLocation(this.program, name);
@@ -706,11 +803,15 @@ export class WebGLPreview {
         // right = (cos(yaw), 0, -sin(yaw))
         // up    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch))
         const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-        const dist = diag * 1.4 / this.zoom;
+        const dist = (diag * 1.4) / this.zoom;
         const speed = dist / (this.canvas.height || 1);
-        const ry = this.yaw, rp = this.pitch;
-        const rightX = Math.cos(ry), rightZ = -Math.sin(ry);
-        const upX = -Math.sin(ry) * Math.sin(rp), upY = Math.cos(rp), upZ = -Math.cos(ry) * Math.sin(rp);
+        const ry = this.yaw,
+          rp = this.pitch;
+        const rightX = Math.cos(ry),
+          rightZ = -Math.sin(ry);
+        const upX = -Math.sin(ry) * Math.sin(rp),
+          upY = Math.cos(rp),
+          upZ = -Math.cos(ry) * Math.sin(rp);
         this.panX -= dx * speed * rightX;
         this.panZ -= dx * speed * rightZ;
         this.panX += dy * speed * upX;
@@ -732,40 +833,47 @@ export class WebGLPreview {
 
     c.style.cursor = "grab";
 
-    c.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.92 : 1.0 / 0.92;
-      const newZoom = Math.max(0.15, Math.min(8, this.zoom * factor));
-      if (newZoom === this.zoom) return;
+    c.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.92 : 1.0 / 0.92;
+        const newZoom = Math.max(0.15, Math.min(8, this.zoom * factor));
+        if (newZoom === this.zoom) return;
 
-      // Zoom toward the point under the cursor on the stock top face (Y = stockT).
-      // Build the current MVP before applying the zoom change.
-      const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-      const dist = diag * 1.4 / this.zoom;
-      const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
-      const eye = [
-        target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
-        target[1] + dist * Math.sin(this.pitch),
-        target[2] + dist * Math.cos(this.pitch) * Math.cos(this.yaw),
-      ];
-      const cssW = this.host.clientWidth || 1;
-      const cssH = this.host.clientHeight || 1;
-      const V = mat4(); lookAt(V, eye, target, [0, 1, 0]);
-      const P = mat4(); perspective(P, 0.6, cssW / cssH, 0.1, diag * 10);
-      const MVP = mat4(); mul4(MVP, P, V);
+        // Zoom toward the point under the cursor on the stock top face (Y = stockT).
+        // Build the current MVP before applying the zoom change.
+        const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+        const dist = (diag * 1.4) / this.zoom;
+        const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
+        const eye = [
+          target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
+          target[1] + dist * Math.sin(this.pitch),
+          target[2] + dist * Math.cos(this.pitch) * Math.cos(this.yaw),
+        ];
+        const cssW = this.host.clientWidth || 1;
+        const cssH = this.host.clientHeight || 1;
+        const V = mat4();
+        lookAt(V, eye, target, [0, 1, 0]);
+        const P = mat4();
+        perspective(P, 0.6, cssW / cssH, 0.1, diag * 10);
+        const MVP = mat4();
+        mul4(MVP, P, V);
 
-      const hit = unprojectToY(e.offsetX, e.offsetY, cssW, cssH, MVP, this.stockT);
-      if (hit) {
-        // Shift pan target toward the hit point proportional to the zoom change.
-        const blend = 1 - this.zoom / newZoom; // positive when zooming in
-        this.panX += (hit[0] - target[0]) * blend;
-        this.panY += (hit[1] - (this.stockT * 0.5 + this.panY)) * blend;
-        this.panZ += (hit[2] - target[2]) * blend;
-      }
+        const hit = unprojectToY(e.offsetX, e.offsetY, cssW, cssH, MVP, this.stockT);
+        if (hit) {
+          // Shift pan target toward the hit point proportional to the zoom change.
+          const blend = 1 - this.zoom / newZoom; // positive when zooming in
+          this.panX += (hit[0] - target[0]) * blend;
+          this.panY += (hit[1] - (this.stockT * 0.5 + this.panY)) * blend;
+          this.panZ += (hit[2] - target[2]) * blend;
+        }
 
-      this.zoom = newZoom;
-      this.draw();
-    }, { passive: false });
+        this.zoom = newZoom;
+        this.draw();
+      },
+      { passive: false },
+    );
   }
 
   private buildProgram(vertSrc: string, fragSrc: string): WebGLProgram {

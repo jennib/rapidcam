@@ -4,7 +4,13 @@
  * own. The inverse of Join. Arcs/circles/beziers are left untouched.
  */
 
-import { type Entity, type EntityId, LineEntity, type RectEntity, type PolylineEntity } from "../model/entities";
+import {
+  type Entity,
+  type EntityId,
+  LineEntity,
+  type RectEntity,
+  type PolylineEntity,
+} from "../model/entities";
 import type { CADDocument } from "../model/document";
 
 function explodeEntity(e: Entity): LineEntity[] {

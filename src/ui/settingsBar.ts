@@ -111,16 +111,16 @@ export class SettingsBar {
     const originGroup = this.group("Origin (WCS)");
 
     this.originXSelect = this.makeSelect([
-      ["left",   "Left"],
+      ["left", "Left"],
       ["center", "Center"],
-      ["right",  "Right"],
+      ["right", "Right"],
     ]);
     originGroup.appendChild(this.field("X", this.originXSelect));
 
     this.originYSelect = this.makeSelect([
-      ["front",  "Front"],
+      ["front", "Front"],
       ["center", "Center"],
-      ["back",   "Back"],
+      ["back", "Back"],
     ]);
     originGroup.appendChild(this.field("Y", this.originYSelect));
 
@@ -167,7 +167,8 @@ export class SettingsBar {
     this.revisionInput = this.textInput("e.g. A");
     jobGroup.appendChild(this.field("Revision", this.revisionInput));
     this.notesInput = document.createElement("textarea");
-    this.notesInput.className = "dim"; this.notesInput.rows = 2;
+    this.notesInput.className = "dim";
+    this.notesInput.rows = 2;
     this.notesInput.placeholder = "notes (optional)";
     jobGroup.appendChild(this.field("Notes", this.notesInput));
     this.content.appendChild(jobGroup);
@@ -177,7 +178,8 @@ export class SettingsBar {
     this.unitSelect.className = "unit";
     for (const u of ["mm", "in"] as Unit[]) {
       const opt = document.createElement("option");
-      opt.value = u; opt.textContent = u;
+      opt.value = u;
+      opt.textContent = u;
       this.unitSelect.appendChild(opt);
     }
     this.content.appendChild(this.field("Units", this.unitSelect));
@@ -187,7 +189,11 @@ export class SettingsBar {
     this.heightInput.addEventListener("change", () => this.commitSize());
     this.stockInput.addEventListener("change", () => {
       const v = parseLength(this.stockInput.value, this.doc.displayUnit);
-      if (v !== null && v > 0) { this.pushHistory(); this.doc.stockThickness = v; this.doc.emitChange(); }
+      if (v !== null && v > 0) {
+        this.pushHistory();
+        this.doc.stockThickness = v;
+        this.doc.emitChange();
+      }
     });
     this.stockFillsCheck.addEventListener("change", () => this.commitStockRect());
     for (const el of [this.stockWInput, this.stockHInput, this.stockXInput, this.stockYInput])
@@ -261,7 +267,8 @@ export class SettingsBar {
       const notes = this.notesInput.value.trim();
       const next = { ...(job && { job }), ...(revision && { revision }), ...(notes && { notes }) };
       const cur = this.doc.metadata ?? {};
-      if (cur.job === next.job && cur.revision === next.revision && cur.notes === next.notes) return;
+      if (cur.job === next.job && cur.revision === next.revision && cur.notes === next.notes)
+        return;
       this.pushHistory();
       this.doc.metadata = next;
       this.doc.emitChange();
@@ -280,7 +287,8 @@ export class SettingsBar {
   }
 
   private bindResizer(resizer: HTMLElement): void {
-    let startX = 0, startWidth = 0;
+    let startX = 0,
+      startWidth = 0;
     const onMove = (e: PointerEvent) => {
       const delta = startX - e.clientX;
       this.panelWidth = Math.max(120, Math.min(600, startWidth + delta));
@@ -296,7 +304,8 @@ export class SettingsBar {
     };
     resizer.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      startX = e.clientX; startWidth = this.panel.offsetWidth;
+      startX = e.clientX;
+      startWidth = this.panel.offsetWidth;
       this.panel.classList.add("resizing");
       resizer.setPointerCapture(e.pointerId);
       document.addEventListener("pointermove", onMove);
@@ -309,9 +318,13 @@ export class SettingsBar {
   private toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
     this.host.classList.toggle("collapsed", this.isCollapsed);
-    this.host.addEventListener("transitionend", () => {
-      window.dispatchEvent(new Event("resize"));
-    }, { once: true });
+    this.host.addEventListener(
+      "transitionend",
+      () => {
+        window.dispatchEvent(new Event("resize"));
+      },
+      { once: true },
+    );
   }
 
   private group(title: string): HTMLElement {
@@ -336,13 +349,17 @@ export class SettingsBar {
 
   private dimInput(): HTMLInputElement {
     const i = document.createElement("input");
-    i.className = "dim"; i.type = "text"; i.spellcheck = false;
+    i.className = "dim";
+    i.type = "text";
+    i.spellcheck = false;
     return i;
   }
 
   private textInput(placeholder: string): HTMLInputElement {
     const i = document.createElement("input");
-    i.className = "dim"; i.type = "text"; i.placeholder = placeholder;
+    i.className = "dim";
+    i.type = "text";
+    i.placeholder = placeholder;
     return i;
   }
 
@@ -351,7 +368,8 @@ export class SettingsBar {
     sel.className = "unit";
     for (const [v, l] of options) {
       const opt = document.createElement("option");
-      opt.value = v; opt.textContent = l;
+      opt.value = v;
+      opt.textContent = l;
       sel.appendChild(opt);
     }
     return sel;
@@ -359,7 +377,9 @@ export class SettingsBar {
 
   /** The active rotary cylinder for this doc, or null when it's not a rotary machine. */
   private rotarySettings(): RotarySettings | null {
-    return this.doc.machineKind === "mill-rotary" ? (this.doc.rotary ?? defaultRotarySettings(this.doc)) : null;
+    return this.doc.machineKind === "mill-rotary"
+      ? (this.doc.rotary ?? defaultRotarySettings(this.doc))
+      : null;
   }
 
   private setFieldLabel(field: HTMLElement, text: string): void {
@@ -392,7 +412,7 @@ export class SettingsBar {
       this.doc.stockRect = {
         x: x ?? cur?.x ?? 0,
         y: y ?? cur?.y ?? 0,
-        width:  w !== null && w > 0 ? w : (cur?.width  ?? this.doc.canvas.width),
+        width: w !== null && w > 0 ? w : (cur?.width ?? this.doc.canvas.width),
         height: h !== null && h > 0 ? h : (cur?.height ?? this.doc.canvas.height),
       };
     }
@@ -409,16 +429,18 @@ export class SettingsBar {
       // wrapped canvas dimension is locked to the circumference (π·⌀), so editing
       // the diameter resizes the cylinder surface and keeps doc.rotary in sync.
       const wrapX = rot.wrapAxis === "x";
-      const diaVal = wrapX ? w : h;   // the wrapped field holds the diameter
-      const lenVal = wrapX ? h : w;   // the other field holds the length
+      const diaVal = wrapX ? w : h; // the wrapped field holds the diameter
+      const lenVal = wrapX ? h : w; // the other field holds the length
       if ((diaVal !== null && diaVal > 0) || (lenVal !== null && lenVal > 0)) this.pushHistory();
       if (diaVal !== null && diaVal > 0) {
         this.doc.rotary = { ...rot, diameter: diaVal };
         const circ = Math.PI * diaVal;
-        if (wrapX) this.doc.canvas.width = circ; else this.doc.canvas.height = circ;
+        if (wrapX) this.doc.canvas.width = circ;
+        else this.doc.canvas.height = circ;
       }
       if (lenVal !== null && lenVal > 0) {
-        if (wrapX) this.doc.canvas.height = lenVal; else this.doc.canvas.width = lenVal;
+        if (wrapX) this.doc.canvas.height = lenVal;
+        else this.doc.canvas.width = lenVal;
       }
       this.doc.emitChange();
       return;
@@ -467,8 +489,10 @@ export class SettingsBar {
       this.stockFillsCheck.checked = fills;
       const ex = r ?? { x: 0, y: 0, width: this.doc.canvas.width, height: this.doc.canvas.height };
       const vals: [HTMLInputElement, number][] = [
-        [this.stockWInput, ex.width], [this.stockHInput, ex.height],
-        [this.stockXInput, ex.x], [this.stockYInput, ex.y],
+        [this.stockWInput, ex.width],
+        [this.stockHInput, ex.height],
+        [this.stockXInput, ex.x],
+        [this.stockYInput, ex.y],
       ];
       for (const [inp, v] of vals) {
         inp.disabled = fills;
@@ -498,12 +522,9 @@ export class SettingsBar {
     if (document.activeElement !== this.parkYInput)
       this.parkYInput.value = formatLength(tp ? tp.y : 0, u);
     const md = this.doc.metadata ?? {};
-    if (document.activeElement !== this.jobInput)
-      this.jobInput.value = md.job ?? "";
-    if (document.activeElement !== this.revisionInput)
-      this.revisionInput.value = md.revision ?? "";
-    if (document.activeElement !== this.notesInput)
-      this.notesInput.value = md.notes ?? "";
+    if (document.activeElement !== this.jobInput) this.jobInput.value = md.job ?? "";
+    if (document.activeElement !== this.revisionInput) this.revisionInput.value = md.revision ?? "";
+    if (document.activeElement !== this.notesInput) this.notesInput.value = md.notes ?? "";
     this.unitSelect.value = u;
   }
 }

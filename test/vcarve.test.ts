@@ -4,12 +4,18 @@ import type { Vec2 } from "../src/core/vec2";
 
 // A CCW square [0..s] x [0..s].
 const square = (s: number): Vec2[] => [
-  { x: 0, y: 0 }, { x: s, y: 0 }, { x: s, y: s }, { x: 0, y: s },
+  { x: 0, y: 0 },
+  { x: s, y: 0 },
+  { x: s, y: s },
+  { x: 0, y: s },
 ];
 
 // 90° V-bit: tan(45°) = 1, so depth(r) = r — the cleanest case to assert on.
 const P90 = (over: Partial<VCarveParams> = {}): VCarveParams => ({
-  vAngle: 90, maxDepth: 0, stepMM: 1, ...over,
+  vAngle: 90,
+  maxDepth: 0,
+  stepMM: 1,
+  ...over,
 });
 
 describe("vcarveRegion — offset peeling", () => {
@@ -50,8 +56,12 @@ describe("vcarveRegion — offset peeling", () => {
 
   it("carves a region with a hole (counter) as two converging rings", () => {
     const outer = square(20);
-    const hole: Vec2[] = [ // CW 4×4 hole centred in the square
-      { x: 8, y: 8 }, { x: 8, y: 12 }, { x: 12, y: 12 }, { x: 12, y: 8 },
+    const hole: Vec2[] = [
+      // CW 4×4 hole centred in the square
+      { x: 8, y: 8 },
+      { x: 8, y: 12 },
+      { x: 12, y: 12 },
+      { x: 12, y: 8 },
     ];
     const passes = vcarveRegion(outer, [hole], P90({ stepMM: 0.5 }));
     expect(passes.length).toBeGreaterThan(0);
@@ -61,7 +71,10 @@ describe("vcarveRegion — offset peeling", () => {
 
   it("accepts a single hole ring via the Vec2[] overload", () => {
     const hole: Vec2[] = [
-      { x: 8, y: 8 }, { x: 8, y: 12 }, { x: 12, y: 12 }, { x: 12, y: 8 },
+      { x: 8, y: 8 },
+      { x: 8, y: 12 },
+      { x: 12, y: 12 },
+      { x: 12, y: 8 },
     ];
     const a = vcarveRegion(square(20), hole, P90({ stepMM: 0.5 }));
     const b = vcarveRegion(square(20), [hole], P90({ stepMM: 0.5 }));
@@ -92,8 +105,17 @@ describe("vcarveRegion — offset peeling", () => {
   });
 
   it("returns nothing for degenerate inputs", () => {
-    expect(vcarveRegion([{ x: 0, y: 0 }, { x: 1, y: 0 }], [], P90())).toEqual([]); // <3 verts
-    expect(vcarveRegion(square(20), [], P90({ stepMM: 0 }))).toEqual([]);          // no step
-    expect(vcarveRegion(square(20), [], P90({ vAngle: 0 }))).toEqual([]);          // flat bit
+    expect(
+      vcarveRegion(
+        [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+        ],
+        [],
+        P90(),
+      ),
+    ).toEqual([]); // <3 verts
+    expect(vcarveRegion(square(20), [], P90({ stepMM: 0 }))).toEqual([]); // no step
+    expect(vcarveRegion(square(20), [], P90({ vAngle: 0 }))).toEqual([]); // flat bit
   });
 });

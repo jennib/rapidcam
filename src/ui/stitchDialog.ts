@@ -33,7 +33,9 @@ function loadSettings(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) ?? "");
     if (s && s.tileW > 0 && s.tileH > 0) return s;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { tileW: 200, tileH: 200, registration: "none", output: "zip" };
 }
 
@@ -49,7 +51,8 @@ export interface StitchDialogParams {
 
 function row(label: string, control: HTMLElement): HTMLElement {
   const r = document.createElement("label");
-  r.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px;color:var(--text);";
+  r.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px;color:var(--text);";
   const l = document.createElement("span");
   l.textContent = label;
   r.append(l, control);
@@ -71,7 +74,8 @@ function select<T extends string>(options: [T, string][], value: T): HTMLSelectE
   s.style.cssText = "padding:4px 6px;";
   for (const [v, label] of options) {
     const o = document.createElement("option");
-    o.value = v; o.textContent = label;
+    o.value = v;
+    o.textContent = label;
     if (v === value) o.selected = true;
     s.appendChild(o);
   }
@@ -81,7 +85,9 @@ function select<T extends string>(options: [T, string][], value: T): HTMLSelectE
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
+  a.href = url;
+  a.download = filename;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -89,7 +95,10 @@ export function openStitchDialog(params: StitchDialogParams): void {
   const { gcode, doc, baseName, onPreview } = params;
 
   const cutBounds = programCutBounds(parseProgram(gcode));
-  if (!cutBounds) { toast("No toolpaths to tile — generate some cuts first."); return; }
+  if (!cutBounds) {
+    toast("No toolpaths to tile — generate some cuts first.");
+    return;
+  }
   const unsupported = unsupportedMotions(gcode);
 
   // Work → canvas: emitted X = canvasX − origin, so canvasX = workX + origin.
@@ -121,10 +130,21 @@ export function openStitchDialog(params: StitchDialogParams): void {
   const wIn = numberInput(s.tileW);
   const hIn = numberInput(s.tileH);
   const regSel = select<RegistrationMode>(
-    [["none", "None (align yourself)"], ["holes", "Dowel holes"], ["crosshairs", "Crosshairs"], ["both", "Holes + crosshairs"]],
+    [
+      ["none", "None (align yourself)"],
+      ["holes", "Dowel holes"],
+      ["crosshairs", "Crosshairs"],
+      ["both", "Holes + crosshairs"],
+    ],
     s.registration,
   );
-  const outSel = select<"zip" | "files">([["zip", "One .zip"], ["files", "Separate files"]], s.output);
+  const outSel = select<"zip" | "files">(
+    [
+      ["zip", "One .zip"],
+      ["files", "Separate files"],
+    ],
+    s.output,
+  );
 
   body.append(
     row("Machine bed width (mm)", wIn),
@@ -156,8 +176,10 @@ export function openStitchDialog(params: StitchDialogParams): void {
   dialog.appendChild(ftr);
 
   const read = () => ({
-    tileW: Number(wIn.value), tileH: Number(hIn.value),
-    registration: regSel.value as RegistrationMode, output: outSel.value as "zip" | "files",
+    tileW: Number(wIn.value),
+    tileH: Number(hIn.value),
+    registration: regSel.value as RegistrationMode,
+    output: outSel.value as "zip" | "files",
   });
 
   const update = () => {
@@ -173,9 +195,10 @@ export function openStitchDialog(params: StitchDialogParams): void {
       tiles: plan.tiles.map((t) => rectToCanvas(t.rect)),
       features: v.registration === "none" ? [] : plan.features.map(toCanvas),
     });
-    summary.textContent = plan.tiles.length === 1
-      ? "Fits the bed — no tiling needed."
-      : `${plan.tiles.length} tiles — ${plan.cols} × ${plan.rows} grid.`;
+    summary.textContent =
+      plan.tiles.length === 1
+        ? "Fits the bed — no tiling needed."
+        : `${plan.tiles.length} tiles — ${plan.cols} × ${plan.rows} grid.`;
     exportBtn.disabled = unsupported.length > 0;
   };
 
@@ -190,24 +213,37 @@ export function openStitchDialog(params: StitchDialogParams): void {
     backdrop.remove();
   };
   const dispose = registerModal(backdrop, finish);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) finish(); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) finish();
+  });
   cancelBtn.addEventListener("click", finish);
 
   exportBtn.addEventListener("click", () => {
     const v = read();
     localStorage.setItem(STORE_KEY, JSON.stringify(v));
-    const res = stitchGCode(gcode, { tileW: v.tileW, tileH: v.tileH, name: baseName, registration: v.registration });
+    const res = stitchGCode(gcode, {
+      tileW: v.tileW,
+      tileH: v.tileH,
+      name: baseName,
+      registration: v.registration,
+    });
     if (res.tiles.length === 0) {
       toast(res.warnings[0] ?? "Nothing to tile.");
       return;
     }
     if (v.output === "zip") {
       const bytes = zipStore(res.tiles.map((t) => ({ name: `${t.name}.nc`, data: t.gcode })));
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/zip" }), `${baseName}_tiles.zip`);
+      downloadBlob(
+        new Blob([bytes as BlobPart], { type: "application/zip" }),
+        `${baseName}_tiles.zip`,
+      );
     } else {
-      for (const t of res.tiles) downloadBlob(new Blob([t.gcode], { type: "text/plain" }), `${t.name}.nc`);
+      for (const t of res.tiles)
+        downloadBlob(new Blob([t.gcode], { type: "text/plain" }), `${t.name}.nc`);
     }
-    const tileWarn = res.tiles.some((t) => t.warnings.length) ? " (some paths vary in Z — check seam entries)" : "";
+    const tileWarn = res.tiles.some((t) => t.warnings.length)
+      ? " (some paths vary in Z — check seam entries)"
+      : "";
     toast(`Exported ${res.tiles.length} tile${res.tiles.length > 1 ? "s" : ""}${tileWarn}.`);
     finish();
   });

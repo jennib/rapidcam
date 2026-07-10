@@ -36,8 +36,8 @@ const MIN_ANGLE = (20 * Math.PI) / 180;
  */
 export function dogbonePoint(p: Vec2, v: Vec2, q: Vec2, toolR: number): Vec2 | null {
   if (toolR <= 0) return null;
-  const e1 = sub(v, p);      // incoming edge direction
-  const e2 = sub(q, v);      // outgoing edge direction
+  const e1 = sub(v, p); // incoming edge direction
+  const e2 = sub(q, v); // outgoing edge direction
   // On a CCW loop, a left turn (cross > 0) is a convex corner — the only kind
   // that leaves a fillet. Reflex/straight corners never need a dog-bone.
   if (cross(e1, e2) <= 1e-9) return null;

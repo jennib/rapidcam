@@ -25,9 +25,13 @@ export class ContextMenu {
 
     // Dismiss on any outside interaction. Capture phase so we beat handlers
     // that might stopPropagation, and pointerdown so it closes before a click.
-    document.addEventListener("pointerdown", (e) => {
-      if (this.isOpen && !this.el.contains(e.target as Node)) this.close();
-    }, true);
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (this.isOpen && !this.el.contains(e.target as Node)) this.close();
+      },
+      true,
+    );
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && this.isOpen) this.close();
     });

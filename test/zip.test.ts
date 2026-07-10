@@ -1,11 +1,15 @@
 import { test, expect } from "vitest";
 import { zipStore } from "../src/io/zip";
 
-const u32 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
+const u32 = (b: Uint8Array, o: number) =>
+  b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
 const u16 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8);
 
 test("produces a well-formed store archive with local, central and EOCD records", () => {
-  const z = zipStore([{ name: "a.nc", data: "G0 X0\n" }, { name: "b.nc", data: "G1 X1\n" }]);
+  const z = zipStore([
+    { name: "a.nc", data: "G0 X0\n" },
+    { name: "b.nc", data: "G1 X1\n" },
+  ]);
 
   expect(u32(z, 0)).toBe(0x04034b50); // first local file header
   // EOCD sits at the end and records both entries.

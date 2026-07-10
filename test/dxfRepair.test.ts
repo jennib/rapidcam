@@ -1,11 +1,17 @@
 import { test, expect } from "vitest";
 import {
-  repairImportedEntities, summarizeRepairs,
-  diagnoseImportedEntities, summarizeDiagnostics,
+  repairImportedEntities,
+  summarizeRepairs,
+  diagnoseImportedEntities,
+  summarizeDiagnostics,
 } from "../src/io/dxfRepair";
 import { collectClosedLoops } from "../src/cam/loops";
 import {
-  type Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity,
+  type Entity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
 } from "../src/model/entities";
 
 const line = (ax: number, ay: number, bx: number, by: number) =>
@@ -87,7 +93,12 @@ test("drops degenerate zero-length lines and zero-radius circles/arcs", () => {
 
 test("auto-closes an open polyline whose ends already meet", () => {
   const pl = new PolylineEntity(
-    [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0.01, y: 0.0 }],
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0.01, y: 0.0 },
+    ],
     false,
   );
   const { report } = repairImportedEntities([pl]);
@@ -102,9 +113,14 @@ test("reports nothing for already-clean geometry", () => {
 });
 
 test("summary reads naturally", () => {
-  expect(summarizeRepairs({
-    gapsWelded: 1, polylinesClosed: 2, duplicatesRemoved: 1, degenerateRemoved: 3,
-  })).toEqual([
+  expect(
+    summarizeRepairs({
+      gapsWelded: 1,
+      polylinesClosed: 2,
+      duplicatesRemoved: 1,
+      degenerateRemoved: 3,
+    }),
+  ).toEqual([
     "welded 1 gap",
     "closed 2 open contours",
     "removed 1 duplicate",
@@ -118,7 +134,10 @@ test("summary reads naturally", () => {
 
 test("diagnoses a broken square without moving anything", () => {
   const ents = gappySquare();
-  const before = ents.map((l) => ({ a: { ...(l as LineEntity).a }, b: { ...(l as LineEntity).b } }));
+  const before = ents.map((l) => ({
+    a: { ...(l as LineEntity).a },
+    b: { ...(l as LineEntity).b },
+  }));
   const diags = diagnoseImportedEntities(ents);
 
   expect(diags.filter((d) => d.kind === "gap")).toHaveLength(4);
@@ -140,7 +159,15 @@ test("diagnoses duplicates, degenerates, and unclosed contours with locations", 
     line(0, 0, 10, 0),
     line(10, 0, 0, 0), // duplicate
     line(5, 5, 5, 5), // degenerate
-    new PolylineEntity([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0.01, y: 0 }], false), // unclosed
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 4, y: 4 },
+        { x: 0.01, y: 0 },
+      ],
+      false,
+    ), // unclosed
   ]);
   expect(diags.filter((d) => d.kind === "duplicate")).toHaveLength(1);
   expect(diags.filter((d) => d.kind === "degenerate")).toHaveLength(1);
@@ -153,7 +180,9 @@ test("diagnoses duplicates, degenerates, and unclosed contours with locations", 
 });
 
 test("clean geometry diagnoses nothing", () => {
-  expect(diagnoseImportedEntities([line(0, 0, 10, 0), new CircleEntity({ x: 0, y: 0 }, 5)])).toEqual([]);
+  expect(
+    diagnoseImportedEntities([line(0, 0, 10, 0), new CircleEntity({ x: 0, y: 0 }, 5)]),
+  ).toEqual([]);
 });
 
 test("diagnostic summary reads naturally", () => {

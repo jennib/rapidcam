@@ -154,15 +154,10 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
   const s = doc.stock;
   const thickness = s.kind === "cylinder" ? s.wall : s.thickness;
 
-  const ox =
-    doc.origin.x === "left"   ? sx :
-    doc.origin.x === "right"  ? sx + width :
-    sx + width / 2;
+  const ox = doc.origin.x === "left" ? sx : doc.origin.x === "right" ? sx + width : sx + width / 2;
 
   const oy =
-    doc.origin.y === "front"  ? sy :
-    doc.origin.y === "back"   ? sy + height :
-    sy + height / 2;
+    doc.origin.y === "front" ? sy : doc.origin.y === "back" ? sy + height : sy + height / 2;
 
   const zOffset = doc.origin.z === "top" ? 0 : thickness;
 
@@ -180,11 +175,34 @@ export function stockFootprint(doc: CADDocument): { width: number; height: numbe
   if (r && doc.machineKind !== "mill-rotary") return { width: r.width, height: r.height };
   return { width: doc.canvas.width, height: doc.canvas.height };
 }
-import { type Entity, type EntityId, type SnapPoint, type Bounds, LineEntity, CircleEntity, RectEntity, PolylineEntity, type PolygonParams, ArcEntity, BezierEntity, PointEntity, TextEntity, RasterImageEntity } from "./entities";
+import {
+  type Entity,
+  type EntityId,
+  type SnapPoint,
+  type Bounds,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  type PolygonParams,
+  ArcEntity,
+  BezierEntity,
+  PointEntity,
+  TextEntity,
+  RasterImageEntity,
+} from "./entities";
 import type { CAMOperation, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
-import { type Constraint, type PointRef, type SegmentRef, sameSegmentRef, samePointRef, constraintEntityIds, type Geo } from "./constraints";
+import {
+  type Constraint,
+  type PointRef,
+  type SegmentRef,
+  sameSegmentRef,
+  samePointRef,
+  constraintEntityIds,
+  type Geo,
+} from "./constraints";
 import { type Dimension, dimensionHitDistance } from "./dimensions";
 import type { Variable } from "./variables";
 import type { ScalarBinding } from "./bindings";
@@ -219,16 +237,98 @@ export interface LayerDef {
 }
 
 type EntitySnapshot =
-  | { type: "line"; id: string; a: Vec2; b: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "circle"; id: string; center: Vec2; radius: number; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "rectangle"; id: string; p0: Vec2; p1: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "polyline"; id: string; points: Vec2[]; vertexIds?: string[]; closed: boolean; polygon?: PolygonParams; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "arc"; id: string; center: Vec2; radius: number; startAngle: number; endAngle: number; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "bezier"; id: string; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2; selected: boolean; isConstruction: boolean; layerId?: string }
-  | { type: "text"; id: string; text: string; fontId: string; sizeMM: number; position: Vec2; angle: number; selected: boolean; isConstruction: boolean; layerId?: string }
+  | {
+      type: "line";
+      id: string;
+      a: Vec2;
+      b: Vec2;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "circle";
+      id: string;
+      center: Vec2;
+      radius: number;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "rectangle";
+      id: string;
+      p0: Vec2;
+      p1: Vec2;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "polyline";
+      id: string;
+      points: Vec2[];
+      vertexIds?: string[];
+      closed: boolean;
+      polygon?: PolygonParams;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "arc";
+      id: string;
+      center: Vec2;
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "bezier";
+      id: string;
+      p0: Vec2;
+      p1: Vec2;
+      p2: Vec2;
+      p3: Vec2;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
+  | {
+      type: "text";
+      id: string;
+      text: string;
+      fontId: string;
+      sizeMM: number;
+      position: Vec2;
+      angle: number;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    }
   // widthExpr/heightExpr/angleExpr are LEGACY (read-only): pre-unification image
   // formulas, migrated to scalar bindings on load and never written back out.
-  | { type: "image"; id: string; imageId: string; position: Vec2; widthMM: number; heightMM: number; angle: number; flipX?: boolean; flipY?: boolean; widthExpr?: string; heightExpr?: string; angleExpr?: string; aspectLocked?: boolean; selected: boolean; isConstruction: boolean; layerId?: string };
+  | {
+      type: "image";
+      id: string;
+      imageId: string;
+      position: Vec2;
+      widthMM: number;
+      heightMM: number;
+      angle: number;
+      flipX?: boolean;
+      flipY?: boolean;
+      widthExpr?: string;
+      heightExpr?: string;
+      angleExpr?: string;
+      aspectLocked?: boolean;
+      selected: boolean;
+      isConstruction: boolean;
+      layerId?: string;
+    };
 
 export interface DocSnapshot {
   entities: EntitySnapshot[];
@@ -296,7 +396,12 @@ export class CADDocument {
       const wrapX = this.rotary?.wrapAxis === "x";
       const length = wrapX ? this.canvas.height : this.canvas.width;
       const circumference = wrapX ? this.canvas.width : this.canvas.height;
-      return { kind: "cylinder", length, diameter: circumference / Math.PI, wall: this.stockThickness };
+      return {
+        kind: "cylinder",
+        length,
+        diameter: circumference / Math.PI,
+        wall: this.stockThickness,
+      };
     }
     const r = this.stockRect;
     return {
@@ -357,7 +462,9 @@ export class CADDocument {
   entities: Entity[] = [];
   groups: GroupDef[] = [];
   patterns: PatternDef[] = [];
-  layers: LayerDef[] = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
+  layers: LayerDef[] = [
+    { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
+  ];
   activeLayerId: string = "layer-0";
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
@@ -478,7 +585,9 @@ export class CADDocument {
     this.bindings = [];
     this.groups = [];
     this.patterns = [];
-    this.layers = [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
+    this.layers = [
+      { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
+    ];
     this.activeLayerId = "layer-0";
     this.operations = [];
     this.tools = [];
@@ -508,13 +617,15 @@ export class CADDocument {
       constraintEntityIds(c).every((id) => ids.has(id)),
     );
     this.dimensions = this.dimensions.filter(
-      (d) =>
-        d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
+      (d) => d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
     );
     this.bindings = this.bindings.filter((b) => ids.has(b.entityId));
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
     this.selectedSegments = this.selectedSegments.filter((s) => ids.has(s.entityId));
-    if (this.selectedConstraintId && !this.constraints.find((c) => c.id === this.selectedConstraintId))
+    if (
+      this.selectedConstraintId &&
+      !this.constraints.find((c) => c.id === this.selectedConstraintId)
+    )
       this.selectedConstraintId = null;
     if (this.selectedDimensionId && !this.dimensions.find((d) => d.id === this.selectedDimensionId))
       this.selectedDimensionId = null;
@@ -547,7 +658,10 @@ export class CADDocument {
     this.patterns = this.patterns.filter((p) => p.id !== id);
     this.emitChange();
   }
-  updatePattern(id: string, patch: Partial<Pick<PatternDef, "instanceIds" | "params" | "sourceSnapshot">>): void {
+  updatePattern(
+    id: string,
+    patch: Partial<Pick<PatternDef, "instanceIds" | "params" | "sourceSnapshot">>,
+  ): void {
     const p = this.patterns.find((x) => x.id === id);
     if (p) Object.assign(p, patch);
     this.emitChange();
@@ -653,7 +767,13 @@ export class CADDocument {
     for (const d of this.dimensions) if (d.expr) d.expr = d.expr.replace(re, newName);
     for (const pat of this.patterns) {
       const p = pat.params as unknown as Record<string, string | number | undefined>;
-      for (const key of ["countXExpr", "countYExpr", "spacingXExpr", "spacingYExpr", "countExpr"] as const) {
+      for (const key of [
+        "countXExpr",
+        "countYExpr",
+        "spacingXExpr",
+        "spacingYExpr",
+        "countExpr",
+      ] as const) {
         const e = p[key];
         if (typeof e === "string") p[key] = e.replace(re, newName);
       }
@@ -676,13 +796,16 @@ export class CADDocument {
     return null;
   }
 
-
   // --- selection -----------------------------------------------------------
   get selected(): Entity[] {
     return this.entities.filter((e) => e.selected);
   }
   clearSelection(): void {
-    let changed = this.selectedPoints.length > 0 || this.selectedSegments.length > 0 || this.selectedConstraintId !== null || this.selectedDimensionId !== null;
+    let changed =
+      this.selectedPoints.length > 0 ||
+      this.selectedSegments.length > 0 ||
+      this.selectedConstraintId !== null ||
+      this.selectedDimensionId !== null;
     this.selectedPoints = [];
     this.selectedSegments = [];
     this.selectedConstraintId = null;
@@ -737,7 +860,7 @@ export class CADDocument {
     let bestD = tol;
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
-      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
       if (!layer.visible || layer.locked) continue;
 
       for (const dp of e.pickablePoints()) {
@@ -756,9 +879,9 @@ export class CADDocument {
   hitTest(p: Vec2, tol: number): Entity | null {
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
-      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
       if (!layer.visible || layer.locked) continue;
-      
+
       if (e.distanceTo(p) <= tol) return e;
     }
     return null;
@@ -769,7 +892,7 @@ export class CADDocument {
     const out: SnapPoint[] = [];
     for (const e of this.entities) {
       if (exclude?.has(e.id)) continue;
-      const layer = this.layers.find(l => l.id === e.layerId) || this.layers[0];
+      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
       if (!layer.visible) continue; // snapping still works on locked layers, but not invisible ones
       out.push(...e.snapPoints());
     }
@@ -778,7 +901,7 @@ export class CADDocument {
 
   /** Combined bounds of all geometry, or null when empty. */
   bounds(): Bounds | null {
-    const drawable = this.entities.filter(e => e.id !== ORIGIN_ENTITY_ID);
+    const drawable = this.entities.filter((e) => e.id !== ORIGIN_ENTITY_ID);
     if (drawable.length === 0) return null;
     const min: Vec2 = { x: Infinity, y: Infinity };
     const max: Vec2 = { x: -Infinity, y: -Infinity };
@@ -793,34 +916,114 @@ export class CADDocument {
   }
 
   groupOf(entityId: EntityId): GroupDef | null {
-    return this.groups.find(g => g.entityIds.includes(entityId)) ?? null;
+    return this.groups.find((g) => g.entityIds.includes(entityId)) ?? null;
   }
 
   // --- undo/redo snapshots --------------------------------------------------
   snapshot(): DocSnapshot {
     return {
-      entities: this.entities.filter(e => e.id !== ORIGIN_ENTITY_ID).map((e): EntitySnapshot => {
-        if (e instanceof LineEntity)
-          return { type: "line", id: e.id, a: { ...e.a }, b: { ...e.b }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof CircleEntity)
-          return { type: "circle", id: e.id, center: { ...e.center }, radius: e.radius, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof RectEntity)
-          return { type: "rectangle", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof ArcEntity)
-          return { type: "arc", id: e.id, center: { ...e.center }, radius: e.radius, startAngle: e.startAngle, endAngle: e.endAngle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof BezierEntity)
-          return { type: "bezier", id: e.id, p0: { ...e.p0 }, p1: { ...e.p1 }, p2: { ...e.p2 }, p3: { ...e.p3 }, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof TextEntity)
-          return { type: "text", id: e.id, text: e.text, fontId: e.fontId, sizeMM: e.sizeMM, position: { ...e.position }, angle: e.angle, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        if (e instanceof RasterImageEntity)
-          return { type: "image", id: e.id, imageId: e.imageId, position: { ...e.position }, widthMM: e.widthMM, heightMM: e.heightMM, angle: e.angle, flipX: e.flipX, flipY: e.flipY, aspectLocked: e.aspectLocked, selected: e.selected, isConstruction: e.isConstruction, layerId: e.layerId };
-        const pe = e as PolylineEntity;
-        return { type: "polyline", id: pe.id, points: pe.points.map((p) => ({ ...p })), vertexIds: [...pe.vertexIds], closed: pe.closed,
-          ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
-          selected: pe.selected, isConstruction: pe.isConstruction, layerId: pe.layerId };
-      }),
+      entities: this.entities
+        .filter((e) => e.id !== ORIGIN_ENTITY_ID)
+        .map((e): EntitySnapshot => {
+          if (e instanceof LineEntity)
+            return {
+              type: "line",
+              id: e.id,
+              a: { ...e.a },
+              b: { ...e.b },
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof CircleEntity)
+            return {
+              type: "circle",
+              id: e.id,
+              center: { ...e.center },
+              radius: e.radius,
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof RectEntity)
+            return {
+              type: "rectangle",
+              id: e.id,
+              p0: { ...e.p0 },
+              p1: { ...e.p1 },
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof ArcEntity)
+            return {
+              type: "arc",
+              id: e.id,
+              center: { ...e.center },
+              radius: e.radius,
+              startAngle: e.startAngle,
+              endAngle: e.endAngle,
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof BezierEntity)
+            return {
+              type: "bezier",
+              id: e.id,
+              p0: { ...e.p0 },
+              p1: { ...e.p1 },
+              p2: { ...e.p2 },
+              p3: { ...e.p3 },
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof TextEntity)
+            return {
+              type: "text",
+              id: e.id,
+              text: e.text,
+              fontId: e.fontId,
+              sizeMM: e.sizeMM,
+              position: { ...e.position },
+              angle: e.angle,
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          if (e instanceof RasterImageEntity)
+            return {
+              type: "image",
+              id: e.id,
+              imageId: e.imageId,
+              position: { ...e.position },
+              widthMM: e.widthMM,
+              heightMM: e.heightMM,
+              angle: e.angle,
+              flipX: e.flipX,
+              flipY: e.flipY,
+              aspectLocked: e.aspectLocked,
+              selected: e.selected,
+              isConstruction: e.isConstruction,
+              layerId: e.layerId,
+            };
+          const pe = e as PolylineEntity;
+          return {
+            type: "polyline",
+            id: pe.id,
+            points: pe.points.map((p) => ({ ...p })),
+            vertexIds: [...pe.vertexIds],
+            closed: pe.closed,
+            ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
+            selected: pe.selected,
+            isConstruction: pe.isConstruction,
+            layerId: pe.layerId,
+          };
+        }),
       constraints: this.constraints.map((c) => ({
-        id: c.id, type: c.type,
+        id: c.id,
+        type: c.type,
         points: c.points.map((p) => ({ ...p })),
         entities: [...c.entities],
         params: c.params ? [...c.params] : undefined,
@@ -848,17 +1051,19 @@ export class CADDocument {
       flip: this.flip ? { ...this.flip, pins: this.flip.pins.map((p) => ({ ...p })) } : null,
       rotary: this.rotary ? { ...this.rotary } : null,
       metadata: { ...this.metadata },
-      groups: this.groups.map(g => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
+      groups: this.groups.map((g) => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
       patterns: this.patterns.map(clonePatternDef),
-      layers: this.layers.map(l => ({ ...l })),
+      layers: this.layers.map((l) => ({ ...l })),
       activeLayerId: this.activeLayerId,
-      operations: this.operations.map(op => ({ ...op, entityIds: [...op.entityIds] })),
-      tools: this.tools.map(t => ({ ...t })),
+      operations: this.operations.map((op) => ({ ...op, entityIds: [...op.entityIds] })),
+      tools: this.tools.map((t) => ({ ...t })),
     };
   }
 
   restore(s: DocSnapshot): void {
-    this.layers = s.layers ? s.layers.map(l => ({ ...l })) : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
+    this.layers = s.layers
+      ? s.layers.map((l) => ({ ...l }))
+      : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
     this.activeLayerId = s.activeLayerId ?? "layer-0";
 
     // Legacy image direct-drive formulas (widthExpr/heightExpr/angleExpr) migrated
@@ -880,7 +1085,12 @@ export class CADDocument {
           break;
         }
         case "polyline": {
-          const pl = new PolylineEntity(es.points.map((p) => ({ ...p })), es.closed, es.id, es.vertexIds);
+          const pl = new PolylineEntity(
+            es.points.map((p) => ({ ...p })),
+            es.closed,
+            es.id,
+            es.vertexIds,
+          );
           if (es.polygon) pl.polygon = { ...es.polygon, center: { ...es.polygon.center } };
           e = pl;
           break;
@@ -898,15 +1108,33 @@ export class CADDocument {
           break;
         }
         case "image": {
-          e = new RasterImageEntity(es.imageId, { ...es.position }, es.widthMM, es.heightMM, es.angle, es.flipX ?? false, es.flipY ?? false, es.id);
+          e = new RasterImageEntity(
+            es.imageId,
+            { ...es.position },
+            es.widthMM,
+            es.heightMM,
+            es.angle,
+            es.flipX ?? false,
+            es.flipY ?? false,
+            es.id,
+          );
           (e as RasterImageEntity).aspectLocked = es.aspectLocked ?? true;
           // Migrate legacy direct-drive image formulas (widthExpr/heightExpr/angleExpr,
           // pre-unification) to the general scalar-binding channel.
           const mig: [string | undefined, string, number][] = [
-            [es.widthExpr, "w", 1], [es.heightExpr, "h", 1], [es.angleExpr, "angle", Math.PI / 180],
+            [es.widthExpr, "w", 1],
+            [es.heightExpr, "h", 1],
+            [es.angleExpr, "angle", Math.PI / 180],
           ];
           for (const [expr, key, scale] of mig) {
-            if (expr) legacyImageBindings.push({ id: nextId("bind"), entityId: es.id, scalarKey: key, expr, ...(scale !== 1 ? { scale } : {}) });
+            if (expr)
+              legacyImageBindings.push({
+                id: nextId("bind"),
+                entityId: es.id,
+                scalarKey: key,
+                expr,
+                ...(scale !== 1 ? { scale } : {}),
+              });
           }
           break;
         }
@@ -928,13 +1156,23 @@ export class CADDocument {
       // points/entities default to [] so hand- or LLM-authored files can omit the
       // array that a given constraint type doesn't use (e.g. "horizontal" needs
       // only entities). serializeDoc always writes both, so round-trips are unaffected.
-      const c = { id: cs.id, type: cs.type, points: (cs.points ?? []).map((p) => ({ ...p })), entities: [...(cs.entities ?? [])], params: cs.params ? [...cs.params] : undefined } as Constraint;
+      const c = {
+        id: cs.id,
+        type: cs.type,
+        points: (cs.points ?? []).map((p) => ({ ...p })),
+        entities: [...(cs.entities ?? [])],
+        params: cs.params ? [...cs.params] : undefined,
+      } as Constraint;
       updateCounter(c.id);
       return c;
     });
 
     this.dimensions = (s.dimensions || []).map((ds) => {
-      const d = { ...ds, points: (ds.points ?? []).map((p) => ({ ...p })), entities: [...(ds.entities ?? [])] } as Dimension;
+      const d = {
+        ...ds,
+        points: (ds.points ?? []).map((p) => ({ ...p })),
+        entities: [...(ds.entities ?? [])],
+      } as Dimension;
       updateCounter(d.id);
       return d;
     });
@@ -945,30 +1183,36 @@ export class CADDocument {
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
     this.selectedConstraintId = s.selectedConstraintId ?? null;
     this.selectedDimensionId = s.selectedDimensionId ?? null;
-    if (s.canvas)       this.canvas         = { ...s.canvas };
+    if (s.canvas) this.canvas = { ...s.canvas };
     if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
     this.stockRect = s.stockRect ? { ...s.stockRect } : null;
     if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
-    if (s.origin)       this.origin         = { ...s.origin };
+    if (s.origin) this.origin = { ...s.origin };
     if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
-    this.toolChangePosition = s.toolChangePosition ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y } : null;
+    this.toolChangePosition = s.toolChangePosition
+      ? { x: s.toolChangePosition.x, y: s.toolChangePosition.y }
+      : null;
     this.flip = s.flip ? { ...s.flip, pins: (s.flip.pins ?? []).map((p) => ({ ...p })) } : null;
     this.rotary = s.rotary ? { ...s.rotary } : null;
     this.metadata = s.metadata ? { ...s.metadata } : {};
-    this.groups = s.groups ? s.groups.map(g => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] })) : [];
+    this.groups = s.groups
+      ? s.groups.map((g) => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] }))
+      : [];
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
     for (const p of this.patterns) updateCounter(p.id);
-    this.operations = s.operations ? s.operations.map(op => ({
-      ...op,
-      toolType: op.toolType ?? "end-mill",
-      stepover: op.stepover ?? 0.4,
-      entityIds: [...op.entityIds],
-    })) : [];
-    this.tools = s.tools ? s.tools.map(t => ({ ...t })) : [];
+    this.operations = s.operations
+      ? s.operations.map((op) => ({
+          ...op,
+          toolType: op.toolType ?? "end-mill",
+          stepover: op.stepover ?? 0.4,
+          entityIds: [...op.entityIds],
+        }))
+      : [];
+    this.tools = s.tools ? s.tools.map((t) => ({ ...t })) : [];
     // Always ensure the WCS origin entity is present after loading.
-    if (!this.entities.find(e => e.id === ORIGIN_ENTITY_ID))
+    if (!this.entities.find((e) => e.id === ORIGIN_ENTITY_ID))
       this.entities.unshift(new PointEntity({ x: 0, y: 0 }, ORIGIN_ENTITY_ID));
     this.emitChange();
   }

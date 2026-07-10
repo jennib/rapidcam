@@ -67,7 +67,7 @@ const ANCHOR_DRAG = 1e-3;
 // Anchor weight for dimension/constraint solves: weak enough that the constraint gradient
 // always dominates (prevents !improved before crn < 1e-4 even for 50mm+ displacements),
 // while still selecting the minimum-norm (minimum displacement) null-space element.
-const ANCHOR_DIM  = 1e-6;
+const ANCHOR_DIM = 1e-6;
 
 /** Pins: point-ref-key (`${entityId}:${pointKey}`) → world target. */
 export type PinMap = Map<string, Vec2>;
@@ -169,8 +169,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     const k = key.slice(i + 1);
     for (const affected of ent.dofsAffectedBy(k))
       pinnedComponents.add(`${ent.id}:${affected.key}:${affected.axis}`);
-    for (const sk of ent.scalarsAffectedBy(k))
-      pinnedScalars.add(scalarKey(ent.id, sk));
+    for (const sk of ent.scalarsAffectedBy(k)) pinnedScalars.add(scalarKey(ent.id, sk));
   }
 
   const vars: Variable[] = [];
@@ -188,8 +187,14 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       vars.push(vx, vy);
       // Always anchor non-pinned DOFs to prefer minimal-change solutions in
       // under-constrained systems (e.g. editing a dimension without dragging).
-      if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) { anchorVars.push(vx); anchorScales.push(1); }
-      if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) { anchorVars.push(vy); anchorScales.push(1); }
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) {
+        anchorVars.push(vx);
+        anchorScales.push(1);
+      }
+      if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) {
+        anchorVars.push(vy);
+        anchorScales.push(1);
+      }
     }
     for (const s of ent.dofScalars()) {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;
@@ -197,8 +202,8 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       vars.push(vs);
       if (!pinnedScalars.has(scalarKey(ent.id, s.key))) {
         anchorVars.push(vs);
-        const scale = (ent instanceof ArcEntity && (s.key === "sa" || s.key === "ea"))
-          ? ent.radius : 1;
+        const scale =
+          ent instanceof ArcEntity && (s.key === "sa" || s.key === "ea") ? ent.radius : 1;
         anchorScales.push(scale);
       }
     }
@@ -212,7 +217,8 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
-  const hasConstraints = doc.constraints.length > 0 || drivingDims.length > 0 || doc.bindings.length > 0;
+  const hasConstraints =
+    doc.constraints.length > 0 || drivingDims.length > 0 || doc.bindings.length > 0;
 
   // Constraint + driving-dimension residuals define convergence and the reported DOF.
   const constraintVec = (): number[] => {
@@ -257,13 +263,21 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   const finish = (): SolveResult => {
     const crn = norm(constraintVec());
-    return { hasConstraints, converged: crn < 1e-4, residualNorm: crn, dof, variables: n, equations };
+    return {
+      hasConstraints,
+      converged: crn < 1e-4,
+      residualNorm: crn,
+      dof,
+      variables: n,
+      equations,
+    };
   };
 
   if (n === 0 || residuals().length === 0) return finish();
 
   // --- Levenberg-Marquardt -------------------------------------------------
-  const setX = (x: number[]) => vars.forEach((v, i) => {
+  const setX = (x: number[]) =>
+    vars.forEach((v, i) => {
       v.set(x[i]);
     });
   const evalR = (x: number[]): number[] => {
@@ -295,7 +309,10 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     let improved = false;
     for (let t = 0; t < LAMBDA_TRIES; t++) {
       const damped = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-9 : v)));
-      const dx = solveLinearSystem(damped, g.map((v) => -v));
+      const dx = solveLinearSystem(
+        damped,
+        g.map((v) => -v),
+      );
       if (!dx) {
         lambda *= 10;
         continue;
@@ -401,21 +418,23 @@ const norm = (v: number[]): number => Math.sqrt(sumSq(v));
 const TAU = Math.PI * 2;
 /** Signed shortest angular difference from `a` to `b`, in (-π, π]. */
 function arcAngleDiff(a: number, b: number): number {
-  let d = ((b - a) % TAU + TAU) % TAU;
+  let d = (((b - a) % TAU) + TAU) % TAU;
   if (d > Math.PI) d -= TAU;
   return d;
 }
 /** True if `a` lies on the CCW arc from `s` to `e`. */
 function angleInArc(a: number, s: number, e: number): boolean {
   const n = (x: number) => ((x % TAU) + TAU) % TAU;
-  const a2 = n(a), s2 = n(s), e2 = n(e);
-  return s2 <= e2 ? (a2 >= s2 && a2 <= e2) : (a2 >= s2 || a2 <= e2);
+  const a2 = n(a),
+    s2 = n(s),
+    e2 = n(e);
+  return s2 <= e2 ? a2 >= s2 && a2 <= e2 : a2 >= s2 || a2 <= e2;
 }
 /** Clamp `angle` to the CCW arc range [startAngle, endAngle]. */
 function clampAngleToArc(angle: number, startAngle: number, endAngle: number): number {
   if (angleInArc(angle, startAngle, endAngle)) return angle;
   const dStart = Math.abs(arcAngleDiff(angle, startAngle));
-  const dEnd   = Math.abs(arcAngleDiff(angle, endAngle));
+  const dEnd = Math.abs(arcAngleDiff(angle, endAngle));
   return dStart <= dEnd ? startAngle : endAngle;
 }
 
@@ -498,7 +517,9 @@ export function computeEntityDofStatus(
   // Build constraint Jacobian (no anchors/pins — pure constraint equations)
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
-  const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
+  const bTargets = doc.bindings.map((b) =>
+    bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))),
+  );
 
   const evalR = (x: number[]): number[] => {
     vars.forEach((v, i) => {
@@ -507,7 +528,9 @@ export function computeEntityDofStatus(
     const out: number[] = [];
     for (const c of active) for (const r of constraintResiduals(c, geo)) out.push(r);
     for (const d of drivingDims) for (const r of dimensionResiduals(d, geo)) out.push(r);
-    doc.bindings.forEach((b, i) => { for (const r of bindingResidualAt(b, geo, bTargets[i])) out.push(r); });
+    doc.bindings.forEach((b, i) => {
+      for (const r of bindingResidualAt(b, geo, bTargets[i])) out.push(r);
+    });
     return out;
   };
 
@@ -588,19 +611,26 @@ export function constraintJacobianRankChange(
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const extraActive = extras.filter((c) => c.type !== "fixed");
-  const bTargets = doc.bindings.map((b) => bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))));
+  const bTargets = doc.bindings.map((b) =>
+    bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))),
+  );
 
-  const buildEvalR = (includeExtras: boolean) => (x: number[]): number[] => {
-    vars.forEach((v, i) => {
-      v.set(x[i]);
-    });
-    const out: number[] = [];
-    for (const c of active) for (const v of constraintResiduals(c, geo)) out.push(v);
-    for (const d of drivingDims) for (const v of dimensionResiduals(d, geo)) out.push(v);
-    doc.bindings.forEach((b, i) => { for (const v of bindingResidualAt(b, geo, bTargets[i])) out.push(v); });
-    if (includeExtras) for (const c of extraActive) for (const v of constraintResiduals(c, geo)) out.push(v);
-    return out;
-  };
+  const buildEvalR =
+    (includeExtras: boolean) =>
+    (x: number[]): number[] => {
+      vars.forEach((v, i) => {
+        v.set(x[i]);
+      });
+      const out: number[] = [];
+      for (const c of active) for (const v of constraintResiduals(c, geo)) out.push(v);
+      for (const d of drivingDims) for (const v of dimensionResiduals(d, geo)) out.push(v);
+      doc.bindings.forEach((b, i) => {
+        for (const v of bindingResidualAt(b, geo, bTargets[i])) out.push(v);
+      });
+      if (includeExtras)
+        for (const c of extraActive) for (const v of constraintResiduals(c, geo)) out.push(v);
+      return out;
+    };
 
   const x = vars.map((v) => v.get());
 

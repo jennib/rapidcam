@@ -29,10 +29,10 @@ const FONTS = new Map<string, FontEntry>();
 
 export const BUNDLED: { id: string; name: string; url: string }[] = [
   { id: "roboto-regular", name: "Roboto Regular", url: "/fonts/roboto-regular.woff" },
-  { id: "roboto-bold",    name: "Roboto Bold",    url: "/fonts/roboto-bold.woff"    },
+  { id: "roboto-bold", name: "Roboto Bold", url: "/fonts/roboto-bold.woff" },
 ];
 
-const BUNDLED_IDS = new Set(BUNDLED.map(b => b.id));
+const BUNDLED_IDS = new Set(BUNDLED.map((b) => b.id));
 
 /** Whether a font id refers to a bundled (always-available) font. */
 export function isBundledFont(id: string): boolean {
@@ -55,7 +55,7 @@ export function getFont(id: string): Font | null {
 }
 
 export function listFonts(): { id: string; name: string }[] {
-  return [...FONTS.values()].map(e => ({ id: e.id, name: e.name }));
+  return [...FONTS.values()].map((e) => ({ id: e.id, name: e.name }));
 }
 
 export function defaultFontId(): string {
@@ -117,10 +117,20 @@ export async function loadFromUrl(id: string, name: string, url: string): Promis
   if (!res.ok) throw new Error(`Font fetch failed: ${url} (${res.status})`);
   const buf = await res.arrayBuffer();
   const font = await parseFont(buf);
-  FONTS.set(id, { id, name, font, data: buf, format: detectFormat(buf), bundled: BUNDLED_IDS.has(id), embeddable: fontEmbeddable(font) });
+  FONTS.set(id, {
+    id,
+    name,
+    font,
+    data: buf,
+    format: detectFormat(buf),
+    bundled: BUNDLED_IDS.has(id),
+    embeddable: fontEmbeddable(font),
+  });
 }
 
-export async function loadFromFile(file: File): Promise<{ id: string; name: string; embeddable: boolean }> {
+export async function loadFromFile(
+  file: File,
+): Promise<{ id: string; name: string; embeddable: boolean }> {
   const buf = await file.arrayBuffer();
   const font = await parseFont(buf);
   const nameStr =
@@ -131,7 +141,15 @@ export async function loadFromFile(file: File): Promise<{ id: string; name: stri
   // dedupes across sessions and round-trips stably through saved files.
   const id = `font-${hashBytes(buf)}`;
   if (!FONTS.has(id)) {
-    FONTS.set(id, { id, name: nameStr, font, data: buf, format: detectFormat(buf), bundled: false, embeddable });
+    FONTS.set(id, {
+      id,
+      name: nameStr,
+      font,
+      data: buf,
+      format: detectFormat(buf),
+      bundled: false,
+      embeddable,
+    });
   }
   return { id, name: nameStr, embeddable };
 }
@@ -157,7 +175,9 @@ export function collectEmbeddedFonts(ids: Iterable<string>): EmbeddedFont[] {
     const e = FONTS.get(id);
     if (!e || e.bundled) continue;
     if (!e.embeddable) {
-      console.warn(`[fonts] not embedding "${e.name}" (${e.id}): its license (OS/2 fsType) forbids embedding.`);
+      console.warn(
+        `[fonts] not embedding "${e.name}" (${e.id}): its license (OS/2 fsType) forbids embedding.`,
+      );
       continue;
     }
     out.push({ id: e.id, name: e.name, format: e.format, data: bytesToBase64(e.data) });
@@ -171,9 +191,20 @@ export function registerEmbeddedFont(f: EmbeddedFont): void {
   const data = base64ToBytes(f.data);
   try {
     const font = opentype.parse(data);
-    FONTS.set(f.id, { id: f.id, name: f.name, font, data, format: f.format, bundled: false, embeddable: fontEmbeddable(font) });
+    FONTS.set(f.id, {
+      id: f.id,
+      name: f.name,
+      font,
+      data,
+      format: f.format,
+      bundled: false,
+      embeddable: fontEmbeddable(font),
+    });
   } catch (e) {
-    console.warn(`[fonts] Could not parse embedded font "${f.name}" (${f.id}):`, (e as Error).message);
+    console.warn(
+      `[fonts] Could not parse embedded font "${f.name}" (${f.id}):`,
+      (e as Error).message,
+    );
   }
 }
 
@@ -195,12 +226,14 @@ function base64ToBytes(b64: string): ArrayBuffer {
 }
 
 export async function initBundledFonts(onReady?: () => void): Promise<void> {
-  await Promise.all(BUNDLED.map(async f => {
-    try {
-      await loadFromUrl(f.id, f.name, f.url);
-      onReady?.();
-    } catch (e) {
-      console.info(`[fonts] Could not load ${f.name}:`, (e as Error).message);
-    }
-  }));
+  await Promise.all(
+    BUNDLED.map(async (f) => {
+      try {
+        await loadFromUrl(f.id, f.name, f.url);
+        onReady?.();
+      } catch (e) {
+        console.info(`[fonts] Could not load ${f.name}:`, (e as Error).message);
+      }
+    }),
+  );
 }

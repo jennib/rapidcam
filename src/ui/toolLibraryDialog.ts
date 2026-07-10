@@ -9,12 +9,16 @@ export function openToolLibraryDialog(): void {
   let tools = loadLibrary();
   let selectedId: string | null = tools.length > 0 ? tools[0].id : null;
   // Deep copy for editing state
-  let currentEdit: ToolDef | null = selectedId ? JSON.parse(JSON.stringify(tools.find(t => t.id === selectedId)!)) : null;
+  let currentEdit: ToolDef | null = selectedId
+    ? JSON.parse(JSON.stringify(tools.find((t) => t.id === selectedId)!))
+    : null;
 
   const backdrop = document.createElement("div");
   backdrop.id = "tlib-backdrop";
   backdrop.className = "tp-backdrop";
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog tlib-dialog";
@@ -81,7 +85,7 @@ export function openToolLibraryDialog(): void {
       feedrate: 1000,
       plungeRate: 300,
       spindleSpeed: 18000,
-      safeZ: 5
+      safeZ: 5,
     };
     tools.push(newTool);
     saveLibrary(tools);
@@ -103,7 +107,7 @@ export function openToolLibraryDialog(): void {
 
   const saveCurrentEdit = () => {
     if (!currentEdit || !selectedId) return;
-    const idx = tools.findIndex(t => t.id === selectedId);
+    const idx = tools.findIndex((t) => t.id === selectedId);
     if (idx >= 0) {
       tools[idx] = JSON.parse(JSON.stringify(currentEdit));
       saveLibrary(tools);
@@ -138,8 +142,12 @@ export function openToolLibraryDialog(): void {
         item.style.background = "var(--accent-dim)";
         item.style.color = "#fff";
       } else {
-        item.addEventListener("mouseover", () => { item.style.background = "var(--panel-2)"; });
-        item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+        item.addEventListener("mouseover", () => {
+          item.style.background = "var(--panel-2)";
+        });
+        item.addEventListener("mouseout", () => {
+          item.style.background = "transparent";
+        });
         item.addEventListener("click", () => {
           saveCurrentEdit();
           selectedId = t.id;
@@ -216,20 +224,29 @@ export function openToolLibraryDialog(): void {
 
     // Name
     const nameInp = document.createElement("input");
-    nameInp.type = "text"; nameInp.className = "dim";
+    nameInp.type = "text";
+    nameInp.className = "dim";
     nameInp.value = t.name;
-    nameInp.addEventListener("input", () => { t.name = nameInp.value; renderList(); });
+    nameInp.addEventListener("input", () => {
+      t.name = nameInp.value;
+      renderList();
+    });
     editorWrap.appendChild(makeField("Name", nameInp));
 
     // Type
     const typeSel = document.createElement("select");
     typeSel.className = "unit";
     for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
-      const o = document.createElement("option"); o.value = v; o.textContent = l;
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = l;
       typeSel.appendChild(o);
     }
     typeSel.value = t.toolType;
-    typeSel.addEventListener("change", () => { t.toolType = typeSel.value as ToolType; render(); });
+    typeSel.addEventListener("change", () => {
+      t.toolType = typeSel.value as ToolType;
+      render();
+    });
     editorWrap.appendChild(makeField("Tool Type", typeSel));
 
     // Labelled diagram of the current tool. Rebuilt on type change (full
@@ -242,41 +259,123 @@ export function openToolLibraryDialog(): void {
     const caption = document.createElement("div");
     caption.textContent = "Angle to scale · diameters labelled, not to scale";
     caption.style.cssText = "font-size:10px;color:var(--text-dim);margin-top:2px;text-align:center";
-    const redrawDiagram = () => { diagramBox.replaceChildren(buildToolDiagram(t), caption); };
+    const redrawDiagram = () => {
+      diagramBox.replaceChildren(buildToolDiagram(t), caption);
+    };
     editorWrap.appendChild(diagramBox);
 
     // Numeric inputs helper. `live` fields also redraw the diagram as you type.
-    const numField = (label: string, get: () => number | undefined, set: (v: number) => void, live = false) => {
+    const numField = (
+      label: string,
+      get: () => number | undefined,
+      set: (v: number) => void,
+      live = false,
+    ) => {
       const inp = document.createElement("input");
-      inp.type = "number"; inp.className = "dim"; inp.step = "any";
+      inp.type = "number";
+      inp.className = "dim";
+      inp.step = "any";
       inp.value = get() !== undefined ? String(get()) : "";
       inp.addEventListener("change", () => {
         const v = parseFloat(inp.value);
         if (Number.isFinite(v)) set(v);
       });
-      if (live) inp.addEventListener("input", () => {
-        const v = parseFloat(inp.value);
-        if (Number.isFinite(v)) { set(v); redrawDiagram(); }
-      });
+      if (live)
+        inp.addEventListener("input", () => {
+          const v = parseFloat(inp.value);
+          if (Number.isFinite(v)) {
+            set(v);
+            redrawDiagram();
+          }
+        });
       return makeField(label, inp);
     };
 
-    editorWrap.appendChild(numField("Diameter (mm)", () => t.diameter, v => { t.diameter = v; renderList(); }, true));
+    editorWrap.appendChild(
+      numField(
+        "Diameter (mm)",
+        () => t.diameter,
+        (v) => {
+          t.diameter = v;
+          renderList();
+        },
+        true,
+      ),
+    );
 
     if (t.toolType === "v-bit") {
-      editorWrap.appendChild(numField("V Angle (°)", () => t.vAngle, v => { t.vAngle = v; }, true));
-      editorWrap.appendChild(numField("Tip Diam (mm)", () => t.tipDiameter, v => { t.tipDiameter = v; }, true));
+      editorWrap.appendChild(
+        numField(
+          "V Angle (°)",
+          () => t.vAngle,
+          (v) => {
+            t.vAngle = v;
+          },
+          true,
+        ),
+      );
+      editorWrap.appendChild(
+        numField(
+          "Tip Diam (mm)",
+          () => t.tipDiameter,
+          (v) => {
+            t.tipDiameter = v;
+          },
+          true,
+        ),
+      );
     }
     if (t.toolType === "drill") {
-      editorWrap.appendChild(numField("Tip Angle (°)", () => t.tipAngle, v => { t.tipAngle = v; }, true));
+      editorWrap.appendChild(
+        numField(
+          "Tip Angle (°)",
+          () => t.tipAngle,
+          (v) => {
+            t.tipAngle = v;
+          },
+          true,
+        ),
+      );
     }
 
     redrawDiagram();
 
-    editorWrap.appendChild(numField("Spindle (rpm)", () => t.spindleSpeed, v => { t.spindleSpeed = Math.round(v); }));
-    editorWrap.appendChild(numField("Feed (mm/min)", () => t.feedrate, v => { t.feedrate = v; }));
-    editorWrap.appendChild(numField("Plunge (mm/min)", () => t.plungeRate, v => { t.plungeRate = v; }));
-    editorWrap.appendChild(numField("Safe Z (mm)", () => t.safeZ, v => { t.safeZ = v; }));
+    editorWrap.appendChild(
+      numField(
+        "Spindle (rpm)",
+        () => t.spindleSpeed,
+        (v) => {
+          t.spindleSpeed = Math.round(v);
+        },
+      ),
+    );
+    editorWrap.appendChild(
+      numField(
+        "Feed (mm/min)",
+        () => t.feedrate,
+        (v) => {
+          t.feedrate = v;
+        },
+      ),
+    );
+    editorWrap.appendChild(
+      numField(
+        "Plunge (mm/min)",
+        () => t.plungeRate,
+        (v) => {
+          t.plungeRate = v;
+        },
+      ),
+    );
+    editorWrap.appendChild(
+      numField(
+        "Safe Z (mm)",
+        () => t.safeZ,
+        (v) => {
+          t.safeZ = v;
+        },
+      ),
+    );
   };
 
   const render = () => {

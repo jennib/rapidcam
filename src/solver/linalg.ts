@@ -21,10 +21,14 @@ export function determinedVariables(A: number[][], tolerance = 1e-9): Set<number
   let row = 0;
   for (let col = 0; col < n && row < m; col++) {
     // Partial row pivot
-    let best = tolerance, pivot = -1;
+    let best = tolerance,
+      pivot = -1;
     for (let r = row; r < m; r++) {
       const v = Math.abs(M[r][col]);
-      if (v > best) { best = v; pivot = r; }
+      if (v > best) {
+        best = v;
+        pivot = r;
+      }
     }
     if (pivot === -1) continue; // free column
 
@@ -67,14 +71,20 @@ export function determinedVariables(A: number[][], tolerance = 1e-9): Set<number
 /** Rank of matrix A via Gaussian elimination with partial pivoting. */
 export function matrixRank(A: number[][], tolerance = 1e-9): number {
   if (A.length === 0 || A[0].length === 0) return 0;
-  const m = A.length, n = A[0].length;
+  const m = A.length,
+    n = A[0].length;
   const M = A.map((row) => [...row]);
-  let rank = 0, row = 0;
+  let rank = 0,
+    row = 0;
   for (let col = 0; col < n && row < m; col++) {
-    let pivot = row, best = Math.abs(M[row][col]);
+    let pivot = row,
+      best = Math.abs(M[row][col]);
     for (let r = row + 1; r < m; r++) {
       const v = Math.abs(M[r][col]);
-      if (v > best) { best = v; pivot = r; }
+      if (v > best) {
+        best = v;
+        pivot = r;
+      }
     }
     if (best < tolerance) continue;
     if (pivot !== row) [M[row], M[pivot]] = [M[pivot], M[row]];
@@ -84,7 +94,8 @@ export function matrixRank(A: number[][], tolerance = 1e-9): number {
       if (f === 0) continue;
       for (let c = col; c < n; c++) M[r][c] -= f * M[row][c];
     }
-    rank++; row++;
+    rank++;
+    row++;
   }
   return rank;
 }

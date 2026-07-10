@@ -13,7 +13,10 @@ export class ViewMenu {
   private dropdown: HTMLElement;
   private isOpen = false;
 
-  constructor(host: HTMLElement, private cb: ViewMenuCallbacks) {
+  constructor(
+    host: HTMLElement,
+    private cb: ViewMenuCallbacks,
+  ) {
     this.btn = document.createElement("button");
     this.btn.className = "btn";
     this.btn.textContent = "View";
@@ -56,12 +59,21 @@ export class ViewMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("Fit View", "F", () => { this.close(); this.cb.onFit(); });
+    this.item("Fit View", "F", () => {
+      this.close();
+      this.cb.onFit();
+    });
     this.separator();
     const dimsOn = this.cb.areDimensionsVisible();
-    this.item(`${dimsOn ? "✓ " : "   "}Dimensions`, "", () => { this.close(); this.cb.onToggleDimensions(); });
+    this.item(`${dimsOn ? "✓ " : "   "}Dimensions`, "", () => {
+      this.close();
+      this.cb.onToggleDimensions();
+    });
     const checked = this.cb.is3DVisible();
-    this.item((checked ? "✓ " : "   ") + this.cb.previewLabel(), "", () => { this.close(); this.cb.onToggle3D(); });
+    this.item((checked ? "✓ " : "   ") + this.cb.previewLabel(), "", () => {
+      this.close();
+      this.cb.onToggle3D();
+    });
   }
 
   private separator(): void {

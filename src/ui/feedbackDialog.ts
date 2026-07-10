@@ -2,19 +2,17 @@ import { registerModal } from "./modal";
 
 const FEEDBACK_EMAIL = "tuttistudios@gmail.com";
 
-const CATEGORIES = [
-  "Bug report",
-  "Feature request",
-  "Question",
-  "General feedback",
-];
+const CATEGORIES = ["Bug report", "Feature request", "Question", "General feedback"];
 
 export function showFeedbackDialog(): void {
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
 
   const card = document.createElement("div");
   card.className = "feedback-dialog";

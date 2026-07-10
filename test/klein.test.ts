@@ -18,18 +18,37 @@ import {
 // rotation and A === Y numerically — keeps wrap assertions trivially readable.
 const UNIT: RotarySettings = { axisWord: "A", diameter: 360 / Math.PI, wrapAxis: "y" };
 
-function profileOp(id: string, entityIds: string[], opts: Partial<CAMOperation> = {}): CAMOperation {
+function profileOp(
+  id: string,
+  entityIds: string[],
+  opts: Partial<CAMOperation> = {},
+): CAMOperation {
   return {
-    id, name: `profile ${id}`, type: "profile", side: "outside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4, ...opts,
+    id,
+    name: `profile ${id}`,
+    type: "profile",
+    side: "outside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
+    ...opts,
   };
 }
 
 /** Motion lines (drop comments/blank/M/G-setup) for structural assertions. */
 function motions(code: string): string[] {
-  return code.split("\n").map((l) => l.trim()).filter((l) => /^G[0-3]\b/.test(l));
+  return code
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^G[0-3]\b/.test(l));
 }
 
 // --- wrap math ---------------------------------------------------------------
@@ -60,10 +79,10 @@ test("wrapGCode swaps only the wrapped word and preserves X/Z/F, comments, and n
     "M5",
   ].join("\n");
   const wrapped = wrapGCode(flat, UNIT).split("\n");
-  expect(wrapped[0]).toBe("G21 ; metric");     // passthrough
-  expect(wrapped[1]).toBe("G0 Z5");            // no wrapped axis → untouched
-  expect(wrapped[2]).toBe("G0 X10 A20");       // Y20 → A20
-  expect(wrapped[3]).toBe("G1 Z-1 F300");      // plunge untouched
+  expect(wrapped[0]).toBe("G21 ; metric"); // passthrough
+  expect(wrapped[1]).toBe("G0 Z5"); // no wrapped axis → untouched
+  expect(wrapped[2]).toBe("G0 X10 A20"); // Y20 → A20
+  expect(wrapped[3]).toBe("G1 Z-1 F300"); // plunge untouched
   expect(wrapped[4]).toBe("G1 X30 A20 F1000 ; cut"); // comment kept
   expect(wrapped[5]).toBe("G1 X30 A50");
   expect(wrapped[6]).toBe("M5");
@@ -98,10 +117,10 @@ test("flattenArc treats a start==end sweep as a full turn", () => {
 test("wrapGCode linearises G2/G3 into G1 chords carrying the rotary word", () => {
   const flat = ["G0 X5 Y0", "G3 X0 Y5 I-5 J0 F800"].join("\n");
   const wrapped = wrapGCode(flat, UNIT);
-  expect(wrapped).not.toMatch(/\bG[23]\b/);           // no arcs survive the wrap
+  expect(wrapped).not.toMatch(/\bG[23]\b/); // no arcs survive the wrap
   const cut = motions(wrapped).filter((l) => l.startsWith("G1"));
-  expect(cut.length).toBeGreaterThan(1);              // flattened to several chords
-  expect(cut[0]).toMatch(/F800/);                     // feed carried onto the first chord
+  expect(cut.length).toBeGreaterThan(1); // flattened to several chords
+  expect(cut[0]).toMatch(/F800/); // feed carried onto the first chord
   expect(cut.every((l) => /A[-\d.]+/.test(l))).toBe(true); // every chord commands the rotary axis
   const end = cut[cut.length - 1];
   expect(parseFloat(end.match(/A([-\d.]+)/)![1])).toBeCloseTo(5, 3); // Y5 → A5
@@ -147,9 +166,9 @@ test("inverse-time feed: F = surface-feed ÷ path-length, framed by G93 … G94"
   const flat = [
     "G90",
     "G0 X0 Y0",
-    "G1 Z-2 F300",      // plunge, length 2mm  → F = 300/2  = 150
-    "G1 X30 Y0 F1200",  // pure length move 30mm → F = 1200/30 = 40
-    "G1 X30 Y40",       // modal feed 1200, wrapped move 40mm → F = 1200/40 = 30
+    "G1 Z-2 F300", // plunge, length 2mm  → F = 300/2  = 150
+    "G1 X30 Y0 F1200", // pure length move 30mm → F = 1200/30 = 40
+    "G1 X30 Y40", // modal feed 1200, wrapped move 40mm → F = 1200/40 = 30
     "M5",
     "M30",
   ].join("\n");
@@ -159,11 +178,11 @@ test("inverse-time feed: F = surface-feed ÷ path-length, framed by G93 … G94"
   const iG94 = w.findIndex((l) => /^G94\b/.test(l));
   const iM30 = w.findIndex((l) => /^M30\b/.test(l));
   expect(iG93).toBeGreaterThanOrEqual(0);
-  expect(iG94).toBeGreaterThan(iG93);      // restored…
-  expect(iG94).toBeLessThan(iM30);         // …before program end
+  expect(iG94).toBeGreaterThan(iG93); // restored…
+  expect(iG94).toBeLessThan(iM30); // …before program end
 
-  expect(w).toContain("G1 Z-2 F150");                         // plunge inverse-time
-  expect(w.find((l) => l.startsWith("G1 X30 A0"))).toMatch(/\bF40\b/);  // length move
+  expect(w).toContain("G1 Z-2 F150"); // plunge inverse-time
+  expect(w.find((l) => l.startsWith("G1 X30 A0"))).toMatch(/\bF40\b/); // length move
   expect(w.find((l) => l.startsWith("G1 X30 A40"))).toMatch(/\bF30\b/); // wrapped move
 });
 
@@ -171,8 +190,8 @@ test("inverse-time feed: every arc chord carries its own F", () => {
   const flat = ["G0 X5 Y0", "G1 Z-1 F200", "G3 X0 Y5 I-5 J0 F600", "M30"].join("\n");
   const w = wrapGCode(flat, UNIT, { inverseTimeFeed: true });
   const chords = w.split("\n").filter((l) => /^G1 /.test(l) && /A-?[\d.]/.test(l));
-  expect(chords.length).toBeGreaterThan(1);                      // arc was flattened
-  expect(chords.every((l) => /\bF[\d.]+/.test(l))).toBe(true);   // each chord commands a feed
+  expect(chords.length).toBeGreaterThan(1); // arc was flattened
+  expect(chords.every((l) => /\bF[\d.]+/.test(l))).toBe(true); // each chord commands a feed
   expect(w).toMatch(/^G93\b/m);
   expect(w).toMatch(/^G94\b/m);
 });
@@ -195,7 +214,9 @@ test("generateRotaryProgram emits inverse-time feed (G93 … G94 before M30)", (
   const lines = program.split("\n");
   expect(program).toMatch(/^G93\b/m);
   expect(program).toMatch(/^G94\b/m);
-  expect(lines.findIndex((l) => /^G94\b/.test(l))).toBeLessThan(lines.findIndex((l) => /^M30\b/.test(l)));
+  expect(lines.findIndex((l) => /^G94\b/.test(l))).toBeLessThan(
+    lines.findIndex((l) => /^M30\b/.test(l)),
+  );
   // Every wrapped feed move commands a feed (inverse-time is per-move).
   const cutMoves = lines.filter((l) => /^G1 /.test(l) && /A-?[\d.]/.test(l));
   expect(cutMoves.length).toBeGreaterThan(4);

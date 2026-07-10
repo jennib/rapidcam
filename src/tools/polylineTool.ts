@@ -27,7 +27,7 @@ export class PolylineTool implements Tool {
     const prev = this.points[this.points.length - 1];
     const shifted = e.shiftKey && prev != null;
     const world = shifted ? orthoSnap(prev, e.world) : e.world;
-    const snap = shifted ? null : (e.snap?.key ? e.snap : null);
+    const snap = shifted ? null : e.snap?.key ? e.snap : null;
 
     if (prev && distSq(prev, world) < 1e-9) return; // ignore duplicate click
 
@@ -109,7 +109,10 @@ export class PolylineTool implements Tool {
   }
 }
 
-function dedupeConsecutive(points: Vec2[], snaps: (SnapPoint | null)[]): { pts: Vec2[]; snaps: (SnapPoint | null)[] } {
+function dedupeConsecutive(
+  points: Vec2[],
+  snaps: (SnapPoint | null)[],
+): { pts: Vec2[]; snaps: (SnapPoint | null)[] } {
   const pts: Vec2[] = [];
   const outSnaps: (SnapPoint | null)[] = [];
   for (let i = 0; i < points.length; i++) {

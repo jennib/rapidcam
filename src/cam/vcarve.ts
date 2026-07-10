@@ -79,9 +79,7 @@ export function groupContoursIntoRegions(contours: Vec2[][]): CarveRegion[] {
           pointInPolygon(h.ring[0], s.ring) &&
           // Attach to the *smallest* enclosing solid, so a dot inside a counter
           // inside a letter lands on the right ring.
-          !solids.some(
-            (s2) => s2 !== s && s2.area < s.area && pointInPolygon(h.ring[0], s2.ring),
-          ),
+          !solids.some((s2) => s2 !== s && s2.area < s.area && pointInPolygon(h.ring[0], s2.ring)),
       )
       .map((h) => h.ring),
   }));
@@ -142,7 +140,10 @@ function insetRegion(outer: Vec2[], holes: Vec2[][], d: number, miterLimit: numb
 
 /** Bounding-box diagonal of a polygon — used to bound the peel iteration count. */
 function diag(pts: Vec2[]): number {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const p of pts) {
     if (p.x < minX) minX = p.x;
     if (p.y < minY) minY = p.y;
@@ -159,11 +160,16 @@ function diag(pts: Vec2[]): number {
  */
 export function vcarveRegion(outer: Vec2[], holes: Vec2[], params: VCarveParams): VCarvePass[];
 export function vcarveRegion(outer: Vec2[], holes: Vec2[][], params: VCarveParams): VCarvePass[];
-export function vcarveRegion(outer: Vec2[], holes: Vec2[][] | Vec2[], params: VCarveParams): VCarvePass[] {
+export function vcarveRegion(
+  outer: Vec2[],
+  holes: Vec2[][] | Vec2[],
+  params: VCarveParams,
+): VCarvePass[] {
   // Normalize the `holes` overload: accept either Vec2[][] (rings) or a single ring.
-  const holeRings: Vec2[][] = Array.isArray(holes) && holes.length > 0 && "x" in (holes[0] as Vec2)
-    ? [holes as Vec2[]]
-    : (holes as Vec2[][]);
+  const holeRings: Vec2[][] =
+    Array.isArray(holes) && holes.length > 0 && "x" in (holes[0] as Vec2)
+      ? [holes as Vec2[]]
+      : (holes as Vec2[][]);
 
   const { vAngle, maxDepth, stepMM } = params;
   const miterLimit = params.miterLimit ?? 4;

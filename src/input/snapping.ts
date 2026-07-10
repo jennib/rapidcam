@@ -18,9 +18,7 @@ import { intersectionsNear } from "../core/intersect";
 export function orthoSnap(start: Vec2, raw: Vec2): Vec2 {
   const dx = raw.x - start.x;
   const dy = raw.y - start.y;
-  return Math.abs(dx) >= Math.abs(dy)
-    ? { x: raw.x, y: start.y }
-    : { x: start.x, y: raw.y };
+  return Math.abs(dx) >= Math.abs(dy) ? { x: raw.x, y: start.y } : { x: start.x, y: raw.y };
 }
 
 export interface SnapResult {
@@ -36,12 +34,7 @@ export class SnapEngine {
   /** Object-snap pickup radius in screen pixels. */
   pixelTolerance = 10;
 
-  resolve(
-    screen: Vec2,
-    view: Viewport,
-    doc: CADDocument,
-    exclude?: Set<EntityId>,
-  ): SnapResult {
+  resolve(screen: Vec2, view: Viewport, doc: CADDocument, exclude?: Set<EntityId>): SnapResult {
     const rawWorld = view.screenToWorld(screen);
 
     // 1) Object snaps (highest priority).

@@ -6,9 +6,21 @@ import type { CAMOperation } from "../src/cam/types";
 
 function drillOp(entityIds: string[]): CAMOperation {
   return {
-    id: "d1", name: "Drill", type: "drill", entityIds, side: "outside",
-    toolType: "drill", toolNumber: 1, diameter: 5, feedrate: 200, plungeRate: 120,
-    spindleSpeed: 6000, safeZ: 5, depth: -5, stepdown: 3, stepover: 0.4,
+    id: "d1",
+    name: "Drill",
+    type: "drill",
+    entityIds,
+    side: "outside",
+    toolType: "drill",
+    toolNumber: 1,
+    diameter: 5,
+    feedrate: 200,
+    plungeRate: 120,
+    spindleSpeed: 6000,
+    safeZ: 5,
+    depth: -5,
+    stepdown: 3,
+    stepover: 0.4,
   };
 }
 

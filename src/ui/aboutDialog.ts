@@ -5,7 +5,10 @@ export function showAboutDialog(): void {
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
 
   const container = document.createElement("div");
   container.className = "about-dialog";

@@ -40,7 +40,11 @@ const BUTTONS: (ButtonSpec | "sep")[] = [
   { type: "tangent", name: "Tangent", hint: "Select 1 line and 1 circle/arc, or 2 arcs/circles" },
   { type: "pointOnLine", name: "Point on line", hint: "Select 1 point and 1 line" },
   { type: "pointOnArc", name: "Point on arc", hint: "Select 1 point and 1 arc" },
-  { type: "midpoint", name: "Midpoint", hint: "Select 1 point and 1 line, or 3 points (first = midpoint)" },
+  {
+    type: "midpoint",
+    name: "Midpoint",
+    hint: "Select 1 point and 1 line, or 3 points (first = midpoint)",
+  },
   "sep",
   { type: "symmetric", name: "Symmetric", hint: "Select 2 points and 1 line (symmetry axis)" },
   { type: "collinear", name: "Collinear", hint: "Select 2 lines" },
@@ -83,16 +87,19 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
 
   switch (type) {
     case "coincident":
-      if (pts.length === 2)
-        return ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })]);
+      if (pts.length === 2) return ok([makeConstraint("coincident", { points: [pts[0], pts[1]] })]);
       if (circles.length === 1 && lines.length === 1) {
         const circ = circles[0] as CircleEntity;
         const line = lines[0] as LineEntity;
         const key = dist(circ.center, line.a) <= dist(circ.center, line.b) ? "a" : "b";
-        return ok([makeConstraint("coincident", { points: [
-          { entityId: circ.id, key: "c" },
-          { entityId: line.id, key },
-        ]})]);
+        return ok([
+          makeConstraint("coincident", {
+            points: [
+              { entityId: circ.id, key: "c" },
+              { entityId: line.id, key },
+            ],
+          }),
+        ]);
       }
       return err("Select 2 points, or 1 circle + 1 line");
 
@@ -175,12 +182,14 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
       if (pts.length < 1) return err("Select 1+ points");
       const constraints: Constraint[] = [];
       for (const pt of pts) {
-        const ent = doc.entities.find(e => e.id === pt.entityId);
+        const ent = doc.entities.find((e) => e.id === pt.entityId);
         if (!ent) continue;
         try {
           const pos = ent.getPoint(pt.key);
           constraints.push(makeConstraint("fixedPoint", { points: [pt], params: [pos.x, pos.y] }));
-        } catch { /* skip invalid point refs */ }
+        } catch {
+          /* skip invalid point refs */
+        }
       }
       return constraints.length > 0 ? ok(constraints) : err("Select 1+ points");
     }
@@ -249,7 +258,10 @@ export class ConstraintBar {
     // Rank-based check: compute how much the Jacobian rank actually increases.
     // This correctly handles redundant constraints (rank stays the same even
     // though the equation count grows) and over-constraining ones.
-    const { variables, rankWithout, rankWith } = constraintJacobianRankChange(this.doc, res.constraints);
+    const { variables, rankWithout, rankWith } = constraintJacobianRankChange(
+      this.doc,
+      res.constraints,
+    );
     const rankIncrease = rankWith - rankWithout;
     const effectiveDof = variables - rankWithout;
 
@@ -258,7 +270,10 @@ export class ConstraintBar {
       return;
     }
     if (rankIncrease > effectiveDof) {
-      this.message(`Would over-constrain (${effectiveDof} DOF free, constraint adds ${rankIncrease})`, "error");
+      this.message(
+        `Would over-constrain (${effectiveDof} DOF free, constraint adds ${rankIncrease})`,
+        "error",
+      );
       return;
     }
 
@@ -305,5 +320,4 @@ export class ConstraintBar {
     this.msgEl.textContent = text;
     this.msgEl.className = `cb-msg ${kind}`;
   }
-
 }

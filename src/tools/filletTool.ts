@@ -21,8 +21,8 @@ import type { PreviewShape } from "../view/overlay";
 import { TAU } from "../core/geom";
 import { ICONS } from "./icons";
 
-const CORNER_EPS        = 1e-4;
-const HIT_PX            = 16;
+const CORNER_EPS = 1e-4;
+const HIT_PX = 16;
 const DRAG_THRESHOLD_PX = 4;
 
 // ---------------------------------------------------------------------------
@@ -31,8 +31,10 @@ const DRAG_THRESHOLD_PX = 4;
 
 interface LineCorner {
   kind: "line";
-  line1: LineEntity; key1: "a" | "b";
-  line2: LineEntity; key2: "a" | "b";
+  line1: LineEntity;
+  key1: "a" | "b";
+  line2: LineEntity;
+  key2: "a" | "b";
   pos: Vec2;
 }
 
@@ -54,13 +56,18 @@ type Corner = LineCorner | PolyCorner | RectCorner;
 
 interface CornerDirs {
   P: Vec2;
-  d1: Vec2; len1: number;
-  d2: Vec2; len2: number;
+  d1: Vec2;
+  len1: number;
+  d2: Vec2;
+  len2: number;
 }
 
 interface FilletGeo {
-  T1: Vec2; T2: Vec2; C: Vec2;
-  a1: number; a2: number;
+  T1: Vec2;
+  T2: Vec2;
+  C: Vec2;
+  a1: number;
+  a2: number;
 }
 
 type Phase = "idle" | "dragging";
@@ -85,11 +92,22 @@ function findCorner(worldPos: Vec2, doc: CADDocument, scale: number): Corner | n
   }
   if (nearestPt) {
     for (const ent of doc.entities) {
-      if (!(ent instanceof LineEntity) || ent.isConstruction || ent.id === nearestPt.line.id) continue;
+      if (!(ent instanceof LineEntity) || ent.isConstruction || ent.id === nearestPt.line.id)
+        continue;
       for (const key of ["a", "b"] as const) {
         if (dist(ent[key], nearestPt.pos) < CORNER_EPS) {
           if (!best || nearestPt.d < best.d)
-            best = { corner: { kind: "line", line1: nearestPt.line, key1: nearestPt.key, line2: ent, key2: key, pos: nearestPt.pos }, d: nearestPt.d };
+            best = {
+              corner: {
+                kind: "line",
+                line1: nearestPt.line,
+                key1: nearestPt.key,
+                line2: ent,
+                key2: key,
+                pos: nearestPt.pos,
+              },
+              d: nearestPt.d,
+            };
         }
       }
     }
@@ -130,9 +148,16 @@ function getCornerDirs(corner: Corner): CornerDirs | null {
     const { line1, key1, line2, key2, pos: P } = corner;
     const o1 = key1 === "a" ? line1.b : line1.a;
     const o2 = key2 === "a" ? line2.b : line2.a;
-    const len1 = dist(P, o1), len2 = dist(P, o2);
+    const len1 = dist(P, o1),
+      len2 = dist(P, o2);
     if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return { P, d1: { x: (o1.x-P.x)/len1, y: (o1.y-P.y)/len1 }, len1, d2: { x: (o2.x-P.x)/len2, y: (o2.y-P.y)/len2 }, len2 };
+    return {
+      P,
+      d1: { x: (o1.x - P.x) / len1, y: (o1.y - P.y) / len1 },
+      len1,
+      d2: { x: (o2.x - P.x) / len2, y: (o2.y - P.y) / len2 },
+      len2,
+    };
   } else if (corner.kind === "poly") {
     const { entity: pl, index: i } = corner;
     const n = pl.points.length;
@@ -140,24 +165,38 @@ function getCornerDirs(corner: Corner): CornerDirs | null {
     const P = pl.points[i];
     const prev = pl.points[(i - 1 + n) % n];
     const next = pl.points[(i + 1) % n];
-    const len1 = dist(P, prev), len2 = dist(P, next);
+    const len1 = dist(P, prev),
+      len2 = dist(P, next);
     if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return { P, d1: { x: (prev.x-P.x)/len1, y: (prev.y-P.y)/len1 }, len1, d2: { x: (next.x-P.x)/len2, y: (next.y-P.y)/len2 }, len2 };
+    return {
+      P,
+      d1: { x: (prev.x - P.x) / len1, y: (prev.y - P.y) / len1 },
+      len1,
+      d2: { x: (next.x - P.x) / len2, y: (next.y - P.y) / len2 },
+      len2,
+    };
   } else {
     const { entity: rect, index: i } = corner;
     const c = rect.corners();
     const P = c[i];
     const prev = c[(i + 3) % 4];
     const next = c[(i + 1) % 4];
-    const len1 = dist(P, prev), len2 = dist(P, next);
+    const len1 = dist(P, prev),
+      len2 = dist(P, next);
     if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return { P, d1: { x: (prev.x-P.x)/len1, y: (prev.y-P.y)/len1 }, len1, d2: { x: (next.x-P.x)/len2, y: (next.y-P.y)/len2 }, len2 };
+    return {
+      P,
+      d1: { x: (prev.x - P.x) / len1, y: (prev.y - P.y) / len1 },
+      len1,
+      d2: { x: (next.x - P.x) / len2, y: (next.y - P.y) / len2 },
+      len2,
+    };
   }
 }
 
 function computeGeo(dirs: CornerDirs, r: number): FilletGeo | null {
   const { P, d1, len1, d2, len2 } = dirs;
-  const cosA = d1.x*d2.x + d1.y*d2.y;
+  const cosA = d1.x * d2.x + d1.y * d2.y;
   const angle = Math.acos(Math.max(-1, Math.min(1, cosA)));
   if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return null;
   const tangentLen = r / Math.tan(angle / 2);
@@ -166,14 +205,17 @@ function computeGeo(dirs: CornerDirs, r: number): FilletGeo | null {
   const T1: Vec2 = { x: P.x + tangentLen * d1.x, y: P.y + tangentLen * d1.y };
   const T2: Vec2 = { x: P.x + tangentLen * d2.x, y: P.y + tangentLen * d2.y };
 
-  const bx = d1.x + d2.x, by = d1.y + d2.y;
-  const bl = Math.sqrt(bx*bx + by*by);
+  const bx = d1.x + d2.x,
+    by = d1.y + d2.y;
+  const bl = Math.sqrt(bx * bx + by * by);
   if (bl < 1e-9) return null;
   const arcDist = r / Math.sin(angle / 2);
-  const C: Vec2 = { x: P.x + (bx/bl) * arcDist, y: P.y + (by/bl) * arcDist };
+  const C: Vec2 = { x: P.x + (bx / bl) * arcDist, y: P.y + (by / bl) * arcDist };
 
   return {
-    T1, T2, C,
+    T1,
+    T2,
+    C,
     a1: Math.atan2(T1.y - C.y, T1.x - C.x),
     a2: Math.atan2(T2.y - C.y, T2.x - C.x),
   };
@@ -181,7 +223,7 @@ function computeGeo(dirs: CornerDirs, r: number): FilletGeo | null {
 
 /** Short arc from T1 (angle a1) to T2 (angle a2), expressed as a CCW arc (startAngle < endAngle). */
 function shortArcAngles(a1: number, a2: number): { startAngle: number; endAngle: number } {
-  let span = ((a2 - a1) % TAU + TAU) % TAU;
+  let span = (((a2 - a1) % TAU) + TAU) % TAU;
   if (span > Math.PI) span -= TAU; // take the short way; span may now be negative (CW)
   return span >= 0
     ? { startAngle: a1, endAngle: a1 + span }
@@ -217,45 +259,64 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
     const { line1, key1, line2, key2 } = corner;
 
     // Determine arc winding (CCW from startAngle to endAngle)
-    const crossVal = (geo.T1.x - geo.C.x) * (geo.T2.y - geo.C.y) - (geo.T1.y - geo.C.y) * (geo.T2.x - geo.C.x);
-    const startAngle   = crossVal >= 0 ? geo.a1 : geo.a2;
-    const endAngle     = crossVal >= 0 ? geo.a2 : geo.a1;
+    const crossVal =
+      (geo.T1.x - geo.C.x) * (geo.T2.y - geo.C.y) - (geo.T1.y - geo.C.y) * (geo.T2.x - geo.C.x);
+    const startAngle = crossVal >= 0 ? geo.a1 : geo.a2;
+    const endAngle = crossVal >= 0 ? geo.a2 : geo.a1;
     const arcStartKey: "start" | "end" = crossVal >= 0 ? "start" : "end";
-    const arcEndKey:   "start" | "end" = crossVal >= 0 ? "end"   : "start";
+    const arcEndKey: "start" | "end" = crossVal >= 0 ? "end" : "start";
 
-    if (key1 === "a") line1.a = geo.T1; else line1.b = geo.T1;
-    if (key2 === "a") line2.a = geo.T2; else line2.b = geo.T2;
+    if (key1 === "a") line1.a = geo.T1;
+    else line1.b = geo.T1;
+    if (key2 === "a") line2.a = geo.T2;
+    else line2.b = geo.T2;
 
-    doc.constraints = doc.constraints.filter(c => {
+    doc.constraints = doc.constraints.filter((c) => {
       if (c.type !== "coincident" || c.points.length !== 2) return true;
-      const has1 = c.points.some(p => p.entityId === line1.id && p.key === key1);
-      const has2 = c.points.some(p => p.entityId === line2.id && p.key === key2);
+      const has1 = c.points.some((p) => p.entityId === line1.id && p.key === key1);
+      const has2 = c.points.some((p) => p.entityId === line2.id && p.key === key2);
       return !(has1 && has2);
     });
 
     const arc = new ArcEntity(geo.C, radius, startAngle, endAngle);
     doc.add(arc);
-    doc.addConstraint({ id: `fillet-c1-${arc.id}`, type: "coincident", points: [
-      { entityId: line1.id, key: key1 }, { entityId: arc.id, key: arcStartKey },
-    ], entities: [], params: [] });
-    doc.addConstraint({ id: `fillet-c2-${arc.id}`, type: "coincident", points: [
-      { entityId: line2.id, key: key2 }, { entityId: arc.id, key: arcEndKey },
-    ], entities: [], params: [] });
-
+    doc.addConstraint({
+      id: `fillet-c1-${arc.id}`,
+      type: "coincident",
+      points: [
+        { entityId: line1.id, key: key1 },
+        { entityId: arc.id, key: arcStartKey },
+      ],
+      entities: [],
+      params: [],
+    });
+    doc.addConstraint({
+      id: `fillet-c2-${arc.id}`,
+      type: "coincident",
+      points: [
+        { entityId: line2.id, key: key2 },
+        { entityId: arc.id, key: arcEndKey },
+      ],
+      entities: [],
+      params: [],
+    });
   } else {
     // poly or rect — tessellate the short arc into the polyline
     let pl: PolylineEntity;
     let i: number;
     if (corner.kind === "poly") {
       pl = corner.entity;
-      i  = corner.index;
+      i = corner.index;
     } else {
-      pl = new PolylineEntity(corner.entity.corners().map(p => ({ ...p })), true);
-      pl.layerId  = corner.entity.layerId;
+      pl = new PolylineEntity(
+        corner.entity.corners().map((p) => ({ ...p })),
+        true,
+      );
+      pl.layerId = corner.entity.layerId;
       pl.selected = corner.entity.selected;
       i = corner.index;
     }
-    let span = ((geo.a2 - geo.a1) % TAU + TAU) % TAU;
+    let span = (((geo.a2 - geo.a1) % TAU) + TAU) % TAU;
     if (span > Math.PI) span -= TAU;
     const steps = Math.max(2, Math.ceil(Math.abs(span) / (Math.PI / 90)));
     const arcPts: Vec2[] = [];
@@ -278,9 +339,9 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
 // ---------------------------------------------------------------------------
 
 export class FilletTool implements Tool {
-  readonly id    = "fillet";
+  readonly id = "fillet";
   readonly label = "Fillet";
-  readonly icon  = ICONS.fillet;
+  readonly icon = ICONS.fillet;
 
   private phase: Phase = "idle";
   private hoverCorner: Corner | null = null;
@@ -366,7 +427,8 @@ export class FilletTool implements Tool {
 
   getOverlay(): ToolOverlay {
     if (this.phase === "dragging") return { previews: this.previews, selectionRect: null };
-    if (this.hoverCorner) return { previews: [{ kind: "point", pos: this.hoverCorner.pos }], selectionRect: null };
+    if (this.hoverCorner)
+      return { previews: [{ kind: "point", pos: this.hoverCorner.pos }], selectionRect: null };
     return { previews: [], selectionRect: null };
   }
 }

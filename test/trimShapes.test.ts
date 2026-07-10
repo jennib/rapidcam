@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import {
-  LineEntity, CircleEntity, ArcEntity, PolylineEntity, RectEntity, BezierEntity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+  RectEntity,
+  BezierEntity,
 } from "../src/model/entities";
 import { TrimTool } from "../src/tools/trimTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
@@ -24,14 +29,22 @@ function makeCtx(doc: CADDocument): ToolContext {
 
 function click(doc: CADDocument, pos: Vec2): void {
   const e: ToolPointerEvent = {
-    world: pos, worldRaw: pos, screen: pos, snap: null,
-    button: 0, shiftKey: false, ctrlKey: false, altKey: false,
+    world: pos,
+    worldRaw: pos,
+    screen: pos,
+    snap: null,
+    button: 0,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
   };
   new TrimTool().onPointerDown(e, makeCtx(doc));
 }
 
-const lines = (doc: CADDocument) => doc.entities.filter((e): e is LineEntity => e instanceof LineEntity);
-const polys = (doc: CADDocument) => doc.entities.filter((e): e is PolylineEntity => e instanceof PolylineEntity);
+const lines = (doc: CADDocument) =>
+  doc.entities.filter((e): e is LineEntity => e instanceof LineEntity);
+const polys = (doc: CADDocument) =>
+  doc.entities.filter((e): e is PolylineEntity => e instanceof PolylineEntity);
 
 describe("whole-entity erase when nothing bounds the clicked piece", () => {
   it("erases a slot end cap swallowed by a concentric circle (keyhole)", () => {
@@ -42,7 +55,7 @@ describe("whole-entity erase when nothing bounds the clicked piece", () => {
     doc.add(new CircleEntity({ x: 40, y: 0 }, 15)); // concentric, bigger — no intersections
     click(doc, { x: 50, y: 0 }); // cap apex
     expect(doc.entities.includes(cap)).toBe(false);
-    expect(doc.entities.find(e => e instanceof CircleEntity)).toBeDefined();
+    expect(doc.entities.find((e) => e instanceof CircleEntity)).toBeDefined();
   });
 
   it("erases a lone line with no intersections", () => {
@@ -55,7 +68,12 @@ describe("whole-entity erase when nothing bounds the clicked piece", () => {
 
   it("erases an uncrossed bezier", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
-    const lone = new BezierEntity({ x: 0, y: 50 }, { x: 10, y: 70 }, { x: 30, y: 70 }, { x: 40, y: 50 });
+    const lone = new BezierEntity(
+      { x: 0, y: 50 },
+      { x: 10, y: 70 },
+      { x: 30, y: 70 },
+      { x: 40, y: 50 },
+    );
     doc.add(lone);
     click(doc, { x: 20, y: 65 });
     expect(doc.entities.includes(lone)).toBe(false);
@@ -64,7 +82,10 @@ describe("whole-entity erase when nothing bounds the clicked piece", () => {
 
 describe("splitBezier", () => {
   it("both halves trace the original curve exactly", () => {
-    const p0 = { x: 0, y: 0 }, p1 = { x: 10, y: 20 }, p2 = { x: 30, y: 20 }, p3 = { x: 40, y: 0 };
+    const p0 = { x: 0, y: 0 },
+      p1 = { x: 10, y: 20 },
+      p2 = { x: 30, y: 20 },
+      p3 = { x: 40, y: 0 };
     const t = 0.3;
     const { left, right } = splitBezier(p0, p1, p2, p3, t);
     for (const u of [0, 0.25, 0.5, 0.75, 1]) {
@@ -82,7 +103,8 @@ describe("splitBezier", () => {
 
 describe("trimming beziers", () => {
   // Symmetric arch from (0,0) to (40,0), apex (20,15) at t=0.5.
-  const arch = () => new BezierEntity({ x: 0, y: 0 }, { x: 10, y: 20 }, { x: 30, y: 20 }, { x: 40, y: 0 });
+  const arch = () =>
+    new BezierEntity({ x: 0, y: 0 }, { x: 10, y: 20 }, { x: 30, y: 20 }, { x: 40, y: 0 });
   const beziers = (doc: CADDocument) =>
     doc.entities.filter((e): e is BezierEntity => e instanceof BezierEntity);
 
@@ -132,11 +154,20 @@ describe("polylines as cutting geometry", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
     const l = new LineEntity({ x: -20, y: 5 }, { x: 60, y: 5 });
     doc.add(l);
-    doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 30 }], true));
+    doc.add(
+      new PolylineEntity(
+        [
+          { x: 0, y: 0 },
+          { x: 40, y: 0 },
+          { x: 20, y: 30 },
+        ],
+        true,
+      ),
+    );
     click(doc, { x: 20, y: 5 }); // inside the triangle
     const ls = lines(doc);
     expect(ls.length).toBe(2);
-    const xs = ls.flatMap(e => [e.a.x, e.b.x]).sort((a, b) => a - b);
+    const xs = ls.flatMap((e) => [e.a.x, e.b.x]).sort((a, b) => a - b);
     expect(xs[0]).toBeCloseTo(-20);
     expect(xs[3]).toBeCloseTo(60);
     // The middle endpoints sit on the triangle's slanted edges at y=5.
@@ -149,8 +180,8 @@ describe("polylines as cutting geometry", () => {
     doc.add(new CircleEntity({ x: 0, y: 0 }, 10));
     doc.add(new RectEntity({ x: 5, y: -20 }, { x: 40, y: 20 }));
     click(doc, { x: 10, y: 0 }); // circle's right side, inside the rect
-    expect(doc.entities.find(e => e instanceof CircleEntity)).toBeUndefined();
-    const arc = doc.entities.find(e => e instanceof ArcEntity) as ArcEntity;
+    expect(doc.entities.find((e) => e instanceof CircleEntity)).toBeUndefined();
+    const arc = doc.entities.find((e) => e instanceof ArcEntity) as ArcEntity;
     expect(arc).toBeDefined();
     // Removed span is between the crossings with the rect's left edge (x=5).
     expect(arc.startPoint.x).toBeCloseTo(5);
@@ -162,20 +193,34 @@ describe("trimming polylines", () => {
   it("splits an open polyline crossed twice into two pieces", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
     // Horizontal 3-segment path 0→60 at y=0.
-    doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 40, y: 0 }, { x: 60, y: 0 }], false));
+    doc.add(
+      new PolylineEntity(
+        [
+          { x: 0, y: 0 },
+          { x: 20, y: 0 },
+          { x: 40, y: 0 },
+          { x: 60, y: 0 },
+        ],
+        false,
+      ),
+    );
     doc.add(new LineEntity({ x: 10, y: -10 }, { x: 10, y: 10 }));
     doc.add(new LineEntity({ x: 50, y: -10 }, { x: 50, y: 10 }));
     click(doc, { x: 30, y: 0 }); // between the crossings
-    const pieces = [...polys(doc), ...lines(doc).filter(l => Math.abs(l.a.y) < 1 && Math.abs(l.b.y) < 1)];
+    const pieces = [
+      ...polys(doc),
+      ...lines(doc).filter((l) => Math.abs(l.a.y) < 1 && Math.abs(l.b.y) < 1),
+    ];
     // Two kept pieces: 0→10 (line, 2 pts) and 50→60 (line, 2 pts)
-    const kept = doc.entities.filter(e =>
-      (e instanceof PolylineEntity || e instanceof LineEntity));
-    const horizontal = kept.filter(e => {
+    const kept = doc.entities.filter((e) => e instanceof PolylineEntity || e instanceof LineEntity);
+    const horizontal = kept.filter((e) => {
       if (e instanceof LineEntity) return Math.abs(e.a.y) < 1e-6 && Math.abs(e.b.y) < 1e-6;
       return false;
     }) as LineEntity[];
     expect(horizontal.length).toBe(2);
-    const spans = horizontal.map(l => [Math.min(l.a.x, l.b.x), Math.max(l.a.x, l.b.x)]).sort((a, b) => a[0] - b[0]);
+    const spans = horizontal
+      .map((l) => [Math.min(l.a.x, l.b.x), Math.max(l.a.x, l.b.x)])
+      .sort((a, b) => a[0] - b[0]);
     expect(spans[0][0]).toBeCloseTo(0);
     expect(spans[0][1]).toBeCloseTo(10);
     expect(spans[1][0]).toBeCloseTo(50);
@@ -186,7 +231,14 @@ describe("trimming polylines", () => {
   it("keeps interior vertices when shortening an open polyline from one end", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
     // L-shaped path: (0,0)→(40,0)→(40,40)
-    const pl = new PolylineEntity([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }], false);
+    const pl = new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 40 },
+      ],
+      false,
+    );
     doc.add(pl);
     doc.add(new LineEntity({ x: 30, y: -10 }, { x: 30, y: 10 })); // crosses first segment at x=30
     click(doc, { x: 10, y: 0 }); // before the crossing → trim the start
@@ -204,7 +256,14 @@ describe("trimming polylines", () => {
   it("opens a closed polyline (square) between two crossings", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
     const sq = new PolylineEntity(
-      [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }, { x: 0, y: 40 }], true);
+      [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 40 },
+        { x: 0, y: 40 },
+      ],
+      true,
+    );
     doc.add(sq);
     // Vertical line crossing bottom (y=0) and top (y=40) edges at x=20.
     doc.add(new LineEntity({ x: 20, y: -10 }, { x: 20, y: 50 }));

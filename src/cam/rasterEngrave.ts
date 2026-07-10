@@ -116,7 +116,13 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
  * downsampling is a true area average (anti-aliased); output cells that no source
  * pixel lands in (when upsampling) fall back to the nearest source pixel.
  */
-export function resampleGrid(grid: RasterGrid, outW: number, outH: number, flipX = false, flipY = false): Float32Array {
+export function resampleGrid(
+  grid: RasterGrid,
+  outW: number,
+  outH: number,
+  flipX = false,
+  flipY = false,
+): Float32Array {
   const { width: sw, height: sh, data } = grid;
   const out = new Float32Array(outW * outH);
   const sum = new Float64Array(outW * outH);
@@ -228,7 +234,8 @@ export interface RasterFieldParams {
 export function rasterField(grid: RasterGrid, params: RasterFieldParams): RasterField {
   const { width: pxW, height: pxH, data } = grid;
   const { widthMM, heightMM, lineIntervalMM } = params;
-  if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0) return { cols: 0, colPitch: 0, rows: [] };
+  if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0)
+    return { cols: 0, colPitch: 0, rows: [] };
   if (data.length < pxW * pxH) return { cols: 0, colPitch: 0, rows: [] };
 
   const dotPitch = params.dotPitchMM && params.dotPitchMM > 0 ? params.dotPitchMM : lineIntervalMM;
@@ -254,7 +261,7 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
 
   const rows: RasterLevelRow[] = [];
   for (let r = 0; r < rowCount; r++) {
-    const y = (r + 0.5) * rowPitch;   // mm, bottom→top
+    const y = (r + 0.5) * rowPitch; // mm, bottom→top
     const gridRow = rowCount - 1 - r; // dot grid row 0 = top
     const base = gridRow * colCount;
     const levels = new Float32Array(colCount);
@@ -301,15 +308,16 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
 
   const rows: RasterScanRow[] = [];
   for (let r = 0; r < rowCount; r++) {
-    const y = (r + 0.5) * rowPitch;        // mm, bottom→top
-    const gridRow = rowCount - 1 - r;      // dot grid row 0 = top
+    const y = (r + 0.5) * rowPitch; // mm, bottom→top
+    const gridRow = rowCount - 1 - r; // dot grid row 0 = top
     const base = gridRow * colCount;
 
     const runs: RasterRun[] = [];
     let runStart = -1; // first dot column of the open run
     let runPower = 0;
     const closeRun = (endCol: number) => {
-      if (runStart >= 0) runs.push({ x0: runStart * colPitch, x1: endCol * colPitch, power: runPower });
+      if (runStart >= 0)
+        runs.push({ x0: runStart * colPitch, x1: endCol * colPitch, power: runPower });
       runStart = -1;
     };
     for (let c = 0; c < colCount; c++) {
@@ -317,10 +325,12 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
       if (p === null) {
         closeRun(c);
       } else if (runStart < 0) {
-        runStart = c; runPower = p;
+        runStart = c;
+        runPower = p;
       } else if (p !== runPower) {
         closeRun(c);
-        runStart = c; runPower = p;
+        runStart = c;
+        runPower = p;
       }
     }
     closeRun(colCount);

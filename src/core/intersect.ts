@@ -24,10 +24,21 @@ import {
   flattenBezier,
 } from "./geom";
 
-interface Seg { a: Vec2; b: Vec2; }
+interface Seg {
+  a: Vec2;
+  b: Vec2;
+}
 /** A full circle (a0/a1 undefined) or an arc spanning CCW from a0 to a1. */
-interface Circ { c: Vec2; r: number; a0?: number; a1?: number; }
-interface Prims { segs: Seg[]; circs: Circ[]; }
+interface Circ {
+  c: Vec2;
+  r: number;
+  a0?: number;
+  a1?: number;
+}
+interface Prims {
+  segs: Seg[];
+  circs: Circ[];
+}
 
 function primitives(e: Entity): Prims {
   switch (e.type) {
@@ -39,8 +50,10 @@ function primitives(e: Entity): Prims {
       const c = (e as RectEntity).corners();
       return {
         segs: [
-          { a: c[0], b: c[1] }, { a: c[1], b: c[2] },
-          { a: c[2], b: c[3] }, { a: c[3], b: c[0] },
+          { a: c[0], b: c[1] },
+          { a: c[1], b: c[2] },
+          { a: c[2], b: c[3] },
+          { a: c[3], b: c[0] },
         ],
         circs: [],
       };
@@ -79,20 +92,23 @@ function onArc(c: Circ, p: Vec2): boolean {
 }
 
 function pairIntersections(a: Prims, b: Prims, out: Vec2[]): void {
-  for (const s1 of a.segs) for (const s2 of b.segs) {
-    const r = segSegIntersect(s1.a, s1.b, s2.a, s2.b);
-    if (r) out.push(r.point);
-  }
+  for (const s1 of a.segs)
+    for (const s2 of b.segs) {
+      const r = segSegIntersect(s1.a, s1.b, s2.a, s2.b);
+      if (r) out.push(r.point);
+    }
   const segVsCirc = (segs: Seg[], circs: Circ[]) => {
-    for (const s of segs) for (const c of circs)
-      for (const h of segCircleIntersect(s.a, s.b, c.c, c.r))
-        if (onArc(c, h.point)) out.push(h.point);
+    for (const s of segs)
+      for (const c of circs)
+        for (const h of segCircleIntersect(s.a, s.b, c.c, c.r))
+          if (onArc(c, h.point)) out.push(h.point);
   };
   segVsCirc(a.segs, b.circs);
   segVsCirc(b.segs, a.circs);
-  for (const c1 of a.circs) for (const c2 of b.circs)
-    for (const p of circleCircleIntersect(c1.c, c1.r, c2.c, c2.r))
-      if (onArc(c1, p) && onArc(c2, p)) out.push(p);
+  for (const c1 of a.circs)
+    for (const c2 of b.circs)
+      for (const p of circleCircleIntersect(c1.c, c1.r, c2.c, c2.r))
+        if (onArc(c1, p) && onArc(c2, p)) out.push(p);
 }
 
 /**
@@ -102,8 +118,12 @@ function pairIntersections(a: Prims, b: Prims, out: Vec2[]): void {
 export function intersectionsNear(entities: Entity[], near: Vec2, tolWorld: number): Vec2[] {
   const cand = entities.filter((e) => {
     const b = e.bounds();
-    return near.x >= b.min.x - tolWorld && near.x <= b.max.x + tolWorld
-      && near.y >= b.min.y - tolWorld && near.y <= b.max.y + tolWorld;
+    return (
+      near.x >= b.min.x - tolWorld &&
+      near.x <= b.max.x + tolWorld &&
+      near.y >= b.min.y - tolWorld &&
+      near.y <= b.max.y + tolWorld
+    );
   });
   const prims = cand.map(primitives);
   const hits: Vec2[] = [];

@@ -20,17 +20,26 @@ export class TextTool implements Tool {
   onActivate(ctx: ToolContext): void {
     this.hoverPos = null;
     this.closeDialog = openTextDialog(
-      { text: this.pendingText, fontId: this.pendingFontId || defaultFontId(), sizeMM: this.pendingSizeMM, angle: this.pendingAngle },
+      {
+        text: this.pendingText,
+        fontId: this.pendingFontId || defaultFontId(),
+        sizeMM: this.pendingSizeMM,
+        angle: this.pendingAngle,
+      },
       "Stamp (click canvas)",
-      p => {
-        this.pendingText  = p.text;
+      (p) => {
+        this.pendingText = p.text;
         this.pendingFontId = p.fontId;
         this.pendingSizeMM = p.sizeMM;
-        this.pendingAngle  = p.angle;
+        this.pendingAngle = p.angle;
         this.closeDialog = null;
         ctx.requestRender();
       },
-      () => { this.pendingText = ""; this.closeDialog = null; ctx.requestRender(); },
+      () => {
+        this.pendingText = "";
+        this.closeDialog = null;
+        ctx.requestRender();
+      },
     );
   }
 
@@ -73,10 +82,14 @@ export class TextTool implements Tool {
     const pos = this.hoverPos;
     const w = this.pendingSizeMM * 0.6 * Math.max(this.pendingText.length, 1);
     const h = this.pendingSizeMM * 1.2;
-    const cos = Math.cos(this.pendingAngle), sin = Math.sin(this.pendingAngle);
+    const cos = Math.cos(this.pendingAngle),
+      sin = Math.sin(this.pendingAngle);
     const corners = [
-      { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h },
-    ].map(p => ({
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h },
+    ].map((p) => ({
       x: pos.x + p.x * cos - p.y * sin,
       y: pos.y + p.x * sin + p.y * cos,
     }));

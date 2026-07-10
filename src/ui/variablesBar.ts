@@ -59,9 +59,13 @@ export class VariablesBar {
   private toggleCollapse(): void {
     this.isCollapsed = !this.isCollapsed;
     this.host.classList.toggle("collapsed", this.isCollapsed);
-    this.host.addEventListener("transitionend", () => {
-      window.dispatchEvent(new Event("resize"));
-    }, { once: true });
+    this.host.addEventListener(
+      "transitionend",
+      () => {
+        window.dispatchEvent(new Event("resize"));
+      },
+      { once: true },
+    );
   }
 
   private render(): void {
@@ -100,7 +104,10 @@ export class VariablesBar {
       valInput.style.cssText = "flex:1;min-width:0;font-family:var(--mono);";
       valInput.title = "Value (number, unit like 50mm, or a formula of other variables)";
       // Flag a formula that no longer resolves (e.g. references a deleted variable).
-      if (parseLength(v.expr, this.doc.displayUnit) === null && evalExpr(v.expr, varMap(this.doc.variables)) === null) {
+      if (
+        parseLength(v.expr, this.doc.displayUnit) === null &&
+        evalExpr(v.expr, varMap(this.doc.variables)) === null
+      ) {
         valInput.style.borderColor = "var(--danger, #e05555)";
         valInput.title = "⚠ Formula error — unknown variable or invalid expression";
       }
@@ -112,7 +119,9 @@ export class VariablesBar {
       const showErr = (msg: string) => {
         errEl.textContent = msg;
         errEl.style.display = "inline";
-        setTimeout(() => { errEl.style.display = "none"; }, 2000);
+        setTimeout(() => {
+          errEl.style.display = "none";
+        }, 2000);
       };
 
       // Commit name change on blur
@@ -120,8 +129,16 @@ export class VariablesBar {
         const newName = nameInput.value.trim();
         const oldName = v.name; // capture before updateVariable mutates v
         if (newName === oldName) return;
-        if (!isValidName(newName)) { showErr("Invalid name"); nameInput.value = v.name; return; }
-        if (isDuplicateName(newName, this.doc.variables, v.id)) { showErr("Duplicate"); nameInput.value = v.name; return; }
+        if (!isValidName(newName)) {
+          showErr("Invalid name");
+          nameInput.value = v.name;
+          return;
+        }
+        if (isDuplicateName(newName, this.doc.variables, v.id)) {
+          showErr("Duplicate");
+          nameInput.value = v.name;
+          return;
+        }
 
         setTimeout(() => {
           this.pushHistory();
@@ -132,7 +149,10 @@ export class VariablesBar {
         }, 0);
       });
       nameInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); nameInput.blur(); }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          nameInput.blur();
+        }
         e.stopPropagation();
       });
 
@@ -148,7 +168,10 @@ export class VariablesBar {
       };
       valInput.addEventListener("blur", commitVal);
       valInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); valInput.blur(); }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          valInput.blur();
+        }
         e.stopPropagation();
       });
 
@@ -176,7 +199,9 @@ export class VariablesBar {
 
     if (focusVid && focusField) {
       setTimeout(() => {
-        const toFocus = this.listEl.querySelector(`[data-vid="${focusVid}"][data-field="${focusField}"]`) as HTMLElement;
+        const toFocus = this.listEl.querySelector(
+          `[data-vid="${focusVid}"][data-field="${focusField}"]`,
+        ) as HTMLElement;
         if (toFocus) toFocus.focus();
       }, 0);
     }
@@ -191,7 +216,10 @@ export class VariablesBar {
     setTimeout(() => {
       const inputs = this.listEl.querySelectorAll<HTMLInputElement>("input");
       const last = inputs[inputs.length - 2]; // name input is second-to-last before delete btn
-      if (last) { last.focus(); last.select(); }
+      if (last) {
+        last.focus();
+        last.select();
+      }
     }, 0);
   }
 

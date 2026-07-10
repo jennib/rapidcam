@@ -10,10 +10,22 @@ function drillOp(
   { toolNumber = 1, coolant }: { toolNumber?: number; coolant?: CoolantMode } = {},
 ): CAMOperation {
   return {
-    id: `d${toolNumber}-${coolant ?? "off"}`, name: `Drill ${toolNumber}`, type: "drill",
-    entityIds, side: "outside", coolant,
-    toolType: "drill", toolNumber, diameter: 5, feedrate: 200, plungeRate: 120,
-    spindleSpeed: 6000, safeZ: 5, depth: -5, stepdown: 3, stepover: 0.4,
+    id: `d${toolNumber}-${coolant ?? "off"}`,
+    name: `Drill ${toolNumber}`,
+    type: "drill",
+    entityIds,
+    side: "outside",
+    coolant,
+    toolType: "drill",
+    toolNumber,
+    diameter: 5,
+    feedrate: 200,
+    plungeRate: 120,
+    spindleSpeed: 6000,
+    safeZ: 5,
+    depth: -5,
+    stepdown: 3,
+    stepover: 0.4,
   };
 }
 
@@ -38,8 +50,10 @@ test("coolant cycles around a tool change (mist on both ops)", () => {
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
   const b = doc.add(new CircleEntity({ x: 80, y: 20 }, 2.5));
   const g = generateGCode(
-    [drillOp([a.id], { toolNumber: 1, coolant: "mist" }),
-     drillOp([b.id], { toolNumber: 2, coolant: "mist" })],
+    [
+      drillOp([a.id], { toolNumber: 1, coolant: "mist" }),
+      drillOp([b.id], { toolNumber: 2, coolant: "mist" }),
+    ],
     doc,
   );
   const lines = g.split("\n");
@@ -54,8 +68,10 @@ test("coolant differs per op on a shared tool: a mid-program M9 turns it off", (
   const b = doc.add(new CircleEntity({ x: 80, y: 20 }, 2.5));
   // Same tool number → no tool change; op1 flood, op2 off.
   const g = generateGCode(
-    [drillOp([a.id], { toolNumber: 1, coolant: "flood" }),
-     drillOp([b.id], { toolNumber: 1, coolant: "off" })],
+    [
+      drillOp([a.id], { toolNumber: 1, coolant: "flood" }),
+      drillOp([b.id], { toolNumber: 1, coolant: "off" }),
+    ],
     doc,
   );
   const lines = g.split("\n");
@@ -69,7 +85,9 @@ test("coolant differs per op on a shared tool: a mid-program M9 turns it off", (
 test("coolantSupported:false suppresses coolant even if an op requests it", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
-  const g = generateGCode([drillOp([a.id], { coolant: "flood" })], doc, { coolantSupported: false });
+  const g = generateGCode([drillOp([a.id], { coolant: "flood" })], doc, {
+    coolantSupported: false,
+  });
   expect(g).not.toMatch(/\bM7\b|\bM8\b|\bM9\b/);
 });
 

@@ -14,17 +14,41 @@ test("clear() resets every mutable document field", () => {
   const rect = new RectEntity({ x: 0, y: 0 }, { x: 50, y: 50 });
   doc.add(rect);
   doc.constraints.push({ id: "c1", type: "horizontal", points: [], entities: [rect.id] } as any);
-  doc.dimensions.push({ id: "d1", type: "distance", points: [], entities: [rect.id], value: 50 } as any);
+  doc.dimensions.push({
+    id: "d1",
+    type: "distance",
+    points: [],
+    entities: [rect.id],
+    value: 50,
+  } as any);
   doc.variables.push({ id: "v1", name: "pcd", expr: "80", value: 80 } as any);
   doc.bindings.push({ id: "b1", entityId: rect.id, scalarKey: "w", expr: "pcd" } as any);
   doc.groups.push({ id: "g1", name: "grp", entityIds: [rect.id] });
-  doc.patterns.push({ id: "pat1", type: "linear", sourceIds: [rect.id], instanceIds: [], params: {} } as any);
+  doc.patterns.push({
+    id: "pat1",
+    type: "linear",
+    sourceIds: [rect.id],
+    instanceIds: [],
+    params: {},
+  } as any);
   doc.layers.push({ id: "layer-1", name: "Extra", color: "#fff", visible: true, locked: false });
   doc.activeLayerId = "layer-1";
   const op: CAMOperation = {
-    id: "op1", name: "cut", type: "profile", entityIds: [rect.id], side: "outside",
-    toolType: "end-mill", toolNumber: 1, diameter: 6, feedrate: 1000, plungeRate: 300,
-    spindleSpeed: 18000, safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
+    id: "op1",
+    name: "cut",
+    type: "profile",
+    entityIds: [rect.id],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
   };
   doc.operations.push(op);
   doc.tools.push({ id: "t1", name: "6mm", type: "end-mill", diameter: 6 } as any);

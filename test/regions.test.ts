@@ -5,7 +5,10 @@ import { signedArea } from "../src/cam/offset";
 import type { Vec2 } from "../src/core/vec2";
 
 const rect = (x: number, y: number, w: number, h: number): Vec2[] => [
-  { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h },
+  { x, y },
+  { x: x + w, y },
+  { x: x + w, y: y + h },
+  { x, y: y + h },
 ];
 const loop = (verts: Vec2[], id: string): RegionLoop => ({ verts, ids: [id] });
 
@@ -47,7 +50,7 @@ describe("regionAtPoint — flood-fill face picking", () => {
   });
 
   it("handles multi-level nesting (island inside an island's pocket)", () => {
-    const outer  = loop(rect(0, 0, 100, 100), "outer");
+    const outer = loop(rect(0, 0, 100, 100), "outer");
     const island = loop(rect(30, 30, 40, 40), "island");
     const nested = loop(rect(45, 45, 10, 10), "nested");
     const loops = [outer, island, nested];

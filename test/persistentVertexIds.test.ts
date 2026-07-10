@@ -44,9 +44,9 @@ test("a segment ref by start-vertex id follows the edge across an edit", () => {
 
 test("a constraint on a late segment still binds that edge after an edit ahead of it", () => {
   const doc = new CADDocument({ width: 200, height: 200 });
-  const pl = doc.add(new PolylineEntity(
-    [P(0, 0), P(100, 5), P(100, 100), P(0, 100)], true,
-  )) as PolylineEntity;
+  const pl = doc.add(
+    new PolylineEntity([P(0, 0), P(100, 5), P(100, 100), P(0, 100)], true),
+  ) as PolylineEntity;
   // Make the edge starting at vertex id "1" vertical.
   doc.addConstraint(makeConstraint("vertical", { entities: [segmentRef(pl.id, "1")] }));
 
@@ -62,9 +62,9 @@ test("a constraint on a late segment still binds that edge after an edit ahead o
 
 test("vertex ids survive a save/load round-trip", () => {
   const doc = new CADDocument({ width: 200, height: 200 });
-  const pl = doc.add(new PolylineEntity(
-    [P(0, 0), P(10, 0), P(10, 10), P(0, 10)], true,
-  )) as PolylineEntity;
+  const pl = doc.add(
+    new PolylineEntity([P(0, 0), P(10, 0), P(10, 10), P(0, 10)], true),
+  ) as PolylineEntity;
   pl.spliceVertices(1, 1, P(10, 3), P(12, 5)); // non-sequential ids now
   const idsBefore = [...pl.vertexIds];
 

@@ -3,8 +3,13 @@ import { registrationEvents } from "../src/cam/registration";
 import type { GMoveEvent } from "../src/cam/gcodeMotion";
 
 const F = [{ x: 10, y: 20 }];
-const opts = (mode: "none" | "holes" | "crosshairs" | "both") =>
-  ({ mode, safeZ: 5, holeDepth: 3, crosshairDepth: 0.5, crosshairSize: 4 });
+const opts = (mode: "none" | "holes" | "crosshairs" | "both") => ({
+  mode,
+  safeZ: 5,
+  holeDepth: 3,
+  crosshairDepth: 0.5,
+  crosshairSize: 4,
+});
 
 const moves = (evs: ReturnType<typeof registrationEvents>) =>
   evs.filter((e): e is GMoveEvent => e.kind === "move");

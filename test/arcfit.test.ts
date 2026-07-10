@@ -3,7 +3,14 @@ import { fitArcs } from "../src/cam/arcfit";
 import type { Vec2 } from "../src/core/vec2";
 
 // Sample an arc: center c, radius r, from a0 to a1 over `nSeg` segments (nSeg+1 pts).
-function sampleArc(cx: number, cy: number, r: number, a0: number, a1: number, nSeg: number): Vec2[] {
+function sampleArc(
+  cx: number,
+  cy: number,
+  r: number,
+  a0: number,
+  a1: number,
+  nSeg: number,
+): Vec2[] {
   return Array.from({ length: nSeg + 1 }, (_, k) => {
     const t = a0 + (a1 - a0) * (k / nSeg);
     return { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) };
@@ -33,7 +40,11 @@ describe("fitArcs", () => {
 
   it("keeps a square as straight lines (corners on a circumcircle must NOT fit)", () => {
     const sq: Vec2[] = [
-      { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }, { x: 0, y: 0 },
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 20 },
+      { x: 0, y: 20 },
+      { x: 0, y: 0 },
     ];
     const moves = fitArcs(sq);
     expect(moves.every((m) => m.kind === "line")).toBe(true);
@@ -59,9 +70,9 @@ describe("fitArcs", () => {
     // top edge from right end (30,10) back to left start (0,10) and bottom likewise
     const pts: Vec2[] = [
       ...right,
-      { x: 0, y: 10 },          // straight top to left arc start
+      { x: 0, y: 10 }, // straight top to left arc start
       ...left,
-      { x: 30, y: -10 },        // straight bottom back to right arc start
+      { x: 30, y: -10 }, // straight bottom back to right arc start
     ];
     const moves = fitArcs(pts);
     const arcs = moves.filter((m) => m.kind === "arc").length;

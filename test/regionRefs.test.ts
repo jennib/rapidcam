@@ -4,8 +4,14 @@ import { collectClosedLoops } from "../src/cam/loops";
 import { refAtPoint, resolveRegion, regionAtPoint } from "../src/cam/regions";
 
 function bounds(poly: { x: number; y: number }[]) {
-  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
-  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+  const xs = poly.map((p) => p.x),
+    ys = poly.map((p) => p.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
 }
 
 test("a pocket region reference follows geometry through a reflow", () => {

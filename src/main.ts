@@ -5,7 +5,7 @@ import { App } from "./app";
 function wireRightPanelTabs(): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>(".rtab");
   const panels = document.querySelectorAll<HTMLElement>(".rtab-content");
-  tabs.forEach(tab => {
+  tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
       tabs.forEach((t) => {
@@ -63,11 +63,38 @@ function bootApp(): void {
   const webglHost = document.getElementById("webgl-host");
   const splitDivider = document.getElementById("split-divider");
 
-  if (!canvas || !palette || !topbar || !layersbar || !settingsbar || !propertiesbar || !cambar || !variablesbar || !constraintbar || !statusbar || !canvasHost || !webglHost || !splitDivider) {
+  if (
+    !canvas ||
+    !palette ||
+    !topbar ||
+    !layersbar ||
+    !settingsbar ||
+    !propertiesbar ||
+    !cambar ||
+    !variablesbar ||
+    !constraintbar ||
+    !statusbar ||
+    !canvasHost ||
+    !webglHost ||
+    !splitDivider
+  ) {
     throw new Error("RapidCAM: required DOM elements are missing");
   }
 
-  const app = new App(canvas, { palette, topbar, layersbar, settingsbar, propertiesbar, cambar, variablesbar, constraintbar, statusbar, canvasHost, webglHost, splitDivider });
+  const app = new App(canvas, {
+    palette,
+    topbar,
+    layersbar,
+    settingsbar,
+    propertiesbar,
+    cambar,
+    variablesbar,
+    constraintbar,
+    statusbar,
+    canvasHost,
+    webglHost,
+    splitDivider,
+  });
   wireRightPanelTabs();
   showConsentBannerIfNeeded();
   // Dev-only inspection hook for automated UI verification (stripped from prod builds).

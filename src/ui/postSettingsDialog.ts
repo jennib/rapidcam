@@ -1,7 +1,11 @@
 import {
-  getCustomGcode, setCustomGcode,
-  getMachineHasCoolant, setMachineHasCoolant,
-  getGsenderUrl, setGsenderUrl, DEFAULT_GSENDER_URL,
+  getCustomGcode,
+  setCustomGcode,
+  getMachineHasCoolant,
+  setMachineHasCoolant,
+  getGsenderUrl,
+  setGsenderUrl,
+  DEFAULT_GSENDER_URL,
 } from "../core/prefs";
 import type { CADDocument, MachineKind, RotarySettings } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
@@ -9,7 +13,10 @@ import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/kl
 import { testGsenderConnection } from "../io/gsender";
 import { registerModal } from "./modal";
 
-const MILL_POST_OPTIONS: [string, string][] = [["linuxcnc", "LinuxCNC"], ["grbl", "GRBL / FluidNC"]];
+const MILL_POST_OPTIONS: [string, string][] = [
+  ["linuxcnc", "LinuxCNC"],
+  ["grbl", "GRBL / FluidNC"],
+];
 
 interface MachineSettingsOptions {
   doc: CADDocument;
@@ -31,7 +38,10 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
 
   const container = document.createElement("div");
   container.className = "about-dialog post-settings-dialog";
@@ -55,7 +65,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     ["laser", "Laser"],
   ] as const) {
     const o = document.createElement("option");
-    o.value = v; o.textContent = l;
+    o.value = v;
+    o.textContent = l;
     kindSelect.appendChild(o);
   }
   kindSelect.value = doc.machineKind;
@@ -76,14 +87,29 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const coolantCheck = document.createElement("input");
   coolantCheck.type = "checkbox";
   coolantCheck.checked = getMachineHasCoolant();
-  const coolantRow = checkRow("Machine has coolant (show coolant options & emit M7/M8/M9)", coolantCheck);
+  const coolantRow = checkRow(
+    "Machine has coolant (show coolant options & emit M7/M8/M9)",
+    coolantCheck,
+  );
 
   // Rotary (4th axis) — the per-job cylinder for a "mill-rotary" machine. Shown
   // only when that machine type is selected; the params live on doc.rotary, the
   // mode is the machine type itself (see cam/klein.ts).
   const rbase: RotarySettings = doc.rotary ?? defaultRotarySettings(doc);
-  const wrapSelect = smallSelect([["y", "Y wraps · X = length"], ["x", "X wraps · Y = length"]], rbase.wrapAxis);
-  const rWordSelect = smallSelect([["A", "A (rotates about X)"], ["B", "B (rotates about Y)"]], rbase.axisWord);
+  const wrapSelect = smallSelect(
+    [
+      ["y", "Y wraps · X = length"],
+      ["x", "X wraps · Y = length"],
+    ],
+    rbase.wrapAxis,
+  );
+  const rWordSelect = smallSelect(
+    [
+      ["A", "A (rotates about X)"],
+      ["B", "B (rotates about Y)"],
+    ],
+    rbase.axisWord,
+  );
   const diaInput = smallNumber(rbase.diameter, "0.5");
   const tolInput = smallNumber(rbase.arcTolerance ?? ARC_TOL_DEFAULT, "0.01");
   const rotaryInfo = document.createElement("div");
@@ -100,7 +126,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     labeledRow("Rotary axis word", rWordSelect),
     labeledRow("Cylinder diameter (mm)", diaInput),
     labeledRow("Arc tolerance (mm)", tolInput),
-    rotaryInfo, rotaryNote,
+    rotaryInfo,
+    rotaryNote,
   );
 
   const readRotary = (): RotarySettings => ({
@@ -121,21 +148,29 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     rWordSelect.value = wrapSelect.value === "y" ? "A" : "B";
     updateRotaryInfo();
   });
-  for (const el of [wrapSelect, rWordSelect, diaInput, tolInput]) el.addEventListener("input", updateRotaryInfo);
+  for (const el of [wrapSelect, rWordSelect, diaInput, tolInput])
+    el.addEventListener("input", updateRotaryInfo);
 
   // Remember each machine type's post pick so toggling doesn't lose it.
-  let millPost  = MILL_POST_OPTIONS.some(([v]) => v === doc.postProcessor) ? doc.postProcessor : "linuxcnc";
-  let laserPost = laserPostOptions().some(([v]) => v === doc.postProcessor) ? doc.postProcessor : DEFAULT_LASER_POST.id;
+  let millPost = MILL_POST_OPTIONS.some(([v]) => v === doc.postProcessor)
+    ? doc.postProcessor
+    : "linuxcnc";
+  let laserPost = laserPostOptions().some(([v]) => v === doc.postProcessor)
+    ? doc.postProcessor
+    : DEFAULT_LASER_POST.id;
   const fillPosts = (opts: [string, string][], value: string) => {
     ppSelect.innerHTML = "";
     for (const [v, l] of opts) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l; ppSelect.appendChild(o);
+      o.value = v;
+      o.textContent = l;
+      ppSelect.appendChild(o);
     }
     ppSelect.value = value;
   };
   ppSelect.addEventListener("change", () => {
-    if (kindSelect.value === "laser") laserPost = ppSelect.value; else millPost = ppSelect.value;
+    if (kindSelect.value === "laser") laserPost = ppSelect.value;
+    else millPost = ppSelect.value;
   });
 
   // Spindle/Z concepts don't apply to a laser; hide the tool-changer + coolant
@@ -186,11 +221,21 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     const newRotary = kind === "mill-rotary" ? readRotary() : null;
     // The canvas IS the unrolled cylinder surface, so the wrapped dimension is
     // locked to the circumference (π·⌀). Changing the diameter here resizes it.
-    const wrapKey: "width" | "height" | null = newRotary ? (newRotary.wrapAxis === "x" ? "width" : "height") : null;
+    const wrapKey: "width" | "height" | null = newRotary
+      ? newRotary.wrapAxis === "x"
+        ? "width"
+        : "height"
+      : null;
     const lockedWrap = newRotary ? Math.PI * newRotary.diameter : null;
     const canvasChanged = wrapKey !== null && Math.abs(doc.canvas[wrapKey] - lockedWrap!) > 1e-6;
     const rotaryChanged = JSON.stringify(doc.rotary ?? null) !== JSON.stringify(newRotary);
-    if (doc.postProcessor !== ppSelect.value || doc.hasToolChanger !== tcCheck.checked || doc.machineKind !== kind || rotaryChanged || canvasChanged) {
+    if (
+      doc.postProcessor !== ppSelect.value ||
+      doc.hasToolChanger !== tcCheck.checked ||
+      doc.machineKind !== kind ||
+      rotaryChanged ||
+      canvasChanged
+    ) {
       opts.pushHistory();
       doc.postProcessor = ppSelect.value;
       doc.hasToolChanger = tcCheck.checked;
@@ -210,8 +255,18 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   buttons.appendChild(save);
 
   container.append(
-    closeBtn, title, kindField, ppField, tcRow, coolantRow, rotarySection,
-    note, startArea.field, endArea.field, gsField.field, buttons,
+    closeBtn,
+    title,
+    kindField,
+    ppField,
+    tcRow,
+    coolantRow,
+    rotarySection,
+    note,
+    startArea.field,
+    endArea.field,
+    gsField.field,
+    buttons,
   );
   backdrop.appendChild(container);
   backdrop.addEventListener("click", (e) => {
@@ -236,7 +291,8 @@ function smallSelect<T extends string>(options: [T, string][], value: T): HTMLSe
   s.className = "unit post-settings-select";
   for (const [v, l] of options) {
     const o = document.createElement("option");
-    o.value = v; o.textContent = l;
+    o.value = v;
+    o.textContent = l;
     if (v === value) o.selected = true;
     s.appendChild(o);
   }
@@ -312,11 +368,21 @@ function gsenderField(value: string): { field: HTMLElement; value: string } {
 
   row.append(input, testBtn);
   field.append(lab, row, status);
-  return { field, get value() { return input.value; } };
+  return {
+    field,
+    get value() {
+      return input.value;
+    },
+  };
 }
 
-function textareaField(label: string, value: string, placeholder: string): {
-  field: HTMLElement; value: string;
+function textareaField(
+  label: string,
+  value: string,
+  placeholder: string,
+): {
+  field: HTMLElement;
+  value: string;
 } {
   const field = document.createElement("div");
   field.className = "post-settings-field";
@@ -329,5 +395,10 @@ function textareaField(label: string, value: string, placeholder: string): {
   ta.value = value;
   ta.placeholder = placeholder;
   field.append(lab, ta);
-  return { field, get value() { return ta.value; } };
+  return {
+    field,
+    get value() {
+      return ta.value;
+    },
+  };
 }

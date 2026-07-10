@@ -64,12 +64,16 @@ export function getImageCanvas(id: string): HTMLCanvasElement | null {
   if (!e) return null;
   if (!e.canvas) {
     const cv = document.createElement("canvas");
-    cv.width = e.width; cv.height = e.height;
+    cv.width = e.width;
+    cv.height = e.height;
     const ctx = cv.getContext("2d")!;
     const img = ctx.createImageData(e.width, e.height);
     for (let i = 0; i < e.width * e.height; i++) {
       const g = e.gray[i];
-      img.data[i * 4] = g; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = g; img.data[i * 4 + 3] = 255;
+      img.data[i * 4] = g;
+      img.data[i * 4 + 1] = g;
+      img.data[i * 4 + 2] = g;
+      img.data[i * 4 + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
     e.canvas = cv;
@@ -91,7 +95,10 @@ function hashBytes(bytes: Uint8Array): string {
 function toGreyscale(rgba: Uint8ClampedArray, w: number, h: number): Uint8Array {
   const gray = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) {
-    const r = rgba[i * 4], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2], a = rgba[i * 4 + 3];
+    const r = rgba[i * 4],
+      g = rgba[i * 4 + 1],
+      b = rgba[i * 4 + 2],
+      a = rgba[i * 4 + 3];
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
     // Treat transparency as white (no burn) so a cut-out PNG engraves only its subject.
     gray[i] = Math.round(a === 255 ? lum : lum * (a / 255) + 255 * (1 - a / 255));
@@ -107,7 +114,12 @@ function register(name: string, width: number, height: number, gray: Uint8Array)
 }
 
 /** Public register — used after an import-time tone/contrast adjustment. */
-export function registerGrey(name: string, width: number, height: number, gray: Uint8Array): string {
+export function registerGrey(
+  name: string,
+  width: number,
+  height: number,
+  gray: Uint8Array,
+): string {
   return register(name, width, height, gray);
 }
 
@@ -156,12 +168,18 @@ export async function decodeImageFile(file: File): Promise<DecodedImage> {
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement("canvas");
-  canvas.width = w; canvas.height = h;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close?.();
   const rgba = ctx.getImageData(0, 0, w, h).data;
-  return { name: file.name.replace(/\.[^.]+$/, ""), width: w, height: h, gray: toGreyscale(rgba, w, h) };
+  return {
+    name: file.name.replace(/\.[^.]+$/, ""),
+    width: w,
+    height: h,
+    gray: toGreyscale(rgba, w, h),
+  };
 }
 
 /** An embedded image as it appears in a .rcam file (base64 greyscale buffer). */
@@ -183,7 +201,13 @@ export function collectEmbeddedImages(ids: Iterable<string>): EmbeddedImage[] {
     seen.add(id);
     const e = IMAGES.get(id);
     if (!e) continue;
-    out.push({ id: e.id, name: e.name, width: e.width, height: e.height, data: bytesToBase64(e.gray) });
+    out.push({
+      id: e.id,
+      name: e.name,
+      width: e.width,
+      height: e.height,
+      data: bytesToBase64(e.gray),
+    });
   }
   return out;
 }
@@ -202,7 +226,8 @@ export function registerEmbeddedImage(img: EmbeddedImage): void {
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = "";
   const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   return btoa(bin);
 }
 

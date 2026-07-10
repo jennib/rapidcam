@@ -16,10 +16,23 @@ import { flattenBezier } from "../core/geom";
 import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
 import {
   type Entity,
-  LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  BezierEntity,
+  TextEntity,
+  ArcEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { rasterEngrave, type RasterScanRow, type RasterXf, makeRasterXf, xfPoint } from "./rasterEngrave";
+import {
+  rasterEngrave,
+  type RasterScanRow,
+  type RasterXf,
+  makeRasterXf,
+  xfPoint,
+} from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import type { CAMOperation } from "./types";
 import { DEFAULTS } from "./types";
@@ -61,29 +74,34 @@ function passCount(op: CAMOperation): number {
  * `power`, the bare formatted S value (used by overscan, which sets power per
  * block explicitly for every head).
  */
-interface CutCtx { feed: number; sWord: string; power: string; }
+interface CutCtx {
+  feed: number;
+  sWord: string;
+  power: string;
+}
 
 /**
  * Trace a closed contour `passes` times. Each pass travels to the start with the
  * beam off (G0), then cuts the loop with arc-fitted G1/G2/G3 so curved profiles
  * stay smooth. Straight-edged shapes fit to all lines → identical to raw G1.
  */
-function traceClosed(
-  path: Vec2[], passes: number, cut: CutCtx, ox: number, oy: number,
-): string[] {
+function traceClosed(path: Vec2[], passes: number, cut: CutCtx, ox: number, oy: number): string[] {
   if (path.length < 2) return [];
   const s = path[0];
   const lines: string[] = [];
   for (let p = 0; p < passes; p++) {
     lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-    let cur = s, first = true;
+    let cur = s,
+      first = true;
     for (const mv of fitArcs([...path, s])) {
       const f = first ? ` F${n(cut.feed)}` : "";
       if (mv.kind === "line") {
         lines.push(`G1 X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)}${f}${cut.sWord}`);
       } else {
         const cmd = mv.cw ? "G2" : "G3";
-        lines.push(`${cmd} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}${f}${cut.sWord}`);
+        lines.push(
+          `${cmd} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}${f}${cut.sWord}`,
+        );
       }
       cur = mv.to;
       first = false;
@@ -93,9 +111,7 @@ function traceClosed(
 }
 
 /** Trace an open polyline `passes` times on its centreline (engrave). */
-function traceOpen(
-  pts: Vec2[], passes: number, cut: CutCtx, ox: number, oy: number,
-): string[] {
+function traceOpen(pts: Vec2[], passes: number, cut: CutCtx, ox: number, oy: number): string[] {
   if (pts.length < 2) return [];
   const s = pts[0];
   const lines: string[] = [];
@@ -111,7 +127,13 @@ function traceOpen(
 
 /** Trace a full circle `passes` times (one G2 per pass). */
 function traceCircle(
-  cx: number, cy: number, r: number, passes: number, cut: CutCtx, ox: number, oy: number,
+  cx: number,
+  cy: number,
+  r: number,
+  passes: number,
+  cut: CutCtx,
+  ox: number,
+  oy: number,
 ): string[] {
   if (r <= 0) return [];
   const sx = cx + r;
@@ -124,17 +146,19 @@ function traceCircle(
 }
 
 /** Trace a circular arc `passes` times (G3, CCW like the mill engrave). */
-function traceArc(
-  arc: ArcEntity, passes: number, cut: CutCtx, ox: number, oy: number,
-): string[] {
-  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+function traceArc(arc: ArcEntity, passes: number, cut: CutCtx, ox: number, oy: number): string[] {
+  const span = (((arc.endAngle - arc.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   if (span < 1e-6) return [`; NOTE: arc (${arc.id}) has zero sweep — skipped`];
-  const s = arc.startPoint, e = arc.endPoint;
-  const iOff = arc.center.x - s.x, jOff = arc.center.y - s.y;
+  const s = arc.startPoint,
+    e = arc.endPoint;
+  const iOff = arc.center.x - s.x,
+    jOff = arc.center.y - s.y;
   const lines: string[] = [];
   for (let p = 0; p < passes; p++) {
     lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
-    lines.push(`G3 X${X(e.x, ox)} Y${Y(e.y, oy)} I${n(iOff)} J${n(jOff)} F${n(cut.feed)}${cut.sWord}`);
+    lines.push(
+      `G3 X${X(e.x, ox)} Y${Y(e.y, oy)} I${n(iOff)} J${n(jOff)} F${n(cut.feed)}${cut.sWord}`,
+    );
   }
   return lines;
 }
@@ -177,7 +201,9 @@ function fillableContours(ent: Entity): Vec2[][] | null {
   if (ent instanceof RectEntity) return [[...ent.corners()]];
   if (ent instanceof PolylineEntity) return ent.closed ? [ent.points] : null;
   if (ent instanceof TextEntity) {
-    const cs = textToContours(ent).filter((c) => c.closed).map((c) => c.points);
+    const cs = textToContours(ent)
+      .filter((c) => c.closed)
+      .map((c) => c.points);
     return cs.length ? cs : null;
   }
   return null; // line / arc / bezier are open — nothing to fill
@@ -185,13 +211,11 @@ function fillableContours(ent: Entity): Vec2[][] | null {
 
 /** Scan-line fill of a region as a list of beam-on segments (each [a, b]). */
 function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][] {
-  const rows = holes.length > 0
-    ? rasterRowsWithIslands(outer, holes, spacing)
-    : rasterRows(outer, spacing);
+  const rows =
+    holes.length > 0 ? rasterRowsWithIslands(outer, holes, spacing) : rasterRows(outer, spacing);
   const segs: Vec2[][] = [];
   for (const row of rows)
-    for (let i = 0; i + 1 < row.length; i += 2)
-      segs.push([row[i], row[i + 1]]);
+    for (let i = 0; i + 1 < row.length; i += 2) segs.push([row[i], row[i + 1]]);
   return segs;
 }
 
@@ -209,16 +233,30 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
   const rows = rasterEngrave(grid, {
     widthMM: ent.widthMM,
     heightMM: ent.heightMM,
-    lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
+    lineIntervalMM:
+      op.rasterLineInterval && op.rasterLineInterval > 0
+        ? op.rasterLineInterval
+        : DEFAULTS.rasterLineInterval,
     dotPitchMM: op.rasterDotPitch,
     maxPower: op.laserPower ?? DEFAULTS.laserPower,
     minPower: op.rasterMinPower ?? DEFAULTS.rasterMinPower,
     invert: op.rasterInvert,
-    flipX: ent.flipX, flipY: ent.flipY,
+    flipX: ent.flipX,
+    flipY: ent.flipY,
   });
-  if (rows.length === 0) return [{ kind: "note", text: `image (${ent.id}) engraved nothing (blank or zero size) — skipped` }];
+  if (rows.length === 0)
+    return [
+      { kind: "note", text: `image (${ent.id}) engraved nothing (blank or zero size) — skipped` },
+    ];
 
-  return [{ kind: "raster", rows, overscan: Math.max(0, op.laserOverscan ?? 0), xf: makeRasterXf(ent.position, ent.angle) }];
+  return [
+    {
+      kind: "raster",
+      rows,
+      overscan: Math.max(0, op.laserOverscan ?? 0),
+      xf: makeRasterXf(ent.position, ent.angle),
+    },
+  ];
 }
 
 /**
@@ -226,10 +264,18 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
  * kerf is wider than the feature, the offset collapses to nothing — emit a note
  * instead of silently dropping the cut (mirrors the mill path's warnings).
  */
-function pushClosedProfile(items: LaserItem[], verts: Vec2[], op: CAMOperation, post: LaserPost): void {
+function pushClosedProfile(
+  items: LaserItem[],
+  verts: Vec2[],
+  op: CAMOperation,
+  post: LaserPost,
+): void {
   const paths = kerfPaths(verts, op, post);
   if (paths.length === 0) {
-    items.push({ kind: "note", text: `a closed profile vanished under inside kerf ${op.kerfWidth}mm (wider than the feature) — skipped` });
+    items.push({
+      kind: "note",
+      text: `a closed profile vanished under inside kerf ${op.kerfWidth}mm (wider than the feature) — skipped`,
+    });
     return;
   }
   for (const p of paths) items.push({ kind: "poly", pts: p, closed: true });
@@ -243,7 +289,12 @@ function pushClosedProfile(items: LaserItem[], verts: Vec2[], op: CAMOperation, 
  */
 function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): LaserItem[] {
   if (op.type !== "profile" && op.type !== "engrave" && op.type !== "score")
-    return [{ kind: "note", text: `${op.type} has no laser equivalent — use Cut, Score, or Engrave; skipped` }];
+    return [
+      {
+        kind: "note",
+        text: `${op.type} has no laser equivalent — use Cut, Score, or Engrave; skipped`,
+      },
+    ];
 
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   // A score/fold follows the geometry centreline with no kerf offset (like a
@@ -256,12 +307,18 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
   // entity in the same op is noted and ignored, since a raster sweep and a vector
   // trace don't mix in one op.
   if (op.type === "engrave") {
-    const live = op.entityIds.map((id) => entityMap.get(id)).filter((e): e is Entity => !!e && !e.isConstruction);
+    const live = op.entityIds
+      .map((id) => entityMap.get(id))
+      .filter((e): e is Entity => !!e && !e.isConstruction);
     const images = live.filter((e): e is RasterImageEntity => e instanceof RasterImageEntity);
     if (images.length > 0) {
       for (const img of images) items.push(...rasterItemsForImage(img, op));
       const others = live.length - images.length;
-      if (others > 0) items.push({ kind: "note", text: `raster engrave ignores ${others} non-image entit${others === 1 ? "y" : "ies"} in this op` });
+      if (others > 0)
+        items.push({
+          kind: "note",
+          text: `raster engrave ignores ${others} non-image entit${others === 1 ? "y" : "ies"} in this op`,
+        });
       return items;
     }
   }
@@ -303,7 +360,10 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
       for (const { verts } of polygons) pushClosedProfile(items, verts, op, post);
       if (leftover.length > 0)
-        items.push({ kind: "note", text: `${leftover.length} selected line(s) do not form a closed polygon — skipped` });
+        items.push({
+          kind: "note",
+          text: `${leftover.length} selected line(s) do not form a closed polygon — skipped`,
+        });
       for (const e of lineEnts) lineSegIds.add(e.id);
     }
   }
@@ -321,17 +381,19 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
         continue;
       }
       for (const c of contours) {
-        if (profile && c.closed)
-          pushClosedProfile(items, c.points, op, post);
-        else
-          items.push({ kind: "poly", pts: c.points, closed: c.closed });
+        if (profile && c.closed) pushClosedProfile(items, c.points, op, post);
+        else items.push({ kind: "poly", pts: c.points, closed: c.closed });
       }
       continue;
     }
     if (ent instanceof CircleEntity) {
       const r = profile ? profileCircleRadius(ent.radius, op, post) : ent.radius;
       if (r > 0) items.push({ kind: "circle", cx: ent.center.x, cy: ent.center.y, r });
-      else items.push({ kind: "note", text: `circle (${ent.id}) vanished under inside kerf ${op.kerfWidth}mm (radius ≤ 0) — skipped` });
+      else
+        items.push({
+          kind: "note",
+          text: `circle (${ent.id}) vanished under inside kerf ${op.kerfWidth}mm (radius ≤ 0) — skipped`,
+        });
       continue;
     }
     if (ent instanceof RectEntity) {
@@ -345,7 +407,10 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
         if (profile) pushClosedProfile(items, ent.points, op, post);
         else items.push({ kind: "poly", pts: ent.points, closed: true });
       } else if (profile) {
-        items.push({ kind: "note", text: `open polyline (${ent.id}) skipped — profile requires closed geometry` });
+        items.push({
+          kind: "note",
+          text: `open polyline (${ent.id}) skipped — profile requires closed geometry`,
+        });
       } else {
         items.push({ kind: "poly", pts: ent.points, closed: false });
       }
@@ -358,13 +423,26 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       continue;
     }
     if (ent instanceof ArcEntity) {
-      if (profile) items.push({ kind: "note", text: `arc (${ent.id}) skipped — profile requires closed geometry (use Engrave for an open arc)` });
+      if (profile)
+        items.push({
+          kind: "note",
+          text: `arc (${ent.id}) skipped — profile requires closed geometry (use Engrave for an open arc)`,
+        });
       else items.push({ kind: "arc", arc: ent });
       continue;
     }
     if (ent instanceof BezierEntity) {
-      if (profile) items.push({ kind: "note", text: `bezier (${ent.id}) skipped in profile — beziers are open paths` });
-      else items.push({ kind: "poly", pts: flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), closed: false });
+      if (profile)
+        items.push({
+          kind: "note",
+          text: `bezier (${ent.id}) skipped in profile — beziers are open paths`,
+        });
+      else
+        items.push({
+          kind: "poly",
+          pts: flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05),
+          closed: false,
+        });
     }
   }
   return items;
@@ -377,17 +455,27 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
  * when the beam fires and decelerates after it stops — no over-burned edges.
  * Without overscan it's a plain travel + lit move per segment.
  */
-function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx, ox: number, oy: number): string[] {
+function traceFill(
+  segs: Vec2[][],
+  overscan: number,
+  passes: number,
+  cut: CutCtx,
+  ox: number,
+  oy: number,
+): string[] {
   const lines: string[] = [];
   for (let p = 0; p < passes; p++) {
     for (const [a, b] of segs) {
       if (overscan > 0) {
-        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-        const ux = (dx / len) * overscan, uy = (dy / len) * overscan;
-        lines.push(`G0 X${X(a.x - ux, ox)} Y${Y(a.y - uy, oy)}`);            // rapid before the start
-        lines.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)} F${n(cut.feed)} S0`);   // run-up, beam off
-        lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} S${cut.power}`);        // lit pass
-        lines.push(`G1 X${X(b.x + ux, ox)} Y${Y(b.y + uy, oy)} S0`);         // run-down, beam off
+        const dx = b.x - a.x,
+          dy = b.y - a.y,
+          len = Math.hypot(dx, dy) || 1;
+        const ux = (dx / len) * overscan,
+          uy = (dy / len) * overscan;
+        lines.push(`G0 X${X(a.x - ux, ox)} Y${Y(a.y - uy, oy)}`); // rapid before the start
+        lines.push(`G1 X${X(a.x, ox)} Y${Y(a.y, oy)} F${n(cut.feed)} S0`); // run-up, beam off
+        lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} S${cut.power}`); // lit pass
+        lines.push(`G1 X${X(b.x + ux, ox)} Y${Y(b.y + uy, oy)} S0`); // run-down, beam off
       } else {
         lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
         lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(cut.feed)}${cut.sWord}`);
@@ -404,7 +492,17 @@ function traceFill(segs: Vec2[][], overscan: number, passes: number, cut: CutCtx
  * power as an explicit ` S<power>` so it works on modal and inline-power heads
  * alike. Feed is set once (modal). Blank gaps between runs are just the `G0`s.
  */
-function traceRaster(rows: RasterScanRow[], xf: RasterXf, passes: number, feed: number, overscan: number, post: LaserPost, maxPower: number | undefined, ox: number, oy: number): string[] {
+function traceRaster(
+  rows: RasterScanRow[],
+  xf: RasterXf,
+  passes: number,
+  feed: number,
+  overscan: number,
+  post: LaserPost,
+  maxPower: number | undefined,
+  ox: number,
+  oy: number,
+): string[] {
   const lines: string[] = [];
   let setFeed = true;
   // Each row is horizontal in the image's local frame; `xf` rotates + translates
@@ -446,23 +544,50 @@ function traceRaster(rows: RasterScanRow[], xf: RasterXf, passes: number, feed: 
 }
 
 /** Emit the G-code trace for one cut primitive. */
-function emitPrim(prim: LaserPrim, passes: number, cut: CutCtx, ox: number, oy: number, post: LaserPost, maxPower: number | undefined): string[] {
+function emitPrim(
+  prim: LaserPrim,
+  passes: number,
+  cut: CutCtx,
+  ox: number,
+  oy: number,
+  post: LaserPost,
+  maxPower: number | undefined,
+): string[] {
   switch (prim.kind) {
-    case "poly":   return prim.closed
-      ? traceClosed(prim.pts, passes, cut, ox, oy)
-      : traceOpen(prim.pts, passes, cut, ox, oy);
-    case "circle": return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
-    case "arc":    return traceArc(prim.arc, passes, cut, ox, oy);
-    case "fill":   return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
-    case "raster": return traceRaster(prim.rows, prim.xf, passes, cut.feed, prim.overscan, post, maxPower, ox, oy);
+    case "poly":
+      return prim.closed
+        ? traceClosed(prim.pts, passes, cut, ox, oy)
+        : traceOpen(prim.pts, passes, cut, ox, oy);
+    case "circle":
+      return traceCircle(prim.cx, prim.cy, prim.r, passes, cut, ox, oy);
+    case "arc":
+      return traceArc(prim.arc, passes, cut, ox, oy);
+    case "fill":
+      return traceFill(prim.segs, prim.overscan, passes, cut, ox, oy);
+    case "raster":
+      return traceRaster(
+        prim.rows,
+        prim.xf,
+        passes,
+        cut.feed,
+        prim.overscan,
+        post,
+        maxPower,
+        ox,
+        oy,
+      );
   }
 }
 
 // --- per-operation body ------------------------------------------------------
 
 function laserOpBody(
-  op: CAMOperation, doc: CADDocument, ox: number, oy: number,
-  post: LaserPost, maxPower: number | undefined,
+  op: CAMOperation,
+  doc: CADDocument,
+  ox: number,
+  oy: number,
+  post: LaserPost,
+  maxPower: number | undefined,
 ): string[] {
   const items = laserOpItems(op, doc, post);
   // Nothing cuttable (only notes, e.g. a volumetric op type): surface the notes
@@ -479,7 +604,10 @@ function laserOpBody(
   lines.push(...post.beamOn(power));
   if (post.pierce) lines.push(...post.pierce());
   for (const it of items) {
-    if (it.kind === "note") { lines.push(`; NOTE: ${it.text}`); continue; }
+    if (it.kind === "note") {
+      lines.push(`; NOTE: ${it.text}`);
+      continue;
+    }
     // Append element-by-element, NOT `push(...emitPrim())`: a raster prim can
     // emit millions of lines, and spreading that as call arguments overflows the
     // stack. (Other emitters are small, but this keeps one safe path.)
@@ -502,11 +630,14 @@ function circlePolyline(cx: number, cy: number, r: number): Vec2[] {
 
 /** Sample an arc into an open polyline for the on-canvas preview. */
 function arcPolyline(arc: ArcEntity): Vec2[] {
-  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const span = (((arc.endAngle - arc.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   const segs = Math.max(2, Math.ceil((arc.radius * span) / 0.5));
   return Array.from({ length: segs + 1 }, (_, i) => {
     const a = arc.startAngle + span * (i / segs);
-    return { x: arc.center.x + arc.radius * Math.cos(a), y: arc.center.y + arc.radius * Math.sin(a) };
+    return {
+      x: arc.center.x + arc.radius * Math.cos(a),
+      y: arc.center.y + arc.radius * Math.sin(a),
+    };
   });
 }
 
@@ -514,7 +645,11 @@ function arcPolyline(arc: ArcEntity): Vec2[] {
  *  (0..1) is set for raster-engrave runs so the preview can shade each dot by
  *  its beam power (darker image area ⇒ higher power ⇒ stronger mark); it is
  *  undefined for vector cut/engrave paths, which draw at full strength. */
-export interface LaserPreviewPath { pts: Vec2[]; closed: boolean; intensity?: number; }
+export interface LaserPreviewPath {
+  pts: Vec2[];
+  closed: boolean;
+  intensity?: number;
+}
 
 /**
  * Flatten the given laser ops into world-space cut polylines for an on-canvas
@@ -530,18 +665,24 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
     const op = expandOpPatternTargets(raw, doc);
     for (const it of laserOpItems(op, doc, post)) {
       if (it.kind === "note") continue;
-      if (it.kind === "circle") paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
+      if (it.kind === "circle")
+        paths.push({ pts: circlePolyline(it.cx, it.cy, it.r), closed: true });
       else if (it.kind === "arc") paths.push({ pts: arcPolyline(it.arc), closed: false });
-      else if (it.kind === "fill") { for (const s of it.segs) if (s.length >= 2) paths.push({ pts: s, closed: false }); }
-      else if (it.kind === "raster") {
+      else if (it.kind === "fill") {
+        for (const s of it.segs) if (s.length >= 2) paths.push({ pts: s, closed: false });
+      } else if (it.kind === "raster") {
         // Normalise each run's power by the op's max power so the preview shows
         // tonal contrast within the image regardless of the chosen power ceiling.
         // Runs are local; `it.xf` rotates each endpoint so the preview tilts too.
         const maxP = Math.max(1, op.laserPower ?? DEFAULTS.laserPower);
-        for (const row of it.rows) for (const run of row.runs)
-          paths.push({ pts: [xfPoint(it.xf, run.x0, row.y), xfPoint(it.xf, run.x1, row.y)], closed: false, intensity: Math.min(1, run.power / maxP) });
-      }
-      else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
+        for (const row of it.rows)
+          for (const run of row.runs)
+            paths.push({
+              pts: [xfPoint(it.xf, run.x0, row.y), xfPoint(it.xf, run.x1, row.y)],
+              closed: false,
+              intensity: Math.min(1, run.power / maxP),
+            });
+      } else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }
   }
   return paths;
@@ -550,7 +691,9 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
 // --- main entry --------------------------------------------------------------
 
 export function generateLaserGCode(
-  rawOps: CAMOperation[], doc: CADDocument, opts: LaserGCodeOptions = {},
+  rawOps: CAMOperation[],
+  doc: CADDocument,
+  opts: LaserGCodeOptions = {},
 ): string {
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
@@ -567,9 +710,9 @@ export function generateLaserGCode(
 
   const md = doc.metadata ?? {};
   const metaLines: string[] = [];
-  if (md.job?.trim())      metaLines.push(`; Job: ${md.job.trim()}`);
+  if (md.job?.trim()) metaLines.push(`; Job: ${md.job.trim()}`);
   if (md.revision?.trim()) metaLines.push(`; Revision: ${md.revision.trim()}`);
-  if (md.notes?.trim())    metaLines.push(`; Notes: ${md.notes.trim().replace(/\r?\n/g, " ")}`);
+  if (md.notes?.trim()) metaLines.push(`; Notes: ${md.notes.trim().replace(/\r?\n/g, " ")}`);
 
   const lines: string[] = [
     "; RapidCAM generated G-code - https://rapidcam.app",
@@ -596,14 +739,23 @@ export function generateLaserGCode(
   let airActive = false;
 
   for (const op of ops) {
-    const isRaster = op.type === "engrave" && op.entityIds.some((id) => doc.entities.find((e) => e.id === id) instanceof RasterImageEntity);
-    const typeLabel = op.type === "profile" ? `Profile (${op.side})`
-      : op.type === "score" ? "Score / Fold"
-      : isRaster ? "Engrave (raster)" : op.laserFill ? "Engrave (fill)" : "Engrave";
+    const isRaster =
+      op.type === "engrave" &&
+      op.entityIds.some((id) => doc.entities.find((e) => e.id === id) instanceof RasterImageEntity);
+    const typeLabel =
+      op.type === "profile"
+        ? `Profile (${op.side})`
+        : op.type === "score"
+          ? "Score / Fold"
+          : isRaster
+            ? "Engrave (raster)"
+            : op.laserFill
+              ? "Engrave (fill)"
+              : "Engrave";
     const pct = Math.max(0, Math.min(100, op.laserPower ?? DEFAULTS.laserPower));
     lines.push(
       `; --- ${typeLabel} "${op.name}"  power:${pct}% (S${post.formatPower(pct, maxPower)})  ` +
-      `passes:${passCount(op)}  feed:${op.feedrate}mm/min ---`,
+        `passes:${passCount(op)}  feed:${op.feedrate}mm/min ---`,
     );
     const wantAir = (op.type === "profile" || op.type === "engrave") && !!op.airAssist;
     if (wantAir !== airActive) {

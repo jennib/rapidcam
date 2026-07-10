@@ -13,9 +13,14 @@
 
 import type { CADDocument } from "../model/document";
 import {
-  LineEntity, CircleEntity, RectEntity,
-  PolylineEntity, ArcEntity, BezierEntity,
-  TextEntity, type Entity
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+  BezierEntity,
+  TextEntity,
+  type Entity,
 } from "../model/entities";
 
 const TAU = Math.PI * 2;
@@ -32,7 +37,7 @@ function fy(y: number, H: number): number {
 
 /** Convert a list of Vec2 points to the SVG `points` attribute format. */
 function ptList(pts: { x: number; y: number }[], H: number): string {
-  return pts.map(p => `${sv(p.x)},${sv(fy(p.y, H))}`).join(" ");
+  return pts.map((p) => `${sv(p.x)},${sv(fy(p.y, H))}`).join(" ");
 }
 
 /**
@@ -46,11 +51,14 @@ function ptList(pts: { x: number; y: number }[], H: number): string {
  * large-arc-flag: 1 when the arc spans more than 180°.
  */
 function arcPath(
-  cx: number, cy: number, r: number,
-  startAngle: number, endAngle: number,
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number,
   H: number,
 ): string {
-  const span = ((endAngle - startAngle) % TAU + TAU) % TAU;
+  const span = (((endAngle - startAngle) % TAU) + TAU) % TAU;
 
   const sx = cx + r * Math.cos(startAngle);
   const sy = fy(cy + r * Math.sin(startAngle), H);
@@ -91,7 +99,9 @@ export function exportSvg(doc: CADDocument): string {
     const ents = byLayer.get(layer.id) || [];
     if (ents.length === 0) continue;
 
-    lines.push(`  <g id="${layer.name}" inkscape:groupmode="layer" inkscape:label="${layer.name}" stroke="${layer.color}" stroke-width="0.5" fill="none">`);
+    lines.push(
+      `  <g id="${layer.name}" inkscape:groupmode="layer" inkscape:label="${layer.name}" stroke="${layer.color}" stroke-width="0.5" fill="none">`,
+    );
 
     const groupMap = new Map<string, Entity[]>();
     const ungrouped: Entity[] = [];
@@ -108,13 +118,19 @@ export function exportSvg(doc: CADDocument): string {
 
     const renderEnt = (e: Entity, indent: string) => {
       if (e instanceof LineEntity) {
-        lines.push(`${indent}<line x1="${sv(e.a.x)}" y1="${sv(fy(e.a.y, H))}" x2="${sv(e.b.x)}" y2="${sv(fy(e.b.y, H))}" />`);
+        lines.push(
+          `${indent}<line x1="${sv(e.a.x)}" y1="${sv(fy(e.a.y, H))}" x2="${sv(e.b.x)}" y2="${sv(fy(e.b.y, H))}" />`,
+        );
       } else if (e instanceof CircleEntity) {
-        lines.push(`${indent}<circle cx="${sv(e.center.x)}" cy="${sv(fy(e.center.y, H))}" r="${sv(e.radius)}" />`);
+        lines.push(
+          `${indent}<circle cx="${sv(e.center.x)}" cy="${sv(fy(e.center.y, H))}" r="${sv(e.radius)}" />`,
+        );
       } else if (e instanceof RectEntity) {
         // In Y-up, minPt is bottom-left and maxPt is top-right.
         // In SVG (Y-down), the rect's top edge corresponds to maxPt.y in Y-up.
-        lines.push(`${indent}<rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}" width="${sv(e.width)}" height="${sv(e.height)}" />`);
+        lines.push(
+          `${indent}<rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}" width="${sv(e.width)}" height="${sv(e.height)}" />`,
+        );
       } else if (e instanceof PolylineEntity) {
         if (e.points.length < 2) return;
         const pts = ptList(e.points, H);
@@ -124,21 +140,29 @@ export function exportSvg(doc: CADDocument): string {
           lines.push(`${indent}<polyline points="${pts}" />`);
         }
       } else if (e instanceof ArcEntity) {
-        lines.push(`${indent}<path d="${arcPath(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, H)}" />`);
+        lines.push(
+          `${indent}<path d="${arcPath(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, H)}" />`,
+        );
       } else if (e instanceof BezierEntity) {
-        const x0 = sv(e.p0.x), y0 = sv(fy(e.p0.y, H));
-        const x1 = sv(e.p1.x), y1 = sv(fy(e.p1.y, H));
-        const x2 = sv(e.p2.x), y2 = sv(fy(e.p2.y, H));
-        const x3 = sv(e.p3.x), y3 = sv(fy(e.p3.y, H));
+        const x0 = sv(e.p0.x),
+          y0 = sv(fy(e.p0.y, H));
+        const x1 = sv(e.p1.x),
+          y1 = sv(fy(e.p1.y, H));
+        const x2 = sv(e.p2.x),
+          y2 = sv(fy(e.p2.y, H));
+        const x3 = sv(e.p3.x),
+          y3 = sv(fy(e.p3.y, H));
         lines.push(`${indent}<path d="M ${x0} ${y0} C ${x1} ${y1} ${x2} ${y2} ${x3} ${y3}" />`);
       } else if (e instanceof TextEntity) {
         const x = sv(e.position.x);
         const y = sv(fy(e.position.y, H));
-        const deg = sv(-e.angle * 180 / Math.PI);
+        const deg = sv((-e.angle * 180) / Math.PI);
         const tf = deg !== "0" ? ` transform="rotate(${deg}, ${x}, ${y})"` : "";
         const escaped = e.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         // Stroke is disabled and fill is enabled so the text looks solid.
-        lines.push(`${indent}<text x="${x}" y="${y}" font-family="${e.fontId}, sans-serif" font-size="${sv(e.sizeMM)}" stroke="none" fill="${layer.color}"${tf}>${escaped}</text>`);
+        lines.push(
+          `${indent}<text x="${x}" y="${y}" font-family="${e.fontId}, sans-serif" font-size="${sv(e.sizeMM)}" stroke="none" fill="${layer.color}"${tf}>${escaped}</text>`,
+        );
       }
     };
 

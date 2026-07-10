@@ -26,7 +26,8 @@ export interface FlipDialogParams {
 
 function row(label: string, control: HTMLElement): HTMLElement {
   const r = document.createElement("label");
-  r.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px;color:var(--text);";
+  r.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px;color:var(--text);";
   const l = document.createElement("span");
   l.textContent = label;
   r.append(l, control);
@@ -48,7 +49,8 @@ function select<T extends string>(options: [T, string][], value: T): HTMLSelectE
   s.style.cssText = "padding:4px 6px;";
   for (const [v, label] of options) {
     const o = document.createElement("option");
-    o.value = v; o.textContent = label;
+    o.value = v;
+    o.textContent = label;
     if (v === value) o.selected = true;
     s.appendChild(o);
   }
@@ -64,10 +66,12 @@ export function openFlipDialog(params: FlipDialogParams): void {
     : defaultFlipSettings(doc);
   let enabled = doc.flip != null;
   // Inset of the two default centreline pins from the stock edge (mm).
-  let inset = base.axis === "h"
-    ? Math.min(...base.pins.map((p) => Math.min(p.y, doc.canvas.height - p.y)), 15)
-    : Math.min(...base.pins.map((p) => Math.min(p.x, doc.canvas.width - p.x)), 15);
-  if (!Number.isFinite(inset) || inset <= 0) inset = Math.min(15, Math.min(doc.canvas.width, doc.canvas.height) * 0.2);
+  let inset =
+    base.axis === "h"
+      ? Math.min(...base.pins.map((p) => Math.min(p.y, doc.canvas.height - p.y)), 15)
+      : Math.min(...base.pins.map((p) => Math.min(p.x, doc.canvas.width - p.x)), 15);
+  if (!Number.isFinite(inset) || inset <= 0)
+    inset = Math.min(15, Math.min(doc.canvas.width, doc.canvas.height) * 0.2);
 
   const backdrop = document.createElement("div");
   backdrop.className = "tp-backdrop";
@@ -94,11 +98,17 @@ export function openFlipDialog(params: FlipDialogParams): void {
   enableChk.checked = enabled;
 
   const axisSel = select<"h" | "v">(
-    [["h", "Left ↔ right (mirror horizontally)"], ["v", "Near ↔ far (mirror vertically)"]],
+    [
+      ["h", "Left ↔ right (mirror horizontally)"],
+      ["v", "Near ↔ far (mirror vertically)"],
+    ],
     base.axis,
   );
   const regSel = select<"pins" | "none">(
-    [["pins", "Dowel pins"], ["none", "None (fence / corner)"]],
+    [
+      ["pins", "Dowel pins"],
+      ["none", "None (fence / corner)"],
+    ],
     base.registration,
   );
   const diaIn = numberInput(base.pinDiameter);
@@ -127,7 +137,8 @@ export function openFlipDialog(params: FlipDialogParams): void {
   body.appendChild(note);
 
   const warn = document.createElement("div");
-  warn.style.cssText = "margin-top:8px;font-size:12px;color:#e5a13a;line-height:1.4;min-height:16px;";
+  warn.style.cssText =
+    "margin-top:8px;font-size:12px;color:#e5a13a;line-height:1.4;min-height:16px;";
   body.appendChild(warn);
 
   const ftr = document.createElement("div");
@@ -148,14 +159,23 @@ export function openFlipDialog(params: FlipDialogParams): void {
       registration: regSel.value as "pins" | "none",
       pinDiameter: Math.max(0.1, Number(diaIn.value) || base.pinDiameter),
       pinDepth: Math.max(0, Number(depthIn.value) || 0),
-      pins: regSel.value === "pins" ? defaultPins(doc.canvas, axis, Math.max(0, Number(insetIn.value) || 0)) : [],
+      pins:
+        regSel.value === "pins"
+          ? defaultPins(doc.canvas, axis, Math.max(0, Number(insetIn.value) || 0))
+          : [],
     };
   };
 
   const axisLine = (axis: "h" | "v"): { a: Vec2; b: Vec2 } =>
     axis === "h"
-      ? { a: { x: doc.canvas.width / 2, y: 0 }, b: { x: doc.canvas.width / 2, y: doc.canvas.height } }
-      : { a: { x: 0, y: doc.canvas.height / 2 }, b: { x: doc.canvas.width, y: doc.canvas.height / 2 } };
+      ? {
+          a: { x: doc.canvas.width / 2, y: 0 },
+          b: { x: doc.canvas.width / 2, y: doc.canvas.height },
+        }
+      : {
+          a: { x: 0, y: doc.canvas.height / 2 },
+          b: { x: doc.canvas.width, y: doc.canvas.height / 2 },
+        };
 
   const update = (): void => {
     enabled = enableChk.checked;
@@ -173,9 +193,7 @@ export function openFlipDialog(params: FlipDialogParams): void {
     }
     const w = working();
     onPreview({ axis: axisLine(w.axis), pins: w.pins });
-    warn.textContent = w.registration === "pins" && w.pins.length === 0
-      ? "No pins placed."
-      : "";
+    warn.textContent = w.registration === "pins" && w.pins.length === 0 ? "No pins placed." : "";
   };
 
   for (const el of [axisSel, regSel, diaIn, depthIn, insetIn]) el.addEventListener("input", update);
@@ -190,7 +208,9 @@ export function openFlipDialog(params: FlipDialogParams): void {
     backdrop.remove();
   };
   const dispose = registerModal(backdrop, finish);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) finish(); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) finish();
+  });
   cancelBtn.addEventListener("click", finish);
 
   saveBtn.addEventListener("click", () => {

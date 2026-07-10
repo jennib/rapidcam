@@ -6,9 +6,15 @@ export function n(v: number): string {
   return parseFloat(v.toFixed(3)).toString();
 }
 
-export function X(v: number, ox: number): string { return n(v - ox); }
-export function Y(v: number, oy: number): string { return n(v - oy); }
-export function Z(v: number, zOff: number): string { return n(v + zOff); }
+export function X(v: number, ox: number): string {
+  return n(v - ox);
+}
+export function Y(v: number, oy: number): string {
+  return n(v - oy);
+}
+export function Z(v: number, zOff: number): string {
+  return n(v + zOff);
+}
 
 export function depthPasses(op: CAMOperation): number[] {
   const total = Math.abs(op.depth);
@@ -29,9 +35,14 @@ export abstract class PostProcessor {
 
   /** Emit G-code for engraving a single cubic Bezier segment. Default: flatten to G1 segments. */
   engraveBezier(
-    p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    p3: Vec2,
     op: CAMOperation,
-    ox: number, oy: number, zOff: number,
+    ox: number,
+    oy: number,
+    zOff: number,
   ): string[] {
     const pts = flattenBezier(p0, p1, p2, p3, 0.05);
     const lines: string[] = [];

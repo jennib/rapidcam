@@ -135,8 +135,14 @@ interface GsenderController {
 }
 
 /** Connected controllers, via GET /api/controllers. */
-async function fetchControllers(base: string, token: string | undefined, fetchImpl: FetchLike): Promise<GsenderController[]> {
-  const res = await timedFetch(fetchImpl, `${base}/api/controllers`, { headers: authHeaders(token) });
+async function fetchControllers(
+  base: string,
+  token: string | undefined,
+  fetchImpl: FetchLike,
+): Promise<GsenderController[]> {
+  const res = await timedFetch(fetchImpl, `${base}/api/controllers`, {
+    headers: authHeaders(token),
+  });
   if (!res.ok) throw new Error(`status ${res.status}`);
   const list = await res.json();
   return Array.isArray(list) ? list : [];
@@ -147,7 +153,10 @@ async function fetchControllers(base: string, token: string | undefined, fetchIm
  * settings "Test" affordance so the user can confirm the address before relying
  * on it mid-job.
  */
-export async function testGsenderConnection(baseUrl: string, fetchImpl: FetchLike = fetch): Promise<GsenderTestResult> {
+export async function testGsenderConnection(
+  baseUrl: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<GsenderTestResult> {
   const base = normalizeGsenderUrl(baseUrl);
   if (!base) return { ok: false, ports: [], error: "No gSender address set." };
   try {

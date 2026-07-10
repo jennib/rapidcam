@@ -58,12 +58,18 @@ const EPS = 0.01;
 const OVERCUT_TOLERANCE = 1.0;
 
 interface Move {
-  line: number;               // 1-based source line
-  motion: 0 | 1 | 2 | 3;      // G0 rapid / G1 feed / G2 CW arc / G3 CCW arc
-  px: number; py: number; pz: number;  // absolute position before this move
-  x: number; y: number; z: number;     // absolute position after
-  hasX: boolean; hasY: boolean; hasZ: boolean;
-  f: number;                  // active (modal) feed rate for this move
+  line: number; // 1-based source line
+  motion: 0 | 1 | 2 | 3; // G0 rapid / G1 feed / G2 CW arc / G3 CCW arc
+  px: number;
+  py: number;
+  pz: number; // absolute position before this move
+  x: number;
+  y: number;
+  z: number; // absolute position after
+  hasX: boolean;
+  hasY: boolean;
+  hasZ: boolean;
+  f: number; // active (modal) feed rate for this move
 }
 
 /**
@@ -75,17 +81,23 @@ interface Move {
  */
 function parseMoves(gcode: string, zTop: number): Move[] {
   const moves: Move[] = [];
-  let x = 0, y = 0, z = zTop, f = 0;
+  let x = 0,
+    y = 0,
+    z = zTop,
+    f = 0;
   let motion: 0 | 1 | 2 | 3 | null = null;
   let lineNo = 0;
 
   for (const raw of gcode.split(/\r?\n/)) {
     lineNo++;
-    const code = raw.split(";")[0].trim();   // strip any trailing comment
+    const code = raw.split(";")[0].trim(); // strip any trailing comment
     if (!code) continue;
     const tokens = code.split(/\s+/);
 
-    let hasX = false, hasY = false, hasZ = false, sawCoord = false;
+    let hasX = false,
+      hasY = false,
+      hasZ = false,
+      sawCoord = false;
     let nextMotion: 0 | 1 | 2 | 3 | null = motion;
 
     for (const t of tokens) {
@@ -99,10 +111,24 @@ function parseMoves(gcode: string, zTop: number): Move[] {
       }
       if (Number.isNaN(val)) continue;
       switch (letter) {
-        case "X": x = val; hasX = true; sawCoord = true; break;
-        case "Y": y = val; hasY = true; sawCoord = true; break;
-        case "Z": z = val; hasZ = true; sawCoord = true; break;
-        case "F": f = val; break;
+        case "X":
+          x = val;
+          hasX = true;
+          sawCoord = true;
+          break;
+        case "Y":
+          y = val;
+          hasY = true;
+          sawCoord = true;
+          break;
+        case "Z":
+          z = val;
+          hasZ = true;
+          sawCoord = true;
+          break;
+        case "F":
+          f = val;
+          break;
       }
     }
 
@@ -117,10 +143,16 @@ function parseMoves(gcode: string, zTop: number): Move[] {
 
   // Thread each move's "before" position from the previous move's "after"
   // (simpler and less error-prone than tracking it inline through the modal words).
-  let prevX = 0, prevY = 0, prevZ = zTop;
+  let prevX = 0,
+    prevY = 0,
+    prevZ = zTop;
   for (const m of moves) {
-    m.px = prevX; m.py = prevY; m.pz = prevZ;
-    prevX = m.x; prevY = m.y; prevZ = m.z;
+    m.px = prevX;
+    m.py = prevY;
+    m.pz = prevZ;
+    prevX = m.x;
+    prevY = m.y;
+    prevZ = m.z;
   }
   return moves;
 }
@@ -136,11 +168,13 @@ function r(v: number): string {
  *  top — the tool ploughs sideways through material (also the tell-tale of a
  *  missing retract / unsafe safe-Z between moves). */
 function checkRapidThroughStock(moves: Move[], ctx: LintContext): LintFinding | null {
-  let first: Move | null = null, count = 0;
+  let first: Move | null = null,
+    count = 0;
   for (const m of moves) {
     if (m.motion !== 0) continue;
-    if (!m.hasX && !m.hasY) continue;                  // a pure Z retract is fine
-    if (Math.min(m.pz, m.z) < ctx.zTop - EPS) {        // below the surface during a rapid
+    if (!m.hasX && !m.hasY) continue; // a pure Z retract is fine
+    if (Math.min(m.pz, m.z) < ctx.zTop - EPS) {
+      // below the surface during a rapid
       count++;
       if (!first) first = m;
     }
@@ -165,18 +199,19 @@ function checkRapidThroughStock(moves: Move[], ctx: LintContext): LintFinding | 
  */
 function checkOutOfBounds(moves: Move[], ctx: LintContext): LintFinding | null {
   const { xMin, xMax, yMin, yMax } = ctx.bounds;
-  const engaged = (m: Move) =>
-    ctx.machineKind === "laser" || Math.min(m.pz, m.z) < ctx.zTop - EPS;
-  let first: Move | null = null, count = 0;
+  const engaged = (m: Move) => ctx.machineKind === "laser" || Math.min(m.pz, m.z) < ctx.zTop - EPS;
+  let first: Move | null = null,
+    count = 0;
   for (const m of moves) {
     // No hasX/hasY guard: a pure-Z plunge still leaves the tool at (x,y), and
     // that's exactly where an off-stock plunge engages. Aggregation dedupes the
     // noise of repeated moves at one out-of-bounds spot.
     if (!engaged(m)) continue;
-    const out =
-      m.x < xMin - EPS || m.x > xMax + EPS ||
-      m.y < yMin - EPS || m.y > yMax + EPS;
-    if (out) { count++; if (!first) first = m; }
+    const out = m.x < xMin - EPS || m.x > xMax + EPS || m.y < yMin - EPS || m.y > yMax + EPS;
+    if (out) {
+      count++;
+      if (!first) first = m;
+    }
   }
   if (!first) return null;
   return {
@@ -192,9 +227,10 @@ function checkOutOfBounds(moves: Move[], ctx: LintContext): LintFinding | null {
 
 /** WARNING: a cut move dips below the stock bottom — through-cut into the spoilboard. */
 function checkOverDeep(moves: Move[], ctx: LintContext): LintFinding | null {
-  let first: Move | null = null, deepest = Infinity;
+  let first: Move | null = null,
+    deepest = Infinity;
   for (const m of moves) {
-    if (m.motion === 0) continue;                      // rapids handled elsewhere
+    if (m.motion === 0) continue; // rapids handled elsewhere
     if (m.z < ctx.zBottom - OVERCUT_TOLERANCE) {
       if (!first) first = m;
       deepest = Math.min(deepest, m.z);
@@ -217,7 +253,8 @@ function checkOverDeep(moves: Move[], ctx: LintContext): LintFinding | null {
  *  feed. Ramped entries move laterally and are intentionally left alone. */
 function checkFastPlunge(moves: Move[]): LintFinding | null {
   let lastHorizFeed = 0;
-  let first: Move | null = null, count = 0;
+  let first: Move | null = null,
+    count = 0;
   for (const m of moves) {
     const lateral = m.hasX || m.hasY;
     if (m.motion === 1 && lateral) lastHorizFeed = m.f || lastHorizFeed;
@@ -249,7 +286,7 @@ function checkMissingToolChange(gcode: string): LintFinding | null {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     if (/Manual tool change to T/i.test(raw) && manualMarker === null) manualMarker = i + 1;
-    const code = raw.split(";")[0].trim();             // active = not commented out
+    const code = raw.split(";")[0].trim(); // active = not commented out
     if (/^M0{1,2}\b/.test(code) || /\bM6\b/.test(code)) activePause = true;
   }
   if (manualMarker === null || activePause) return null;
@@ -267,14 +304,26 @@ function checkMissingToolChange(gcode: string): LintFinding | null {
 function pointInPoly(x: number, y: number, poly: { x: number; y: number }[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    const xi = poly[i].x,
+      yi = poly[i].y,
+      xj = poly[j].x,
+      yj = poly[j].y;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
 
 /** Whether segments AB and CD properly intersect (shared parametric solve). */
-function segCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+function segCross(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): boolean {
   const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
   if (Math.abs(den) < 1e-12) return false;
   const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den;
@@ -283,7 +332,13 @@ function segCross(ax: number, ay: number, bx: number, by: number, cx: number, cy
 }
 
 /** Whether the segment A→B touches a polygon (endpoint inside, or crosses an edge). */
-function segHitsPoly(ax: number, ay: number, bx: number, by: number, poly: { x: number; y: number }[]): boolean {
+function segHitsPoly(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  poly: { x: number; y: number }[],
+): boolean {
   if (pointInPoly(ax, ay, poly) || pointInPoly(bx, by, poly)) return true;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     if (segCross(ax, ay, bx, by, poly[j].x, poly[j].y, poly[i].x, poly[i].y)) return true;
@@ -366,12 +421,13 @@ export function buildLintContext(
   const { ox, oy, zOffset } = resolveOrigin(doc);
   const { width, height } = stockFootprint(doc);
   // Fixture footprints shifted into emitted (post-origin) coords to match the moves.
-  const fixtures: Fixture[] = doc.machineKind === "laser"
-    ? []
-    : fixturePolygons(doc).map((f) => ({
-        poly: f.poly.map((p) => ({ x: p.x - ox, y: p.y - oy })),
-        height: f.height,
-      }));
+  const fixtures: Fixture[] =
+    doc.machineKind === "laser"
+      ? []
+      : fixturePolygons(doc).map((f) => ({
+          poly: f.poly.map((p) => ({ x: p.x - ox, y: p.y - oy })),
+          height: f.height,
+        }));
   return {
     bounds: {
       xMin: 0 - ox,

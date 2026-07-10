@@ -6,25 +6,44 @@ import { resolveOpTool, type CAMOperation, type ToolDef } from "../src/cam/types
 import { generateGCode } from "../src/cam/gcode";
 
 const TOOL: ToolDef = {
-  id: "tool-em-6", name: "6mm End Mill", toolType: "end-mill", diameter: 6,
-  feedrate: 900, plungeRate: 250, spindleSpeed: 18000, safeZ: 5,
+  id: "tool-em-6",
+  name: "6mm End Mill",
+  toolType: "end-mill",
+  diameter: 6,
+  feedrate: 900,
+  plungeRate: 250,
+  spindleSpeed: 18000,
+  safeZ: 5,
 };
 
 function baseOp(over: Partial<CAMOperation> = {}): CAMOperation {
   return {
-    id: "op1", name: "Profile", type: "profile", entityIds: ["e1"], side: "outside",
-    toolType: "end-mill", toolNumber: 2, diameter: 6, feedrate: 900, plungeRate: 250,
-    spindleSpeed: 18000, safeZ: 5, depth: -6, stepdown: 2, stepover: 0.4, ...over,
+    id: "op1",
+    name: "Profile",
+    type: "profile",
+    entityIds: ["e1"],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 2,
+    diameter: 6,
+    feedrate: 900,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -6,
+    stepdown: 2,
+    stepover: 0.4,
+    ...over,
   };
 }
 
 test("resolveOpTool overrides tool fields but keeps per-op cut settings", () => {
   const op = baseOp({ toolId: "tool-em-6", diameter: 99, feedrate: 1, toolNumber: 7, depth: -10 });
   const r = resolveOpTool(op, [TOOL]);
-  expect(r.diameter).toBe(6);        // from the tool, not the stale inline 99
-  expect(r.feedrate).toBe(900);      // from the tool
-  expect(r.toolNumber).toBe(7);      // per-op, untouched
-  expect(r.depth).toBe(-10);         // per-op, untouched
+  expect(r.diameter).toBe(6); // from the tool, not the stale inline 99
+  expect(r.feedrate).toBe(900); // from the tool
+  expect(r.toolNumber).toBe(7); // per-op, untouched
+  expect(r.depth).toBe(-10); // per-op, untouched
 });
 
 test("resolveOpTool leaves the op unchanged when there is no toolId or no match", () => {

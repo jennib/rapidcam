@@ -5,7 +5,10 @@ import type { Vec2 } from "../src/core/vec2";
 // A CCW square wall loop of side 2·s centred at origin. This models the tool
 // path of a square pocket, already inset from the walls by the tool radius.
 const square = (s: number): Vec2[] => [
-  { x: -s, y: -s }, { x: s, y: -s }, { x: s, y: s }, { x: -s, y: s },
+  { x: -s, y: -s },
+  { x: s, y: -s },
+  { x: s, y: s },
+  { x: -s, y: s },
 ];
 
 /** Distance from p to the nearest point of a circle (centre c, radius r). */
@@ -44,8 +47,12 @@ test("90° overcut length is toolR·(√2 − 1) from the corner", () => {
 test("reflex (concave) corners get no dog-bone", () => {
   // An L-shaped CCW loop has one reflex corner; only its 5 convex corners relieve.
   const L: Vec2[] = [
-    { x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 30 },
-    { x: 15, y: 30 }, { x: 15, y: 15 }, { x: 0, y: 15 },
+    { x: 0, y: 0 },
+    { x: 30, y: 0 },
+    { x: 30, y: 30 },
+    { x: 15, y: 30 },
+    { x: 15, y: 15 },
+    { x: 0, y: 15 },
   ];
   let spurs = 0;
   const n = L.length;

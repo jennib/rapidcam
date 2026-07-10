@@ -1,10 +1,22 @@
 import { type Vec2, dist, sub } from "../core/vec2";
 import { type Bounds, type LineEntity, TextEntity, PolylineEntity } from "../model/entities";
-import { type PointRef, pointRefKey, type Constraint, constraintAnchors, type ConstraintType, type SegmentRef } from "../model/constraints";
+import {
+  type PointRef,
+  pointRefKey,
+  type Constraint,
+  constraintAnchors,
+  type ConstraintType,
+  type SegmentRef,
+} from "../model/constraints";
 import type { CADDocument, DocSnapshot } from "../model/document";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import type { Viewport } from "../view/viewport";
-import { dimensionHitDistance, dimensionOffsetFromCursor, type Dimension, dimensionLayout } from "../model/dimensions";
+import {
+  dimensionHitDistance,
+  dimensionOffsetFromCursor,
+  type Dimension,
+  dimensionLayout,
+} from "../model/dimensions";
 import type { Geo } from "../model/constraints";
 import { distToSegment } from "../core/geom";
 import type { PinMap } from "../solver/solver";
@@ -24,10 +36,20 @@ const CONSTRAINT_KEYS: Record<string, ConstraintType> = {
 };
 
 function isEntityFixed(doc: CADDocument, id: string): boolean {
-  return doc.constraints.some(c => c.type === "fixed" && c.entities.includes(id));
+  return doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
 }
 
-type Mode = "idle" | "maybeDragPoint" | "dragPoint" | "maybeDragEntity" | "dragEntity" | "marquee" | "dragScale" | "dragRotate" | "maybeDragDimLabel" | "dragDimLabel";
+type Mode =
+  | "idle"
+  | "maybeDragPoint"
+  | "dragPoint"
+  | "maybeDragEntity"
+  | "dragEntity"
+  | "marquee"
+  | "dragScale"
+  | "dragRotate"
+  | "maybeDragDimLabel"
+  | "dragDimLabel";
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -74,11 +96,14 @@ export class SelectTool implements Tool {
         if (ctx.doc.groupOf(ent.id)) continue;
         for (const p of ent.pickablePoints()) {
           const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
-          if (d < 14 && d < bestD) { bestRef = { entityId: ent.id, key: p.key }; bestD = d; }
+          if (d < 14 && d < bestD) {
+            bestRef = { entityId: ent.id, key: p.key };
+            bestD = d;
+          }
         }
       }
       if (bestRef) {
-        const ent = ctx.doc.entities.find(x => x.id === bestRef!.entityId)!;
+        const ent = ctx.doc.entities.find((x) => x.id === bestRef!.entityId)!;
         if (!ent.selected) ent.selected = true;
         ctx.doc.togglePoint(bestRef);
         return;
@@ -87,7 +112,7 @@ export class SelectTool implements Tool {
       // line-type constraints (parallel/perpendicular/equal/…).
       const seg = this.pickPolylineSegment(e, ctx);
       if (seg) {
-        const ent = ctx.doc.entities.find(x => x.id === seg.entityId)!;
+        const ent = ctx.doc.entities.find((x) => x.id === seg.entityId)!;
         if (!ent.selected) ent.selected = true;
         ctx.doc.toggleSegment(seg);
       }
@@ -164,7 +189,10 @@ export class SelectTool implements Tool {
       const labelScreenDist = dist(e.screen, ctx.view.worldToScreen(layout.textPos));
       if (labelScreenDist < 12 && !hitLabelDim) hitLabelDim = dim;
       const d = dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit) * ctx.view.scale;
-      if (d < 15 && d < dimDist) { hitDim = dim; dimDist = d; }
+      if (d < 15 && d < dimDist) {
+        hitDim = dim;
+        dimDist = d;
+      }
     }
 
     if (hitLabelDim) {
@@ -191,12 +219,14 @@ export class SelectTool implements Tool {
 
     let hitEntId: string | null = null;
     if (candidates.length > 0) {
-      const sameSpot = this.cycleScreen !== null && dist(e.screen, this.cycleScreen) < DRAG_THRESHOLD_PX;
+      const sameSpot =
+        this.cycleScreen !== null && dist(e.screen, this.cycleScreen) < DRAG_THRESHOLD_PX;
       const sameStack = arraysEqual(candidates, this.cycleIds);
       // Advance only on a genuine repeat click on an unchanged stack of 2+.
-      this.cycleIndex = sameSpot && sameStack && candidates.length > 1
-        ? (this.cycleIndex + 1) % candidates.length
-        : 0;
+      this.cycleIndex =
+        sameSpot && sameStack && candidates.length > 1
+          ? (this.cycleIndex + 1) % candidates.length
+          : 0;
       this.cycleScreen = e.screen;
       this.cycleIds = candidates;
       hitEntId = candidates[this.cycleIndex];
@@ -211,9 +241,11 @@ export class SelectTool implements Tool {
 
       if (e.shiftKey) {
         if (group) {
-          const groupSelected = group.entityIds.every(id => ctx.doc.entities.find(e => e.id === id)?.selected);
+          const groupSelected = group.entityIds.every(
+            (id) => ctx.doc.entities.find((e) => e.id === id)?.selected,
+          );
           for (const id of group.entityIds) {
-            const ge = ctx.doc.entities.find(x => x.id === id);
+            const ge = ctx.doc.entities.find((x) => x.id === id);
             if (ge) ge.selected = !groupSelected;
           }
         } else {
@@ -224,7 +256,7 @@ export class SelectTool implements Tool {
           ctx.doc.clearSelection();
           if (group) {
             for (const id of group.entityIds) {
-              const ge = ctx.doc.entities.find(x => x.id === id);
+              const ge = ctx.doc.entities.find((x) => x.id === id);
               if (ge) ge.selected = true;
             }
           } else {
@@ -248,25 +280,37 @@ export class SelectTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "maybeDragPoint" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
-      if (ctx.currentDof() <= 0) { this.mode = "idle"; return; }
+      if (ctx.currentDof() <= 0) {
+        this.mode = "idle";
+        return;
+      }
       ctx.pushHistory();
       this.dragSnapshot = ctx.doc.snapshot();
       this.mode = "dragPoint";
-    } else if (this.mode === "maybeDragEntity" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
-      if (ctx.currentDof() <= 0) { this.mode = "idle"; return; }
+    } else if (
+      this.mode === "maybeDragEntity" &&
+      dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX
+    ) {
+      if (ctx.currentDof() <= 0) {
+        this.mode = "idle";
+        return;
+      }
       ctx.pushHistory();
       this.mode = "dragEntity";
       this.dragSnapshot = ctx.doc.snapshot();
       this.originalBounds = selectionBounds(ctx.doc.selected);
-    } else if (this.mode === "maybeDragDimLabel" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
+    } else if (
+      this.mode === "maybeDragDimLabel" &&
+      dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX
+    ) {
       this.mode = "dragDimLabel";
     }
 
     if (this.mode === "dragDimLabel" && this.dragDimLabelId) {
-      const dim = ctx.doc.dimensions.find(d => d.id === this.dragDimLabelId);
+      const dim = ctx.doc.dimensions.find((d) => d.id === this.dragDimLabelId);
       if (dim) {
-        const byId = new Map(ctx.doc.entities.map(en => [en.id, en]));
-        const geo: Geo = id => byId.get(id);
+        const byId = new Map(ctx.doc.entities.map((en) => [en.id, en]));
+        const geo: Geo = (id) => byId.get(id);
         dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
         ctx.requestRender();
       }
@@ -276,7 +320,7 @@ export class SelectTool implements Tool {
     if (this.mode === "dragPoint" && this.dragPoint && this.dragSnapshot) {
       if (e.shiftKey) {
         ctx.doc.restore(this.dragSnapshot);
-        const ent = ctx.doc.entities.find(x => x.id === this.dragPoint!.entityId);
+        const ent = ctx.doc.entities.find((x) => x.id === this.dragPoint!.entityId);
         if (ent) {
           const origPos = ent.getPoint(this.dragPoint!.key);
           const d = sub(e.world, origPos);
@@ -285,25 +329,42 @@ export class SelectTool implements Tool {
           }
 
           if (e.snap && e.snap.entityId !== ent.id) {
-            const targetEnt = ctx.doc.entities.find(x => x.id === e.snap!.entityId);
+            const targetEnt = ctx.doc.entities.find((x) => x.id === e.snap!.entityId);
             if (ent.type === "line" && targetEnt?.type === "line") {
               const lineOrig = ent as LineEntity;
               const lineTarget = targetEnt as LineEntity;
-              if ((this.dragPoint!.key === "a" || this.dragPoint!.key === "b") && 
-                  (e.snap.key === "a" || e.snap.key === "b" || e.snap.kind === "endpoint")) {
-                
-                const dragDir = this.dragPoint!.key === "a" ? sub(lineOrig.b, lineOrig.a) : sub(lineOrig.a, lineOrig.b);
-                const targetKey = e.snap.key || (dist(e.snap.pos, lineTarget.a) < dist(e.snap.pos, lineTarget.b) ? "a" : "b");
-                const targetDir = targetKey === "a" ? sub(lineTarget.b, lineTarget.a) : sub(lineTarget.a, lineTarget.b);
+              if (
+                (this.dragPoint!.key === "a" || this.dragPoint!.key === "b") &&
+                (e.snap.key === "a" || e.snap.key === "b" || e.snap.kind === "endpoint")
+              ) {
+                const dragDir =
+                  this.dragPoint!.key === "a"
+                    ? sub(lineOrig.b, lineOrig.a)
+                    : sub(lineOrig.a, lineOrig.b);
+                const targetKey =
+                  e.snap.key ||
+                  (dist(e.snap.pos, lineTarget.a) < dist(e.snap.pos, lineTarget.b) ? "a" : "b");
+                const targetDir =
+                  targetKey === "a"
+                    ? sub(lineTarget.b, lineTarget.a)
+                    : sub(lineTarget.a, lineTarget.b);
 
                 const startAngle = Math.atan2(dragDir.y, dragDir.x);
                 const targetAngle = Math.atan2(targetDir.y, targetDir.x) + Math.PI; // point away
-                
-                const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
-                applyRotate(unfixedSelected, e.world.x, e.world.y, targetAngle - startAngle, (oldE, newE) => {
-                  const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
-                  if (idx >= 0) ctx.doc.entities[idx] = newE;
-                });
+
+                const unfixedSelected = ctx.doc.selected.filter(
+                  (x) => !isEntityFixed(ctx.doc, x.id),
+                );
+                applyRotate(
+                  unfixedSelected,
+                  e.world.x,
+                  e.world.y,
+                  targetAngle - startAngle,
+                  (oldE, newE) => {
+                    const idx = ctx.doc.entities.findIndex((x) => x.id === oldE.id);
+                    if (idx >= 0) ctx.doc.entities[idx] = newE;
+                  },
+                );
               }
             }
           }
@@ -319,14 +380,14 @@ export class SelectTool implements Tool {
         const ob = this.originalBounds;
         const cx = (ob.min.x + ob.max.x) / 2;
         const cy = (ob.min.y + ob.max.y) / 2;
-        
+
         const startAngle = Math.atan2(this.dragStartWorld.y - cy, this.dragStartWorld.x - cx);
         const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
         const angle = currentAngle - startAngle;
-        
-        const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+
+        const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
         applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
-          const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
+          const idx = ctx.doc.entities.findIndex((x) => x.id === oldE.id);
           if (idx >= 0) ctx.doc.entities[idx] = newE;
         });
         ctx.solve();
@@ -344,39 +405,41 @@ export class SelectTool implements Tool {
       ctx.requestRender();
     } else if (this.mode === "dragScale" && this.dragSnapshot && this.originalBounds) {
       ctx.doc.restore(this.dragSnapshot); // resets entities
-      
+
       const ob = this.originalBounds;
       const id = this.activeHandleId!;
-      
+
       let cx = (ob.min.x + ob.max.x) / 2;
       let cy = (ob.min.y + ob.max.y) / 2;
 
       if (!e.altKey) {
         if (id.includes("n")) cy = ob.min.y;
         else if (id.includes("s")) cy = ob.max.y;
-        
+
         if (id.includes("e")) cx = ob.min.x;
         else if (id.includes("w")) cx = ob.max.x;
       }
 
-      let sx = 1, sy = 1;
-      let origDx = 0, origDy = 0;
-      
+      let sx = 1,
+        sy = 1;
+      let origDx = 0,
+        origDy = 0;
+
       if (id.includes("e")) origDx = ob.max.x - cx;
       else if (id.includes("w")) origDx = ob.min.x - cx;
-      
+
       if (id.includes("n")) origDy = ob.max.y - cy;
       else if (id.includes("s")) origDy = ob.min.y - cy;
-      
+
       const curDx = e.worldRaw.x - cx;
       const curDy = e.worldRaw.y - cy;
-      
+
       if (origDx !== 0) sx = curDx / origDx;
       if (origDy !== 0) sy = curDy / origDy;
-      
+
       if (id === "n" || id === "s") sx = 1;
       if (id === "e" || id === "w") sy = 1;
-      
+
       if (e.shiftKey) {
         const maxAbs = Math.max(Math.abs(sx), Math.abs(sy));
         if (id === "n" || id === "s") sx = maxAbs * Math.sign(sx); // wait, for N/S shift shouldn't constrain width if it's 1
@@ -385,26 +448,26 @@ export class SelectTool implements Tool {
           sy = maxAbs * Math.sign(sy);
         }
       }
-      
+
       if (Math.abs(sx) > 0.001 || Math.abs(sy) > 0.001) {
-        const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+        const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
         applyScale(unfixedSelected, cx, cy, sx, sy);
       }
-      
+
       ctx.solve();
     } else if (this.mode === "dragRotate" && this.dragSnapshot && this.originalBounds) {
       ctx.doc.restore(this.dragSnapshot);
       const ob = this.originalBounds;
       const cx = (ob.min.x + ob.max.x) / 2;
       const cy = (ob.min.y + ob.max.y) / 2;
-      
+
       const startAngle = Math.PI / 2; // "n" direction in standard atan2
       const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
       const angle = currentAngle - startAngle;
-      
-      const unfixedSelected = ctx.doc.selected.filter(x => !isEntityFixed(ctx.doc, x.id));
+
+      const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
       applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
-        const idx = ctx.doc.entities.findIndex(x => x.id === oldE.id);
+        const idx = ctx.doc.entities.findIndex((x) => x.id === oldE.id);
         if (idx >= 0) ctx.doc.entities[idx] = newE;
       });
       ctx.solve();
@@ -426,17 +489,17 @@ export class SelectTool implements Tool {
     if (!hitEntId) return;
 
     // Double-click on TextEntity → open inline editor
-    const hitEnt = ctx.doc.entities.find(x => x.id === hitEntId);
+    const hitEnt = ctx.doc.entities.find((x) => x.id === hitEntId);
     if (hitEnt instanceof TextEntity) {
       openTextDialog(
         { text: hitEnt.text, fontId: hitEnt.fontId, sizeMM: hitEnt.sizeMM, angle: hitEnt.angle },
         "Apply",
-        p => {
+        (p) => {
           ctx.pushHistory();
-          hitEnt.text   = p.text;
+          hitEnt.text = p.text;
           hitEnt.fontId = p.fontId;
           hitEnt.sizeMM = p.sizeMM;
-          hitEnt.angle  = p.angle;
+          hitEnt.angle = p.angle;
           ctx.doc.emitChange();
         },
       );
@@ -452,15 +515,15 @@ export class SelectTool implements Tool {
 
     while (queue.length > 0) {
       const currentId = queue.shift()!;
-      const currentEnt = ctx.doc.entities.find(e => e.id === currentId);
+      const currentEnt = ctx.doc.entities.find((e) => e.id === currentId);
       if (!currentEnt) continue;
 
-      const currentPts = currentEnt.dofPoints().map(p => p.pos);
+      const currentPts = currentEnt.dofPoints().map((p) => p.pos);
 
       for (const other of ctx.doc.entities) {
         if (toSelect.has(other.id)) continue;
-        const otherPts = other.dofPoints().map(p => p.pos);
-        
+        const otherPts = other.dofPoints().map((p) => p.pos);
+
         let connected = false;
         for (const p1 of currentPts) {
           for (const p2 of otherPts) {
@@ -488,7 +551,7 @@ export class SelectTool implements Tool {
         const group = ctx.doc.groupOf(ent.id);
         if (group) {
           for (const id of group.entityIds) {
-            const ge = ctx.doc.entities.find(x => x.id === id);
+            const ge = ctx.doc.entities.find((x) => x.id === id);
             if (ge) ge.selected = true;
           }
         }
@@ -506,13 +569,13 @@ export class SelectTool implements Tool {
     } else if (this.mode === "maybeDragEntity" && this.pickedEntId) {
       if (!e.shiftKey) {
         ctx.doc.clearSelection();
-        const ent = ctx.doc.entities.find(x => x.id === this.pickedEntId);
+        const ent = ctx.doc.entities.find((x) => x.id === this.pickedEntId);
         if (ent) {
           ent.selected = true;
           const group = ctx.doc.groupOf(ent.id);
           if (group) {
             for (const id of group.entityIds) {
-              const ge = ctx.doc.entities.find(x => x.id === id);
+              const ge = ctx.doc.entities.find((x) => x.id === id);
               if (ge) ge.selected = true;
             }
           }
@@ -522,7 +585,7 @@ export class SelectTool implements Tool {
     } else if (this.mode === "dragScale" || this.mode === "dragRotate") {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
-    
+
     this.mode = "idle";
     this.dragPoint = null;
     this.dragSnapshot = null;
@@ -536,9 +599,17 @@ export class SelectTool implements Tool {
   getOverlay(ctx?: ToolContext): ToolOverlay {
     if (this.mode === "marquee") {
       const crossing = this.marqueeEnd.x < this.marqueeStart.x;
-      return { previews: [], selectionRect: { a: this.marqueeStart, b: this.marqueeEnd, crossing } };
+      return {
+        previews: [],
+        selectionRect: { a: this.marqueeStart, b: this.marqueeEnd, crossing },
+      };
     }
-    if (ctx && ctx.doc.selected.length > 0 && this.mode !== "dragPoint" && this.mode !== "maybeDragPoint") {
+    if (
+      ctx &&
+      ctx.doc.selected.length > 0 &&
+      this.mode !== "dragPoint" &&
+      this.mode !== "maybeDragPoint"
+    ) {
       return { previews: [], selectionRect: null, transformBox: this.getTransformBox(ctx) };
     }
     return { previews: [], selectionRect: null };
@@ -577,7 +648,7 @@ export class SelectTool implements Tool {
       min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) },
       max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) },
     };
-    
+
     const toSelect = new Set<string>();
     for (const ent of ctx.doc.entities) {
       const eb = ent.bounds();
@@ -591,7 +662,7 @@ export class SelectTool implements Tool {
         }
       }
     }
-    
+
     for (const ent of ctx.doc.entities) {
       if (toSelect.has(ent.id)) ent.selected = true;
     }
@@ -607,9 +678,13 @@ export class SelectTool implements Tool {
       const n = ent.points.length;
       const segCount = ent.closed ? n : n - 1;
       for (let i = 0; i < segCount; i++) {
-        const a = ent.points[i], b = ent.points[(i + 1) % n];
+        const a = ent.points[i],
+          b = ent.points[(i + 1) % n];
         const px = distToSegment(e.worldRaw, a, b) * ctx.view.scale;
-        if (px < 8 && px < bestPx) { bestPx = px; best = { entityId: ent.id, index: i }; }
+        if (px < 8 && px < bestPx) {
+          bestPx = px;
+          best = { entityId: ent.id, index: i };
+        }
       }
     }
     return best;
@@ -633,7 +708,7 @@ export class SelectTool implements Tool {
       { id: "s", type: "scale", pos: { x: cx, y: min.y } },
       { id: "sw", type: "scale", pos: { x: min.x, y: min.y } },
       { id: "w", type: "scale", pos: { x: min.x, y: cy } },
-      { id: "rot", type: "rotate", stem: true, pos: { x: cx, y: max.y + ctx.view.toWorldLen(24) } } 
+      { id: "rot", type: "rotate", stem: true, pos: { x: cx, y: max.y + ctx.view.toWorldLen(24) } },
     ];
 
     return { bounds, handles };
@@ -664,7 +739,11 @@ function boundsContainsBounds(outer: Bounds, inner: Bounds): boolean {
   );
 }
 
-export function pickConstraintAt(doc: CADDocument, view: Viewport, screen: Vec2): Constraint | null {
+export function pickConstraintAt(
+  doc: CADDocument,
+  view: Viewport,
+  screen: Vec2,
+): Constraint | null {
   const byId = new Map(doc.entities.map((e) => [e.id, e]));
   const geo = (id: string) => byId.get(id);
   const stack = new Map<string, number>();

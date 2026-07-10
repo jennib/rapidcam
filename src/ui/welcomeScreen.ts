@@ -22,7 +22,7 @@ export function showWelcomeScreen(
   onOpen: () => void,
   onOpenRecent: (entry: RecentEntry) => void,
   onRestoreDraft: () => void,
-  onOpenExample: (entry: ExampleEntry) => void
+  onOpenExample: (entry: ExampleEntry) => void,
 ): void {
   // Dedup: never stack two splashes (e.g. re-opened from the File menu).
   document.querySelector(".welcome-backdrop")?.remove();
@@ -254,9 +254,10 @@ export function showWelcomeScreen(
       const h = ex.file.canvas.height;
       const unit = ex.file.displayUnit || "mm";
       const opCount = ex.file.operations?.length ?? 0;
-      meta.textContent = opCount > 0
-        ? `${w} × ${h} ${unit} · ${opCount} toolpath${opCount !== 1 ? "s" : ""}`
-        : `${w} × ${h} ${unit}`;
+      meta.textContent =
+        opCount > 0
+          ? `${w} × ${h} ${unit} · ${opCount} toolpath${opCount !== 1 ? "s" : ""}`
+          : `${w} × ${h} ${unit}`;
       info.appendChild(meta);
       card.appendChild(info);
 
@@ -300,14 +301,21 @@ export function showWelcomeScreen(
   // Dismissable: click the dimmed area outside the card, or press Escape. This
   // matters when re-opened mid-session from the File menu (peek the examples,
   // then back out) — there's always the current/empty document behind it.
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
   const onKey = (e: KeyboardEvent): void => {
     // Self-detach once the splash is gone (dismissed via a button or click).
-    if (!backdrop.isConnected) { window.removeEventListener("keydown", onKey); return; }
-    if (e.key === "Escape") { backdrop.remove(); window.removeEventListener("keydown", onKey); }
+    if (!backdrop.isConnected) {
+      window.removeEventListener("keydown", onKey);
+      return;
+    }
+    if (e.key === "Escape") {
+      backdrop.remove();
+      window.removeEventListener("keydown", onKey);
+    }
   };
   window.addEventListener("keydown", onKey);
 
   document.body.appendChild(backdrop);
 }
-

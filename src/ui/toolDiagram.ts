@@ -19,20 +19,32 @@ const CX = VB_W / 2;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const deg2rad = (d: number) => (d * Math.PI) / 180;
 
-const OUTLINE = "fill:var(--panel-2,#2a2a2a);stroke:var(--text,#ddd);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round";
+const OUTLINE =
+  "fill:var(--panel-2,#2a2a2a);stroke:var(--text,#ddd);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round";
 const DIM = "stroke:var(--accent,#2d6cdf);stroke-width:1;fill:none";
 const LBL = "fill:var(--text,#ddd);font:600 11px var(--mono,monospace)";
 const LBL_A = "fill:var(--accent,#5a9bff);font:600 11px var(--mono,monospace)";
 
 type Attrs = Record<string, string | number>;
-function node<K extends keyof SVGElementTagNameMap>(name: K, attrs: Attrs = {}, style = ""): SVGElementTagNameMap[K] {
+function node<K extends keyof SVGElementTagNameMap>(
+  name: K,
+  attrs: Attrs = {},
+  style = "",
+): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVGNS, name);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
   if (style) e.setAttribute("style", style);
   return e;
 }
 
-function label(parent: SVGElement, x: number, y: number, str: string, anchor: "start" | "middle" | "end" = "middle", style = LBL): void {
+function label(
+  parent: SVGElement,
+  x: number,
+  y: number,
+  str: string,
+  anchor: "start" | "middle" | "end" = "middle",
+  style = LBL,
+): void {
   const t = node("text", { x, y, "text-anchor": anchor, "dominant-baseline": "middle" }, style);
   t.textContent = str;
   parent.appendChild(t);
@@ -54,16 +66,20 @@ function drawVBit(svg: SVGElement, t: ToolDef): void {
   // Angle-faithful: width follows the angle (narrow angle → deep narrow V).
   const halfW = clamp(depth * Math.tan(half), 7, 86);
   const apexY = topY + depth;
-  const lx = CX - halfW, rx = CX + halfW;
+  const lx = CX - halfW,
+    rx = CX + halfW;
 
   // Tip flat: exaggerated (real values are sub-mm) but only present when > 0.
   const tipMM = t.tipDiameter ?? 0;
   const tipHalf = tipMM > 0 ? clamp(tipMM * 10, 2, halfW * 0.7) : 0;
-  const ltx = CX - tipHalf, rtx = CX + tipHalf;
+  const ltx = CX - tipHalf,
+    rtx = CX + tipHalf;
 
   // Shank above the flutes.
   const shankHalf = Math.min(halfW, 20);
-  svg.appendChild(node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE));
+  svg.appendChild(
+    node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE),
+  );
 
   // Flute body: flank → tip flat → flank.
   const d = `M ${lx} ${topY} L ${ltx} ${apexY} L ${rtx} ${apexY} L ${rx} ${topY} Z`;
@@ -74,8 +90,10 @@ function drawVBit(svg: SVGElement, t: ToolDef): void {
 
   // Included-angle arc + label near the apex.
   const r = 30;
-  const ax1 = CX - r * Math.sin(half), ay1 = apexY - r * Math.cos(half);
-  const ax2 = CX + r * Math.sin(half), ay2 = apexY - r * Math.cos(half);
+  const ax1 = CX - r * Math.sin(half),
+    ay1 = apexY - r * Math.cos(half);
+  const ax2 = CX + r * Math.sin(half),
+    ay2 = apexY - r * Math.cos(half);
   svg.appendChild(node("path", { d: `M ${ax1} ${ay1} A ${r} ${r} 0 0 1 ${ax2} ${ay2}` }, DIM));
   label(svg, CX, apexY - r - 9, `${vAngle}°`, "middle", LBL_A);
 
@@ -89,34 +107,48 @@ function drawVBit(svg: SVGElement, t: ToolDef): void {
 }
 
 function drawEndMill(svg: SVGElement, t: ToolDef): void {
-  const topY = 50, bottomY = 150, halfW = 42;
+  const topY = 50,
+    bottomY = 150,
+    halfW = 42;
   const shankHalf = Math.min(halfW, 24);
-  svg.appendChild(node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE));
-  svg.appendChild(node("rect", { x: CX - halfW, y: topY, width: halfW * 2, height: bottomY - topY }, OUTLINE));
+  svg.appendChild(
+    node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE),
+  );
+  svg.appendChild(
+    node("rect", { x: CX - halfW, y: topY, width: halfW * 2, height: bottomY - topY }, OUTLINE),
+  );
   dimH(svg, CX - halfW, CX + halfW, topY - 12, `⌀ ${t.diameter} mm`);
   label(svg, CX, bottomY + 14, "flat bottom", "middle", LBL);
 }
 
 function drawBallNose(svg: SVGElement, t: ToolDef): void {
-  const topY = 46, bodyBottom = 118, halfW = 42;
+  const topY = 46,
+    bodyBottom = 118,
+    halfW = 42;
   const shankHalf = Math.min(halfW, 24);
-  svg.appendChild(node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE));
+  svg.appendChild(
+    node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE),
+  );
   // Body with a semicircular tip (radius = halfW).
   const d = `M ${CX - halfW} ${topY} L ${CX - halfW} ${bodyBottom} A ${halfW} ${halfW} 0 0 0 ${CX + halfW} ${bodyBottom} L ${CX + halfW} ${topY} Z`;
   svg.appendChild(node("path", { d }, OUTLINE));
   dimH(svg, CX - halfW, CX + halfW, topY - 12, `⌀ ${t.diameter} mm`);
-  label(svg, CX, bodyBottom + halfW + 12, `r = ${(t.diameter / 2)} (⌀/2)`, "middle", LBL);
+  label(svg, CX, bodyBottom + halfW + 12, `r = ${t.diameter / 2} (⌀/2)`, "middle", LBL);
 }
 
 function drawDrill(svg: SVGElement, t: ToolDef): void {
-  const topY = 44, bodyBottom = 120, halfW = 38;
+  const topY = 44,
+    bodyBottom = 120,
+    halfW = 38;
   const tipAngle = clamp(t.tipAngle ?? 118, 30, 178);
   const half = deg2rad(tipAngle / 2);
   // Point depth follows the tip angle (converges from the body width to a point).
   const pointDepth = clamp(halfW / Math.tan(half), 8, 70);
   const apexY = bodyBottom + pointDepth;
   const shankHalf = Math.min(halfW, 22);
-  svg.appendChild(node("rect", { x: CX - shankHalf, y: 20, width: shankHalf * 2, height: topY - 20 }, OUTLINE));
+  svg.appendChild(
+    node("rect", { x: CX - shankHalf, y: 20, width: shankHalf * 2, height: topY - 20 }, OUTLINE),
+  );
   const d = `M ${CX - halfW} ${topY} L ${CX - halfW} ${bodyBottom} L ${CX} ${apexY} L ${CX + halfW} ${bodyBottom} L ${CX + halfW} ${topY} Z`;
   svg.appendChild(node("path", { d }, OUTLINE));
   dimH(svg, CX - halfW, CX + halfW, topY - 12, `⌀ ${t.diameter} mm`);
@@ -126,12 +158,25 @@ function drawDrill(svg: SVGElement, t: ToolDef): void {
 
 /** Build a fresh diagram SVG for the given tool. */
 export function buildToolDiagram(t: ToolDef): SVGSVGElement {
-  const svg = node("svg", { viewBox: `0 0 ${VB_W} ${VB_H}`, width: "100%", height: "168", preserveAspectRatio: "xMidYMid meet" });
+  const svg = node("svg", {
+    viewBox: `0 0 ${VB_W} ${VB_H}`,
+    width: "100%",
+    height: "168",
+    preserveAspectRatio: "xMidYMid meet",
+  });
   switch (t.toolType) {
-    case "v-bit": drawVBit(svg, t); break;
-    case "ball-nose": drawBallNose(svg, t); break;
-    case "drill": drawDrill(svg, t); break;
-    default: drawEndMill(svg, t); break;
+    case "v-bit":
+      drawVBit(svg, t);
+      break;
+    case "ball-nose":
+      drawBallNose(svg, t);
+      break;
+    case "drill":
+      drawDrill(svg, t);
+      break;
+    default:
+      drawEndMill(svg, t);
+      break;
   }
   return svg;
 }

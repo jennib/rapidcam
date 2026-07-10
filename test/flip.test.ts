@@ -30,7 +30,8 @@ beforeAll(async () => {
   const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
   const fakeFile = {
     name: "roboto.woff",
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File;
   ({ id: fontId } = await loadFromFile(fakeFile));
 });
@@ -39,33 +40,70 @@ beforeAll(async () => {
 
 function drillOp(id: string, entityIds: string[], face?: "top" | "bottom"): CAMOperation {
   return {
-    id, name: `drill ${id}`, type: "drill", side: "inside", entityIds, face,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -12, stepdown: 3, stepover: 0.4,
+    id,
+    name: `drill ${id}`,
+    type: "drill",
+    side: "inside",
+    entityIds,
+    face,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -12,
+    stepdown: 3,
+    stepover: 0.4,
   };
 }
 
-function profileOp(id: string, entityIds: string[], opts: Partial<CAMOperation> = {}): CAMOperation {
+function profileOp(
+  id: string,
+  entityIds: string[],
+  opts: Partial<CAMOperation> = {},
+): CAMOperation {
   return {
-    id, name: `profile ${id}`, type: "profile", side: "outside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4, ...opts,
+    id,
+    name: `profile ${id}`,
+    type: "profile",
+    side: "outside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
+    ...opts,
   };
 }
 
 /** X/Y coordinates of every cut move (G1/G2/G3 carrying X and Y). */
 function cutXY(code: string): { x: number; y: number }[] {
-  return code.split("\n")
+  return code
+    .split("\n")
     .filter((l) => /^G[123] /.test(l) && /X/.test(l) && /Y/.test(l))
-    .map((l) => ({ x: parseFloat(l.match(/X(-?[\d.]+)/)![1]), y: parseFloat(l.match(/Y(-?[\d.]+)/)![1]) }));
+    .map((l) => ({
+      x: parseFloat(l.match(/X(-?[\d.]+)/)![1]),
+      y: parseFloat(l.match(/Y(-?[\d.]+)/)![1]),
+    }));
 }
 
 // --- partition ---------------------------------------------------------------
 
 test("partitionOps splits by face and preserves document order", () => {
-  const ops = [drillOp("a", ["e1"], "top"), drillOp("b", ["e2"], "bottom"), drillOp("c", ["e3"]), drillOp("d", ["e4"], "bottom")];
+  const ops = [
+    drillOp("a", ["e1"], "top"),
+    drillOp("b", ["e2"], "bottom"),
+    drillOp("c", ["e3"]),
+    drillOp("d", ["e4"], "bottom"),
+  ];
   const { top, bottom } = partitionOps(ops);
   expect(top.map((o) => o.id)).toEqual(["a", "c"]); // undefined face = top
   expect(bottom.map((o) => o.id)).toEqual(["b", "d"]);
@@ -81,7 +119,7 @@ test("default pins sit on the flip-axis centreline and are symmetric", () => {
   expect(pinsSymmetric(ph, "h", canvas)).toBe(true);
 
   const pv = defaultPins(canvas, "v");
-  expect(pv.every((p) => Math.abs(p.y - 60) < 1e-9)).toBe(true);  // on the horizontal centreline
+  expect(pv.every((p) => Math.abs(p.y - 60) < 1e-9)).toBe(true); // on the horizontal centreline
   expect(pinsSymmetric(pv, "v", canvas)).toBe(true);
 });
 
@@ -93,8 +131,17 @@ test("mirrorPoint reflects about the correct axis", () => {
 
 test("asymmetric pins are rejected; a mirror-image pair is accepted", () => {
   const canvas = { width: 200, height: 120 };
-  expect(pinsSymmetric([{ x: 40, y: 30 }], "h", canvas)).toBe(false);              // lone off-axis pin
-  expect(pinsSymmetric([{ x: 40, y: 30 }, { x: 160, y: 30 }], "h", canvas)).toBe(true); // its mirror partner
+  expect(pinsSymmetric([{ x: 40, y: 30 }], "h", canvas)).toBe(false); // lone off-axis pin
+  expect(
+    pinsSymmetric(
+      [
+        { x: 40, y: 30 },
+        { x: 160, y: 30 },
+      ],
+      "h",
+      canvas,
+    ),
+  ).toBe(true); // its mirror partner
 });
 
 // --- geometry mirroring ------------------------------------------------------
@@ -164,11 +211,27 @@ test("textToContours reflects the finished contours when mirror is set (angle-co
 test("a bottom-face text engrave is mirrored into side B", () => {
   const doc = new CADDocument({ width: 200, height: 120 });
   const txt = doc.add(new TextEntity("Fb", fontId, 12, { x: 30, y: 55 }, 0));
-  doc.operations = [{
-    id: "e", name: "engrave", type: "engrave", side: "outside", entityIds: [txt.id], face: "bottom",
-    toolType: "v-bit", toolNumber: 1, diameter: 6, vAngle: 60,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5, depth: -1, stepdown: 1, stepover: 0.4,
-  }];
+  doc.operations = [
+    {
+      id: "e",
+      name: "engrave",
+      type: "engrave",
+      side: "outside",
+      entityIds: [txt.id],
+      face: "bottom",
+      toolType: "v-bit",
+      toolNumber: 1,
+      diameter: 6,
+      vAngle: 60,
+      feedrate: 1000,
+      plungeRate: 300,
+      spindleSpeed: 18000,
+      safeZ: 5,
+      depth: -1,
+      stepdown: 1,
+      stepover: 0.4,
+    },
+  ];
   doc.flip = { axis: "h", registration: "none", pinDiameter: 6, pinDepth: 4, pins: [] };
 
   const { sideB } = generateFlipPrograms(doc);
@@ -187,7 +250,13 @@ test("flipSides splits ops by face for per-side preview (bottom ops off side A)"
   const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 100 }));
   const hole = doc.add(new CircleEntity({ x: 40, y: 60 }, 3));
   doc.operations = [profileOp("t", [r.id]), drillOp("b", [hole.id], "bottom")];
-  doc.flip = { axis: "h", registration: "pins", pinDiameter: 8, pinDepth: 4, pins: defaultPins(doc.canvas, "h") };
+  doc.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 8,
+    pinDepth: 4,
+    pins: defaultPins(doc.canvas, "h"),
+  };
 
   const { sideA, sideB, hasPins } = flipSides(doc);
   expect(hasPins).toBe(true);
@@ -216,7 +285,13 @@ test("side A ends with pin bores reaching stockThickness + pinDepth below the to
   doc.stockThickness = 10;
   const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 100 }));
   doc.operations = [profileOp("t", [r.id])];
-  doc.flip = { axis: "h", registration: "pins", pinDiameter: 8, pinDepth: 4, pins: defaultPins(doc.canvas, "h") };
+  doc.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 8,
+    pinDepth: 4,
+    pins: defaultPins(doc.canvas, "h"),
+  };
 
   const { sideA, hasPins } = generateFlipPrograms(doc);
   expect(hasPins).toBe(true);
@@ -239,7 +314,17 @@ test("side A with registration=none is just the top program (plus banner)", () =
 
   doc.flip = { axis: "h", registration: "none", pinDiameter: 6, pinDepth: 4, pins: [] };
   const { sideA } = generateFlipPrograms(doc);
-  const withoutBanner = sideA.split("\n").filter((l) => !l.startsWith("; ===") && !l.startsWith("; Cut this") && !l.startsWith("; Stock thickness") && !l.startsWith("; This program")).join("\n").trimStart();
+  const withoutBanner = sideA
+    .split("\n")
+    .filter(
+      (l) =>
+        !l.startsWith("; ===") &&
+        !l.startsWith("; Cut this") &&
+        !l.startsWith("; Stock thickness") &&
+        !l.startsWith("; This program"),
+    )
+    .join("\n")
+    .trimStart();
   expect(withoutBanner).toBe(generateGCode(plain.operations, plain));
 });
 
@@ -251,14 +336,26 @@ test("side B is in bounds; registration bores don't trip over-deep with the pin 
   const hole = doc.add(new CircleEntity({ x: 40, y: 60 }, 3));
   const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 100 }));
   doc.operations = [profileOp("t", [r.id]), drillOp("b", [hole.id], "bottom")];
-  doc.flip = { axis: "h", registration: "pins", pinDiameter: 6, pinDepth: 4, pins: defaultPins(doc.canvas, "h") };
+  doc.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 4,
+    pins: defaultPins(doc.canvas, "h"),
+  };
 
   const { sideA, sideB } = generateFlipPrograms(doc);
   // Side B fits the (symmetric) stock envelope.
-  expect(lintGCode(sideB, buildLintContext(doc)).some((f) => f.code === "out-of-bounds")).toBe(false);
+  expect(lintGCode(sideB, buildLintContext(doc)).some((f) => f.code === "out-of-bounds")).toBe(
+    false,
+  );
   // Side A bores 4mm into the spoilboard: over-deep without the allowance, clean with it.
   expect(lintGCode(sideA, buildLintContext(doc)).some((f) => f.code === "over-deep")).toBe(true);
-  expect(lintGCode(sideA, buildLintContext(doc, { extraDepthBelowBottom: 4 })).some((f) => f.code === "over-deep")).toBe(false);
+  expect(
+    lintGCode(sideA, buildLintContext(doc, { extraDepthBelowBottom: 4 })).some(
+      (f) => f.code === "over-deep",
+    ),
+  ).toBe(false);
 });
 
 // --- validation --------------------------------------------------------------
@@ -268,7 +365,13 @@ test("validateFlip flags asymmetric pins, bottom text-free through-cuts, and emp
   const d1 = new CADDocument({ width: 200, height: 120 });
   const h1 = d1.add(new CircleEntity({ x: 40, y: 60 }, 3));
   d1.operations = [drillOp("b", [h1.id], "bottom")];
-  d1.flip = { axis: "h", registration: "pins", pinDiameter: 6, pinDepth: 4, pins: [{ x: 40, y: 30 }] };
+  d1.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 4,
+    pins: [{ x: 40, y: 30 }],
+  };
   expect(validateFlip(d1).some((w) => /not symmetric/.test(w))).toBe(true);
 
   // No bottom ops at all.
@@ -297,7 +400,13 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
     profileOp("t", [r1.id], { toolType: "v-bit", vAngle: 60 }),
     drillOp("b", [hb1.id], "bottom"),
   ];
-  d1.flip = { axis: "h", registration: "pins", pinDiameter: 6, pinDepth: 4, pins: defaultPins(d1.canvas, "h") };
+  d1.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 4,
+    pins: defaultPins(d1.canvas, "h"),
+  };
   expect(validateFlip(d1).some((w) => /can't cut a clean straight hole|v-bit/.test(w))).toBe(true);
 
   // Pin narrower than the boring tool → hole comes out tool-sized (loose).
@@ -305,7 +414,13 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
   const r2 = d2.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 100 }));
   const hb2 = d2.add(new CircleEntity({ x: 100, y: 60 }, 3));
   d2.operations = [profileOp("t", [r2.id]), drillOp("b", [hb2.id], "bottom")]; // tool ⌀6
-  d2.flip = { axis: "h", registration: "pins", pinDiameter: 4, pinDepth: 4, pins: defaultPins(d2.canvas, "h") };
+  d2.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 4,
+    pinDepth: 4,
+    pins: defaultPins(d2.canvas, "h"),
+  };
   expect(validateFlip(d2).some((w) => /smaller than the boring tool|too loose/.test(w))).toBe(true);
 
   // A flat end mill with a pin at least the tool diameter → neither guard fires.
@@ -313,7 +428,13 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
   const r3 = d3.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 100 }));
   const hb3 = d3.add(new CircleEntity({ x: 100, y: 60 }, 3));
   d3.operations = [profileOp("t", [r3.id]), drillOp("b", [hb3.id], "bottom")];
-  d3.flip = { axis: "h", registration: "pins", pinDiameter: 8, pinDepth: 4, pins: defaultPins(d3.canvas, "h") };
+  d3.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 8,
+    pinDepth: 4,
+    pins: defaultPins(d3.canvas, "h"),
+  };
   const w3 = validateFlip(d3);
   expect(w3.some((w) => /boring tool|straight hole/.test(w))).toBe(false);
 });
@@ -324,7 +445,16 @@ test("flip settings + op face round-trip through serialize/apply and omit when n
   const doc = new CADDocument({ width: 200, height: 120 });
   const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 100 }));
   doc.operations = [profileOp("t", [r.id], { face: "bottom" })];
-  doc.flip = { axis: "v", registration: "pins", pinDiameter: 6, pinDepth: 3, pins: [{ x: 30, y: 60 }, { x: 170, y: 60 }] };
+  doc.flip = {
+    axis: "v",
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 3,
+    pins: [
+      { x: 30, y: 60 },
+      { x: 170, y: 60 },
+    ],
+  };
 
   const file = serializeDoc(doc, "flip-doc");
   expect(file.flip).toEqual(doc.flip);

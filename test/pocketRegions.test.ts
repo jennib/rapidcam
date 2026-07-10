@@ -12,17 +12,33 @@ import type { Vec2 } from "../src/core/vec2";
 // produces).
 
 function addSquare(doc: CADDocument, x: number, y: number, s: number): LineEntity[] {
-  const p = [{ x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s }];
+  const p = [
+    { x, y },
+    { x: x + s, y },
+    { x: x + s, y: y + s },
+    { x, y: y + s },
+  ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4]))) as LineEntity[];
 }
 
 function pocketOp(entityIds: string[], islandIds: string[]): CAMOperation {
   return {
-    id: "op1", name: "pocket", type: "pocket", side: "outside",
-    entityIds, islandIds: islandIds.length ? islandIds : undefined,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 10000,
-    safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4,
+    id: "op1",
+    name: "pocket",
+    type: "pocket",
+    side: "outside",
+    entityIds,
+    islandIds: islandIds.length ? islandIds : undefined,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 10000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
   };
 }
 
@@ -33,7 +49,12 @@ describe("pocket G-code for multiple line-chained regions", () => {
   const pocket2 = addSquare(doc, 100, 0, 30);
 
   const code = generateGCode(
-    [pocketOp([...pocket1, ...pocket2].map((e) => e.id), island1.map((e) => e.id))],
+    [
+      pocketOp(
+        [...pocket1, ...pocket2].map((e) => e.id),
+        island1.map((e) => e.id),
+      ),
+    ],
     doc,
   );
   const cutXs = code
@@ -42,7 +63,7 @@ describe("pocket G-code for multiple line-chained regions", () => {
     .map((l) => parseFloat(l.match(/X(-?[\d.]+)/)![1]));
 
   it("cuts both disjoint boundaries", () => {
-    expect(cutXs.some((x) => x < 60)).toBe(true);   // first pocket
+    expect(cutXs.some((x) => x < 60)).toBe(true); // first pocket
     expect(cutXs.some((x) => x >= 100)).toBe(true); // second pocket
   });
 
@@ -68,7 +89,10 @@ describe("pocket G-code from region references", () => {
   };
 
   function genWithRegions(regions: RegionRef[]): number[] {
-    const op = pocketOp([...A, ...B].map((e) => e.id), []);
+    const op = pocketOp(
+      [...A, ...B].map((e) => e.id),
+      [],
+    );
     op.regions = regions;
     const code = generateGCode([op], doc);
     return code
@@ -102,6 +126,11 @@ describe("pocket G-code from region references", () => {
 });
 
 function addSquareWH(doc: CADDocument, x: number, y: number, w: number, h: number): LineEntity[] {
-  const p = [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+  const p = [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + h },
+    { x, y: y + h },
+  ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4]))) as LineEntity[];
 }

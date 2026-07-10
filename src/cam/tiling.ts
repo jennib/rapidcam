@@ -112,9 +112,13 @@ export function planTiles(bounds: Bounds, opts: StitchOptions): StitchPlan {
   // Tile the *toolpath* extent, not the raw geometry, so an outermost outside
   // profile still fits its tile (its path bulges out by up to `toolpathMargin`).
   const m = Math.max(0, opts.toolpathMargin ?? 0);
-  const region: Bounds = m > 0
-    ? { min: { x: bounds.min.x - m, y: bounds.min.y - m }, max: { x: bounds.max.x + m, y: bounds.max.y + m } }
-    : bounds;
+  const region: Bounds =
+    m > 0
+      ? {
+          min: { x: bounds.min.x - m, y: bounds.min.y - m },
+          max: { x: bounds.max.x + m, y: bounds.max.y + m },
+        }
+      : bounds;
 
   const xs = edges(region.min.x, region.max.x, tileW);
   const ys = edges(region.min.y, region.max.y, tileH);
@@ -152,7 +156,10 @@ export function planTiles(bounds: Bounds, opts: StitchOptions): StitchPlan {
       ts = [0.5];
     } else {
       const hi = 1 - inset;
-      ts = Array.from({ length: featuresPerSeam }, (_, i) => inset + ((hi - inset) * i) / (featuresPerSeam - 1));
+      ts = Array.from(
+        { length: featuresPerSeam },
+        (_, i) => inset + ((hi - inset) * i) / (featuresPerSeam - 1),
+      );
     }
 
     // Drop any feature that would be drilled/scored into a keep-out region.
@@ -163,16 +170,30 @@ export function planTiles(bounds: Bounds, opts: StitchOptions): StitchPlan {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols - 1; c++) {
       const x = xs[c + 1];
-      const a = { x, y: ys[r] }, b = { x, y: ys[r + 1] };
-      seams.push({ orientation: "vertical", a, b, tiles: [idx(r, c), idx(r, c + 1)], features: featuresAlong(a, b) });
+      const a = { x, y: ys[r] },
+        b = { x, y: ys[r + 1] };
+      seams.push({
+        orientation: "vertical",
+        a,
+        b,
+        tiles: [idx(r, c), idx(r, c + 1)],
+        features: featuresAlong(a, b),
+      });
     }
   }
   // Horizontal seams between vertically-adjacent tiles.
   for (let c = 0; c < cols; c++) {
     for (let r = 0; r < rows - 1; r++) {
       const y = ys[r + 1];
-      const a = { x: xs[c], y }, b = { x: xs[c + 1], y };
-      seams.push({ orientation: "horizontal", a, b, tiles: [idx(r, c), idx(r + 1, c)], features: featuresAlong(a, b) });
+      const a = { x: xs[c], y },
+        b = { x: xs[c + 1], y };
+      seams.push({
+        orientation: "horizontal",
+        a,
+        b,
+        tiles: [idx(r, c), idx(r + 1, c)],
+        features: featuresAlong(a, b),
+      });
     }
   }
 
@@ -182,7 +203,10 @@ export function planTiles(bounds: Bounds, opts: StitchOptions): StitchPlan {
   for (const s of seams) {
     for (const f of s.features) {
       const k = keyOf(f);
-      if (!seen.has(k)) { seen.add(k); features.push(f); }
+      if (!seen.has(k)) {
+        seen.add(k);
+        features.push(f);
+      }
     }
   }
 

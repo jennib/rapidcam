@@ -17,7 +17,10 @@ function polyLines(pts: Vec2[]): LineEntity[] {
 }
 
 const square = (x: number, y: number, s: number): Vec2[] => [
-  { x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s },
+  { x, y },
+  { x: x + s, y },
+  { x: x + s, y: y + s },
+  { x, y: y + s },
 ];
 
 // --- chaining ------------------------------------------------------------------
@@ -62,7 +65,8 @@ describe("chainLinesIntoPolygons", () => {
     expect(poly.length).toBe(4);
     // Each consecutive pair must be an edge of the square (length 10).
     for (let i = 0; i < poly.length; i++) {
-      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const a = poly[i],
+        b = poly[(i + 1) % poly.length];
       expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(10);
     }
   });
@@ -117,4 +121,3 @@ describe("collectClosedLoops", () => {
     expect(collectClosedLoops(segs).length).toBe(0);
   });
 });
-

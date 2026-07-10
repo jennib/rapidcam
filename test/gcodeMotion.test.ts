@@ -4,8 +4,12 @@ import { CADDocument } from "../src/model/document";
 import { RectEntity, CircleEntity } from "../src/model/entities";
 import type { CAMOperation } from "../src/cam/types";
 import {
-  parseProgram, emitProgram, isCutMove, unsupportedMotions,
-  type GProgram, type GMoveEvent,
+  parseProgram,
+  emitProgram,
+  isCutMove,
+  unsupportedMotions,
+  type GProgram,
+  type GMoveEvent,
 } from "../src/cam/gcodeMotion";
 
 /** Real generator output: a rect outside profile (straight G1s) + a circle profile (G2 arcs). */
@@ -15,9 +19,18 @@ function sampleGcode(): string {
   const circ = new CircleEntity({ x: 200, y: 150 }, 30);
   doc.entities.push(rect, circ);
   const base = {
-    name: "t", toolType: "end-mill" as const, side: "outside" as const,
-    toolNumber: 1, diameter: 6, feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
+    name: "t",
+    toolType: "end-mill" as const,
+    side: "outside" as const,
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
   };
   const ops: CAMOperation[] = [
     { ...base, id: "p1", type: "profile", entityIds: [rect.id] },
@@ -28,8 +41,7 @@ function sampleGcode(): string {
 
 const moves = (p: GProgram): GMoveEvent[] =>
   p.events.filter((e): e is GMoveEvent => e.kind === "move");
-const raws = (p: GProgram): string[] =>
-  p.events.flatMap((e) => (e.kind === "raw" ? [e.text] : []));
+const raws = (p: GProgram): string[] => p.events.flatMap((e) => (e.kind === "raw" ? [e.text] : []));
 
 test("round-trips real generator output without losing positions or pass-through lines", () => {
   const g = sampleGcode();
@@ -53,7 +65,8 @@ test("parses the circle profile as real arcs with incremental centres", () => {
 test("translation shifts absolute coords but leaves arc I/J, feeds and raw lines alone", () => {
   const p = parseProgram(sampleGcode());
   const shifted = parseProgram(emitProgram(p, { dx: 10, dy: 20 }));
-  const a = moves(p), b = moves(shifted);
+  const a = moves(p),
+    b = moves(shifted);
   expect(b.length).toBe(a.length);
   a.forEach((m, k) => {
     if (m.hasX) expect(b[k].x).toBeCloseTo(m.x - 10, 3);
@@ -74,5 +87,7 @@ test("keeps commented moves verbatim (park lines) rather than mis-translating th
   const g = "G0 X10 Y10 ; park for tool change\nG1 X5 Y5 F100";
   const p = parseProgram(g);
   expect(p.events[0]).toEqual({ kind: "raw", text: "G0 X10 Y10 ; park for tool change" });
-  expect(emitProgram(p, { dx: 100, dy: 100 }).split("\n")[0]).toBe("G0 X10 Y10 ; park for tool change");
+  expect(emitProgram(p, { dx: 100, dy: 100 }).split("\n")[0]).toBe(
+    "G0 X10 Y10 ; park for tool change",
+  );
 });

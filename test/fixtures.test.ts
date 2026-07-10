@@ -12,8 +12,20 @@ import { buildLintContext, lintGCode } from "../src/cam/lint";
 import type { CAMOperation } from "../src/cam/types";
 
 /** Add a fixture layer with a clamp rectangle on it; returns the doc. */
-function withClamp(doc: CADDocument, rect: [number, number, number, number], height?: number): void {
-  doc.layers.push({ id: "clamps", name: "Clamps", color: "#e05a5a", visible: true, locked: false, fixture: true, ...(height ? { fixtureHeight: height } : {}) });
+function withClamp(
+  doc: CADDocument,
+  rect: [number, number, number, number],
+  height?: number,
+): void {
+  doc.layers.push({
+    id: "clamps",
+    name: "Clamps",
+    color: "#e05a5a",
+    visible: true,
+    locked: false,
+    fixture: true,
+    ...(height ? { fixtureHeight: height } : {}),
+  });
   const [x0, y0, x1, y1] = rect;
   const c = doc.add(new RectEntity({ x: x0, y: y0 }, { x: x1, y: y1 }));
   c.layerId = "clamps";
@@ -21,19 +33,41 @@ function withClamp(doc: CADDocument, rect: [number, number, number, number], hei
 
 function profileOp(entityIds: string[]): CAMOperation {
   return {
-    id: "op", name: "cut", type: "profile", side: "outside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -3, stepdown: 3, stepover: 0.4,
+    id: "op",
+    name: "cut",
+    type: "profile",
+    side: "outside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 3,
+    stepover: 0.4,
   };
 }
 
 function drillOp(entityIds: string[], safeZ = 5): CAMOperation {
   return {
-    id: "op", name: "drill", type: "drill", side: "inside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ, depth: -5, stepdown: 5, stepover: 0.4,
+    id: "op",
+    name: "drill",
+    type: "drill",
+    side: "inside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ,
+    depth: -5,
+    stepdown: 5,
+    stepover: 0.4,
   };
 }
 
@@ -78,8 +112,8 @@ test("a rapid clears a clamp shorter than safe Z, but collides when it's taller"
     doc.operations = [drillOp([h1.id, h2.id], 5)];
     return lintGCode(generateGCode(doc.operations, doc), buildLintContext(doc));
   };
-  expect(build(3).some((f) => f.code === "fixture-collision")).toBe(false);  // rapid clears
-  expect(build(10).some((f) => f.code === "fixture-collision")).toBe(true);  // rapid hits
+  expect(build(3).some((f) => f.code === "fixture-collision")).toBe(false); // rapid clears
+  expect(build(10).some((f) => f.code === "fixture-collision")).toBe(true); // rapid hits
 });
 
 test("laser jobs skip the fixture (Z-collision) check", () => {

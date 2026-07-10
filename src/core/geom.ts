@@ -2,12 +2,16 @@
 
 import { type Vec2, sub, dot, lenSq, dist, scale, add } from "./vec2";
 
-export const clamp = (v: number, lo: number, hi: number): number =>
-  v < lo ? lo : v > hi ? hi : v;
+export const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
 /** Vertices of a regular n-gon: `n` points on the circumradius `r` about `center`,
  *  the first at angle `startAngle` (rad), proceeding CCW. */
-export function regularPolygonPoints(center: Vec2, r: number, n: number, startAngle: number): Vec2[] {
+export function regularPolygonPoints(
+  center: Vec2,
+  r: number,
+  n: number,
+  startAngle: number,
+): Vec2[] {
   const pts: Vec2[] = [];
   for (let i = 0; i < n; i++) {
     const a = startAngle + (i * 2 * Math.PI) / n;
@@ -39,24 +43,36 @@ export function distToCircle(p: Vec2, c: Vec2, r: number): number {
  * Distance from point p to an arc (CCW from startAngle to endAngle, world Y-up).
  * Returns distance to the arc curve itself; falls back to distance to the nearer endpoint.
  */
-export function distToArc(p: Vec2, center: Vec2, radius: number, startAngle: number, endAngle: number): number {
+export function distToArc(
+  p: Vec2,
+  center: Vec2,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+): number {
   const theta = Math.atan2(p.y - center.y, p.x - center.x);
   // How far (CCW) from startAngle to theta, normalized to [0, 2π)
-  const span = ((endAngle - startAngle) % TAU + TAU) % TAU;
-  const t = ((theta - startAngle) % TAU + TAU) % TAU;
+  const span = (((endAngle - startAngle) % TAU) + TAU) % TAU;
+  const t = (((theta - startAngle) % TAU) + TAU) % TAU;
   if (t <= span) {
     return Math.abs(dist(p, center) - radius);
   }
   // Outside the arc span — distance to the nearer endpoint.
-  const arcStart: Vec2 = { x: center.x + radius * Math.cos(startAngle), y: center.y + radius * Math.sin(startAngle) };
-  const arcEnd: Vec2 = { x: center.x + radius * Math.cos(endAngle), y: center.y + radius * Math.sin(endAngle) };
+  const arcStart: Vec2 = {
+    x: center.x + radius * Math.cos(startAngle),
+    y: center.y + radius * Math.sin(startAngle),
+  };
+  const arcEnd: Vec2 = {
+    x: center.x + radius * Math.cos(endAngle),
+    y: center.y + radius * Math.sin(endAngle),
+  };
   return Math.min(dist(p, arcStart), dist(p, arcEnd));
 }
 
 /** True when angle θ lies within the CCW arc from startAngle to endAngle. */
 export function angleInArc(theta: number, startAngle: number, endAngle: number): boolean {
-  const span = ((endAngle - startAngle) % TAU + TAU) % TAU;
-  const t = ((theta - startAngle) % TAU + TAU) % TAU;
+  const span = (((endAngle - startAngle) % TAU) + TAU) % TAU;
+  const t = (((theta - startAngle) % TAU) + TAU) % TAU;
   return t <= span;
 }
 
@@ -90,13 +106,19 @@ export function normalizeAngle(a: number): number {
  * or null if parallel or no intersection within both segments.
  */
 export function segSegIntersect(
-  a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2,
+  a1: Vec2,
+  a2: Vec2,
+  b1: Vec2,
+  b2: Vec2,
 ): { point: Vec2; ta: number; tb: number } | null {
-  const rx = a2.x - a1.x, ry = a2.y - a1.y;
-  const sx = b2.x - b1.x, sy = b2.y - b1.y;
+  const rx = a2.x - a1.x,
+    ry = a2.y - a1.y;
+  const sx = b2.x - b1.x,
+    sy = b2.y - b1.y;
   const denom = rx * sy - ry * sx;
   if (Math.abs(denom) < 1e-10) return null;
-  const dx = b1.x - a1.x, dy = b1.y - a1.y;
+  const dx = b1.x - a1.x,
+    dy = b1.y - a1.y;
   const ta = (dx * sy - dy * sx) / denom;
   const tb = (dx * ry - dy * rx) / denom;
   const EPS = 1e-9;
@@ -115,10 +137,15 @@ export function segSegIntersect(
  * theta, the world angle of the hit point on the circle.
  */
 export function segCircleIntersect(
-  a: Vec2, b: Vec2, c: Vec2, r: number,
+  a: Vec2,
+  b: Vec2,
+  c: Vec2,
+  r: number,
 ): { point: Vec2; t: number; theta: number }[] {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const fx = a.x - c.x, fy = a.y - c.y;
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
+  const fx = a.x - c.x,
+    fy = a.y - c.y;
   const A = dx * dx + dy * dy;
   if (A < 1e-20) return [];
   const B = 2 * (fx * dx + fy * dy);
@@ -128,7 +155,8 @@ export function segCircleIntersect(
   const sq = Math.sqrt(disc);
   const EPS = 1e-9;
   const out: { point: Vec2; t: number; theta: number }[] = [];
-  for (const s of sq < 1e-12 ? [1] : [-1, 1]) { // tangent → single hit
+  for (const s of sq < 1e-12 ? [1] : [-1, 1]) {
+    // tangent → single hit
     const t = (-B + s * sq) / (2 * A);
     if (t < -EPS || t > 1 + EPS) continue;
     const tc = clamp(t, 0, 1);
@@ -140,7 +168,8 @@ export function segCircleIntersect(
 
 /** Intersect two circles. Returns 0–2 points (1 when tangent). */
 export function circleCircleIntersect(c1: Vec2, r1: number, c2: Vec2, r2: number): Vec2[] {
-  const dx = c2.x - c1.x, dy = c2.y - c1.y;
+  const dx = c2.x - c1.x,
+    dy = c2.y - c1.y;
   const d = Math.hypot(dx, dy);
   if (d < 1e-12) return []; // concentric (or identical) — no point intersections
   if (d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
@@ -148,9 +177,11 @@ export function circleCircleIntersect(c1: Vec2, r1: number, c2: Vec2, r2: number
   const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
   const h2 = r1 * r1 - a * a;
   const h = h2 > 0 ? Math.sqrt(h2) : 0;
-  const mx = c1.x + (a * dx) / d, my = c1.y + (a * dy) / d;
+  const mx = c1.x + (a * dx) / d,
+    my = c1.y + (a * dy) / d;
   if (h < 1e-9) return [{ x: mx, y: my }];
-  const ox = (-dy / d) * h, oy = (dx / d) * h;
+  const ox = (-dy / d) * h,
+    oy = (dx / d) * h;
   return [
     { x: mx + ox, y: my + oy },
     { x: mx - ox, y: my - oy },
@@ -178,7 +209,8 @@ export function evalBezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): V
  *  Finds derivative roots (where the curve reaches its x/y extremes) using the
  *  quadratic formula and includes any interior extremes in the result. */
 export function bezierBounds(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2): { min: Vec2; max: Vec2 } {
-  const xs = [p0.x, p3.x], ys = [p0.y, p3.y];
+  const xs = [p0.x, p3.x],
+    ys = [p0.y, p3.y];
 
   for (const axis of ["x", "y"] as const) {
     // Coefficients of dx/dt = 3(at² + bt + c) where:
@@ -215,14 +247,21 @@ export function bezierBounds(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2): { min: Vec
  * Both halves together trace the original curve exactly.
  */
 export function splitBezier(
-  p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number,
+  p0: Vec2,
+  p1: Vec2,
+  p2: Vec2,
+  p3: Vec2,
+  t: number,
 ): { left: [Vec2, Vec2, Vec2, Vec2]; right: [Vec2, Vec2, Vec2, Vec2] } {
   const lp = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  const a = lp(p0, p1), b = lp(p1, p2), c = lp(p2, p3);
-  const d = lp(a, b), e = lp(b, c);
+  const a = lp(p0, p1),
+    b = lp(p1, p2),
+    c = lp(p2, p3);
+  const d = lp(a, b),
+    e = lp(b, c);
   const g = lp(d, e);
   return {
-    left:  [{ ...p0 }, a, d, g],
+    left: [{ ...p0 }, a, d, g],
     right: [{ ...g }, e, c, { ...p3 }],
   };
 }
@@ -236,13 +275,15 @@ export function flattenBezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, tolerance:
 }
 
 function bezierSubdivide(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, tol2: number, out: Vec2[]): void {
-  const dx = p3.x - p0.x, dy = p3.y - p0.y;
+  const dx = p3.x - p0.x,
+    dy = p3.y - p0.y;
   const len2 = dx * dx + dy * dy;
 
   const distSq = (p: Vec2): number => {
     if (len2 < 1e-20) return (p.x - p0.x) ** 2 + (p.y - p0.y) ** 2;
     const t = ((p.x - p0.x) * dx + (p.y - p0.y) * dy) / len2;
-    const cx = p0.x + t * dx - p.x, cy = p0.y + t * dy - p.y;
+    const cx = p0.x + t * dx - p.x,
+      cy = p0.y + t * dy - p.y;
     return cx * cx + cy * cy;
   };
 
@@ -252,13 +293,19 @@ function bezierSubdivide(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, tol2: number, o
   }
 
   // De Casteljau subdivision at t = 0.5
-  const m01x = (p0.x + p1.x) * 0.5, m01y = (p0.y + p1.y) * 0.5;
-  const m12x = (p1.x + p2.x) * 0.5, m12y = (p1.y + p2.y) * 0.5;
-  const m23x = (p2.x + p3.x) * 0.5, m23y = (p2.y + p3.y) * 0.5;
-  const m012x = (m01x + m12x) * 0.5, m012y = (m01y + m12y) * 0.5;
-  const m123x = (m12x + m23x) * 0.5, m123y = (m12y + m23y) * 0.5;
-  const mx = (m012x + m123x) * 0.5, my = (m012y + m123y) * 0.5;
+  const m01x = (p0.x + p1.x) * 0.5,
+    m01y = (p0.y + p1.y) * 0.5;
+  const m12x = (p1.x + p2.x) * 0.5,
+    m12y = (p1.y + p2.y) * 0.5;
+  const m23x = (p2.x + p3.x) * 0.5,
+    m23y = (p2.y + p3.y) * 0.5;
+  const m012x = (m01x + m12x) * 0.5,
+    m012y = (m01y + m12y) * 0.5;
+  const m123x = (m12x + m23x) * 0.5,
+    m123y = (m12y + m23y) * 0.5;
+  const mx = (m012x + m123x) * 0.5,
+    my = (m012y + m123y) * 0.5;
 
-  bezierSubdivide(p0,             { x: m01x,  y: m01y  }, { x: m012x, y: m012y }, { x: mx, y: my }, tol2, out);
-  bezierSubdivide({ x: mx, y: my }, { x: m123x, y: m123y }, { x: m23x,  y: m23y  }, p3,             tol2, out);
+  bezierSubdivide(p0, { x: m01x, y: m01y }, { x: m012x, y: m012y }, { x: mx, y: my }, tol2, out);
+  bezierSubdivide({ x: mx, y: my }, { x: m123x, y: m123y }, { x: m23x, y: m23y }, p3, tol2, out);
 }

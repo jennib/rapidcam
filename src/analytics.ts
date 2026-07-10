@@ -192,11 +192,24 @@ function renderBanner(): void {
   banner.setAttribute("role", "dialog");
   banner.setAttribute("aria-label", "Analytics consent");
   banner.style.cssText = [
-    "position:fixed", "bottom:16px", "left:16px", "right:16px", "max-width:520px",
-    "margin:0 auto", "z-index:10000", "background:#1e1e1e", "color:#ddd",
-    "border:1px solid #3a3a3a", "border-radius:8px", "padding:14px 16px",
-    "box-shadow:0 4px 16px rgba(0,0,0,0.4)", "font:13px/1.5 system-ui,sans-serif",
-    "display:flex", "gap:12px", "align-items:center", "flex-wrap:wrap",
+    "position:fixed",
+    "bottom:16px",
+    "left:16px",
+    "right:16px",
+    "max-width:520px",
+    "margin:0 auto",
+    "z-index:10000",
+    "background:#1e1e1e",
+    "color:#ddd",
+    "border:1px solid #3a3a3a",
+    "border-radius:8px",
+    "padding:14px 16px",
+    "box-shadow:0 4px 16px rgba(0,0,0,0.4)",
+    "font:13px/1.5 system-ui,sans-serif",
+    "display:flex",
+    "gap:12px",
+    "align-items:center",
+    "flex-wrap:wrap",
   ].join(";");
 
   const text = document.createElement("span");
@@ -210,8 +223,13 @@ function renderBanner(): void {
   // anonymous usage events above and left unchecked by default.
   const replayLabel = document.createElement("label");
   replayLabel.style.cssText = [
-    "flex:1 1 100%", "display:flex", "gap:8px", "align-items:flex-start",
-    "cursor:pointer", "color:#bbb", "font-size:12px",
+    "flex:1 1 100%",
+    "display:flex",
+    "gap:8px",
+    "align-items:flex-start",
+    "cursor:pointer",
+    "color:#bbb",
+    "font-size:12px",
   ].join(";");
   const replayCheck = document.createElement("input");
   replayCheck.type = "checkbox";
@@ -229,8 +247,12 @@ function renderBanner(): void {
 
   for (const b of [accept, decline]) {
     b.style.cssText = [
-      "padding:6px 14px", "border-radius:6px", "border:1px solid #4a4a4a",
-      "cursor:pointer", "font:inherit", "white-space:nowrap",
+      "padding:6px 14px",
+      "border-radius:6px",
+      "border:1px solid #4a4a4a",
+      "cursor:pointer",
+      "font:inherit",
+      "white-space:nowrap",
     ].join(";");
   }
   accept.style.background = "#2d6cdf";
@@ -240,8 +262,14 @@ function renderBanner(): void {
   decline.style.color = "#ddd";
 
   const close = () => banner.remove();
-  accept.addEventListener("click", () => { grantConsent(replayCheck.checked); close(); });
-  decline.addEventListener("click", () => { denyConsent(); close(); });
+  accept.addEventListener("click", () => {
+    grantConsent(replayCheck.checked);
+    close();
+  });
+  decline.addEventListener("click", () => {
+    denyConsent();
+    close();
+  });
 
   banner.append(text, replayLabel, accept, decline);
   document.body.appendChild(banner);

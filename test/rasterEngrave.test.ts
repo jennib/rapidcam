@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { rasterEngrave, rasterField, resampleGrid, type RasterGrid, type RasterEngraveParams, type RasterFieldParams } from "../src/cam/rasterEngrave";
+import {
+  rasterEngrave,
+  rasterField,
+  resampleGrid,
+  type RasterGrid,
+  type RasterEngraveParams,
+  type RasterFieldParams,
+} from "../src/cam/rasterEngrave";
 
 // A grid from a 2D array of greyscale rows (row 0 = top), values 0..1.
 const grid = (rowsTopDown: number[][]): RasterGrid => ({
@@ -9,11 +16,19 @@ const grid = (rowsTopDown: number[][]): RasterGrid => ({
 });
 
 const P = (over: Partial<RasterEngraveParams> = {}): RasterEngraveParams => ({
-  widthMM: 4, heightMM: 2, lineIntervalMM: 1, maxPower: 100, minPower: 0, ...over,
+  widthMM: 4,
+  heightMM: 2,
+  lineIntervalMM: 1,
+  maxPower: 100,
+  minPower: 0,
+  ...over,
 });
 
 const F = (over: Partial<RasterFieldParams> = {}): RasterFieldParams => ({
-  widthMM: 4, heightMM: 2, lineIntervalMM: 1, ...over,
+  widthMM: 4,
+  heightMM: 2,
+  lineIntervalMM: 1,
+  ...over,
 });
 
 describe("rasterField (shared level grid)", () => {
@@ -25,18 +40,28 @@ describe("rasterField (shared level grid)", () => {
 
   it("maps darkness to level (black=1, white=0) and quantises", () => {
     // 1×1 mid-grey at a coarse level step → quantised darkness.
-    const f = rasterField(grid([[0.5]]), F({ widthMM: 1, heightMM: 1, lineIntervalMM: 1, levelStep: 0.1 }));
+    const f = rasterField(
+      grid([[0.5]]),
+      F({ widthMM: 1, heightMM: 1, lineIntervalMM: 1, levelStep: 0.1 }),
+    );
     expect(f.rows).toHaveLength(1);
     expect(f.rows[0].levels[0]).toBeCloseTo(0.5, 6); // 1 - 0.5
-    expect([...rasterField(grid([[0]]), F({ widthMM: 1, heightMM: 1 })).rows[0].levels]).toEqual([1]); // black
-    expect([...rasterField(grid([[1]]), F({ widthMM: 1, heightMM: 1 })).rows[0].levels]).toEqual([0]); // white
+    expect([...rasterField(grid([[0]]), F({ widthMM: 1, heightMM: 1 })).rows[0].levels]).toEqual([
+      1,
+    ]); // black
+    expect([...rasterField(grid([[1]]), F({ widthMM: 1, heightMM: 1 })).rows[0].levels]).toEqual([
+      0,
+    ]); // white
   });
 
   it("blanks dots at/above the white threshold but keeps near-white as a small level", () => {
-    const f = rasterField(grid([[0.9, 0.97]]), F({ widthMM: 2, heightMM: 1, whiteThreshold: 0.96 }));
+    const f = rasterField(
+      grid([[0.9, 0.97]]),
+      F({ widthMM: 2, heightMM: 1, whiteThreshold: 0.96 }),
+    );
     const lv = f.rows[0].levels;
     expect(lv[0]).toBeCloseTo(0.1, 2); // 1 - 0.9
-    expect(lv[1]).toBe(0);             // 0.97 ≥ 0.96 → blank
+    expect(lv[1]).toBe(0); // 0.97 ≥ 0.96 → blank
   });
 
   it("invert cuts the light areas instead of the dark", () => {
@@ -54,13 +79,19 @@ describe("rasterField (shared level grid)", () => {
 
   it("applies a tone curve (gamma) to the level, fixing the black/white endpoints", () => {
     // (levels are quantised to 1/255, so compare at 2 decimals)
-    const mid = (gamma: number) => rasterField(grid([[0.5]]), F({ widthMM: 1, heightMM: 1, lineIntervalMM: 1, gamma })).rows[0].levels[0];
-    expect(mid(1)).toBeCloseTo(0.5, 2);                 // linear: darkness 0.5
-    expect(mid(2)).toBeCloseTo(0.25, 2);                // >1 lifts mid-tones (shallower) = 0.5²
-    expect(mid(0.5)).toBeCloseTo(Math.SQRT1_2, 2);      // <1 deepens them = 0.5^0.5
+    const mid = (gamma: number) =>
+      rasterField(grid([[0.5]]), F({ widthMM: 1, heightMM: 1, lineIntervalMM: 1, gamma })).rows[0]
+        .levels[0];
+    expect(mid(1)).toBeCloseTo(0.5, 2); // linear: darkness 0.5
+    expect(mid(2)).toBeCloseTo(0.25, 2); // >1 lifts mid-tones (shallower) = 0.5²
+    expect(mid(0.5)).toBeCloseTo(Math.SQRT1_2, 2); // <1 deepens them = 0.5^0.5
     // Endpoints are unchanged by gamma.
-    expect(rasterField(grid([[0]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0]).toBe(1); // black
-    expect(rasterField(grid([[1]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0]).toBe(0); // white
+    expect(
+      rasterField(grid([[0]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0],
+    ).toBe(1); // black
+    expect(
+      rasterField(grid([[1]]), F({ widthMM: 1, heightMM: 1, gamma: 2 })).rows[0].levels[0],
+    ).toBe(0); // white
   });
 
   it("box-averages to the dot pitch (shares resampleGrid with rasterEngrave)", () => {
@@ -108,7 +139,7 @@ describe("rasterEngrave", () => {
     const runs = rows[0].runs;
     expect(runs.map((r) => [r.x0, r.x1, r.power])).toEqual([
       [0, 2, 100], // two black px
-      [2, 4, 50],  // two mid px
+      [2, 4, 50], // two mid px
       [4, 5, 100], // one black px
     ]);
   });
@@ -128,7 +159,7 @@ describe("rasterEngrave", () => {
   });
 
   it("quantises power to powerStep so near-equal tones coalesce", () => {
-    const g = grid([[0.50, 0.51]]); // would map to 50 and 49
+    const g = grid([[0.5, 0.51]]); // would map to 50 and 49
     const fine = rasterEngrave(g, P({ widthMM: 2, heightMM: 1 }));
     expect(fine[0].runs).toHaveLength(2); // step 1 keeps them apart
     const coarse = rasterEngrave(g, P({ widthMM: 2, heightMM: 1, powerStep: 10 }));
@@ -171,12 +202,11 @@ describe("rasterEngrave", () => {
 
   it("resampleGrid downsamples by area-averaging and bounds the output size", () => {
     // 4×4 with a black top-left quadrant, white elsewhere → 2×2 averaged.
-    const src: RasterGrid = { width: 4, height: 4, data: [
-      0, 0, 1, 1,
-      0, 0, 1, 1,
-      1, 1, 1, 1,
-      1, 1, 1, 1,
-    ] };
+    const src: RasterGrid = {
+      width: 4,
+      height: 4,
+      data: [0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    };
     const out = resampleGrid(src, 2, 2);
     expect([...out]).toEqual([0, 1, 1, 1]); // TL cell all-black, rest all-white
   });

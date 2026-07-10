@@ -9,8 +9,13 @@
 
 import { type Vec2, dot, sub } from "../core/vec2";
 import {
-  type Entity, LineEntity, CircleEntity, ArcEntity,
-  PolylineEntity, BezierEntity, RectEntity,
+  type Entity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+  BezierEntity,
+  RectEntity,
 } from "../model/entities";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { ICONS } from "./icons";
@@ -29,7 +34,8 @@ function reflectAngle(theta: number, axisAngle: number): number {
 }
 
 function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
-  const rx = B.x - A.x, ry = B.y - A.y;
+  const rx = B.x - A.x,
+    ry = B.y - A.y;
   const len = Math.sqrt(rx * rx + ry * ry);
   if (len < 1e-9) return null;
   const d: Vec2 = { x: rx / len, y: ry / len };
@@ -49,8 +55,9 @@ function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
   if (ent instanceof ArcEntity) {
     // Reflect centre; swap + reflect angles to reverse arc direction.
     const e = new ArcEntity(
-      r(ent.center), ent.radius,
-      reflectAngle(ent.endAngle,   axisAngle),
+      r(ent.center),
+      ent.radius,
+      reflectAngle(ent.endAngle, axisAngle),
       reflectAngle(ent.startAngle, axisAngle),
     );
     e.isConstruction = ent.isConstruction;
@@ -81,9 +88,9 @@ function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
 // ---------------------------------------------------------------------------
 
 export class MirrorTool implements Tool {
-  readonly id    = "mirror";
+  readonly id = "mirror";
   readonly label = "Mirror";
-  readonly icon  = ICONS.mirror;
+  readonly icon = ICONS.mirror;
 
   private axisStart: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
@@ -95,7 +102,8 @@ export class MirrorTool implements Tool {
     } else {
       const A = this.axisStart;
       const B = e.world;
-      const dx = B.x - A.x, dy = B.y - A.y;
+      const dx = B.x - A.x,
+        dy = B.y - A.y;
       if (dx * dx + dy * dy > 1e-10 && ctx.doc.selected.length > 0) {
         ctx.pushHistory();
         for (const ent of ctx.doc.selected) {

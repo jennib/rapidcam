@@ -25,8 +25,8 @@ test("negative brightness darkens every pixel (clamped at 0)", () => {
 test("positive contrast pushes darks down and lights up around the mid-grey pivot", () => {
   const g = new Uint8Array([64, 128, 192]);
   const out = adjustGrey(g, { brightness: 0, contrast: 60 });
-  expect(out[0]).toBeLessThan(64);   // below pivot → darker
-  expect(out[1]).toBe(128);          // pivot fixed
+  expect(out[0]).toBeLessThan(64); // below pivot → darker
+  expect(out[1]).toBe(128); // pivot fixed
   expect(out[2]).toBeGreaterThan(192); // above pivot → lighter
 });
 

@@ -22,9 +22,9 @@ const modules = import.meta.glob("../../examples/*.rcam", {
  * Keyed on filename so renaming the display `name` doesn't reshuffle the list.
  */
 const ORDER = [
-  "keychain-tag.rcam",      // Tier 1 — first contact
+  "keychain-tag.rcam", // Tier 1 — first contact
   "mounting-plate.rcam",
-  "bracket.rcam",           // Tier 2 — constraints / variables / patterns
+  "bracket.rcam", // Tier 2 — constraints / variables / patterns
   "bolt-circle.rcam",
   "mounting-plate-cam.rcam", // Tier 3 — full CAM pipeline
   "enclosure-lid.rcam",
@@ -49,8 +49,8 @@ export function getExamples(): ExampleEntry[] {
   items.sort((a, b) => {
     const ia = ORDER.indexOf(a.base);
     const ib = ORDER.indexOf(b.base);
-    if (ia !== -1 && ib !== -1) return ia - ib;     // both curated → tier order
-    if (ia !== -1) return -1;                        // curated before un-curated
+    if (ia !== -1 && ib !== -1) return ia - ib; // both curated → tier order
+    if (ia !== -1) return -1; // curated before un-curated
     if (ib !== -1) return 1;
     return a.entry.name.localeCompare(b.entry.name); // neither → alphabetical
   });

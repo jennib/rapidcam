@@ -44,7 +44,11 @@ export class ArcTool implements Tool {
         `arc length (${unit})`,
         (raw) => this.commitByLength(raw, ctx),
         () => this.cancel(ctx),
-        () => { ctx.closeValueEditor(); this.clockwise = !this.clockwise; ctx.requestRender(); },
+        () => {
+          ctx.closeValueEditor();
+          this.clockwise = !this.clockwise;
+          ctx.requestRender();
+        },
       );
     } else {
       ctx.closeValueEditor();
@@ -60,9 +64,7 @@ export class ArcTool implements Tool {
     if (this.phase === "center") return { previews: [], selectionRect: null };
 
     const center = this.center!;
-    const r = this.phase === "start"
-      ? dist(center, this.cursor)
-      : this.radius;
+    const r = this.phase === "start" ? dist(center, this.cursor) : this.radius;
 
     if (this.phase === "start") {
       return {
@@ -138,7 +140,9 @@ export class ArcTool implements Tool {
     arc.isConstruction = ctx.doc.isConstructionMode;
     ctx.doc.addSelected(arc);
     this.addSnappedConstraints(arc, arcStartSnap, arcEndSnap, ctx);
-    ctx.doc.addDimension(makeDimension("arclength", { entities: [arc.id], value: len, offset: 8, driving: true }));
+    ctx.doc.addDimension(
+      makeDimension("arclength", { entities: [arc.id], value: len, offset: 8, driving: true }),
+    );
     ctx.solve();
     this.resetPhase();
     return true;
@@ -152,14 +156,14 @@ export class ArcTool implements Tool {
     let arcStartSnap: SnapPoint | null, arcEndSnap: SnapPoint | null;
     if (this.clockwise) {
       // CW arc from startAngle to clickAngle = CCW entity from clickAngle to startAngle
-      const span = ((this.startAngle - clickAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const span = (((this.startAngle - clickAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       if (span < 1e-4) return;
       arcStart = clickAngle;
       arcEnd = this.startAngle;
       arcStartSnap = clickSnap;
       arcEndSnap = this.startSnap;
     } else {
-      const span = ((clickAngle - this.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const span = (((clickAngle - this.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       if (span < 1e-4) return;
       arcStart = this.startAngle;
       arcEnd = clickAngle;
@@ -190,9 +194,14 @@ export class ArcTool implements Tool {
     ctx: ToolContext,
   ): void {
     const coin = (k1: string, snap: SnapPoint) =>
-      ctx.doc.addConstraint(makeConstraint("coincident", {
-        points: [{ entityId: arc.id, key: k1 }, { entityId: snap.entityId, key: snap.key! }],
-      }));
+      ctx.doc.addConstraint(
+        makeConstraint("coincident", {
+          points: [
+            { entityId: arc.id, key: k1 },
+            { entityId: snap.entityId, key: snap.key! },
+          ],
+        }),
+      );
     if (this.centerSnap?.key) coin("c", this.centerSnap);
     if (startSnap?.key) coin("start", startSnap);
     if (endSnap?.key) coin("end", endSnap);
@@ -202,4 +211,3 @@ export class ArcTool implements Tool {
 function ptOnCircle(center: Vec2, r: number, angle: number): Vec2 {
   return { x: center.x + r * Math.cos(angle), y: center.y + r * Math.sin(angle) };
 }
-

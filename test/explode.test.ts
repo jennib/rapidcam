@@ -25,9 +25,16 @@ describe("explodeSelected", () => {
 
   it("turns a closed polyline into one line per edge", () => {
     const doc = new CADDocument({ width: 200, height: 200 });
-    const pl = doc.add(new PolylineEntity(
-      [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], true,
-    ));
+    const pl = doc.add(
+      new PolylineEntity(
+        [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        true,
+      ),
+    );
     pl.selected = true;
 
     expect(explodeSelected(doc)).toBe(true);

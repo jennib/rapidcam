@@ -51,7 +51,11 @@ export function partitionOps(ops: CAMOperation[]): { top: CAMOperation[]; bottom
  * mirror). For "h" (mirror X) the centreline is vertical at x = W/2; for "v" it
  * is horizontal at y = H/2.
  */
-export function defaultPins(canvas: { width: number; height: number }, axis: "h" | "v", inset?: number): { x: number; y: number }[] {
+export function defaultPins(
+  canvas: { width: number; height: number },
+  axis: "h" | "v",
+  inset?: number,
+): { x: number; y: number }[] {
   if (axis === "h") {
     const cx = canvas.width / 2;
     const d = inset ?? Math.min(15, canvas.height * 0.2);
@@ -71,11 +75,21 @@ export function defaultPins(canvas: { width: number; height: number }, axis: "h"
 /** A sensible default flip setup for a document (pins on the centreline). */
 export function defaultFlipSettings(doc: CADDocument): FlipSettings {
   const axis: "h" | "v" = "h";
-  return { axis, registration: "pins", pinDiameter: 6, pinDepth: 4, pins: defaultPins(doc.canvas, axis) };
+  return {
+    axis,
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 4,
+    pins: defaultPins(doc.canvas, axis),
+  };
 }
 
 /** Mirror a point about the flip axis of a stock of the given size. */
-export function mirrorPoint(p: { x: number; y: number }, axis: "h" | "v", canvas: { width: number; height: number }): { x: number; y: number } {
+export function mirrorPoint(
+  p: { x: number; y: number },
+  axis: "h" | "v",
+  canvas: { width: number; height: number },
+): { x: number; y: number } {
   return axis === "h" ? { x: canvas.width - p.x, y: p.y } : { x: p.x, y: canvas.height - p.y };
 }
 
@@ -84,7 +98,11 @@ export function mirrorPoint(p: { x: number; y: number }, axis: "h" | "v", canvas
  * partner at its mirror image (a centreline pin is its own partner). Required
  * for the flipped stock's holes to land back on the same physical dowels.
  */
-export function pinsSymmetric(pins: { x: number; y: number }[], axis: "h" | "v", canvas: { width: number; height: number }): boolean {
+export function pinsSymmetric(
+  pins: { x: number; y: number }[],
+  axis: "h" | "v",
+  canvas: { width: number; height: number },
+): boolean {
   for (const p of pins) {
     const m = mirrorPoint(p, axis, canvas);
     if (!pins.some((q) => Math.hypot(q.x - m.x, q.y - m.y) <= SYM_TOL)) return false;
@@ -125,7 +143,11 @@ export function mirrorDocForFlip(doc: CADDocument, axis: "h" | "v"): CADDocument
  * tool-diameter hole. Depth reaches `pinDepth` into the spoilboard past the
  * stock bottom.
  */
-function pinBore(doc: CADDocument, flip: FlipSettings, protoRaw: CAMOperation | undefined): { circles: CircleEntity[]; op: CAMOperation } {
+function pinBore(
+  doc: CADDocument,
+  flip: FlipSettings,
+  protoRaw: CAMOperation | undefined,
+): { circles: CircleEntity[]; op: CAMOperation } {
   // Resolve any library-tool reference so the bore's geometry/feeds match the
   // physical tool (and agree with validateFlip's guards).
   const proto = protoRaw ? resolveOpTool(protoRaw, doc.tools) : undefined;
@@ -182,12 +204,16 @@ export interface FlipPrograms {
 /** Comment banner prepended to a side's program with operator instructions. */
 function sideBanner(side: "A" | "B", doc: CADDocument, flip: FlipSettings): string {
   const t = doc.stockThickness;
-  const dir = flip.axis === "h" ? "left ↔ right (about the vertical centreline)" : "near ↔ far (about the horizontal centreline)";
+  const dir =
+    flip.axis === "h"
+      ? "left ↔ right (about the vertical centreline)"
+      : "near ↔ far (about the horizontal centreline)";
   if (side === "A") {
-    const pins = flip.registration === "pins" && flip.pins.length
-      ? `; This program ends by boring ${flip.pins.length} registration pin hole${flip.pins.length > 1 ? "s" : ""} ` +
-        `(⌀${flip.pinDiameter}mm, ${flip.pinDepth}mm into the spoilboard) — keep the stock clamped.\n`
-      : "";
+    const pins =
+      flip.registration === "pins" && flip.pins.length
+        ? `; This program ends by boring ${flip.pins.length} registration pin hole${flip.pins.length > 1 ? "s" : ""} ` +
+          `(⌀${flip.pinDiameter}mm, ${flip.pinDepth}mm into the spoilboard) — keep the stock clamped.\n`
+        : "";
     return (
       `; === Double-sided job — SIDE A (top) ===\n` +
       `; Cut this side first with the stock as drawn.\n` +
@@ -198,7 +224,8 @@ function sideBanner(side: "A" | "B", doc: CADDocument, flip: FlipSettings): stri
   return (
     `; === Double-sided job — SIDE B (bottom) ===\n` +
     `; Flip the stock ${dir}` +
-    (flip.registration === "pins" ? ` onto the registration pins` : ``) + `.\n` +
+    (flip.registration === "pins" ? ` onto the registration pins` : ``) +
+    `.\n` +
     `; Re-zero Z on the NEW top face; keep X/Y zero at the same machine position.\n` +
     `; Geometry is already mirrored to match the flipped stock.\n`
   );
@@ -216,15 +243,21 @@ export function validateFlip(doc: CADDocument): string[] {
   const { top, bottom } = partitionOps(doc.operations);
 
   if (bottom.length === 0) {
-    out.push('No operations are assigned to the bottom face — nothing will be cut on side B. Set an op\'s face to "Bottom".');
+    out.push(
+      'No operations are assigned to the bottom face — nothing will be cut on side B. Set an op\'s face to "Bottom".',
+    );
   }
 
   if (flip.registration === "pins") {
     if (flip.pins.length === 0) {
-      out.push("Registration is set to pins but none are placed — the flipped stock has nothing to align to.");
+      out.push(
+        "Registration is set to pins but none are placed — the flipped stock has nothing to align to.",
+      );
     } else {
       if (!pinsSymmetric(flip.pins, flip.axis, doc.canvas)) {
-        out.push("Registration pins are not symmetric about the flip axis — after flipping, the holes won't line up on the dowels. Place pins on the centreline or in mirror-image pairs.");
+        out.push(
+          "Registration pins are not symmetric about the flip axis — after flipping, the holes won't line up on the dowels. Place pins on the centreline or in mirror-image pairs.",
+        );
       }
       for (const p of flip.pins) {
         if (p.x < 0 || p.x > doc.canvas.width || p.y < 0 || p.y > doc.canvas.height) {
@@ -239,10 +272,14 @@ export function validateFlip(doc: CADDocument): string[] {
       const proto = protoRaw ? resolveOpTool(protoRaw, doc.tools) : undefined;
       if (proto) {
         if (proto.toolType === "v-bit" || proto.toolType === "ball-nose") {
-          out.push(`The registration pins would be bored with the last top-side tool — a ${proto.toolType}, which can't cut a clean straight hole. Make the last top op use a flat end mill, or bore the pins in a separate setup.`);
+          out.push(
+            `The registration pins would be bored with the last top-side tool — a ${proto.toolType}, which can't cut a clean straight hole. Make the last top op use a flat end mill, or bore the pins in a separate setup.`,
+          );
         }
         if (flip.pinDiameter < proto.diameter - 0.05) {
-          out.push(`Pin diameter (${flip.pinDiameter}mm) is smaller than the boring tool (${proto.diameter}mm), so the hole comes out tool-sized — too loose for the dowel. Use a pin at least the tool diameter, or a smaller boring tool.`);
+          out.push(
+            `Pin diameter (${flip.pinDiameter}mm) is smaller than the boring tool (${proto.diameter}mm), so the hole comes out tool-sized — too loose for the dowel. Use a pin at least the tool diameter, or a smaller boring tool.`,
+          );
         }
       }
     }
@@ -251,10 +288,16 @@ export function validateFlip(doc: CADDocument): string[] {
   // A top-side outside profile that cuts fully through frees the part before the
   // flip (and before the pins are bored).
   const frees = top.some(
-    (op) => op.type === "profile" && op.side === "outside" && op.depth <= -doc.stockThickness + 1e-6 && !(op.tabs?.enabled),
+    (op) =>
+      op.type === "profile" &&
+      op.side === "outside" &&
+      op.depth <= -doc.stockThickness + 1e-6 &&
+      !op.tabs?.enabled,
   );
   if (frees && bottom.length > 0) {
-    out.push("A top-side outside profile cuts through the full stock thickness with no tabs — the part comes loose before the flip. Add holding tabs, or move the cut-out to the bottom side.");
+    out.push(
+      "A top-side outside profile cuts through the full stock thickness with no tabs — the part comes loose before the flip. Add holding tabs, or move the cut-out to the bottom side.",
+    );
   }
 
   return out;
@@ -306,7 +349,11 @@ export function buildSideB(doc: CADDocument): FlipSide | null {
  * and the 3D preview. Callers that need only one side should use
  * {@link buildSideA} / {@link buildSideB} directly to avoid cloning the other.
  */
-export function flipSides(doc: CADDocument): { sideA: FlipSide; sideB: FlipSide | null; hasPins: boolean } {
+export function flipSides(doc: CADDocument): {
+  sideA: FlipSide;
+  sideB: FlipSide | null;
+  hasPins: boolean;
+} {
   return { sideA: buildSideA(doc), sideB: buildSideB(doc), hasPins: flipUsesPins(doc) };
 }
 
@@ -321,7 +368,9 @@ export function generateFlipPrograms(doc: CADDocument, opts: GCodeOptions = {}):
   const { sideA, sideB, hasPins } = flipSides(doc);
 
   const a = `${sideBanner("A", doc, flip)}\n${generateGCode(sideA.ops, sideA.doc, opts)}`;
-  const b = sideB ? `${sideBanner("B", doc, flip)}\n${generateGCode(sideB.ops, sideB.doc, opts)}` : "";
+  const b = sideB
+    ? `${sideBanner("B", doc, flip)}\n${generateGCode(sideB.ops, sideB.doc, opts)}`
+    : "";
 
   return { sideA: a, sideB: b, hasBottom: sideB !== null, hasPins, warnings };
 }

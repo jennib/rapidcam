@@ -32,7 +32,7 @@ const UNIT_ALIASES: Record<string, Unit> = {
   inches: "in",
   '"': "in",
   "''": "in",
-  '″': "in", // ″ double prime
+  "″": "in", // ″ double prime
 };
 
 /**
@@ -109,9 +109,14 @@ export function parseAngle(input: string): number | null {
   let s = input.trim().toLowerCase();
   if (s === "") return null;
   let isDeg = true;
-  if (s.endsWith("rad")) { isDeg = false; s = s.slice(0, -3).trim(); }
-  else if (s.endsWith("°")) { s = s.slice(0, -1).trim(); }
-  else if (s.endsWith("deg")) { s = s.slice(0, -3).trim(); }
+  if (s.endsWith("rad")) {
+    isDeg = false;
+    s = s.slice(0, -3).trim();
+  } else if (s.endsWith("°")) {
+    s = s.slice(0, -1).trim();
+  } else if (s.endsWith("deg")) {
+    s = s.slice(0, -3).trim();
+  }
   if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const v = parseFloat(s);
   if (Number.isNaN(v)) return null;

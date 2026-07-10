@@ -19,8 +19,13 @@ export function openImageAdjustDialog(
   backdrop.id = "iad-backdrop";
   backdrop.className = "tp-backdrop";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -47,7 +52,8 @@ export function openImageAdjustDialog(
 
   // Preview canvas (drawn at image resolution, sized down by CSS).
   const preview = document.createElement("canvas");
-  preview.width = img.width; preview.height = img.height;
+  preview.width = img.width;
+  preview.height = img.height;
   preview.style.display = "block";
   preview.style.margin = "0 auto 10px";
   preview.style.maxWidth = "260px";
@@ -66,7 +72,10 @@ export function openImageAdjustDialog(
     const d = imageData.data;
     for (let i = 0; i < g.length; i++) {
       const v = g[i];
-      d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+      d[i * 4] = v;
+      d[i * 4 + 1] = v;
+      d[i * 4 + 2] = v;
+      d[i * 4 + 3] = 255;
     }
     pctx.putImageData(imageData, 0, 0);
   };
@@ -77,7 +86,10 @@ export function openImageAdjustDialog(
     const l = document.createElement("label");
     l.textContent = label;
     const input = document.createElement("input");
-    input.type = "range"; input.min = "-100"; input.max = "100"; input.step = "1";
+    input.type = "range";
+    input.min = "-100";
+    input.max = "100";
+    input.step = "1";
     input.value = String(get());
     input.style.flex = "1";
     const val = document.createElement("span");
@@ -86,34 +98,56 @@ export function openImageAdjustDialog(
     val.style.textAlign = "right";
     input.addEventListener("input", () => {
       const v = parseInt(input.value, 10);
-      set(v); val.textContent = String(v); redraw();
+      set(v);
+      val.textContent = String(v);
+      redraw();
     });
     wrap.append(l, input, val);
     body.appendChild(wrap);
     return input;
   };
 
-  const bSlider = slider("Brightness", () => adj.brightness, (v) => { adj.brightness = v; });
-  const cSlider = slider("Contrast", () => adj.contrast, (v) => { adj.contrast = v; });
+  const bSlider = slider(
+    "Brightness",
+    () => adj.brightness,
+    (v) => {
+      adj.brightness = v;
+    },
+  );
+  const cSlider = slider(
+    "Contrast",
+    () => adj.contrast,
+    (v) => {
+      adj.contrast = v;
+    },
+  );
 
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
   const reset = document.createElement("button");
-  reset.className = "btn"; reset.textContent = "Reset";
+  reset.className = "btn";
+  reset.textContent = "Reset";
   reset.style.marginRight = "auto";
   reset.addEventListener("click", () => {
-    adj.brightness = 0; adj.contrast = 0;
-    (bSlider as HTMLInputElement).value = "0"; (cSlider as HTMLInputElement).value = "0";
+    adj.brightness = 0;
+    adj.contrast = 0;
+    (bSlider as HTMLInputElement).value = "0";
+    (cSlider as HTMLInputElement).value = "0";
     bSlider.nextElementSibling!.textContent = "0";
     cSlider.nextElementSibling!.textContent = "0";
     redraw();
   });
   const cancel = document.createElement("button");
-  cancel.className = "btn"; cancel.textContent = "Cancel";
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
   cancel.addEventListener("click", () => close());
   const place = document.createElement("button");
-  place.className = "btn tp-apply-btn"; place.textContent = "Place";
-  place.addEventListener("click", () => { close(); onConfirm(adj); });
+  place.className = "btn tp-apply-btn";
+  place.textContent = "Place";
+  place.addEventListener("click", () => {
+    close();
+    onConfirm(adj);
+  });
   ftr.append(reset, cancel, place);
   dialog.appendChild(ftr);
 

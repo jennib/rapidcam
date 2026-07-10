@@ -24,7 +24,11 @@ export interface Fixture {
 export function fixturePolygons(doc: CADDocument): Fixture[] {
   const heights = new Map<string, number>();
   for (const l of doc.layers) {
-    if (l.fixture) heights.set(l.id, l.fixtureHeight && l.fixtureHeight > 0 ? l.fixtureHeight : Number.POSITIVE_INFINITY);
+    if (l.fixture)
+      heights.set(
+        l.id,
+        l.fixtureHeight && l.fixtureHeight > 0 ? l.fixtureHeight : Number.POSITIVE_INFINITY,
+      );
   }
   if (heights.size === 0) return [];
 

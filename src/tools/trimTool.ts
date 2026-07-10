@@ -27,21 +27,37 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  LineEntity, CircleEntity, ArcEntity, PolylineEntity, RectEntity, BezierEntity,
-  TextEntity, PointEntity, type Entity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+  RectEntity,
+  BezierEntity,
+  TextEntity,
+  PointEntity,
+  type Entity,
 } from "../model/entities";
 import type { CADDocument } from "../model/document";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import {
-  segSegIntersect, segCircleIntersect, circleCircleIntersect,
-  closestPointOnSegment, distToSegment, distToCircle, distToArc,
-  angleInArc, flattenBezier, evalBezier, splitBezier, TAU,
+  segSegIntersect,
+  segCircleIntersect,
+  circleCircleIntersect,
+  closestPointOnSegment,
+  distToSegment,
+  distToCircle,
+  distToArc,
+  angleInArc,
+  flattenBezier,
+  evalBezier,
+  splitBezier,
+  TAU,
 } from "../core/geom";
 import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 
-const HIT_PX  = 12;
-const EPS     = 1e-9;
+const HIT_PX = 12;
+const EPS = 1e-9;
 const EPS_ANG = 1e-7;
 const EPS_LEN = 1e-6;
 const BEZ_TOL = 0.05;
@@ -49,7 +65,10 @@ const BEZ_TOL = 0.05;
 const normAngle = (a: number): number => ((a % TAU) + TAU) % TAU;
 const angleOf = (p: Vec2, c: Vec2): number => Math.atan2(p.y - c.y, p.x - c.x);
 
-interface Seg { a: Vec2; b: Vec2 }
+interface Seg {
+  a: Vec2;
+  b: Vec2;
+}
 
 /**
  * An entity as straight segments for intersection purposes. Exact for lines,
@@ -62,8 +81,7 @@ function entitySegments(ent: Entity): Seg[] {
     const n = ent.points.length;
     const m = ent.closed ? n : n - 1;
     const segs: Seg[] = [];
-    for (let i = 0; i < m; i++)
-      segs.push({ a: ent.points[i], b: ent.points[(i + 1) % n] });
+    for (let i = 0; i < m; i++) segs.push({ a: ent.points[i], b: ent.points[(i + 1) % n] });
     return segs;
   }
   if (ent instanceof RectEntity) {
@@ -84,8 +102,9 @@ function circleCutterPoints(center: Vec2, r: number, cutter: Entity): Vec2[] {
   if (cutter instanceof CircleEntity)
     return circleCircleIntersect(center, r, cutter.center, cutter.radius);
   if (cutter instanceof ArcEntity)
-    return circleCircleIntersect(center, r, cutter.center, cutter.radius)
-      .filter(p => angleInArc(angleOf(p, cutter.center), cutter.startAngle, cutter.endAngle));
+    return circleCircleIntersect(center, r, cutter.center, cutter.radius).filter((p) =>
+      angleInArc(angleOf(p, cutter.center), cutter.startAngle, cutter.endAngle),
+    );
   const pts: Vec2[] = [];
   for (const s of entitySegments(cutter))
     for (const h of segCircleIntersect(s.a, s.b, center, r)) pts.push(h.point);
@@ -95,12 +114,14 @@ function circleCutterPoints(center: Vec2, r: number, cutter: Entity): Vec2[] {
 /** Points (with param t) where `cutter` crosses segment a→b. */
 function segCutterHits(a: Vec2, b: Vec2, cutter: Entity): { point: Vec2; t: number }[] {
   if (cutter instanceof CircleEntity)
-    return segCircleIntersect(a, b, cutter.center, cutter.radius)
-      .map(h => ({ point: h.point, t: h.t }));
+    return segCircleIntersect(a, b, cutter.center, cutter.radius).map((h) => ({
+      point: h.point,
+      t: h.t,
+    }));
   if (cutter instanceof ArcEntity)
     return segCircleIntersect(a, b, cutter.center, cutter.radius)
-      .filter(h => angleInArc(h.theta, cutter.startAngle, cutter.endAngle))
-      .map(h => ({ point: h.point, t: h.t }));
+      .filter((h) => angleInArc(h.theta, cutter.startAngle, cutter.endAngle))
+      .map((h) => ({ point: h.point, t: h.t }));
   const hits: { point: Vec2; t: number }[] = [];
   for (const s of entitySegments(cutter)) {
     const ix = segSegIntersect(a, b, s.a, s.b);
@@ -111,42 +132,45 @@ function segCutterHits(a: Vec2, b: Vec2, cutter: Entity): { point: Vec2; t: numb
 
 // --- line target -----------------------------------------------------------
 
-interface LineIx { point: Vec2; t: number }
+interface LineIx {
+  point: Vec2;
+  t: number;
+}
 
 function lineIntersections(line: LineEntity, doc: CADDocument): LineIx[] {
   const result: LineIx[] = [];
   for (const ent of doc.entities) {
     if (ent.id === line.id || ent.isConstruction) continue;
-    for (const h of segCutterHits(line.a, line.b, ent))
-      result.push({ point: h.point, t: h.t });
+    for (const h of segCutterHits(line.a, line.b, ent)) result.push({ point: h.point, t: h.t });
   }
   // Only intersections that fall strictly inside the clicked line (not at endpoints).
-  const inside = result.filter(x => x.t > EPS && x.t < 1 - EPS).sort((a, b) => a.t - b.t);
+  const inside = result.filter((x) => x.t > EPS && x.t < 1 - EPS).sort((a, b) => a.t - b.t);
   // Deduplicate overlapping intersections.
   return inside.filter((x, i) => i === 0 || x.t - inside[i - 1].t > EPS);
 }
 
 /** Work out which segment of `line` the given parameter falls in and return its endpoints. */
 function segmentAt(line: LineEntity, clickT: number, ixs: LineIx[]): { a: Vec2; b: Vec2 } {
-  const lo = ixs.filter(x => x.t <= clickT);
-  const hi = ixs.filter(x => x.t >  clickT);
+  const lo = ixs.filter((x) => x.t <= clickT);
+  const hi = ixs.filter((x) => x.t > clickT);
   return {
     a: lo.length ? lo[lo.length - 1].point : line.a,
-    b: hi.length ? hi[0].point             : line.b,
+    b: hi.length ? hi[0].point : line.b,
   };
 }
 
 function removeCoincidentAt(doc: CADDocument, entityId: string, key: string): void {
-  doc.constraints = doc.constraints.filter(c =>
-    c.type !== "coincident" || !c.points.some(p => p.entityId === entityId && p.key === key),
+  doc.constraints = doc.constraints.filter(
+    (c) =>
+      c.type !== "coincident" || !c.points.some((p) => p.entityId === entityId && p.key === key),
   );
 }
 
 function applyLineTrim(line: LineEntity, clickT: number, ixs: LineIx[], doc: CADDocument): void {
-  const loIxs = ixs.filter(x => x.t <= clickT);
-  const hiIxs = ixs.filter(x => x.t >  clickT);
+  const loIxs = ixs.filter((x) => x.t <= clickT);
+  const hiIxs = ixs.filter((x) => x.t > clickT);
   const P1 = loIxs.length ? loIxs[loIxs.length - 1].point : null;
-  const P2 = hiIxs.length ? hiIxs[0].point                : null;
+  const P2 = hiIxs.length ? hiIxs[0].point : null;
 
   if (!P1 && P2) {
     // Trim from endpoint a → move a to P2.
@@ -171,9 +195,7 @@ function applyLineTrim(line: LineEntity, clickT: number, ixs: LineIx[], doc: CAD
       }
     }
     // Remove body constraints on the original line (parallel, equal, collinear, etc.).
-    doc.constraints = doc.constraints.filter(c =>
-      !c.entities?.includes(line.id),
-    );
+    doc.constraints = doc.constraints.filter((c) => !c.entities?.includes(line.id));
 
     line.b = { ...P1 };
     doc.add(line2);
@@ -199,15 +221,20 @@ function circleIntersections(circle: CircleEntity, doc: CADDocument): number[] {
 
 /** The CCW span (start→end) of the circle containing the click, bounded by intersections. */
 function circleRemovedSpan(clickTheta: number, thetas: number[]): { start: number; end: number } {
-  let i = thetas.findIndex(t => t > clickTheta);
+  let i = thetas.findIndex((t) => t > clickTheta);
   if (i < 0) i = 0; // click is past the last intersection → wraps around to the first
   return {
     start: thetas[(i - 1 + thetas.length) % thetas.length],
-    end:   thetas[i],
+    end: thetas[i],
   };
 }
 
-function applyCircleTrim(circle: CircleEntity, clickTheta: number, thetas: number[], doc: CADDocument): void {
+function applyCircleTrim(
+  circle: CircleEntity,
+  clickTheta: number,
+  thetas: number[],
+  doc: CADDocument,
+): void {
   const { start, end } = circleRemovedSpan(clickTheta, thetas);
   // Keep the complement of the removed span as an arc.
   const arc = new ArcEntity(circle.center, circle.radius, end, start);
@@ -219,7 +246,10 @@ function applyCircleTrim(circle: CircleEntity, clickTheta: number, thetas: numbe
 
 // --- arc target ------------------------------------------------------------
 
-interface ArcIx { off: number; theta: number } // off = CCW offset from startAngle
+interface ArcIx {
+  off: number;
+  theta: number;
+} // off = CCW offset from startAngle
 
 function arcIntersections(arc: ArcEntity, doc: CADDocument): ArcIx[] {
   const span = normAngle(arc.endAngle - arc.startAngle);
@@ -238,10 +268,10 @@ function arcIntersections(arc: ArcEntity, doc: CADDocument): ArcIx[] {
 }
 
 function applyArcTrim(arc: ArcEntity, clickOff: number, ixs: ArcIx[], doc: CADDocument): void {
-  const loIxs = ixs.filter(x => x.off <= clickOff);
-  const hiIxs = ixs.filter(x => x.off >  clickOff);
+  const loIxs = ixs.filter((x) => x.off <= clickOff);
+  const hiIxs = ixs.filter((x) => x.off > clickOff);
   const P1 = loIxs.length ? loIxs[loIxs.length - 1] : null;
-  const P2 = hiIxs.length ? hiIxs[0]                : null;
+  const P2 = hiIxs.length ? hiIxs[0] : null;
 
   if (!P1 && P2) {
     // Trim from the start endpoint → advance startAngle to P2.
@@ -264,9 +294,7 @@ function applyArcTrim(arc: ArcEntity, clickOff: number, ixs: ArcIx[], doc: CADDo
       }
     }
     // Remove body constraints on the original arc (tangent, equal, etc.).
-    doc.constraints = doc.constraints.filter(c =>
-      !c.entities?.includes(arc.id),
-    );
+    doc.constraints = doc.constraints.filter((c) => !c.entities?.includes(arc.id));
 
     arc.endAngle = P1.theta;
     doc.add(arc2);
@@ -280,7 +308,8 @@ function pathCum(points: Vec2[], closed: boolean): number[] {
   const cum = [0];
   const m = closed ? points.length : points.length - 1;
   for (let i = 0; i < m; i++) {
-    const a = points[i], b = points[(i + 1) % points.length];
+    const a = points[i],
+      b = points[(i + 1) % points.length];
     cum.push(cum[i] + Math.hypot(b.x - a.x, b.y - a.y));
   }
   return cum;
@@ -294,14 +323,20 @@ function segIndexAt(cum: number[], s: number): number {
 
 function pointAtS(points: Vec2[], cum: number[], s: number): Vec2 {
   const k = segIndexAt(cum, s);
-  const a = points[k], b = points[(k + 1) % points.length];
+  const a = points[k],
+    b = points[(k + 1) % points.length];
   const len = cum[k + 1] - cum[k];
   const t = len > EPS ? (s - cum[k]) / len : 0;
   return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
 }
 
 /** Arc-length positions where other entities cross the polyline path. */
-function polylinePathIntersections(points: Vec2[], closed: boolean, selfId: string, doc: CADDocument): number[] {
+function polylinePathIntersections(
+  points: Vec2[],
+  closed: boolean,
+  selfId: string,
+  doc: CADDocument,
+): number[] {
   const cum = pathCum(points, closed);
   const total = cum[cum.length - 1];
   const m = cum.length - 1;
@@ -309,16 +344,17 @@ function polylinePathIntersections(points: Vec2[], closed: boolean, selfId: stri
   for (const ent of doc.entities) {
     if (ent.id === selfId || ent.isConstruction) continue;
     for (let i = 0; i < m; i++) {
-      const a = points[i], b = points[(i + 1) % points.length];
-      for (const h of segCutterHits(a, b, ent))
-        out.push(cum[i] + h.t * (cum[i + 1] - cum[i]));
+      const a = points[i],
+        b = points[(i + 1) % points.length];
+      for (const h of segCutterHits(a, b, ent)) out.push(cum[i] + h.t * (cum[i + 1] - cum[i]));
     }
   }
   let vals = out;
-  if (!closed) vals = vals.filter(s => s > EPS_LEN && s < total - EPS_LEN);
+  if (!closed) vals = vals.filter((s) => s > EPS_LEN && s < total - EPS_LEN);
   vals.sort((x, y) => x - y);
   const dedup = vals.filter((s, i) => i === 0 || s - vals[i - 1] > EPS_LEN);
-  if (closed && dedup.length > 1 && dedup[0] + total - dedup[dedup.length - 1] < EPS_LEN) dedup.pop();
+  if (closed && dedup.length > 1 && dedup[0] + total - dedup[dedup.length - 1] < EPS_LEN)
+    dedup.pop();
   return dedup;
 }
 
@@ -348,15 +384,16 @@ function openPiece(points: Vec2[], cum: number[], sFrom: number, sTo: number): V
   const kTo = segIndexAt(cum, sTo);
   return [
     pointAtS(points, cum, sFrom),
-    ...points.slice(kFrom + 1, kTo + 1).map(p => ({ ...p })),
+    ...points.slice(kFrom + 1, kTo + 1).map((p) => ({ ...p })),
     pointAtS(points, cum, sTo),
   ];
 }
 
 /** Drop consecutive duplicate vertices (within EPS_LEN). */
 function cleanPath(pts: Vec2[]): Vec2[] {
-  return pts.filter((p, i) =>
-    i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > EPS_LEN);
+  return pts.filter(
+    (p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > EPS_LEN,
+  );
 }
 
 interface PolyHit {
@@ -373,20 +410,23 @@ function polylineRemovedPiece(h: PolyHit): Vec2[] {
     const { start, end } = circleRemovedSpan(h.sClick, h.crossings); // same cyclic logic, s for θ
     return cleanPath(walkClosed(h.points, cum, start, end));
   }
-  const lo = [...h.crossings].reverse().find(s => s <= h.sClick);
-  const hi = h.crossings.find(s => s > h.sClick);
+  const lo = [...h.crossings].reverse().find((s) => s <= h.sClick);
+  const hi = h.crossings.find((s) => s > h.sClick);
   return cleanPath(openPiece(h.points, cum, lo ?? 0, hi ?? total));
 }
 
-function applyPolylineTrim(target: PolylineEntity | RectEntity, h: PolyHit, doc: CADDocument): void {
+function applyPolylineTrim(
+  target: PolylineEntity | RectEntity,
+  h: PolyHit,
+  doc: CADDocument,
+): void {
   const cum = pathCum(h.points, h.closed);
   const total = cum[cum.length - 1];
   const mk = (pts: Vec2[]): PolylineEntity | LineEntity | null => {
     const clean = cleanPath(pts);
     if (clean.length < 2) return null;
-    const e = clean.length === 2
-      ? new LineEntity(clean[0], clean[1])
-      : new PolylineEntity(clean, false);
+    const e =
+      clean.length === 2 ? new LineEntity(clean[0], clean[1]) : new PolylineEntity(clean, false);
     e.isConstruction = target.isConstruction;
     e.layerId = target.layerId;
     return e;
@@ -398,8 +438,8 @@ function applyPolylineTrim(target: PolylineEntity | RectEntity, h: PolyHit, doc:
     const kept = mk(walkClosed(h.points, cum, end, start));
     if (kept) pieces.push(kept);
   } else {
-    const lo = [...h.crossings].reverse().find(s => s <= h.sClick);
-    const hi = h.crossings.find(s => s > h.sClick);
+    const lo = [...h.crossings].reverse().find((s) => s <= h.sClick);
+    const hi = h.crossings.find((s) => s > h.sClick);
     if (lo !== undefined) {
       const p = mk(openPiece(h.points, cum, 0, lo));
       if (p) pieces.push(p);
@@ -440,8 +480,10 @@ function bezierIntersections(bez: BezierEntity, doc: CADDocument): number[] {
     for (let i = 0; i < 40; i++) {
       const mid = (lo + hi) / 2;
       const gm = g(mid);
-      if ((gm < 0) === (glo < 0)) { lo = mid; glo = gm; }
-      else hi = mid;
+      if (gm < 0 === glo < 0) {
+        lo = mid;
+        glo = gm;
+      } else hi = mid;
     }
     return (lo + hi) / 2;
   };
@@ -449,8 +491,9 @@ function bezierIntersections(bez: BezierEntity, doc: CADDocument): number[] {
   const ts: number[] = [];
   const collect = (g: (p: Vec2) => number, accept: (t: number) => boolean) => {
     for (let i = 0; i < N; i++) {
-      const ga = g(samples[i]), gb = g(samples[i + 1]);
-      if ((ga < 0) === (gb < 0)) continue;
+      const ga = g(samples[i]),
+        gb = g(samples[i + 1]);
+      if (ga < 0 === gb < 0) continue;
       const t = bisect((tt) => g(B(tt)), i / N, (i + 1) / N);
       if (accept(t)) ts.push(t);
     }
@@ -462,13 +505,15 @@ function bezierIntersections(bez: BezierEntity, doc: CADDocument): number[] {
       const { center, radius } = ent;
       collect(
         (p) => Math.hypot(p.x - center.x, p.y - center.y) - radius,
-        (t) => !(ent instanceof ArcEntity) ||
+        (t) =>
+          !(ent instanceof ArcEntity) ||
           angleInArc(angleOf(B(t), center), ent.startAngle, ent.endAngle),
       );
       continue;
     }
     for (const s of entitySegments(ent)) {
-      const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+      const dx = s.b.x - s.a.x,
+        dy = s.b.y - s.a.y;
       const len2 = dx * dx + dy * dy;
       if (len2 < 1e-20) continue;
       collect(
@@ -489,21 +534,27 @@ function bezierIntersections(bez: BezierEntity, doc: CADDocument): number[] {
 /** Curve parameter closest to a world position (sampled). */
 function bezierClickT(bez: BezierEntity, worldPos: Vec2): number {
   const N = BEZ_SAMPLES;
-  let bestT = 0, bestD = Infinity;
+  let bestT = 0,
+    bestD = Infinity;
   let prev = evalBezier(bez.p0, bez.p1, bez.p2, bez.p3, 0);
   for (let i = 0; i < N; i++) {
     const next = evalBezier(bez.p0, bez.p1, bez.p2, bez.p3, (i + 1) / N);
     const cp = closestPointOnSegment(worldPos, prev, next);
     const d = Math.hypot(worldPos.x - cp.point.x, worldPos.y - cp.point.y);
-    if (d < bestD) { bestD = d; bestT = (i + cp.t) / N; }
+    if (d < bestD) {
+      bestD = d;
+      bestT = (i + cp.t) / N;
+    }
     prev = next;
   }
   return bestT;
 }
 
 function setBezier(bez: BezierEntity, cp: [Vec2, Vec2, Vec2, Vec2]): void {
-  bez.p0 = { ...cp[0] }; bez.p1 = { ...cp[1] };
-  bez.p2 = { ...cp[2] }; bez.p3 = { ...cp[3] };
+  bez.p0 = { ...cp[0] };
+  bez.p1 = { ...cp[1] };
+  bez.p2 = { ...cp[2] };
+  bez.p3 = { ...cp[3] };
 }
 
 function applyBezierTrim(bez: BezierEntity, clickT: number, ixs: number[], doc: CADDocument): void {
@@ -531,7 +582,7 @@ function applyBezierTrim(bez: BezierEntity, clickT: number, ixs: number[], doc: 
       }
     }
     // Remove body constraints on the original bezier.
-    doc.constraints = doc.constraints.filter(c => !c.entities?.includes(bez.id));
+    doc.constraints = doc.constraints.filter((c) => !c.entities?.includes(bez.id));
 
     setBezier(bez, bezierSubCurve(bez, 0, lo));
     doc.add(bez2);
@@ -541,29 +592,38 @@ function applyBezierTrim(bez: BezierEntity, clickT: number, ixs: number[], doc: 
 // ---------------------------------------------------------------------------
 
 type Hit =
-  | { kind: "line";   ent: LineEntity;   clickT: number;     ixs: LineIx[] }
+  | { kind: "line"; ent: LineEntity; clickT: number; ixs: LineIx[] }
   | { kind: "circle"; ent: CircleEntity; clickTheta: number; thetas: number[] }
-  | { kind: "arc";    ent: ArcEntity;    clickOff: number;   ixs: ArcIx[] }
-  | { kind: "poly";   ent: PolylineEntity | RectEntity; poly: PolyHit }
-  | { kind: "bezier"; ent: BezierEntity; clickT: number;     ixs: number[] }
-  | { kind: "erase";  ent: Entity };
+  | { kind: "arc"; ent: ArcEntity; clickOff: number; ixs: ArcIx[] }
+  | { kind: "poly"; ent: PolylineEntity | RectEntity; poly: PolyHit }
+  | { kind: "bezier"; ent: BezierEntity; clickT: number; ixs: number[] }
+  | { kind: "erase"; ent: Entity };
 
 /** Whole-entity preview for the erase case. */
 function erasePreview(ent: Entity): PreviewShape | null {
-  if (ent instanceof LineEntity)   return { kind: "line", a: ent.a, b: ent.b };
-  if (ent instanceof CircleEntity) return { kind: "circle", center: ent.center, radius: ent.radius };
+  if (ent instanceof LineEntity) return { kind: "line", a: ent.a, b: ent.b };
+  if (ent instanceof CircleEntity)
+    return { kind: "circle", center: ent.center, radius: ent.radius };
   if (ent instanceof ArcEntity)
-    return { kind: "arc", center: ent.center, radius: ent.radius, startAngle: ent.startAngle, endAngle: ent.endAngle };
-  if (ent instanceof PolylineEntity) return { kind: "polyline", points: ent.points, closed: ent.closed };
-  if (ent instanceof RectEntity)   return { kind: "rect", p0: ent.minPt, p1: ent.maxPt };
-  if (ent instanceof BezierEntity) return { kind: "bezier", p0: ent.p0, p1: ent.p1, p2: ent.p2, p3: ent.p3 };
+    return {
+      kind: "arc",
+      center: ent.center,
+      radius: ent.radius,
+      startAngle: ent.startAngle,
+      endAngle: ent.endAngle,
+    };
+  if (ent instanceof PolylineEntity)
+    return { kind: "polyline", points: ent.points, closed: ent.closed };
+  if (ent instanceof RectEntity) return { kind: "rect", p0: ent.minPt, p1: ent.maxPt };
+  if (ent instanceof BezierEntity)
+    return { kind: "bezier", p0: ent.p0, p1: ent.p1, p2: ent.p2, p3: ent.p3 };
   return null;
 }
 
 export class TrimTool implements Tool {
-  readonly id    = "trim";
+  readonly id = "trim";
   readonly label = "Trim";
-  readonly icon  = ICONS.trim;
+  readonly icon = ICONS.trim;
 
   private hover: PreviewShape | null = null;
 
@@ -573,8 +633,9 @@ export class TrimTool implements Tool {
     for (const ent of doc.entities) {
       if (ent.isConstruction || ent instanceof TextEntity || ent instanceof PointEntity) continue;
       let d: number;
-      if (ent instanceof CircleEntity)   d = distToCircle(worldPos, ent.center, ent.radius);
-      else if (ent instanceof ArcEntity) d = distToArc(worldPos, ent.center, ent.radius, ent.startAngle, ent.endAngle);
+      if (ent instanceof CircleEntity) d = distToCircle(worldPos, ent.center, ent.radius);
+      else if (ent instanceof ArcEntity)
+        d = distToArc(worldPos, ent.center, ent.radius, ent.startAngle, ent.endAngle);
       else {
         const segs = entitySegments(ent);
         if (segs.length === 0) continue;
@@ -607,7 +668,7 @@ export class TrimTool implements Tool {
       return { kind: "arc", ent, clickOff, ixs };
     }
     if (ent instanceof PolylineEntity || ent instanceof RectEntity) {
-      const points = ent instanceof RectEntity ? ent.corners().map(p => ({ ...p })) : ent.points;
+      const points = ent instanceof RectEntity ? ent.corners().map((p) => ({ ...p })) : ent.points;
       const closed = ent instanceof RectEntity ? true : ent.closed;
       const crossings = polylinePathIntersections(points, closed, ent.id, doc);
       if (crossings.length === 0) return { kind: "erase", ent };
@@ -616,12 +677,17 @@ export class TrimTool implements Tool {
       // Locate the click along the path.
       const cum = pathCum(points, closed);
       const m = cum.length - 1;
-      let bestS = 0, bestD = Infinity;
+      let bestS = 0,
+        bestD = Infinity;
       for (let i = 0; i < m; i++) {
-        const a = points[i], b = points[(i + 1) % points.length];
+        const a = points[i],
+          b = points[(i + 1) % points.length];
         const cp = closestPointOnSegment(worldPos, a, b);
         const d = Math.hypot(worldPos.x - cp.point.x, worldPos.y - cp.point.y);
-        if (d < bestD) { bestD = d; bestS = cum[i] + cp.t * (cum[i + 1] - cum[i]); }
+        if (d < bestD) {
+          bestD = d;
+          bestS = cum[i] + cp.t * (cum[i + 1] - cum[i]);
+        }
       }
       return { kind: "poly", ent, poly: { points, closed, sClick: bestS, crossings } };
     }
@@ -641,7 +707,13 @@ export class TrimTool implements Tool {
     }
     if (h.kind === "circle") {
       const { start, end } = circleRemovedSpan(h.clickTheta, h.thetas);
-      return { kind: "arc", center: h.ent.center, radius: h.ent.radius, startAngle: start, endAngle: end };
+      return {
+        kind: "arc",
+        center: h.ent.center,
+        radius: h.ent.radius,
+        startAngle: start,
+        endAngle: end,
+      };
     }
     if (h.kind === "poly") {
       const piece = polylineRemovedPiece(h.poly);
@@ -654,14 +726,14 @@ export class TrimTool implements Tool {
       const cp = bezierSubCurve(h.ent, lo, hi);
       return { kind: "bezier", p0: cp[0], p1: cp[1], p2: cp[2], p3: cp[3] };
     }
-    const lo = h.ixs.filter(x => x.off <= h.clickOff);
-    const hi = h.ixs.filter(x => x.off >  h.clickOff);
+    const lo = h.ixs.filter((x) => x.off <= h.clickOff);
+    const hi = h.ixs.filter((x) => x.off > h.clickOff);
     return {
       kind: "arc",
       center: h.ent.center,
       radius: h.ent.radius,
       startAngle: lo.length ? lo[lo.length - 1].theta : h.ent.startAngle,
-      endAngle:   hi.length ? hi[0].theta             : h.ent.endAngle,
+      endAngle: hi.length ? hi[0].theta : h.ent.endAngle,
     };
   }
 
@@ -676,12 +748,12 @@ export class TrimTool implements Tool {
     const h = this.hit(e.worldRaw, ctx.doc, ctx.view.scale);
     if (!h) return;
     ctx.pushHistory();
-    if (h.kind === "erase")       ctx.doc.remove(h.ent);
-    else if (h.kind === "line")   applyLineTrim(h.ent, h.clickT, h.ixs, ctx.doc);
+    if (h.kind === "erase") ctx.doc.remove(h.ent);
+    else if (h.kind === "line") applyLineTrim(h.ent, h.clickT, h.ixs, ctx.doc);
     else if (h.kind === "circle") applyCircleTrim(h.ent, h.clickTheta, h.thetas, ctx.doc);
-    else if (h.kind === "poly")   applyPolylineTrim(h.ent, h.poly, ctx.doc);
+    else if (h.kind === "poly") applyPolylineTrim(h.ent, h.poly, ctx.doc);
     else if (h.kind === "bezier") applyBezierTrim(h.ent, h.clickT, h.ixs, ctx.doc);
-    else                          applyArcTrim(h.ent, h.clickOff, h.ixs, ctx.doc);
+    else applyArcTrim(h.ent, h.clickOff, h.ixs, ctx.doc);
     ctx.solve();
     ctx.doc.emitChange();
     this.hover = null;

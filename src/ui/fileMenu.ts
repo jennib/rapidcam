@@ -23,7 +23,10 @@ export class FileMenu {
   private dropdown: HTMLElement;
   private isOpen = false;
 
-  constructor(host: HTMLElement, private cb: FileMenuCallbacks) {
+  constructor(
+    host: HTMLElement,
+    private cb: FileMenuCallbacks,
+  ) {
     this.btn = document.createElement("button");
     this.btn.className = "btn";
     this.btn.textContent = "File";
@@ -66,25 +69,58 @@ export class FileMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("New Project", "Ctrl+N", () => { this.close(); this.cb.onNew(); });
-    this.item("Start Screen", "", () => { this.close(); this.cb.onStartScreen(); });
+    this.item("New Project", "Ctrl+N", () => {
+      this.close();
+      this.cb.onNew();
+    });
+    this.item("Start Screen", "", () => {
+      this.close();
+      this.cb.onStartScreen();
+    });
     this.sep();
-    this.item("Open…", "Ctrl+O", () => { this.close(); this.cb.onOpen(); });
-    this.item("Save…", "Ctrl+S", () => { this.close(); this.cb.onSave(); });
-    this.item("Copy Share Link", "", () => { this.close(); this.cb.onShareLink(); });
+    this.item("Open…", "Ctrl+O", () => {
+      this.close();
+      this.cb.onOpen();
+    });
+    this.item("Save…", "Ctrl+S", () => {
+      this.close();
+      this.cb.onSave();
+    });
+    this.item("Copy Share Link", "", () => {
+      this.close();
+      this.cb.onShareLink();
+    });
     this.sep();
-    this.item("Import SVG", "", () => { this.close(); this.cb.onImportSvg(); });
-    this.item("Import DXF", "", () => { this.close(); this.cb.onImportDxf(); });
-    this.item("Import Image…", "", () => { this.close(); this.cb.onImportImage(); });
-    this.item("Export SVG", "", () => { this.close(); this.cb.onExportSvg(); });
-    this.item("Export DXF", "", () => { this.close(); this.cb.onExportDxf(); });
+    this.item("Import SVG", "", () => {
+      this.close();
+      this.cb.onImportSvg();
+    });
+    this.item("Import DXF", "", () => {
+      this.close();
+      this.cb.onImportDxf();
+    });
+    this.item("Import Image…", "", () => {
+      this.close();
+      this.cb.onImportImage();
+    });
+    this.item("Export SVG", "", () => {
+      this.close();
+      this.cb.onExportSvg();
+    });
+    this.item("Export DXF", "", () => {
+      this.close();
+      this.cb.onExportDxf();
+    });
 
     const examples = getExamples();
     if (examples.length) {
       this.sep();
       this.sectionLabel("Examples");
       for (const entry of examples) {
-        this.item(entry.name, "", () => { this.close(); this.cb.onOpenExample(entry); });
+        this.item(entry.name, "", () => {
+          this.close();
+          this.cb.onOpenExample(entry);
+        });
       }
     }
 
@@ -93,7 +129,10 @@ export class FileMenu {
       this.sep();
       this.sectionLabel("Recent Files");
       for (const entry of recents) {
-        this.item(entry.name, "", () => { this.close(); this.cb.onOpenRecent(entry); });
+        this.item(entry.name, "", () => {
+          this.close();
+          this.cb.onOpenRecent(entry);
+        });
       }
     }
   }

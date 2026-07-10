@@ -24,7 +24,12 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  type Entity, LineEntity, CircleEntity, ArcEntity, PolylineEntity, PointEntity,
+  type Entity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+  PointEntity,
 } from "../model/entities";
 
 export interface DxfImportResult {
@@ -37,7 +42,10 @@ export interface DxfImportResult {
 // Tag stream
 // ---------------------------------------------------------------------------
 
-interface Tag { code: number; value: string }
+interface Tag {
+  code: number;
+  value: string;
+}
 
 function tokenize(text: string): Tag[] {
   const lines = text.split(/\r\n|\n|\r/);
@@ -65,11 +73,18 @@ function nextEntityStart(tags: Tag[], i: number): number {
 
 const DEG = Math.PI / 180;
 
-interface Xform { s: number; rot: number; tx: number; ty: number }
+interface Xform {
+  s: number;
+  rot: number;
+  tx: number;
+  ty: number;
+}
 
 function xformPoint(p: Vec2, t: Xform): Vec2 {
-  const x = p.x * t.s, y = p.y * t.s;
-  const c = Math.cos(t.rot), sn = Math.sin(t.rot);
+  const x = p.x * t.s,
+    y = p.y * t.s;
+  const c = Math.cos(t.rot),
+    sn = Math.sin(t.rot);
   return { x: t.tx + x * c - y * sn, y: t.ty + x * sn + y * c };
 }
 
@@ -105,15 +120,18 @@ function xformEntity(e: Entity, t: Xform): void {
  * simply swaps the endpoints' roles.
  */
 function bulgeToArc(p1: Vec2, p2: Vec2, bulge: number): ArcEntity | LineEntity {
-  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const dx = p2.x - p1.x,
+    dy = p2.y - p1.y;
   const chord = Math.hypot(dx, dy);
   if (chord < 1e-12 || Math.abs(bulge) < 1e-12) return new LineEntity(p1, p2);
   const theta = 4 * Math.atan(bulge); // signed included angle
   const radius = chord / (2 * Math.abs(Math.sin(theta / 2)));
   // Center sits on the chord's perpendicular bisector at signed height h.
-  const h = (chord / 2) / Math.tan(theta / 2);
-  const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-  const cx = mx + (-dy / chord) * h, cy = my + (dx / chord) * h;
+  const h = chord / 2 / Math.tan(theta / 2);
+  const mx = (p1.x + p2.x) / 2,
+    my = (p1.y + p2.y) / 2;
+  const cx = mx + (-dy / chord) * h,
+    cy = my + (dx / chord) * h;
   const a1 = Math.atan2(p1.y - cy, p1.x - cx);
   const a2 = Math.atan2(p2.y - cy, p2.x - cx);
   return bulge > 0
@@ -125,7 +143,10 @@ function bulgeToArc(p1: Vec2, p2: Vec2, bulge: number): ArcEntity | LineEntity {
 // Polyline assembly (shared by LWPOLYLINE and POLYLINE)
 // ---------------------------------------------------------------------------
 
-interface DxfVertex { p: Vec2; bulge: number }
+interface DxfVertex {
+  p: Vec2;
+  bulge: number;
+}
 
 /**
  * Emit entities for a (possibly bulged) polyline. All-straight polylines stay
@@ -135,8 +156,9 @@ interface DxfVertex { p: Vec2; bulge: number }
  */
 function emitPolyline(verts: DxfVertex[], closed: boolean, out: Entity[]): void {
   if (verts.length < 2) return;
-  const hasBulge = verts.some((v, i) =>
-    Math.abs(v.bulge) > 1e-12 && (closed || i < verts.length - 1));
+  const hasBulge = verts.some(
+    (v, i) => Math.abs(v.bulge) > 1e-12 && (closed || i < verts.length - 1),
+  );
   if (!hasBulge) {
     const pts = verts.map((v) => v.p);
     if (pts.length === 2 && !closed) out.push(new LineEntity(pts[0], pts[1]));
@@ -151,7 +173,8 @@ function emitPolyline(verts: DxfVertex[], closed: boolean, out: Entity[]): void 
     run = [];
   };
   for (let i = 0; i < segCount; i++) {
-    const a = verts[i], b = verts[(i + 1) % verts.length];
+    const a = verts[i],
+      b = verts[(i + 1) % verts.length];
     if (Math.abs(a.bulge) > 1e-12) {
       flushRun();
       out.push(bulgeToArc(a.p, b.p, a.bulge));
@@ -175,11 +198,18 @@ function findSpan(t: number, degree: number, knots: number[], nCtrl: number): nu
 }
 
 /** Rational de Boor evaluation at parameter t (homogeneous coordinates). */
-function evalNurbs(ctrl: Vec2[], weights: number[], knots: number[], degree: number, t: number): Vec2 {
+function evalNurbs(
+  ctrl: Vec2[],
+  weights: number[],
+  knots: number[],
+  degree: number,
+  t: number,
+): Vec2 {
   const k = findSpan(t, degree, knots, ctrl.length);
   const d: { x: number; y: number; w: number }[] = [];
   for (let j = 0; j <= degree; j++) {
-    const c = ctrl[k - degree + j], w = weights[k - degree + j];
+    const c = ctrl[k - degree + j],
+      w = weights[k - degree + j];
     d.push({ x: c.x * w, y: c.y * w, w });
   }
   for (let r = 1; r <= degree; r++) {
@@ -229,13 +259,18 @@ function parseLwPolyline(tags: Tag[], start: number, end: number, out: Entity[])
 }
 
 function parseSpline(
-  tags: Tag[], start: number, end: number, out: Entity[], warnings: string[],
+  tags: Tag[],
+  start: number,
+  end: number,
+  out: Entity[],
+  warnings: string[],
 ): void {
   const knots: number[] = [];
   const ctrl: Vec2[] = [];
   const weights: number[] = [];
   const fit: Vec2[] = [];
-  let degree = 3, flags = 0;
+  let degree = 3,
+    flags = 0;
   for (let i = start; i < end; i++) {
     const { code, value } = tags[i];
     const v = parseFloat(value);
@@ -255,7 +290,10 @@ function parseSpline(
   // (3), occasionally higher; anything absurd falls back to the polyline
   // approximation below rather than being evaluated.
   const validNurbs =
-    ctrl.length > degree && degree >= 1 && degree <= 20 && knots.length === ctrl.length + degree + 1;
+    ctrl.length > degree &&
+    degree >= 1 &&
+    degree <= 20 &&
+    knots.length === ctrl.length + degree + 1;
   if (!validNurbs) {
     // Fit-points-only splines (or malformed knot vectors): a polyline through
     // the fit points is on-curve but coarse; through control points it's a hull.
@@ -268,7 +306,8 @@ function parseSpline(
   }
   while (weights.length < ctrl.length) weights.push(1);
 
-  const t0 = knots[degree], t1 = knots[knots.length - 1 - degree];
+  const t0 = knots[degree],
+    t1 = knots[knots.length - 1 - degree];
   const nSeg = Math.min(128, Math.max(16, ctrl.length * 4));
   const pts: Vec2[] = [];
   for (let i = 0; i <= nSeg; i++) {
@@ -314,7 +353,11 @@ function parseEllipse(m: Map<number, number>, out: Entity[], warnings: string[])
 // Section / entity walking
 // ---------------------------------------------------------------------------
 
-interface BlockDef { base: Vec2; start: number; end: number }
+interface BlockDef {
+  base: Vec2;
+  start: number;
+  end: number;
+}
 
 interface ParseCtx {
   tags: Tag[];
@@ -342,13 +385,19 @@ const SKIP_SILENTLY = new Set(["SEQEND", "VIEWPORT", "ATTDEF", "ATTRIB"]);
  * ENTITIES section and (recursively, via INSERT) block bodies.
  */
 function parseEntityRange(
-  ctx: ParseCtx, start: number, end: number, out: Entity[], depth: number,
+  ctx: ParseCtx,
+  start: number,
+  end: number,
+  out: Entity[],
+  depth: number,
 ): void {
   let i = nextEntityStart(ctx.tags, start);
   while (i < end) {
     if (ctx.budget <= 0) {
       if (!ctx.budgetWarned) {
-        ctx.warnings.push(`DXF exceeds the ${MAX_ENTITIES.toLocaleString()}-entity limit — remaining entities skipped`);
+        ctx.warnings.push(
+          `DXF exceeds the ${MAX_ENTITIES.toLocaleString()}-entity limit — remaining entities skipped`,
+        );
         ctx.budgetWarned = true;
       }
       return;
@@ -387,7 +436,9 @@ function parseEntityRange(
     // A flipped extrusion direction (group 230 < 0) mirrors the entity in the
     // full OCS treatment; we import as-authored and tell the user once.
     if (m.has(230) && num(m, 230, 1) < 0 && !ctx.extrusionWarned) {
-      ctx.warnings.push("entities with a mirrored extrusion direction were imported without reorientation — verify their placement");
+      ctx.warnings.push(
+        "entities with a mirrored extrusion direction were imported without reorientation — verify their placement",
+      );
       ctx.extrusionWarned = true;
     }
 
@@ -397,10 +448,9 @@ function parseEntityRange(
     const before = out.length;
     switch (type) {
       case "LINE":
-        out.push(new LineEntity(
-          { x: num(m, 10), y: num(m, 20) },
-          { x: num(m, 11), y: num(m, 21) },
-        ));
+        out.push(
+          new LineEntity({ x: num(m, 10), y: num(m, 20) }, { x: num(m, 11), y: num(m, 21) }),
+        );
         break;
       case "CIRCLE":
         out.push(new CircleEntity({ x: num(m, 10), y: num(m, 20) }, num(m, 40)));
@@ -408,10 +458,14 @@ function parseEntityRange(
       case "ARC":
         // DXF arcs are CCW from start to end angle, in degrees — same sweep
         // convention as ArcEntity, just converted to radians.
-        out.push(new ArcEntity(
-          { x: num(m, 10), y: num(m, 20) }, num(m, 40),
-          num(m, 50) * DEG, num(m, 51) * DEG,
-        ));
+        out.push(
+          new ArcEntity(
+            { x: num(m, 10), y: num(m, 20) },
+            num(m, 40),
+            num(m, 50) * DEG,
+            num(m, 51) * DEG,
+          ),
+        );
         break;
       case "POINT":
         out.push(new PointEntity({ x: num(m, 10), y: num(m, 20) }));
@@ -442,7 +496,11 @@ function bumpSkip(ctx: ParseCtx, type: string): void {
 }
 
 function parseInsert(
-  ctx: ParseCtx, start: number, end: number, out: Entity[], depth: number,
+  ctx: ParseCtx,
+  start: number,
+  end: number,
+  out: Entity[],
+  depth: number,
 ): void {
   if (depth > 8) {
     ctx.warnings.push("block nesting deeper than 8 levels — inner blocks skipped");
@@ -450,7 +508,10 @@ function parseInsert(
   }
   let name = "";
   for (let i = start; i < end; i++) {
-    if (ctx.tags[i].code === 2) { name = ctx.tags[i].value.trim(); break; }
+    if (ctx.tags[i].code === 2) {
+      name = ctx.tags[i].value.trim();
+      break;
+    }
   }
   const m = collect(ctx.tags, start, end);
   const block = ctx.blocks.get(name);
@@ -458,7 +519,8 @@ function parseInsert(
     ctx.warnings.push(`block "${name}" referenced but not defined — skipped`);
     return;
   }
-  const sx = num(m, 41, 1), sy = num(m, 42, 1);
+  const sx = num(m, 41, 1),
+    sy = num(m, 42, 1);
   if (Math.abs(Math.abs(sx) - Math.abs(sy)) > 1e-9 * Math.max(1, Math.abs(sx))) {
     ctx.warnings.push(`block "${name}" uses non-uniform scale (${sx}×${sy}) — skipped`);
     return;
@@ -477,10 +539,13 @@ function parseInsert(
   const rot = num(m, 50, 0) * DEG;
   const ins = { x: num(m, 10), y: num(m, 20) };
   // p' = ins + R(rot)·(s·(p − base))  →  fold base into the translation term.
-  const cos = Math.cos(rot), sin = Math.sin(rot);
-  const bx = block.base.x * s, by = block.base.y * s;
+  const cos = Math.cos(rot),
+    sin = Math.sin(rot);
+  const bx = block.base.x * s,
+    by = block.base.y * s;
   const t: Xform = {
-    s, rot,
+    s,
+    rot,
     tx: ins.x - (bx * cos - by * sin),
     ty: ins.y - (bx * sin + by * cos),
   };
@@ -500,16 +565,16 @@ function parseInsert(
 
 /** $INSUNITS code → mm per drawing unit. */
 const INSUNITS_TO_MM: Record<number, number> = {
-  1: 25.4,       // inches
-  2: 304.8,      // feet
-  4: 1,          // millimeters
-  5: 10,         // centimeters
-  6: 1000,       // meters
-  8: 0.0000254,  // microinches
-  9: 0.0254,     // mils
-  10: 914.4,     // yards
-  13: 0.001,     // microns
-  14: 100,       // decimeters
+  1: 25.4, // inches
+  2: 304.8, // feet
+  4: 1, // millimeters
+  5: 10, // centimeters
+  6: 1000, // meters
+  8: 0.0000254, // microinches
+  9: 0.0254, // mils
+  10: 914.4, // yards
+  13: 0.001, // microns
+  14: 100, // decimeters
 };
 
 function readUnits(tags: Tag[], warnings: string[]): number {
@@ -549,7 +614,8 @@ export function importDxf(text: string): DxfImportResult {
   // Locate sections. A section spans SECTION..ENDSEC; its name is the code-2
   // tag right after SECTION.
   const blocks = new Map<string, BlockDef>();
-  let entStart = -1, entEnd = -1;
+  let entStart = -1,
+    entEnd = -1;
   let i = nextEntityStart(tags, 0);
   while (i < tags.length) {
     const v = tags[i].value.trim().toUpperCase();
@@ -558,14 +624,20 @@ export function importDxf(text: string): DxfImportResult {
       // find section name
       let name = "";
       for (let j = i + 1; j < next; j++) {
-        if (tags[j].code === 2) { name = tags[j].value.trim().toUpperCase(); break; }
+        if (tags[j].code === 2) {
+          name = tags[j].value.trim().toUpperCase();
+          break;
+        }
       }
       // find matching ENDSEC
       let k = next;
       while (k < tags.length && tags[k].value.trim().toUpperCase() !== "ENDSEC") {
         k = nextEntityStart(tags, k + 1);
       }
-      if (name === "ENTITIES") { entStart = next; entEnd = k; }
+      if (name === "ENTITIES") {
+        entStart = next;
+        entEnd = k;
+      }
       if (name === "BLOCKS") collectBlocks(tags, next, k, blocks);
       i = nextEntityStart(tags, k + 1);
     } else {
@@ -576,7 +648,15 @@ export function importDxf(text: string): DxfImportResult {
 
   const unitScale = readUnits(tags, warnings);
 
-  const ctx: ParseCtx = { tags, blocks, warnings, skipped: new Map(), extrusionWarned: false, budget: MAX_ENTITIES, budgetWarned: false };
+  const ctx: ParseCtx = {
+    tags,
+    blocks,
+    warnings,
+    skipped: new Map(),
+    extrusionWarned: false,
+    budget: MAX_ENTITIES,
+    budgetWarned: false,
+  };
   const entities: Entity[] = [];
   parseEntityRange(ctx, entStart, entEnd, entities, 0);
 
@@ -592,7 +672,12 @@ export function importDxf(text: string): DxfImportResult {
   return { entities, warnings };
 }
 
-function collectBlocks(tags: Tag[], start: number, end: number, blocks: Map<string, BlockDef>): void {
+function collectBlocks(
+  tags: Tag[],
+  start: number,
+  end: number,
+  blocks: Map<string, BlockDef>,
+): void {
   let i = nextEntityStart(tags, start);
   while (i < end) {
     if (tags[i].value.trim().toUpperCase() === "BLOCK") {

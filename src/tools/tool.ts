@@ -24,7 +24,13 @@ export interface ToolContext {
   /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
    *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
    *  If `onTab` is provided, Tab calls it instead of moving browser focus. */
-  openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | undefined, onCancel: () => void, onTab?: () => void): void;
+  openValueEditor(
+    worldPos: Vec2,
+    placeholder: string,
+    onCommit: (raw: string) => boolean | undefined,
+    onCancel: () => void,
+    onTab?: () => void,
+  ): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;
 }

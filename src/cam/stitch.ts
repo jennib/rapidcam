@@ -15,7 +15,11 @@
 import { planTiles, type StitchOptions, type StitchPlan } from "./tiling";
 import { parseProgram, emitProgram, unsupportedMotions, type GEvent } from "./gcodeMotion";
 import { clipProgramToTile, programCutBounds } from "./tileClip";
-import { registrationEvents, type RegistrationMode, type RegistrationOptions } from "./registration";
+import {
+  registrationEvents,
+  type RegistrationMode,
+  type RegistrationOptions,
+} from "./registration";
 import type { Vec2 } from "../core/vec2";
 import type { Bounds } from "../model/entities";
 
@@ -58,7 +62,13 @@ function withRegistration(events: GEvent[], reg: GEvent[]): GEvent[] {
   return [...events.slice(0, i), ...reg, ...events.slice(i)];
 }
 
-function tileHeader(name: string, col: number, row: number, plan: StitchPlan, o: StitchGCodeOptions): string {
+function tileHeader(
+  name: string,
+  col: number,
+  row: number,
+  plan: StitchPlan,
+  o: StitchGCodeOptions,
+): string {
   return [
     `; RapidCAM Stitch — ${name}`,
     `; Tile column ${col + 1}/${plan.cols}, row ${row + 1}/${plan.rows} (bed ${o.tileW}×${o.tileH}mm)`,
@@ -79,7 +89,7 @@ export function stitchGCode(gcode: string, opts: StitchGCodeOptions): StitchResu
   if (unsupported.length > 0) {
     warnings.push(
       `contains motions Stitch can't tile (${unsupported.join(", ")}) — re-post with the GRBL processor ` +
-      `or avoid bezier engraving, then try again`,
+        `or avoid bezier engraving, then try again`,
     );
     return { tiles: [], plan: null, warnings };
   }
@@ -114,8 +124,10 @@ export function stitchGCode(gcode: string, opts: StitchGCodeOptions): StitchResu
       plan.features.filter((f) => inRect(f, cell.rect)),
       { mode: regMode, safeZ: clip.safeZ, ...opts.registrationOptions },
     );
-    const body = emitProgram({ events: withRegistration(clip.program.events, reg) },
-      { dx: cell.rect.min.x, dy: cell.rect.min.y });
+    const body = emitProgram(
+      { events: withRegistration(clip.program.events, reg) },
+      { dx: cell.rect.min.x, dy: cell.rect.min.y },
+    );
     tiles.push({
       index: cell.index,
       row: cell.row,

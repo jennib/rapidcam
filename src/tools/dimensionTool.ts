@@ -10,7 +10,13 @@
 import { type Vec2, dist, mid, normalize, sub, cross, dot } from "../core/vec2";
 import { distToSegment, angleInArc } from "../core/geom";
 import type { Unit } from "../core/units";
-import { type Entity, type LineEntity, type RectEntity, CircleEntity, ArcEntity } from "../model/entities";
+import {
+  type Entity,
+  type LineEntity,
+  type RectEntity,
+  CircleEntity,
+  ArcEntity,
+} from "../model/entities";
 import type { CADDocument } from "../model/document";
 import type { Geo, PointRef } from "../model/constraints";
 import {
@@ -121,7 +127,8 @@ export class DimensionTool implements Tool {
             // accidentally produce a "distance" type (rotationally invariant).
             const dx = Math.abs(line.b.x - line.a.x);
             const dy = Math.abs(line.b.y - line.a.y);
-            this.forcedLinearType = dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
+            this.forcedLinearType =
+              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
             this.phase = "placeLinear";
           } else {
             // Polyline body click: snap to nearest vertex.
@@ -242,7 +249,7 @@ export class DimensionTool implements Tool {
       ctx.doc.emitChange();
       return;
     }
-    
+
     if (this.phase === "placeLinear") {
       this.hoverP1 = null;
       this.hoverP2 = null;
@@ -305,11 +312,15 @@ export class DimensionTool implements Tool {
     if (e.key === "Escape") {
       this.cancel(ctx);
     } else if (e.key === "Tab" && this.phase === "placeCircle") {
-      const ent = this.circleId ? ctx.doc.entities.find(e => e.id === this.circleId) : null;
+      const ent = this.circleId ? ctx.doc.entities.find((e) => e.id === this.circleId) : null;
       if (ent?.type === "arc") {
         // arc: cycle radius → diameter → arclength → radius
-        this.circleKind = this.circleKind === "radius" ? "diameter"
-          : this.circleKind === "diameter" ? "arclength" : "radius";
+        this.circleKind =
+          this.circleKind === "radius"
+            ? "diameter"
+            : this.circleKind === "diameter"
+              ? "arclength"
+              : "radius";
       } else {
         this.circleKind = this.circleKind === "radius" ? "diameter" : "radius";
       }
@@ -356,8 +367,9 @@ export class DimensionTool implements Tool {
     } else if (this.phase === "placeLinear" && this.p1 && this.p2) {
       const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
-      
-      this.curType = this.forcedLinearType ?? chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
+
+      this.curType =
+        this.forcedLinearType ?? chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);
@@ -367,7 +379,7 @@ export class DimensionTool implements Tool {
           if (Math.abs(cross(dir1, dir2)) < 0.05) this.curType = "line-distance";
         }
       }
-      
+
       const dim = this.linearDim(ctx, 0, activeP1, activeP2);
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
@@ -394,7 +406,11 @@ export class DimensionTool implements Tool {
     ];
     if (layout.arc) {
       const { center, radius, startDir, endDir, ccw } = layout.arc;
-      previews.push({ kind: "polyline" as const, points: arcPolylinePoints(center, radius, startDir, endDir, ccw), closed: false });
+      previews.push({
+        kind: "polyline" as const,
+        points: arcPolylinePoints(center, radius, startDir, endDir, ccw),
+        closed: false,
+      });
     }
     this.preview.previews = previews;
   }
@@ -445,13 +461,16 @@ export class DimensionTool implements Tool {
       const ap2 = activeP2 ?? this.p2!;
       const p1Raw = this.firstRaw ?? ap1.pos;
       const p2Raw = (this.hoverP2 ? this.hoverRaw : this.secondRaw) ?? ap2.pos;
-      
+
       const edge1 = getEdgeEnds(ctx.doc, ap1);
       const edge2 = getEdgeEnds(ctx.doc, ap2);
-      
+
       return makeDimension(this.curType, {
         entities: [ap1.ref.entityId, ap2.ref.entityId],
-        anchors: edge1 && edge2 ? [computeT(p1Raw, edge1.a, edge1.b), computeT(p2Raw, edge2.a, edge2.b)] : [0.5, 0.5],
+        anchors:
+          edge1 && edge2
+            ? [computeT(p1Raw, edge1.a, edge1.b), computeT(p2Raw, edge2.a, edge2.b)]
+            : [0.5, 0.5],
         value: 0,
         offset,
       });
@@ -521,7 +540,13 @@ function geoOf(entities: Entity[]): Geo {
   return (id) => m.get(id);
 }
 
-function arcPolylinePoints(center: Vec2, radius: number, startDir: Vec2, endDir: Vec2, ccw: boolean): Vec2[] {
+function arcPolylinePoints(
+  center: Vec2,
+  radius: number,
+  startDir: Vec2,
+  endDir: Vec2,
+  ccw: boolean,
+): Vec2[] {
   const a0 = Math.atan2(startDir.y, startDir.x);
   const a1 = Math.atan2(endDir.y, endDir.x);
   let delta = a1 - a0;
@@ -543,7 +568,8 @@ function samePos(a: Vec2, b: Vec2): boolean {
  *  the centre (or off an arc's span). The key encodes the angle so the point is
  *  recomputed live from the circle as it resizes/moves. */
 function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2): Pick | null {
-  const c = ent.center, r = ent.radius;
+  const c = ent.center,
+    r = ent.radius;
   const dCenter = dist(c, p);
   if (Math.abs(dCenter - r) >= dCenter) return null; // nearer the centre → let it win
   const theta = Math.atan2(p.y - c.y, p.x - c.x);
@@ -591,7 +617,7 @@ function pickVirtualRectCorner(entities: Entity[], p: Vec2, tol: number): Pick |
   return best;
 }
 
-function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2, b: Vec2 } | null {
+function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | null {
   const e = doc.entities.find((x: Entity) => x.id === midRef.ref.entityId);
   if (!e) return null;
   if (e.type === "line") {

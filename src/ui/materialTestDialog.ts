@@ -15,8 +15,13 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   backdrop.id = "mtd-backdrop";
   backdrop.className = "tp-backdrop";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -43,8 +48,14 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
 
   const num = (label: string, get: () => number, set: (v: number) => void): HTMLElement => {
     const inp = document.createElement("input");
-    inp.type = "number"; inp.className = "dim"; inp.step = "any"; inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v); });
+    inp.type = "number";
+    inp.className = "dim";
+    inp.step = "any";
+    inp.value = String(get());
+    inp.addEventListener("change", () => {
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v)) set(v);
+    });
     const el = row(label, inp);
     body.appendChild(el);
     return el;
@@ -53,27 +64,93 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
   // Test type — engrave (fill squares) vs cut (trace outlines that drop out).
   const modeSel = document.createElement("select");
   modeSel.className = "unit";
-  for (const [v, l] of [["engrave", "Engrave (fill squares)"], ["cut", "Cut (square outlines)"]] as const) {
-    const o = document.createElement("option"); o.value = v; o.textContent = l; modeSel.appendChild(o);
+  for (const [v, l] of [
+    ["engrave", "Engrave (fill squares)"],
+    ["cut", "Cut (square outlines)"],
+  ] as const) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    modeSel.appendChild(o);
   }
   modeSel.value = d.mode;
   body.appendChild(row("Test type", modeSel));
 
   body.appendChild(sec("Power sweep (%) — rows"));
-  num("Min power", () => d.powerMin, (v) => { d.powerMin = clamp(v, 0, 100); });
-  num("Max power", () => d.powerMax, (v) => { d.powerMax = clamp(v, 0, 100); });
-  num("Steps", () => d.powerSteps, (v) => { d.powerSteps = Math.max(1, Math.round(v)); });
+  num(
+    "Min power",
+    () => d.powerMin,
+    (v) => {
+      d.powerMin = clamp(v, 0, 100);
+    },
+  );
+  num(
+    "Max power",
+    () => d.powerMax,
+    (v) => {
+      d.powerMax = clamp(v, 0, 100);
+    },
+  );
+  num(
+    "Steps",
+    () => d.powerSteps,
+    (v) => {
+      d.powerSteps = Math.max(1, Math.round(v));
+    },
+  );
 
   body.appendChild(sec("Speed sweep (mm/min) — columns"));
-  num("Min speed", () => d.speedMin, (v) => { d.speedMin = Math.max(1, v); });
-  num("Max speed", () => d.speedMax, (v) => { d.speedMax = Math.max(1, v); });
-  num("Steps", () => d.speedSteps, (v) => { d.speedSteps = Math.max(1, Math.round(v)); });
+  num(
+    "Min speed",
+    () => d.speedMin,
+    (v) => {
+      d.speedMin = Math.max(1, v);
+    },
+  );
+  num(
+    "Max speed",
+    () => d.speedMax,
+    (v) => {
+      d.speedMax = Math.max(1, v);
+    },
+  );
+  num(
+    "Steps",
+    () => d.speedSteps,
+    (v) => {
+      d.speedSteps = Math.max(1, Math.round(v));
+    },
+  );
 
   body.appendChild(sec("Grid"));
-  num("Cell size (mm)", () => d.cellSize, (v) => { d.cellSize = Math.max(1, v); });
-  num("Gap (mm)", () => d.gap, (v) => { d.gap = Math.max(0, v); });
-  const fillSpacingRow = num("Fill spacing (mm)", () => d.fillSpacing, (v) => { d.fillSpacing = Math.max(0.01, v); });
-  const passesRow = num("Passes per cell", () => d.cutPasses, (v) => { d.cutPasses = Math.max(1, Math.round(v)); });
+  num(
+    "Cell size (mm)",
+    () => d.cellSize,
+    (v) => {
+      d.cellSize = Math.max(1, v);
+    },
+  );
+  num(
+    "Gap (mm)",
+    () => d.gap,
+    (v) => {
+      d.gap = Math.max(0, v);
+    },
+  );
+  const fillSpacingRow = num(
+    "Fill spacing (mm)",
+    () => d.fillSpacing,
+    (v) => {
+      d.fillSpacing = Math.max(0.01, v);
+    },
+  );
+  const passesRow = num(
+    "Passes per cell",
+    () => d.cutPasses,
+    (v) => {
+      d.cutPasses = Math.max(1, Math.round(v));
+    },
+  );
 
   // Fill spacing applies to engrave; passes applies to cut. Show the relevant one.
   const applyMode = () => {
@@ -81,21 +158,30 @@ export function openMaterialTestDialog(onConfirm: (cfg: TestConfig) => void): vo
     fillSpacingRow.style.display = cut ? "none" : "";
     passesRow.style.display = cut ? "" : "none";
   };
-  modeSel.addEventListener("change", () => { d.mode = modeSel.value as "engrave" | "cut"; applyMode(); });
+  modeSel.addEventListener("change", () => {
+    d.mode = modeSel.value as "engrave" | "cut";
+    applyMode();
+  });
   applyMode();
 
   const labelsChk = document.createElement("input");
-  labelsChk.type = "checkbox"; labelsChk.className = "settings-checkbox"; labelsChk.checked = d.labels;
-  labelsChk.addEventListener("change", () => { d.labels = labelsChk.checked; });
+  labelsChk.type = "checkbox";
+  labelsChk.className = "settings-checkbox";
+  labelsChk.checked = d.labels;
+  labelsChk.addEventListener("change", () => {
+    d.labels = labelsChk.checked;
+  });
   body.appendChild(row("Engrave axis labels", labelsChk));
 
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
   const cancel = document.createElement("button");
-  cancel.className = "btn"; cancel.textContent = "Cancel";
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
   cancel.addEventListener("click", () => close());
   const create = document.createElement("button");
-  create.className = "btn tp-apply-btn"; create.textContent = "Generate";
+  create.className = "btn tp-apply-btn";
+  create.textContent = "Generate";
   create.addEventListener("click", () => {
     if (d.powerMax < d.powerMin) [d.powerMin, d.powerMax] = [d.powerMax, d.powerMin];
     if (d.speedMax < d.speedMin) [d.speedMin, d.speedMax] = [d.speedMax, d.speedMin];

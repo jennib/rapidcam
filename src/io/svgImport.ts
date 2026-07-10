@@ -16,8 +16,12 @@
 
 import type { Vec2 } from "../core/vec2";
 import {
-  type Entity, LineEntity, PolylineEntity, BezierEntity,
-  CircleEntity, RectEntity,
+  type Entity,
+  LineEntity,
+  PolylineEntity,
+  BezierEntity,
+  CircleEntity,
+  RectEntity,
 } from "../model/entities";
 
 // ---------------------------------------------------------------------------
@@ -26,12 +30,18 @@ import {
 
 function unitToMm(value: number, unit: string): number {
   switch (unit.toLowerCase()) {
-    case "mm": return value;
-    case "cm": return value * 10;
-    case "in": return value * 25.4;
-    case "pt": return value * (25.4 / 72);
-    case "pc": return value * (25.4 / 6);
-    default:   return value * (25.4 / 96); // unitless = px at 96 dpi
+    case "mm":
+      return value;
+    case "cm":
+      return value * 10;
+    case "in":
+      return value * 25.4;
+    case "pt":
+      return value * (25.4 / 72);
+    case "pc":
+      return value * (25.4 / 6);
+    default:
+      return value * (25.4 / 96); // unitless = px at 96 dpi
   }
 }
 
@@ -44,12 +54,15 @@ function parseDim(s: string): { value: number; unit: string } | null {
 interface SvgScale {
   scaleX: number; // SVG user units → mm
   scaleY: number;
-  H: number;      // physical document height in mm (used for Y-flip)
+  H: number; // physical document height in mm (used for Y-flip)
 }
 
 function computeScale(svgEl: Element): SvgScale {
   const vbAttr = svgEl.getAttribute("viewBox") ?? "";
-  const vbParts = vbAttr.trim().split(/[\s,]+/).map(Number);
+  const vbParts = vbAttr
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
   const hasVb = vbParts.length >= 4 && vbParts.every(Number.isFinite);
   const vbW = hasVb ? vbParts[2] : null;
   const vbH = hasVb ? vbParts[3] : null;
@@ -61,7 +74,8 @@ function computeScale(svgEl: Element): SvgScale {
 
   // Derive scale from (physical_mm / viewBox_dimension).
   // If either is missing, fall back to 1 unit = 1 mm and warn.
-  let scaleX = 1, scaleY = 1;
+  let scaleX = 1,
+    scaleY = 1;
   if (wMm !== null && vbW) {
     scaleX = wMm / vbW;
   } else if (wMm !== null) {
@@ -89,9 +103,13 @@ function absXY(x: number, y: number, sc: SvgScale): Vec2 {
 }
 
 // Apply an absolute SVG X onto a known CAM point (used for H command).
-function absX(x: number, sc: SvgScale): number { return x * sc.scaleX; }
+function absX(x: number, sc: SvgScale): number {
+  return x * sc.scaleX;
+}
 // Apply an absolute SVG Y onto a known CAM point (used for V command).
-function absY(y: number, sc: SvgScale): number { return sc.H - y * sc.scaleY; }
+function absY(y: number, sc: SvgScale): number {
+  return sc.H - y * sc.scaleY;
+}
 
 // ---------------------------------------------------------------------------
 // Path tokenizer
@@ -120,14 +138,17 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
   let i = 0;
 
   // Sub-path state
-  let cur: Vec2 = { x: 0, y: 0 };    // current pen (CAM coords)
+  let cur: Vec2 = { x: 0, y: 0 }; // current pen (CAM coords)
   let subStart: Vec2 = { x: 0, y: 0 }; // last M position (for Z)
   let lastCubicCtrl: Vec2 | null = null; // last cubic p2 (for S)
-  let lastQuadCtrl: Vec2 | null = null;  // last quadratic q1 (for T)
-  let polyPts: Vec2[] = [];              // pending line points
+  let lastQuadCtrl: Vec2 | null = null; // last quadratic q1 (for T)
+  let polyPts: Vec2[] = []; // pending line points
 
   function flushPoly(closed: boolean): void {
-    if (polyPts.length < 2) { polyPts = []; return; }
+    if (polyPts.length < 2) {
+      polyPts = [];
+      return;
+    }
     if (polyPts.length === 2 && !closed) {
       entities.push(new LineEntity({ ...polyPts[0] }, { ...polyPts[1] }));
     } else {
@@ -151,7 +172,10 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
   }
 
   while (i < tokens.length) {
-    if (typeof tokens[i] !== "string") { i++; continue; } // shouldn't happen; skip stray numbers
+    if (typeof tokens[i] !== "string") {
+      i++;
+      continue;
+    } // shouldn't happen; skip stray numbers
 
     const letter = tokens[i++] as string;
     const rel = letter !== letter.toUpperCase() && letter.toLowerCase() !== "z";
@@ -164,49 +188,64 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
     do {
       switch (effectiveCmd) {
         case "M": {
-          const ns = take(2); if (ns.length < 2) break;
+          const ns = take(2);
+          if (ns.length < 2) break;
           flushPoly(false);
           cur = rel
             ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
             : absXY(ns[0], ns[1], sc);
           subStart = { ...cur };
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           effectiveCmd = "L"; // subsequent pairs are implicit L
           break;
         }
         case "L": {
-          const ns = take(2); if (ns.length < 2) break;
+          const ns = take(2);
+          if (ns.length < 2) break;
           ensurePoly();
           cur = rel
             ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
             : absXY(ns[0], ns[1], sc);
           polyPts.push({ ...cur });
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           break;
         }
         case "H": {
-          const ns = take(1); if (ns.length < 1) break;
+          const ns = take(1);
+          if (ns.length < 1) break;
           ensurePoly();
           cur = { x: rel ? cur.x + ns[0] * sc.scaleX : absX(ns[0], sc), y: cur.y };
           polyPts.push({ ...cur });
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           break;
         }
         case "V": {
-          const ns = take(1); if (ns.length < 1) break;
+          const ns = take(1);
+          if (ns.length < 1) break;
           ensurePoly();
           cur = { x: cur.x, y: rel ? cur.y - ns[0] * sc.scaleY : absY(ns[0], sc) };
           polyPts.push({ ...cur });
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           break;
         }
         case "C": {
-          const ns = take(6); if (ns.length < 6) break;
+          const ns = take(6);
+          if (ns.length < 6) break;
           flushPoly(false);
           const p0 = { ...cur };
-          const p1 = rel ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY } : absXY(ns[0], ns[1], sc);
-          const p2 = rel ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY } : absXY(ns[2], ns[3], sc);
-          const p3 = rel ? { x: cur.x + ns[4] * sc.scaleX, y: cur.y - ns[5] * sc.scaleY } : absXY(ns[4], ns[5], sc);
+          const p1 = rel
+            ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
+            : absXY(ns[0], ns[1], sc);
+          const p2 = rel
+            ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY }
+            : absXY(ns[2], ns[3], sc);
+          const p3 = rel
+            ? { x: cur.x + ns[4] * sc.scaleX, y: cur.y - ns[5] * sc.scaleY }
+            : absXY(ns[4], ns[5], sc);
           entities.push(new BezierEntity(p0, p1, p2, p3));
           lastCubicCtrl = { ...p2 };
           lastQuadCtrl = null;
@@ -214,15 +253,20 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
           break;
         }
         case "S": {
-          const ns = take(4); if (ns.length < 4) break;
+          const ns = take(4);
+          if (ns.length < 4) break;
           flushPoly(false);
           const p0 = { ...cur };
           // Reflect the last cubic control point around cur, or use cur if none.
           const p1 = lastCubicCtrl
             ? { x: 2 * cur.x - lastCubicCtrl.x, y: 2 * cur.y - lastCubicCtrl.y }
             : { ...cur };
-          const p2 = rel ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY } : absXY(ns[0], ns[1], sc);
-          const p3 = rel ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY } : absXY(ns[2], ns[3], sc);
+          const p2 = rel
+            ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
+            : absXY(ns[0], ns[1], sc);
+          const p3 = rel
+            ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY }
+            : absXY(ns[2], ns[3], sc);
           entities.push(new BezierEntity(p0, p1, p2, p3));
           lastCubicCtrl = { ...p2 };
           lastQuadCtrl = null;
@@ -230,11 +274,16 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
           break;
         }
         case "Q": {
-          const ns = take(4); if (ns.length < 4) break;
+          const ns = take(4);
+          if (ns.length < 4) break;
           flushPoly(false);
           const p0 = { ...cur };
-          const q1 = rel ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY } : absXY(ns[0], ns[1], sc);
-          const p3 = rel ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY } : absXY(ns[2], ns[3], sc);
+          const q1 = rel
+            ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
+            : absXY(ns[0], ns[1], sc);
+          const p3 = rel
+            ? { x: cur.x + ns[2] * sc.scaleX, y: cur.y - ns[3] * sc.scaleY }
+            : absXY(ns[2], ns[3], sc);
           // Degree elevation: Q(p0, q1, p3) → cubic C(p0, p1c, p2c, p3).
           const p1c = { x: p0.x + (2 / 3) * (q1.x - p0.x), y: p0.y + (2 / 3) * (q1.y - p0.y) };
           const p2c = { x: p3.x + (2 / 3) * (q1.x - p3.x), y: p3.y + (2 / 3) * (q1.y - p3.y) };
@@ -246,13 +295,16 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
         }
         case "T": {
           // Smooth quadratic: reflect last quad ctrl point, then degree-elevate.
-          const ns = take(2); if (ns.length < 2) break;
+          const ns = take(2);
+          if (ns.length < 2) break;
           flushPoly(false);
           const p0 = { ...cur };
           const q1: Vec2 = lastQuadCtrl
             ? { x: 2 * cur.x - lastQuadCtrl.x, y: 2 * cur.y - lastQuadCtrl.y }
             : { ...cur };
-          const p3 = rel ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY } : absXY(ns[0], ns[1], sc);
+          const p3 = rel
+            ? { x: cur.x + ns[0] * sc.scaleX, y: cur.y - ns[1] * sc.scaleY }
+            : absXY(ns[0], ns[1], sc);
           const p1c = { x: p0.x + (2 / 3) * (q1.x - p0.x), y: p0.y + (2 / 3) * (q1.y - p0.y) };
           const p2c = { x: p3.x + (2 / 3) * (q1.x - p3.x), y: p3.y + (2 / 3) * (q1.y - p3.y) };
           entities.push(new BezierEntity(p0, p1c, p2c, p3));
@@ -263,12 +315,14 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
         }
         case "A": {
           // Arc: skip the 7 parameters but advance cur to the endpoint.
-          const ns = take(7); if (ns.length < 7) break;
+          const ns = take(7);
+          if (ns.length < 7) break;
           console.warn("[svgImport] Arc command (A) is not supported — segment skipped");
           cur = rel
             ? { x: cur.x + ns[5] * sc.scaleX, y: cur.y - ns[6] * sc.scaleY }
             : absXY(ns[5], ns[6], sc);
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           break;
         }
         case "Z": {
@@ -277,7 +331,8 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
             flushPoly(true);
           }
           cur = { ...subStart };
-          lastCubicCtrl = null; lastQuadCtrl = null;
+          lastCubicCtrl = null;
+          lastQuadCtrl = null;
           break;
         }
       }
@@ -293,7 +348,11 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
 // ---------------------------------------------------------------------------
 
 function parsePointsList(attr: string, sc: SvgScale): Vec2[] {
-  const nums = attr.trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+  const nums = attr
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter(Number.isFinite);
   const out: Vec2[] = [];
   for (let j = 0; j + 1 < nums.length; j += 2) {
     out.push(absXY(nums[j], nums[j + 1], sc));
@@ -315,7 +374,7 @@ function processElement(el: Element, sc: SvgScale, out: Entity[]): void {
         if (child.hasAttribute("transform")) {
           console.warn(
             `[svgImport] <g transform="${child.getAttribute("transform")}"> — ` +
-            "transforms are not supported; coordinates will be wrong",
+              "transforms are not supported; coordinates will be wrong",
           );
         }
         processElement(child, sc, out);
@@ -330,10 +389,12 @@ function processElement(el: Element, sc: SvgScale, out: Entity[]): void {
       }
 
       case "line":
-        out.push(new LineEntity(
-          absXY(fa(child, "x1"), fa(child, "y1"), sc),
-          absXY(fa(child, "x2"), fa(child, "y2"), sc),
-        ));
+        out.push(
+          new LineEntity(
+            absXY(fa(child, "x1"), fa(child, "y1"), sc),
+            absXY(fa(child, "x2"), fa(child, "y2"), sc),
+          ),
+        );
         break;
 
       case "circle": {
@@ -346,17 +407,23 @@ function processElement(el: Element, sc: SvgScale, out: Entity[]): void {
 
       case "rect": {
         if (fa(child, "rx") || fa(child, "ry")) {
-          console.warn("[svgImport] Rounded rect (rx/ry) — corner radii ignored, importing as plain rect");
+          console.warn(
+            "[svgImport] Rounded rect (rx/ry) — corner radii ignored, importing as plain rect",
+          );
         }
-        const rx = fa(child, "x"), ry = fa(child, "y");
-        const rw = fa(child, "width"), rh = fa(child, "height");
+        const rx = fa(child, "x"),
+          ry = fa(child, "y");
+        const rw = fa(child, "width"),
+          rh = fa(child, "height");
         if (rw > 0 && rh > 0) {
           // SVG rect: top-left = (rx, ry), bottom-right = (rx+rw, ry+rh) in Y-down.
           // After Y-flip: minPt (Y-up) = absXY of the bottom-right Y, maxPt = absXY of the top-left Y.
-          out.push(new RectEntity(
-            absXY(rx,      ry + rh, sc), // Y-up bottom-left  = SVG bottom
-            absXY(rx + rw, ry,      sc), // Y-up top-right    = SVG top
-          ));
+          out.push(
+            new RectEntity(
+              absXY(rx, ry + rh, sc), // Y-up bottom-left  = SVG bottom
+              absXY(rx + rw, ry, sc), // Y-up top-right    = SVG top
+            ),
+          );
         }
         break;
       }
@@ -392,7 +459,10 @@ export function importSvg(svgText: string): Entity[] {
 
   // DOMParser sets the root to <parsererror> on failure.
   const root = domDoc.documentElement;
-  if (root.tagName === "parsererror" || root.tagName.toLowerCase().replace(/^[^:]+:/, "") !== "svg") {
+  if (
+    root.tagName === "parsererror" ||
+    root.tagName.toLowerCase().replace(/^[^:]+:/, "") !== "svg"
+  ) {
     console.warn("[svgImport] Failed to parse SVG — not a valid SVG document");
     return [];
   }

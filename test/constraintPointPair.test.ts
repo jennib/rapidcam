@@ -11,8 +11,17 @@ test("point-pair horizontal constraint solves and equalises Y", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 0, y: 0 }, 2));
   const b = doc.add(new CircleEntity({ x: 10, y: 5 }, 2));
-  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "c" }], params: [0, 0] }));
-  doc.addConstraint(makeConstraint("horizontal", { points: [{ entityId: a.id, key: "c" }, { entityId: b.id, key: "c" }] }));
+  doc.addConstraint(
+    makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "c" }], params: [0, 0] }),
+  );
+  doc.addConstraint(
+    makeConstraint("horizontal", {
+      points: [
+        { entityId: a.id, key: "c" },
+        { entityId: b.id, key: "c" },
+      ],
+    }),
+  );
 
   const r = solve(doc);
   expect(r.converged).toBe(true);
@@ -23,8 +32,17 @@ test("point-pair vertical constraint solves and equalises X", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 0, y: 0 }, 2));
   const b = doc.add(new CircleEntity({ x: 10, y: 5 }, 2));
-  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "c" }], params: [0, 0] }));
-  doc.addConstraint(makeConstraint("vertical", { points: [{ entityId: a.id, key: "c" }, { entityId: b.id, key: "c" }] }));
+  doc.addConstraint(
+    makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "c" }], params: [0, 0] }),
+  );
+  doc.addConstraint(
+    makeConstraint("vertical", {
+      points: [
+        { entityId: a.id, key: "c" },
+        { entityId: b.id, key: "c" },
+      ],
+    }),
+  );
 
   const r = solve(doc);
   expect(r.converged).toBe(true);

@@ -22,7 +22,11 @@ import type { Vec2 } from "../core/vec2";
 import type { Bounds } from "../model/entities";
 import { type GProgram, type GMoveEvent, type GEvent, parseProgram } from "./gcodeMotion";
 
-interface P3 { x: number; y: number; z: number }
+interface P3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 /** Max chord error (mm) when linearizing an arc for clipping. */
 const ARC_CHORD_TOL = 0.02;
@@ -45,15 +49,25 @@ function linearizeArc(start: P3, m: GMoveEvent): P3[] {
   const cw = m.motion === 2;
   let sweep = a1 - a0;
   // Normalize to the correct direction; a full loop (start==end) sweeps 2π.
-  if (cw) { while (sweep > -1e-9) sweep -= 2 * Math.PI; }
-  else { while (sweep < 1e-9) sweep += 2 * Math.PI; }
+  if (cw) {
+    while (sweep > -1e-9) sweep -= 2 * Math.PI;
+  } else {
+    while (sweep < 1e-9) sweep += 2 * Math.PI;
+  }
 
-  const steps = Math.max(1, Math.ceil(Math.abs(sweep) / (2 * Math.acos(Math.max(0, 1 - ARC_CHORD_TOL / r)))));
+  const steps = Math.max(
+    1,
+    Math.ceil(Math.abs(sweep) / (2 * Math.acos(Math.max(0, 1 - ARC_CHORD_TOL / r)))),
+  );
   const pts: P3[] = [];
   for (let k = 1; k <= steps; k++) {
     const t = k / steps;
     const a = a0 + sweep * t;
-    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), z: start.z + (m.z - start.z) * t });
+    pts.push({
+      x: cx + r * Math.cos(a),
+      y: cy + r * Math.sin(a),
+      z: start.z + (m.z - start.z) * t,
+    });
   }
   pts[pts.length - 1] = { x: m.x, y: m.y, z: m.z }; // land exactly on the endpoint
   return pts;
@@ -63,10 +77,18 @@ function linearizeArc(start: P3, m: GMoveEvent): P3[] {
 // Run extraction — split the program into pass-through lines and cutting runs
 // ---------------------------------------------------------------------------
 
-interface CutRun { pts: P3[]; feed: number; plunge: number }
+interface CutRun {
+  pts: P3[];
+  feed: number;
+  plunge: number;
+}
 type Item = { kind: "raw"; text: string } | { kind: "run"; run: CutRun };
 
-interface Extracted { items: Item[]; safeZ: number; hasVaryingZ: boolean }
+interface Extracted {
+  items: Item[];
+  safeZ: number;
+  hasVaryingZ: boolean;
+}
 
 function extractRuns(program: GProgram): Extracted {
   const items: Item[] = [];
@@ -77,8 +99,12 @@ function extractRuns(program: GProgram): Extracted {
   let run: CutRun | null = null;
   const closeRun = () => {
     if (run && run.pts.length >= 1) {
-      let zmin = Infinity, zmax = -Infinity;
-      for (const p of run.pts) { if (p.z < zmin) zmin = p.z; if (p.z > zmax) zmax = p.z; }
+      let zmin = Infinity,
+        zmax = -Infinity;
+      for (const p of run.pts) {
+        if (p.z < zmin) zmin = p.z;
+        if (p.z > zmax) zmax = p.z;
+      }
       if (zmax - zmin > FLAT_Z_TOL) hasVaryingZ = true;
       items.push({ kind: "run", run });
     }
@@ -86,10 +112,13 @@ function extractRuns(program: GProgram): Extracted {
   };
 
   for (const ev of program.events) {
-    if (ev.kind === "raw") { items.push({ kind: "raw", text: ev.text }); continue; }
+    if (ev.kind === "raw") {
+      items.push({ kind: "raw", text: ev.text });
+      continue;
+    }
     const m = ev;
     const end: P3 = { x: m.x, y: m.y, z: m.z };
-    const seg = (m.motion === 2 || m.motion === 3) ? linearizeArc(prev, m) : [end];
+    const seg = m.motion === 2 || m.motion === 3 ? linearizeArc(prev, m) : [end];
 
     if (m.motion === 0) {
       closeRun();
@@ -102,7 +131,8 @@ function extractRuns(program: GProgram): Extracted {
         else run.pts[run.pts.length - 1] = p; // pure plunge: keep the deeper point
       }
       if (m.f !== undefined) {
-        if (m.hasX || m.hasY) run.feed = m.f; else run.plunge = m.f;
+        if (m.hasX || m.hasY) run.feed = m.f;
+        else run.plunge = m.f;
       }
     } else {
       closeRun();
@@ -131,35 +161,58 @@ const EPS = 1e-6;
 
 /** Inside portion [t0,t1] of segment a→b within rect, or null if fully outside. */
 function clipParams(a: Vec2, b: Vec2, r: Bounds): [number, number] | null {
-  let t0 = 0, t1 = 1;
+  let t0 = 0,
+    t1 = 1;
   const p = [-(b.x - a.x), b.x - a.x, -(b.y - a.y), b.y - a.y];
   const q = [a.x - r.min.x, r.max.x - a.x, a.y - r.min.y, r.max.y - a.y];
   for (let i = 0; i < 4; i++) {
-    if (Math.abs(p[i]) < EPS) { if (q[i] < 0) return null; continue; }
+    if (Math.abs(p[i]) < EPS) {
+      if (q[i] < 0) return null;
+      continue;
+    }
     const t = q[i] / p[i];
-    if (p[i] < 0) { if (t > t1) return null; if (t > t0) t0 = t; }
-    else { if (t < t0) return null; if (t < t1) t1 = t; }
+    if (p[i] < 0) {
+      if (t > t1) return null;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return null;
+      if (t < t1) t1 = t;
+    }
   }
   return [t0, t1];
 }
 
-const lerp = (a: P3, b: P3, t: number): P3 =>
-  ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+const lerp = (a: P3, b: P3, t: number): P3 => ({
+  x: a.x + (b.x - a.x) * t,
+  y: a.y + (b.y - a.y) * t,
+  z: a.z + (b.z - a.z) * t,
+});
 
 /** Split a cut polyline into the connected sub-paths that lie inside the rect. */
 function clipPolyline(pts: P3[], r: Bounds): P3[][] {
   const out: P3[][] = [];
   let cur: P3[] = [];
-  const flush = () => { if (cur.length >= 2) out.push(cur); cur = []; };
+  const flush = () => {
+    if (cur.length >= 2) out.push(cur);
+    cur = [];
+  };
 
   for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i], b = pts[i + 1];
+    const a = pts[i],
+      b = pts[i + 1];
     const c = clipParams(a, b, r);
-    if (!c) { flush(); continue; }
+    if (!c) {
+      flush();
+      continue;
+    }
     const [t0, t1] = c;
-    const a2 = lerp(a, b, t0), b2 = lerp(a, b, t1);
+    const a2 = lerp(a, b, t0),
+      b2 = lerp(a, b, t1);
     if (cur.length === 0) cur.push(a2);
-    else if (Math.hypot(cur[cur.length - 1].x - a2.x, cur[cur.length - 1].y - a2.y) > 1e-6) { flush(); cur.push(a2); }
+    else if (Math.hypot(cur[cur.length - 1].x - a2.x, cur[cur.length - 1].y - a2.y) > 1e-6) {
+      flush();
+      cur.push(a2);
+    }
     cur.push(b2);
     if (t1 < 1 - EPS) flush(); // segment left the rect at b2
   }
@@ -171,10 +224,28 @@ function clipPolyline(pts: P3[], r: Bounds): P3[][] {
 // Emission
 // ---------------------------------------------------------------------------
 
-const rapid = (over: Partial<GMoveEvent>): GMoveEvent =>
-  ({ kind: "move", motion: 0, x: 0, y: 0, z: 0, hasX: false, hasY: false, hasZ: false, ...over });
-const feed = (over: Partial<GMoveEvent>): GMoveEvent =>
-  ({ kind: "move", motion: 1, x: 0, y: 0, z: 0, hasX: false, hasY: false, hasZ: false, ...over });
+const rapid = (over: Partial<GMoveEvent>): GMoveEvent => ({
+  kind: "move",
+  motion: 0,
+  x: 0,
+  y: 0,
+  z: 0,
+  hasX: false,
+  hasY: false,
+  hasZ: false,
+  ...over,
+});
+const feed = (over: Partial<GMoveEvent>): GMoveEvent => ({
+  kind: "move",
+  motion: 1,
+  x: 0,
+  y: 0,
+  z: 0,
+  hasX: false,
+  hasY: false,
+  hasZ: false,
+  ...over,
+});
 
 /** Retract, rapid to the sub-path start, straight-plunge, then cut through it. */
 function emitSubPath(sub: P3[], safeZ: number, run: CutRun, prevZ: { v: number }): GMoveEvent[] {
@@ -187,10 +258,17 @@ function emitSubPath(sub: P3[], safeZ: number, run: CutRun, prevZ: { v: number }
   for (let i = 1; i < sub.length; i++) {
     const p = sub[i];
     const zChanged = Math.abs(p.z - prevZ.v) > 1e-9;
-    out.push(feed({
-      x: p.x, y: p.y, z: p.z, hasX: true, hasY: true, hasZ: zChanged,
-      f: i === 1 ? run.feed : undefined,
-    }));
+    out.push(
+      feed({
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        hasX: true,
+        hasY: true,
+        hasZ: zChanged,
+        f: i === 1 ? run.feed : undefined,
+      }),
+    );
     prevZ.v = p.z;
   }
   return out;
@@ -221,32 +299,47 @@ export function clipProgramToTile(program: GProgram, rect: Bounds): ClipResult {
   // finish with the tool buried in the stock.
   let penDown = false;
   const retract = () => {
-    if (penDown) { events.push(rapid({ z: safeZ, hasZ: true })); penDown = false; prevZ.v = safeZ; }
+    if (penDown) {
+      events.push(rapid({ z: safeZ, hasZ: true }));
+      penDown = false;
+      prevZ.v = safeZ;
+    }
   };
   const inRect = (p: P3) =>
-    p.x >= rect.min.x - EPS && p.x <= rect.max.x + EPS && p.y >= rect.min.y - EPS && p.y <= rect.max.y + EPS;
+    p.x >= rect.min.x - EPS &&
+    p.x <= rect.max.x + EPS &&
+    p.y >= rect.min.y - EPS &&
+    p.y <= rect.max.y + EPS;
 
   for (const it of items) {
-    if (it.kind === "raw") { retract(); events.push({ kind: "raw", text: it.text }); continue; }
+    if (it.kind === "raw") {
+      retract();
+      events.push({ kind: "raw", text: it.text });
+      continue;
+    }
     const run = it.run;
     if (run.pts.length === 1) {
       // A drill / peck plunge — one point, no segments for clipPolyline to keep.
       if (inRect(run.pts[0])) {
         events.push(...emitSubPath(run.pts, safeZ, run, prevZ));
-        penDown = true; hasCuts = true;
+        penDown = true;
+        hasCuts = true;
       }
       continue;
     }
     for (const sub of clipPolyline(run.pts, rect)) {
       events.push(...emitSubPath(sub, safeZ, run, prevZ));
-      penDown = true; hasCuts = true;
+      penDown = true;
+      hasCuts = true;
     }
   }
   retract(); // lift at program end
 
   const warnings: string[] = [];
   if (hasVaryingZ) {
-    warnings.push("a toolpath varies continuously in Z (relief / v-carve / helical) — its seam entry is approximated by a plunge");
+    warnings.push(
+      "a toolpath varies continuously in Z (relief / v-carve / helical) — its seam entry is approximated by a plunge",
+    );
   }
   return { program: { events }, hasCuts, safeZ, warnings };
 }
@@ -264,7 +357,11 @@ export function clipGCodeToTile(gcode: string, rect: Bounds): ClipResult {
  */
 export function programCutBounds(program: GProgram): Bounds | null {
   const { items } = extractRuns(program);
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity,
+    any = false;
   for (const it of items) {
     if (it.kind !== "run") continue;
     for (const p of it.run.pts) {

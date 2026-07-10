@@ -8,15 +8,34 @@ import type { CAMOperation } from "../src/cam/types";
 let n = 0;
 const solid = (gray: number) => {
   const id = `img-rrp-${n++}`;
-  registerEmbeddedImage({ id, name: id, width: 4, height: 4, data: btoa(String.fromCharCode(...new Array(16).fill(gray))) });
+  registerEmbeddedImage({
+    id,
+    name: id,
+    width: 4,
+    height: 4,
+    data: btoa(String.fromCharCode(...new Array(16).fill(gray))),
+  });
   return id;
 };
 
 const roughOp = (entityIds: string[], over: Partial<CAMOperation> = {}): CAMOperation => ({
-  id: "rr", name: "rough", type: "relief-rough", entityIds, side: "outside",
-  toolType: "end-mill", toolNumber: 1, diameter: 2,
-  feedrate: 1500, plungeRate: 300, spindleSpeed: 18000, safeZ: 5,
-  depth: -3, stepdown: 1, stepover: 0.4, finishAllowance: 0.5, ...over,
+  id: "rr",
+  name: "rough",
+  type: "relief-rough",
+  entityIds,
+  side: "outside",
+  toolType: "end-mill",
+  toolNumber: 1,
+  diameter: 2,
+  feedrate: 1500,
+  plungeRate: 300,
+  spindleSpeed: 18000,
+  safeZ: 5,
+  depth: -3,
+  stepdown: 1,
+  stepover: 0.4,
+  finishAllowance: 0.5,
+  ...over,
 });
 
 function setup(gray: number, over: Partial<CAMOperation> = {}) {

@@ -112,20 +112,23 @@ export class App {
   private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private laserPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private canvas: HTMLCanvasElement, dom: {
-    palette: HTMLElement;
-    topbar: HTMLElement;
-    settingsbar: HTMLElement;
-    propertiesbar: HTMLElement;
-    cambar: HTMLElement;
-    constraintbar: HTMLElement;
-    statusbar: HTMLElement;
-    layersbar: HTMLElement;
-    variablesbar: HTMLElement;
-    canvasHost: HTMLElement;
-    webglHost: HTMLElement;
-    splitDivider: HTMLElement;
-  }) {
+  constructor(
+    private canvas: HTMLCanvasElement,
+    dom: {
+      palette: HTMLElement;
+      topbar: HTMLElement;
+      settingsbar: HTMLElement;
+      propertiesbar: HTMLElement;
+      cambar: HTMLElement;
+      constraintbar: HTMLElement;
+      statusbar: HTMLElement;
+      layersbar: HTMLElement;
+      variablesbar: HTMLElement;
+      canvasHost: HTMLElement;
+      webglHost: HTMLElement;
+      splitDivider: HTMLElement;
+    },
+  ) {
     this.doc = new CADDocument({ width: 200, height: 150 }, "mm");
     this.renderer = new Renderer(canvas);
 
@@ -202,16 +205,19 @@ export class App {
       onRedo: () => this.project.undoRedo("redo"),
       canUndo: () => this.project.history.canUndo,
       canRedo: () => this.project.history.canRedo,
-      onSettings: () => showMachineSettingsDialog({
-        doc: this.doc,
-        pushHistory: this.project.pushHistory,
-      }),
+      onSettings: () =>
+        showMachineSettingsDialog({
+          doc: this.doc,
+          pushHistory: this.project.pushHistory,
+        }),
       file: {
         onNew: () => this.project.fileNew(),
         onStartScreen: () => this.openStartScreen(),
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
-        onShareLink: () => { void this.project.copyShareLink(); },
+        onShareLink: () => {
+          void this.project.copyShareLink();
+        },
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
         onImportSvg: () => this.project.svgImport(),
@@ -224,8 +230,8 @@ export class App {
         onDelete: () => this.deleteSelected(),
         onJoin: () => this.joinSelectedEntities(),
         onExplode: () => this.explodeSelectedEntities(),
-        onLinearPattern:      () => openLinearPatternDialog(this.doc, this.project.pushHistory),
-        onCircularPattern:    () => openCircularPatternDialog(this.doc, this.project.pushHistory),
+        onLinearPattern: () => openLinearPatternDialog(this.doc, this.project.pushHistory),
+        onCircularPattern: () => openCircularPatternDialog(this.doc, this.project.pushHistory),
         onRegeneratePatterns: () => this.doRegeneratePatterns(),
         onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
@@ -256,9 +262,12 @@ export class App {
     new ConstraintBar(
       dom.constraintbar,
       this.doc,
-      () => { this.runSolve(); return this.lastSolveResult; },
+      () => {
+        this.runSolve();
+        return this.lastSolveResult;
+      },
       this.project.pushHistory,
-      () => this.project.undoRedo("undo")
+      () => this.project.undoRedo("undo"),
     );
     new CamBar(
       dom.cambar,
@@ -274,7 +283,12 @@ export class App {
       },
       () => this.project.currentFileName,
     );
-    new VariablesBar(dom.variablesbar, this.doc, () => this.onVariablesChanged(), this.project.pushHistory);
+    new VariablesBar(
+      dom.variablesbar,
+      this.doc,
+      () => this.onVariablesChanged(),
+      this.project.pushHistory,
+    );
 
     this.doc.onChange(this.requestRender);
     this.doc.onChange(() => this.schedulePreviewUpdate());
@@ -310,10 +324,12 @@ export class App {
       // reopened splash still confirms before discarding real work; at launch the
       // doc is empty so the confirm is skipped — same as before.
       () => this.project.fileNew(),
-      () => { void this.project.fileOpen(); },
+      () => {
+        void this.project.fileOpen();
+      },
       (entry) => this.project.fileOpenRecent(entry),
       () => this.project.restoreDraft(),
-      (entry) => this.project.loadExample(entry)
+      (entry) => this.project.loadExample(entry),
     );
   }
 
@@ -326,7 +342,8 @@ export class App {
     // cut-path overlay on the 2D canvas instead of opening the WebGL split pane.
     if (this.doc.machineKind === "laser") {
       this.laserPreviewVisible = !this.laserPreviewVisible;
-      if (this.laserPreviewVisible) this.computeLaserPreview(); // instant on toggle
+      if (this.laserPreviewVisible)
+        this.computeLaserPreview(); // instant on toggle
       else this.renderer.laserPreview = null;
       this.requestRender();
       return;
@@ -366,7 +383,10 @@ export class App {
       const b = document.createElement("button");
       b.textContent = label;
       b.dataset.side = side;
-      b.title = side === "A" ? "Top face (cut as drawn, with pin holes)" : "Bottom face (flipped and mirrored)";
+      b.title =
+        side === "A"
+          ? "Top face (cut as drawn, with pin holes)"
+          : "Bottom face (flipped and mirrored)";
       b.addEventListener("click", () => {
         this.preview3DSide = side;
         this.updateSideToggle();
@@ -482,8 +502,6 @@ export class App {
     this.doc.emitChange();
   }
 
-
-
   // --- render loop ---------------------------------------------------------
   private requestRender = (): void => {
     if (this.renderScheduled) return;
@@ -585,7 +603,10 @@ export class App {
 
   // --- view fitting --------------------------------------------------------
   private fitView(): void {
-    const wa: Bounds = { min: { x: 0, y: 0 }, max: { x: this.doc.canvas.width, y: this.doc.canvas.height } };
+    const wa: Bounds = {
+      min: { x: 0, y: 0 },
+      max: { x: this.doc.canvas.width, y: this.doc.canvas.height },
+    };
     const gb = this.doc.bounds();
     const b = gb ? unionBounds(wa, gb) : wa;
     this.view.fit(b, 48);
@@ -596,11 +617,14 @@ export class App {
   private initialFit(): void {
     const w = this.view.width;
     const h = this.view.height;
-    if (w === 0 || h === 0) { this.fitView(); return; }
+    if (w === 0 || h === 0) {
+      this.fitView();
+      return;
+    }
     const workW = this.doc.canvas.width;
     const workH = this.doc.canvas.height;
     // Scale so the work area fills ~65% of the viewport in the tighter dimension.
-    const scale = Math.min((w * 0.65) / workW, (h * 0.60) / workH);
+    const scale = Math.min((w * 0.65) / workW, (h * 0.6) / workH);
     this.view.scale = Math.max(0.02, Math.min(400, scale));
     // Place origin at 28% from left, 68% from top — comfortable lower-left anchor.
     this.view.tx = w * 0.28;
@@ -688,13 +712,14 @@ export class App {
     const e = this.toolEvent(ev, screen);
     if (this.doc.regionHoverHandler) this.doc.regionHoverHandler(e.worldRaw);
     this.currentHover =
-      (this.tools.active.id === "select" || this.tools.active.id === "offset")
+      this.tools.active.id === "select" || this.tools.active.id === "offset"
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)
         : null;
-        
-    this.currentHoverConstraint = this.tools.active.id === "select"
-      ? (pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null)
-      : null;
+
+    this.currentHoverConstraint =
+      this.tools.active.id === "select"
+        ? (pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null)
+        : null;
 
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);
@@ -728,9 +753,10 @@ export class App {
 
   // --- inline dimension value editor ---------------------------------------
   private openDimEditor(dim: Dimension): void {
-    const geo: Geo = ((m) => (id: string) => m.get(id))(
-      new Map(this.doc.entities.map((e) => [e.id, e])),
-    );
+    const geo: Geo = (
+      (m) => (id: string) =>
+        m.get(id)
+    )(new Map(this.doc.entities.map((e) => [e.id, e])));
     const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
     if (!layout) return;
 
@@ -774,9 +800,13 @@ export class App {
     return true;
   }
 
-
-
-  private openValueEditor(worldPos: Vec2, placeholder: string, onCommit: (raw: string) => boolean | undefined, onCancel: () => void, onTab?: () => void): void {
+  private openValueEditor(
+    worldPos: Vec2,
+    placeholder: string,
+    onCommit: (raw: string) => boolean | undefined,
+    onCancel: () => void,
+    onTab?: () => void,
+  ): void {
     this.closeValueEditor();
     const pos = this.view.worldToScreen(worldPos);
     const input = document.createElement("input");
@@ -792,7 +822,9 @@ export class App {
         const ok = onCommit(raw);
         if (ok === false) {
           input.style.color = "#e05555";
-          setTimeout(() => { input.style.color = ""; }, 600);
+          setTimeout(() => {
+            input.style.color = "";
+          }, 600);
         } else {
           this.closeValueEditor();
         }
@@ -905,19 +937,48 @@ export class App {
     if (sel.length > 0) {
       const allConstruction = sel.every((e) => e.isConstruction);
       entries.push({ label: "Delete", shortcut: "Del", onClick: () => this.deleteSelected() });
-      entries.push({ label: "Join", shortcut: "^J", enabled: sel.length >= 2, onClick: () => this.joinSelectedEntities() });
-      entries.push({ label: "Explode", shortcut: "^⇧J", onClick: () => this.explodeSelectedEntities() });
-      entries.push({ label: allConstruction ? "Make Normal" : "Make Construction", shortcut: "X", onClick: () => this.toggleConstruction() });
+      entries.push({
+        label: "Join",
+        shortcut: "^J",
+        enabled: sel.length >= 2,
+        onClick: () => this.joinSelectedEntities(),
+      });
+      entries.push({
+        label: "Explode",
+        shortcut: "^⇧J",
+        onClick: () => this.explodeSelectedEntities(),
+      });
+      entries.push({
+        label: allConstruction ? "Make Normal" : "Make Construction",
+        shortcut: "X",
+        onClick: () => this.toggleConstruction(),
+      });
       entries.push("sep");
-      entries.push({ label: "Linear Pattern…", onClick: () => openLinearPatternDialog(this.doc, this.project.pushHistory) });
-      entries.push({ label: "Circular Pattern…", onClick: () => openCircularPatternDialog(this.doc, this.project.pushHistory) });
-      entries.push({ label: "Rectangular Array…", onClick: () => openRectArrayDialog(this.doc, this.project.pushHistory) });
-      entries.push({ label: "Circular Array…", onClick: () => openCircArrayDialog(this.doc, this.project.pushHistory) });
+      entries.push({
+        label: "Linear Pattern…",
+        onClick: () => openLinearPatternDialog(this.doc, this.project.pushHistory),
+      });
+      entries.push({
+        label: "Circular Pattern…",
+        onClick: () => openCircularPatternDialog(this.doc, this.project.pushHistory),
+      });
+      entries.push({
+        label: "Rectangular Array…",
+        onClick: () => openRectArrayDialog(this.doc, this.project.pushHistory),
+      });
+      entries.push({
+        label: "Circular Array…",
+        onClick: () => openCircArrayDialog(this.doc, this.project.pushHistory),
+      });
       entries.push("sep");
     }
 
     if (this.stalePatternIds.size > 0) {
-      entries.push({ label: "Regenerate Patterns", shortcut: "^⇧P", onClick: () => this.doRegeneratePatterns() });
+      entries.push({
+        label: "Regenerate Patterns",
+        shortcut: "^⇧P",
+        onClick: () => this.doRegeneratePatterns(),
+      });
     }
     entries.push({ label: "Fit View", onClick: () => this.fitView() });
 
@@ -983,7 +1044,7 @@ export class App {
       ev.preventDefault();
       return;
     }
-    
+
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "j") {
       if (ev.shiftKey) this.explodeSelectedEntities();
       else this.joinSelectedEntities();
@@ -995,8 +1056,10 @@ export class App {
       ev.preventDefault();
       if (ev.shiftKey) {
         // Ungroup
-        const selectedIds = new Set(this.doc.selected.map(e => e.id));
-        const groupsToKeep = this.doc.groups.filter(g => !g.entityIds.some(id => selectedIds.has(id)));
+        const selectedIds = new Set(this.doc.selected.map((e) => e.id));
+        const groupsToKeep = this.doc.groups.filter(
+          (g) => !g.entityIds.some((id) => selectedIds.has(id)),
+        );
         if (groupsToKeep.length !== this.doc.groups.length) {
           this.project.pushHistory();
           this.doc.groups = groupsToKeep;
@@ -1009,7 +1072,7 @@ export class App {
           const group = {
             id: nextId("grp"),
             name: "",
-            entityIds: this.doc.selected.map(e => e.id)
+            entityIds: this.doc.selected.map((e) => e.id),
           };
           this.doc.groups.push(group);
           this.doc.emitChange();

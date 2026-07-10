@@ -60,13 +60,15 @@ export class MeasureTool implements Tool {
 
   getOverlay(): ToolOverlay {
     if (!this.first) return { previews: [], selectionRect: null };
-    const a = this.first, b = this.cursor;
+    const a = this.first,
+      b = this.cursor;
     const previews: PreviewShape[] = [{ kind: "point", pos: a }];
 
     const d = dist(a, b);
     if (d > 1e-9) {
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
       const text =
         `${formatLengthWithUnit(d, this.unit)}   ` +
         `Δx ${formatLength(dx, this.unit)}  Δy ${formatLength(dy, this.unit)}  ∠ ${angleDeg.toFixed(1)}°`;

@@ -1,7 +1,15 @@
 import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
 
-export type CAMOpType = "profile" | "engrave" | "drill" | "pocket" | "chamfer" | "vcarve" | "relief-rough" | "score";
+export type CAMOpType =
+  | "profile"
+  | "engrave"
+  | "drill"
+  | "pocket"
+  | "chamfer"
+  | "vcarve"
+  | "relief-rough"
+  | "score";
 
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";
@@ -33,14 +41,14 @@ export interface ToolDef {
   id: string;
   name: string;
   toolType: ToolType;
-  diameter: number;       // mm — cutting/major diameter (widest part; see diagram above)
-  vAngle?: number;        // V-bit included angle (total, not half), degrees
-  tipDiameter?: number;   // V-bit flat tip diameter, mm (0 = sharp); the narrow end, ≠ diameter
-  tipAngle?: number;      // Drill tip angle, degrees
-  feedrate: number;       // mm/min
-  plungeRate: number;     // mm/min
-  spindleSpeed: number;   // rpm
-  safeZ: number;          // mm
+  diameter: number; // mm — cutting/major diameter (widest part; see diagram above)
+  vAngle?: number; // V-bit included angle (total, not half), degrees
+  tipDiameter?: number; // V-bit flat tip diameter, mm (0 = sharp); the narrow end, ≠ diameter
+  tipAngle?: number; // Drill tip angle, degrees
+  feedrate: number; // mm/min
+  plungeRate: number; // mm/min
+  spindleSpeed: number; // rpm
+  safeZ: number; // mm
 }
 
 export type LeadType = "none" | "linear" | "arc";
@@ -58,10 +66,10 @@ export interface TabDef {
    * contour automatically gets more tabs).
    */
   strategy?: "count" | "spacing";
-  count: number;    // tabs distributed evenly around the path ("count" strategy)
+  count: number; // tabs distributed evenly around the path ("count" strategy)
   spacing?: number; // mm between tabs along the perimeter ("spacing" strategy)
-  width: number;    // mm — arc-length of each tab
-  height: number;   // mm — material left standing above the cut floor
+  width: number; // mm — arc-length of each tab
+  height: number; // mm — material left standing above the cut floor
 }
 
 /**
@@ -113,18 +121,18 @@ export interface CAMOperation {
    */
   toolId?: string;
   toolType: ToolType;
-  toolNumber: number;         // T-number for tool changer (1-based)
-  diameter: number;           // mm
-  vAngle?: number;            // V-bit included angle, degrees (default 60)
-  tipDiameter?: number;       // V-bit flat tip, mm (default 0)
-  tipAngle?: number;          // Drill tip angle, degrees (default 118)
-  feedrate: number;           // mm/min
-  plungeRate: number;         // mm/min
-  spindleSpeed: number;       // rpm
-  safeZ: number;              // mm above work surface
+  toolNumber: number; // T-number for tool changer (1-based)
+  diameter: number; // mm
+  vAngle?: number; // V-bit included angle, degrees (default 60)
+  tipDiameter?: number; // V-bit flat tip, mm (default 0)
+  tipAngle?: number; // Drill tip angle, degrees (default 118)
+  feedrate: number; // mm/min
+  plungeRate: number; // mm/min
+  spindleSpeed: number; // rpm
+  safeZ: number; // mm above work surface
   // cut
-  depth: number;              // mm below surface (negative)
-  stepdown: number;           // mm per depth pass (ignored for drill)
+  depth: number; // mm below surface (negative)
+  stepdown: number; // mm per depth pass (ignored for drill)
   /**
    * Drill only: peck increment in mm. When > 0, the hole is drilled in steps of
    * this depth, fully retracting to safe Z between pecks to clear chips
@@ -203,16 +211,16 @@ export interface CAMOperation {
    * bevel comes to a crisp point instead of a rounded fillet. Default false.
    */
   sharpenCorners?: boolean;
-  tabs?: TabDef;              // profile only
+  tabs?: TabDef; // profile only
   // pocket
-  stepover: number;           // fraction of tool diameter (default 0.4)
+  stepover: number; // fraction of tool diameter (default 0.4)
   /**
    * Pocket clearing strategy. "offset" = contour-parallel concentric loops
    * (default; wraps islands with no lifting), "raster" = zig-zag rows.
    * Undefined is treated as "offset".
    */
   pocketStrategy?: "offset" | "raster";
-  islandIds?: EntityId[];     // pocket only (legacy): entities to treat as islands (excluded from fill)
+  islandIds?: EntityId[]; // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
    * Pocket only: the enclosed regions to clear, identified *parametrically* so
    * they reflow with the model. Each region records the loops that enclose it
@@ -319,10 +327,10 @@ export const DEFAULTS = {
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
-  "end-mill":  "End Mill",
+  "end-mill": "End Mill",
   "ball-nose": "Ball Nose",
-  "v-bit":     "V-Bit",
-  "drill":     "Drill",
+  "v-bit": "V-Bit",
+  drill: "Drill",
 };
 
 /**
@@ -355,7 +363,11 @@ export function chamferDepth(op: CAMOperation): number {
 }
 
 /** A point on a chamfer toolpath; `lift` = ramp the tip up to the surface here. */
-export interface ChamferPathPt { x: number; y: number; lift: boolean; }
+export interface ChamferPathPt {
+  x: number;
+  y: number;
+  lift: boolean;
+}
 
 /**
  * Expand a closed CCW contour into a chamfer toolpath that sharpens its inside
@@ -370,11 +382,15 @@ export function chamferSharpSequence(ccw: Vec2[], width: number): ChamferPathPt[
   if (N < 3) return ccw.map((v) => ({ x: v.x, y: v.y, lift: false }));
   const seq: ChamferPathPt[] = [];
   for (let i = 0; i < N; i++) {
-    const prev = ccw[(i - 1 + N) % N], v = ccw[i], next = ccw[(i + 1) % N];
+    const prev = ccw[(i - 1 + N) % N],
+      v = ccw[i],
+      next = ccw[(i + 1) % N];
     const il = Math.hypot(v.x - prev.x, v.y - prev.y) || 1;
-    const dinx = (v.x - prev.x) / il, diny = (v.y - prev.y) / il;
+    const dinx = (v.x - prev.x) / il,
+      diny = (v.y - prev.y) / il;
     const ol = Math.hypot(next.x - v.x, next.y - v.y) || 1;
-    const doutx = (next.x - v.x) / ol, douty = (next.y - v.y) / ol;
+    const doutx = (next.x - v.x) / ol,
+      douty = (next.y - v.y) / ol;
     // cross = sin(deflection); > 0 = convex (inside corner) for a CCW contour.
     // Only sharpen corners turning more than ~30°.
     const cross = dinx * douty - diny * doutx;
@@ -382,9 +398,10 @@ export function chamferSharpSequence(ccw: Vec2[], width: number): ChamferPathPt[
       seq.push({ x: v.x, y: v.y, lift: false });
       continue;
     }
-    const lin = Math.min(width, il * 0.45), lout = Math.min(width, ol * 0.45);
+    const lin = Math.min(width, il * 0.45),
+      lout = Math.min(width, ol * 0.45);
     seq.push({ x: v.x - dinx * lin, y: v.y - diny * lin, lift: false }); // ramp up
-    seq.push({ x: v.x, y: v.y, lift: true });                            // tip at the corner
+    seq.push({ x: v.x, y: v.y, lift: true }); // tip at the corner
     seq.push({ x: v.x + doutx * lout, y: v.y + douty * lout, lift: false }); // ramp down
   }
   return seq;

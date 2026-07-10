@@ -7,11 +7,21 @@ import type { CAMOperation } from "../src/cam/types";
 
 function profileOp(doc: CADDocument): CAMOperation {
   return {
-    id: "p", name: "cut", type: "profile",
+    id: "p",
+    name: "cut",
+    type: "profile",
     entityIds: [doc.entities.find((e) => e.type === "rectangle")!.id],
-    side: "outside", toolType: "end-mill", toolNumber: 1, diameter: 3,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5,
-    depth: -2, stepdown: 2, stepover: 0.4,
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 3,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
   };
 }
 

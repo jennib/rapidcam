@@ -42,10 +42,13 @@ function inflate(paths: Vec2[][], delta: number): Vec2[][] {
 function nearestPointOnLoop(loop: Vec2[], p: Vec2): { point: Vec2; seg: number; d2: number } {
   let best = { point: loop[0], seg: 0, d2: Infinity };
   for (let i = 0; i < loop.length; i++) {
-    const a = loop[i], b = loop[(i + 1) % loop.length];
-    const dx = b.x - a.x, dy = b.y - a.y;
+    const a = loop[i],
+      b = loop[(i + 1) % loop.length];
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
     const len2 = dx * dx + dy * dy;
-    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+    const t =
+      len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
     const point = { x: a.x + t * dx, y: a.y + t * dy };
     const d = dist2(point, p);
     if (d < best.d2) best = { point, seg: i, d2: d };
@@ -63,8 +66,11 @@ function rotateLoopAtPoint(loop: Vec2[], seg: number, point: Vec2): Vec2[] {
 /** Segment a→b intersects edge c→d (proper or touching). */
 function segmentsIntersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
   const o = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  const o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
-  return (o1 > 0) !== (o2 > 0) && (o3 > 0) !== (o4 > 0);
+  const o1 = o(a, b, c),
+    o2 = o(a, b, d),
+    o3 = o(c, d, a),
+    o4 = o(c, d, b);
+  return o1 > 0 !== o2 > 0 && o3 > 0 !== o4 > 0;
 }
 
 function segmentCrossesAnyPolygon(a: Vec2, b: Vec2, polys: Vec2[][]): boolean {
@@ -86,7 +92,11 @@ function segmentCrossesAnyPolygon(a: Vec2, b: Vec2, polys: Vec2[][]): boolean {
  * When unsure, the caller lifts — lifting is always safe.
  */
 function linkIsSafe(
-  a: Vec2, b: Vec2, toolR: number, boundaries: Vec2[][], keepouts: Vec2[][],
+  a: Vec2,
+  b: Vec2,
+  toolR: number,
+  boundaries: Vec2[][],
+  keepouts: Vec2[][],
 ): boolean {
   if (dist2(a, b) > toolR * toolR) return false;
   if (segmentCrossesAnyPolygon(a, b, keepouts)) return false;
@@ -104,7 +114,10 @@ function linkIsSafe(
  * @returns Ordered loops with link flags, or [] if the pocket is too small.
  */
 export function contourParallelClear(
-  outer: Vec2[], holes: Vec2[][], toolR: number, stepover: number,
+  outer: Vec2[],
+  holes: Vec2[][],
+  toolR: number,
+  stepover: number,
 ): ClearingMove[] {
   if (outer.length < 3 || toolR <= 0 || stepover <= 0) return [];
 
@@ -113,19 +126,23 @@ export function contourParallelClear(
   if (boundaries.length === 0) return []; // smaller than the tool
 
   const keepouts = holes.flatMap((h) => (h.length >= 3 ? inflate([ccwize(h)], toolR) : []));
-  const areaPaths = keepouts.length > 0
-    ? differenceD(boundaries, keepouts, FillRule.NonZero).map(toV)
-    : boundaries;
+  const areaPaths =
+    keepouts.length > 0 ? differenceD(boundaries, keepouts, FillRule.NonZero).map(toV) : boundaries;
   if (areaPaths.length === 0) return [];
 
   // Concentric rings: shrink the whole region by k·stepover until nothing remains.
   // Re-offset from the original each step to avoid cumulative rounding drift.
   const rings: { k: number; loop: Vec2[] }[] = [];
   // Safety cap from the bounding-box diagonal so we always terminate.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const p of areaPaths.flat()) {
-    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
   }
   const cap = Math.ceil(Math.hypot(maxX - minX, maxY - minY) / stepover) + 2;
   for (let k = 0; k <= cap; k++) {
@@ -150,11 +167,17 @@ export function contourParallelClear(
       let bestD = Infinity;
       for (let i = 0; i < remaining.length; i++) {
         const np = nearestPointOnLoop(remaining[i].loop, cur);
-        if (np.d2 < bestD) { bestD = np.d2; pick = i; pickNearest = np; }
+        if (np.d2 < bestD) {
+          bestD = np.d2;
+          pick = i;
+          pickNearest = np;
+        }
       }
     }
     const chosen = remaining.splice(pick, 1)[0];
-    const loop: Vec2[] = cur ? rotateLoopAtPoint(chosen.loop, pickNearest.seg, pickNearest.point) : chosen.loop.slice();
+    const loop: Vec2[] = cur
+      ? rotateLoopAtPoint(chosen.loop, pickNearest.seg, pickNearest.point)
+      : chosen.loop.slice();
     const link = cur !== null && linkIsSafe(cur, loop[0], toolR, boundaries, keepouts);
     moves.push({ loop, link });
     cur = loop[0]; // a closed loop returns to its start

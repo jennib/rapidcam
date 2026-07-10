@@ -59,10 +59,22 @@ export class HelpMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("Share RapidCAM…", () => { this.close(); showShareDialog(); });
-    this.item("Send Feedback…", () => { this.close(); showFeedbackDialog(); });
-    this.item("Privacy & Analytics…", () => { this.close(); showPrivacyDialog(); });
-    this.item("About RapidCAM…", () => { this.close(); showAboutDialog(); });
+    this.item("Share RapidCAM…", () => {
+      this.close();
+      showShareDialog();
+    });
+    this.item("Send Feedback…", () => {
+      this.close();
+      showFeedbackDialog();
+    });
+    this.item("Privacy & Analytics…", () => {
+      this.close();
+      showPrivacyDialog();
+    });
+    this.item("About RapidCAM…", () => {
+      this.close();
+      showAboutDialog();
+    });
 
     this.sep();
     this.sectionLabel("File Format & Source");
@@ -92,7 +104,10 @@ export class HelpMenu {
     arrow.className = "fmenu-kbd";
     arrow.textContent = "↗";
     div.appendChild(arrow);
-    div.addEventListener("click", () => { this.close(); openExternal(url); });
+    div.addEventListener("click", () => {
+      this.close();
+      openExternal(url);
+    });
     this.dropdown.appendChild(div);
   }
 

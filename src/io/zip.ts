@@ -43,17 +43,17 @@ export function zipStore(entries: ZipEntry[]): Uint8Array {
     const crc = crc32(f.data);
     const lh = new Uint8Array(30 + f.name.length);
     const lv = new DataView(lh.buffer);
-    lv.setUint32(0, 0x04034b50, true);   // local file header signature
-    lv.setUint16(4, 20, true);           // version needed
-    lv.setUint16(6, 0x0800, true);       // flags: UTF-8 filename
-    lv.setUint16(8, 0, true);            // method: store
-    lv.setUint16(10, 0, true);           // mod time
-    lv.setUint16(12, 0, true);           // mod date
+    lv.setUint32(0, 0x04034b50, true); // local file header signature
+    lv.setUint16(4, 20, true); // version needed
+    lv.setUint16(6, 0x0800, true); // flags: UTF-8 filename
+    lv.setUint16(8, 0, true); // method: store
+    lv.setUint16(10, 0, true); // mod time
+    lv.setUint16(12, 0, true); // mod date
     lv.setUint32(14, crc, true);
     lv.setUint32(18, f.data.length, true); // compressed size
     lv.setUint32(22, f.data.length, true); // uncompressed size
     lv.setUint16(26, f.name.length, true);
-    lv.setUint16(28, 0, true);           // extra length
+    lv.setUint16(28, 0, true); // extra length
     lh.set(f.name, 30);
 
     offsets.push(offset);
@@ -62,13 +62,13 @@ export function zipStore(entries: ZipEntry[]): Uint8Array {
 
     const ch = new Uint8Array(46 + f.name.length);
     const cv = new DataView(ch.buffer);
-    cv.setUint32(0, 0x02014b50, true);   // central directory signature
-    cv.setUint16(4, 20, true);           // version made by
-    cv.setUint16(6, 20, true);           // version needed
-    cv.setUint16(8, 0x0800, true);       // flags: UTF-8
-    cv.setUint16(10, 0, true);           // method: store
-    cv.setUint16(12, 0, true);           // mod time
-    cv.setUint16(14, 0, true);           // mod date
+    cv.setUint32(0, 0x02014b50, true); // central directory signature
+    cv.setUint16(4, 20, true); // version made by
+    cv.setUint16(6, 20, true); // version needed
+    cv.setUint16(8, 0x0800, true); // flags: UTF-8
+    cv.setUint16(10, 0, true); // method: store
+    cv.setUint16(12, 0, true); // mod time
+    cv.setUint16(14, 0, true); // mod date
     cv.setUint32(16, crc, true);
     cv.setUint32(20, f.data.length, true);
     cv.setUint32(24, f.data.length, true);
@@ -84,15 +84,18 @@ export function zipStore(entries: ZipEntry[]): Uint8Array {
 
   const eocd = new Uint8Array(22);
   const ev = new DataView(eocd.buffer);
-  ev.setUint32(0, 0x06054b50, true);     // end of central directory signature
-  ev.setUint16(8, files.length, true);   // entries on this disk
-  ev.setUint16(10, files.length, true);  // total entries
+  ev.setUint32(0, 0x06054b50, true); // end of central directory signature
+  ev.setUint16(8, files.length, true); // entries on this disk
+  ev.setUint16(10, files.length, true); // total entries
   ev.setUint32(12, cdSize, true);
   ev.setUint32(16, cdOffset, true);
 
   const total = offset + cdSize + eocd.length;
   const out = new Uint8Array(total);
   let p = 0;
-  for (const part of [...locals, ...central, eocd]) { out.set(part, p); p += part.length; }
+  for (const part of [...locals, ...central, eocd]) {
+    out.set(part, p);
+    p += part.length;
+  }
   return out;
 }

@@ -128,7 +128,12 @@ export class BezierTool implements Tool {
   }
 }
 
-function autoJoin(ctx: ToolContext, newEntityId: string, newKey: string, snap: SnapPoint | null): void {
+function autoJoin(
+  ctx: ToolContext,
+  newEntityId: string,
+  newKey: string,
+  snap: SnapPoint | null,
+): void {
   if (!snap?.key) return;
   ctx.doc.addConstraint(
     makeConstraint("coincident", {

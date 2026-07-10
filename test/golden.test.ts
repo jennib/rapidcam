@@ -22,18 +22,36 @@ import type { CAMOperation } from "../src/cam/types";
 const here = dirname(fileURLToPath(import.meta.url));
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-function profileOp(id: string, entityIds: string[], opts: Partial<CAMOperation> = {}): CAMOperation {
+function profileOp(
+  id: string,
+  entityIds: string[],
+  opts: Partial<CAMOperation> = {},
+): CAMOperation {
   return {
-    id, name: id, type: "profile", side: "outside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4, ...opts,
+    id,
+    name: id,
+    type: "profile",
+    side: "outside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    ...opts,
   };
 }
 
 // Flat mill — the reference Enclosure Lid (pocket regions + tabbed/leaded profile).
 function enclosureGcode(): string {
-  const file = JSON.parse(readFileSync(join(here, "fixtures", "enclosure-lid.rcam"), "utf8")) as RcamFile;
+  const file = JSON.parse(
+    readFileSync(join(here, "fixtures", "enclosure-lid.rcam"), "utf8"),
+  ) as RcamFile;
   const doc = new CADDocument({ width: 10, height: 10 });
   applyFile(doc, file);
   return generateGCode(doc.operations, doc);

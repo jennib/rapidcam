@@ -1,7 +1,12 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity, PolylineEntity } from "../src/model/entities";
-import { makeConstraint, segmentRef, lineRefEntityId, constraintEntityIds } from "../src/model/constraints";
+import {
+  makeConstraint,
+  segmentRef,
+  lineRefEntityId,
+  constraintEntityIds,
+} from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { sub, cross, dot, normalize, len } from "../src/core/vec2";
 
@@ -21,8 +26,19 @@ test("constraintEntityIds strips the segment suffix (so delete-prune works)", ()
 
 test("horizontal constraint on a polyline segment levels that segment", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 100, y: 37 }, { x: 150, y: 80 }], false)) as PolylineEntity;
-  doc.addConstraint(makeConstraint("horizontal", { entities: [segmentRef(poly.id, poly.vertexIds[0])] }));
+  const poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 37 },
+        { x: 150, y: 80 },
+      ],
+      false,
+    ),
+  ) as PolylineEntity;
+  doc.addConstraint(
+    makeConstraint("horizontal", { entities: [segmentRef(poly.id, poly.vertexIds[0])] }),
+  );
   const r = solve(doc);
   expect(r.converged).toBe(true);
   expect(Math.abs(poly.points[0].y - poly.points[1].y)).toBeLessThan(1e-4);
@@ -30,9 +46,20 @@ test("horizontal constraint on a polyline segment levels that segment", () => {
 
 test("parallel constraint makes a polyline segment parallel to a line", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 100, y: 5 }, { x: 120, y: 60 }], false)) as PolylineEntity;
+  const poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 5 },
+        { x: 120, y: 60 },
+      ],
+      false,
+    ),
+  ) as PolylineEntity;
   const line = doc.add(new LineEntity({ x: 0, y: 100 }, { x: 50, y: 130 })) as LineEntity;
-  doc.addConstraint(makeConstraint("parallel", { entities: [segmentRef(poly.id, poly.vertexIds[0]), line.id] }));
+  doc.addConstraint(
+    makeConstraint("parallel", { entities: [segmentRef(poly.id, poly.vertexIds[0]), line.id] }),
+  );
   const r = solve(doc);
   expect(r.converged).toBe(true);
   const seg = dir(poly.points[0], poly.points[1]);
@@ -41,8 +68,21 @@ test("parallel constraint makes a polyline segment parallel to a line", () => {
 
 test("perpendicular constraint between two polyline segments", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 100, y: 10 }, { x: 90, y: 70 }], false)) as PolylineEntity;
-  doc.addConstraint(makeConstraint("perpendicular", { entities: [segmentRef(poly.id, poly.vertexIds[0]), segmentRef(poly.id, poly.vertexIds[1])] }));
+  const poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 10 },
+        { x: 90, y: 70 },
+      ],
+      false,
+    ),
+  ) as PolylineEntity;
+  doc.addConstraint(
+    makeConstraint("perpendicular", {
+      entities: [segmentRef(poly.id, poly.vertexIds[0]), segmentRef(poly.id, poly.vertexIds[1])],
+    }),
+  );
   const r = solve(doc);
   expect(r.converged).toBe(true);
   const s0 = dir(poly.points[0], poly.points[1]);
@@ -52,9 +92,20 @@ test("perpendicular constraint between two polyline segments", () => {
 
 test("equal-length constraint matches a polyline segment to a line", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 60 }], false)) as PolylineEntity;
+  const poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 60 },
+      ],
+      false,
+    ),
+  ) as PolylineEntity;
   const line = doc.add(new LineEntity({ x: 0, y: 100 }, { x: 100, y: 100 })) as LineEntity; // length 100
-  doc.addConstraint(makeConstraint("equal", { entities: [segmentRef(poly.id, poly.vertexIds[0]), line.id] }));
+  doc.addConstraint(
+    makeConstraint("equal", { entities: [segmentRef(poly.id, poly.vertexIds[0]), line.id] }),
+  );
   const r = solve(doc);
   expect(r.converged).toBe(true);
   const segLen = len(sub(poly.points[1], poly.points[0]));
@@ -64,9 +115,20 @@ test("equal-length constraint matches a polyline segment to a line", () => {
 
 test("closed polyline: last segment wraps to the first vertex", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
-  const poly = doc.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }], true)) as PolylineEntity;
+  const poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 80 },
+      ],
+      true,
+    ),
+  ) as PolylineEntity;
   // segment starting at vertex id "2" wraps v2 -> v0; make it vertical
-  doc.addConstraint(makeConstraint("vertical", { entities: [segmentRef(poly.id, poly.vertexIds[2])] }));
+  doc.addConstraint(
+    makeConstraint("vertical", { entities: [segmentRef(poly.id, poly.vertexIds[2])] }),
+  );
   const r = solve(doc);
   expect(r.converged).toBe(true);
   expect(Math.abs(poly.points[2].x - poly.points[0].x)).toBeLessThan(1e-4);

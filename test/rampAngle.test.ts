@@ -9,16 +9,33 @@ import type { CAMOperation } from "../src/cam/types";
 // entry); a steeper angle over fewer. This exercises `rampAngle` end to end.
 
 function squarePocket(doc: CADDocument, s: number): string[] {
-  const p = [{ x: 0, y: 0 }, { x: s, y: 0 }, { x: s, y: s }, { x: 0, y: s }];
+  const p = [
+    { x: 0, y: 0 },
+    { x: s, y: 0 },
+    { x: s, y: s },
+    { x: 0, y: s },
+  ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4])).id);
 }
 
 function pocketOp(ids: string[], rampAngle?: number): CAMOperation {
   return {
-    id: "op", name: "pocket", type: "pocket", side: "outside", entityIds: ids,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 10000,
-    safeZ: 5, depth: -4, stepdown: 4, stepover: 0.4, rampAngle,
+    id: "op",
+    name: "pocket",
+    type: "pocket",
+    side: "outside",
+    entityIds: ids,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 10000,
+    safeZ: 5,
+    depth: -4,
+    stepdown: 4,
+    stepover: 0.4,
+    rampAngle,
   };
 }
 
@@ -36,7 +53,7 @@ test("a shallower ramp angle produces a longer entry than a steeper one", () => 
 
 test("setting a ramp angle changes the toolpath (the override is wired through)", () => {
   expect(build(1)).not.toBe(build(undefined)); // override differs from the default
-  expect(build(1)).not.toBe(build(30));         // and the angle actually matters
+  expect(build(1)).not.toBe(build(30)); // and the angle actually matters
 });
 
 test("out-of-range ramp angles are clamped (0.5°–45°), not taken literally", () => {

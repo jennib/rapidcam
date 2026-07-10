@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, } from "../src/model/entities";
-import { selectionBounds, applyScale, applyRotate, applyFlipH, applyFlipV } from "../src/core/transform";
+import {
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+} from "../src/model/entities";
+import {
+  selectionBounds,
+  applyScale,
+  applyRotate,
+  applyFlipH,
+  applyFlipV,
+} from "../src/core/transform";
 
 describe("transform.ts", () => {
   it("selectionBounds computes correct bounding box", () => {
@@ -85,11 +97,11 @@ describe("transform.ts", () => {
   });
 
   it("applyFlipV on ArcEntity swaps and negates angles", () => {
-    const arc = new ArcEntity({ x: 0, y: 0 }, 10, Math.PI / 4, 3 * Math.PI / 4); // 45 to 135
+    const arc = new ArcEntity({ x: 0, y: 0 }, 10, Math.PI / 4, (3 * Math.PI) / 4); // 45 to 135
     applyFlipV([arc], 0);
     // After vertical flip: newStart = -oldEnd, newEnd = -oldStart
     // -135 to -45
-    expect(arc.startAngle).toBeCloseTo(-3 * Math.PI / 4);
+    expect(arc.startAngle).toBeCloseTo((-3 * Math.PI) / 4);
     expect(arc.endAngle).toBeCloseTo(-Math.PI / 4);
   });
 });

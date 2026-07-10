@@ -24,7 +24,7 @@ export class LineTool implements Tool {
     } else {
       const shifted = e.shiftKey;
       const world = shifted ? orthoSnap(this.start, e.world) : e.world;
-      const endSnap = shifted ? null : (e.snap?.key ? e.snap : null);
+      const endSnap = shifted ? null : e.snap?.key ? e.snap : null;
       if (distSq(this.start, world) > 1e-9) {
         ctx.pushHistory();
         const ent = new LineEntity(this.start, world);
@@ -67,7 +67,12 @@ export class LineTool implements Tool {
 }
 
 /** If `snap` has a point key, add a coincident constraint between the new entity's point and the snapped entity's point. */
-function autoJoin(ctx: ToolContext, newEntityId: string, newKey: string, snap: SnapPoint | null): void {
+function autoJoin(
+  ctx: ToolContext,
+  newEntityId: string,
+  newKey: string,
+  snap: SnapPoint | null,
+): void {
   if (!snap?.key) return;
   ctx.doc.addConstraint(
     makeConstraint("coincident", {

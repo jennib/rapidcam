@@ -13,28 +13,35 @@
  */
 
 import { type Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
-import { type Entity, type EntityId, LineEntity, CircleEntity, ArcEntity, PolylineEntity } from "./entities";
+import {
+  type Entity,
+  type EntityId,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  PolylineEntity,
+} from "./entities";
 import { angleInArc } from "../core/geom";
 import { nextId } from "./ids";
 
 export type ConstraintType =
-  | "coincident"    // points[2]                     → the two points are equal
-  | "horizontal"    // entities[1] (line)             → endpoints share Y
-  | "vertical"      // entities[1] (line)             → endpoints share X
-  | "parallel"      // entities[2] (lines)
+  | "coincident" // points[2]                     → the two points are equal
+  | "horizontal" // entities[1] (line)             → endpoints share Y
+  | "vertical" // entities[1] (line)             → endpoints share X
+  | "parallel" // entities[2] (lines)
   | "perpendicular" // entities[2] (lines)
-  | "equal"         // entities[2] (lines→length, or circles/arcs→radius)
-  | "concentric"    // entities[2] (circles/arcs)     → centres coincide
-  | "pointOnLine"   // points[1] + entities[1] (line)
-  | "tangent"       // entities[2] (line+circle, line+arc, arc+arc, etc.)
-  | "pointOnArc"    // points[1] + entities[1] (arc)
+  | "equal" // entities[2] (lines→length, or circles/arcs→radius)
+  | "concentric" // entities[2] (circles/arcs)     → centres coincide
+  | "pointOnLine" // points[1] + entities[1] (line)
+  | "tangent" // entities[2] (line+circle, line+arc, arc+arc, etc.)
+  | "pointOnArc" // points[1] + entities[1] (arc)
   | "pointOnCircle" // points[1] + entities[1] (circle)
-  | "symmetric"     // points[2] + entities[1] (line) → symmetric about the line
-  | "collinear"     // entities[2] (lines)             → both on same infinite line
-  | "midpoint"      // points[1] + entities[1] (line) → point at midpoint of line; or points[3] → points[0] at midpoint of points[1]–points[2]
-  | "angle"         // entities[2] (lines) + params[0]=target radians → fixed angle
-  | "fixedPoint"    // points[1+] + params[0]=x, params[1]=y → pin point to world pos
-  | "fixed";        // entities[1+]                   → lock all its DOFs (no equation)
+  | "symmetric" // points[2] + entities[1] (line) → symmetric about the line
+  | "collinear" // entities[2] (lines)             → both on same infinite line
+  | "midpoint" // points[1] + entities[1] (line) → point at midpoint of line; or points[3] → points[0] at midpoint of points[1]–points[2]
+  | "angle" // entities[2] (lines) + params[0]=target radians → fixed angle
+  | "fixedPoint" // points[1+] + params[0]=x, params[1]=y → pin point to world pos
+  | "fixed"; // entities[1+]                   → lock all its DOFs (no equation)
 
 /** A reference to one specific point DOF inside an entity. */
 export interface PointRef {
@@ -62,7 +69,13 @@ export function makeConstraint(
   type: ConstraintType,
   opts: { points?: PointRef[]; entities?: EntityId[]; params?: number[] },
 ): Constraint {
-  return { id: nextId("con"), type, points: opts.points ?? [], entities: opts.entities ?? [], params: opts.params };
+  return {
+    id: nextId("con"),
+    type,
+    points: opts.points ?? [],
+    entities: opts.entities ?? [],
+    params: opts.params,
+  };
 }
 
 export const pointRefKey = (r: PointRef): string => `${r.entityId}:${r.key}`;
@@ -103,7 +116,10 @@ function asLine(geo: Geo, id: EntityId): LineEntity | null {
 }
 
 /** The two endpoints of a line. */
-export interface LineGeom { a: Vec2; b: Vec2; }
+export interface LineGeom {
+  a: Vec2;
+  b: Vec2;
+}
 
 /**
  * Resolve a line reference to its live endpoints. Accepts a LineEntity id or a
@@ -243,8 +259,8 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       if (lLen < 1e-9) return [];
       const lu = { x: ld.x / lLen, y: ld.y / lLen };
       return [
-        signedLineDistance(l, m),  // midpoint on the line
-        dot(pq, lu),               // p-q perpendicular to line
+        signedLineDistance(l, m), // midpoint on the line
+        dot(pq, lu), // p-q perpendicular to line
       ];
     }
     case "collinear": {
@@ -280,7 +296,8 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       const l2 = lineGeom(geo, c.entities[1]);
       if (!l1 || !l2) return [];
       const alpha = c.params?.[0] ?? 0;
-      const u1 = unitDir(l1), u2 = unitDir(l2);
+      const u1 = unitDir(l1),
+        u2 = unitDir(l2);
       // sin(θ − α) = 0  where θ is the signed angle from l1 to l2
       return [cross(u1, u2) * Math.cos(alpha) - dot(u1, u2) * Math.sin(alpha)];
     }
@@ -296,7 +313,8 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
 
 /** Signed angle (radians, range −π..π) from l1's direction to l2's direction. */
 export function measureAngleBetweenLines(l1: LineGeom, l2: LineGeom): number {
-  const u1 = unitDir(l1), u2 = unitDir(l2);
+  const u1 = unitDir(l1),
+    u2 = unitDir(l2);
   return Math.atan2(cross(u1, u2), dot(u1, u2));
 }
 
@@ -352,11 +370,13 @@ export function tangentContactOutsideArcSweep(c: Constraint, geo: Geo): boolean 
   if (!l || !arc) return false;
   // Foot of perpendicular from the arc centre to the infinite line; the tangent
   // point lies on the ray from the centre through that foot.
-  const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y;
+  const dx = l.b.x - l.a.x,
+    dy = l.b.y - l.a.y;
   const L2 = dx * dx + dy * dy;
   if (L2 < 1e-12) return false;
   const t = ((arc.center.x - l.a.x) * dx + (arc.center.y - l.a.y) * dy) / L2;
-  const footX = l.a.x + t * dx, footY = l.a.y + t * dy;
+  const footX = l.a.x + t * dx,
+    footY = l.a.y + t * dy;
   const ang = Math.atan2(footY - arc.center.y, footX - arc.center.x);
   return !angleInArc(ang, arc.startAngle, arc.endAngle);
 }
@@ -387,7 +407,7 @@ export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
 /** World-space anchors near which to draw the constraint's glyph badges. */
 export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
   const anchors: Vec2[] = [];
-  
+
   switch (c.type) {
     case "coincident": {
       const pt = c.points[0] ? readPoint(geo, c.points[0]) : null;
@@ -429,9 +449,13 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       if (circ) {
         // Anchor at the point on the circle nearest to the constrained point
         if (p) {
-          const dx = p.x - circ.center.x, dy = p.y - circ.center.y;
+          const dx = p.x - circ.center.x,
+            dy = p.y - circ.center.y;
           const len = Math.hypot(dx, dy) || 1;
-          anchors.push({ x: circ.center.x + dx / len * circ.radius, y: circ.center.y + dy / len * circ.radius });
+          anchors.push({
+            x: circ.center.x + (dx / len) * circ.radius,
+            y: circ.center.y + (dy / len) * circ.radius,
+          });
         } else {
           anchors.push({ x: circ.center.x, y: circ.center.y + circ.radius });
         }
@@ -464,7 +488,10 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
     case "angle": {
       for (const eid of c.entities) {
         const lg = lineGeom(geo, eid);
-        if (lg) { anchors.push(mid(lg.a, lg.b)); continue; }
+        if (lg) {
+          anchors.push(mid(lg.a, lg.b));
+          continue;
+        }
         const e = geo(eid);
         if (e instanceof CircleEntity) anchors.push({ ...e.center });
         else if (e instanceof ArcEntity) anchors.push({ ...e.center });
@@ -483,9 +510,15 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       const l2 = lineGeom(geo, c.entities[1]);
       if (l1 && l2) {
         // Find closest endpoint to the other line to approximate the corner
-        const cornerOnL1 = Math.abs(signedLineDistance(l2, l1.a)) < Math.abs(signedLineDistance(l2, l1.b)) ? l1.a : l1.b;
-        const cornerOnL2 = Math.abs(signedLineDistance(l1, l2.a)) < Math.abs(signedLineDistance(l1, l2.b)) ? l2.a : l2.b;
-        
+        const cornerOnL1 =
+          Math.abs(signedLineDistance(l2, l1.a)) < Math.abs(signedLineDistance(l2, l1.b))
+            ? l1.a
+            : l1.b;
+        const cornerOnL2 =
+          Math.abs(signedLineDistance(l1, l2.a)) < Math.abs(signedLineDistance(l1, l2.b))
+            ? l2.a
+            : l2.b;
+
         // Push slightly away from the exact endpoint towards the midpoint so it's not right on top of a point constraint
         const m1 = mid(l1.a, l1.b);
         const m2 = mid(l2.a, l2.b);
@@ -505,6 +538,6 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       break;
     }
   }
-  
+
   return anchors;
 }

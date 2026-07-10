@@ -57,7 +57,12 @@ export interface ExportNameParts {
 }
 
 /** Assemble a descriptive export filename from its parts. */
-export function formatExportName({ project, scope, stamp = timeStamp(), ext = "nc" }: ExportNameParts): string {
+export function formatExportName({
+  project,
+  scope,
+  stamp = timeStamp(),
+  ext = "nc",
+}: ExportNameParts): string {
   const proj = sanitizePart(project) || "untitled";
   const sc = sanitizePart(scope) || "toolpath";
   return `${proj}_${sc}_${stamp}.${ext}`;

@@ -28,7 +28,8 @@ import { ICONS } from "./icons";
  *  Positive = left of the direction vector (a→b), i.e. CCW / inward for a
  *  CCW-wound closed polygon. */
 function signedDistToLine(p: Vec2, a: Vec2, b: Vec2): number {
-  const dx = b.x - a.x, dy = b.y - a.y;
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 1e-10) return 0;
   return (-dy * (p.x - a.x) + dx * (p.y - a.y)) / len;
@@ -39,9 +40,11 @@ function pointInPolygon(p: Vec2, pts: Vec2[]): boolean {
   let inside = false;
   const n = pts.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = pts[i].x, yi = pts[i].y;
-    const xj = pts[j].x, yj = pts[j].y;
-    if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) {
+    const xi = pts[i].x,
+      yi = pts[i].y;
+    const xj = pts[j].x,
+      yj = pts[j].y;
+    if (yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
   }
@@ -108,8 +111,10 @@ function computeSignedOffset(entity: Entity, cursor: Vec2): number | null {
       const r = entity as RectEntity;
       const corners = r.corners();
       const inside =
-        cursor.x >= r.minPt.x && cursor.x <= r.maxPt.x &&
-        cursor.y >= r.minPt.y && cursor.y <= r.maxPt.y;
+        cursor.x >= r.minPt.x &&
+        cursor.x <= r.maxPt.x &&
+        cursor.y >= r.minPt.y &&
+        cursor.y <= r.maxPt.y;
       const d = distToEdges(cursor, corners, true);
       return inside ? -d : d;
     }
@@ -128,7 +133,8 @@ function offsetOpenPolyline(pts: Vec2[], d: number): Vec2[] {
 
   const norms: Vec2[] = [];
   for (let i = 0; i < n - 1; i++) {
-    const dx = pts[i + 1].x - pts[i].x, dy = pts[i + 1].y - pts[i].y;
+    const dx = pts[i + 1].x - pts[i].x,
+      dy = pts[i + 1].y - pts[i].y;
     const len = Math.sqrt(dx * dx + dy * dy);
     norms.push(len < 1e-10 ? { x: 0, y: 1 } : { x: -dy / len, y: dx / len });
   }
@@ -137,21 +143,27 @@ function offsetOpenPolyline(pts: Vec2[], d: number): Vec2[] {
   for (let i = 0; i < n; i++) {
     let ox: number, oy: number;
     if (i === 0) {
-      ox = norms[0].x * d; oy = norms[0].y * d;
+      ox = norms[0].x * d;
+      oy = norms[0].y * d;
     } else if (i === n - 1) {
-      ox = norms[n - 2].x * d; oy = norms[n - 2].y * d;
+      ox = norms[n - 2].x * d;
+      oy = norms[n - 2].y * d;
     } else {
-      const na = norms[i - 1], nb = norms[i];
-      const bx = na.x + nb.x, by = na.y + nb.y;
+      const na = norms[i - 1],
+        nb = norms[i];
+      const bx = na.x + nb.x,
+        by = na.y + nb.y;
       const bl = Math.sqrt(bx * bx + by * by);
       if (bl < 1e-10) {
-        ox = na.x * d; oy = na.y * d;
+        ox = na.x * d;
+        oy = na.y * d;
       } else {
         const bu = { x: bx / bl, y: by / bl };
         const dotVal = bu.x * na.x + bu.y * na.y;
         // Cap miter at 4× to avoid spikes at very acute joints.
-        const scale = d / Math.max(Math.abs(dotVal), 0.25) * Math.sign(dotVal || 1);
-        ox = bu.x * scale; oy = bu.y * scale;
+        const scale = (d / Math.max(Math.abs(dotVal), 0.25)) * Math.sign(dotVal || 1);
+        ox = bu.x * scale;
+        oy = bu.y * scale;
       }
     }
     result.push({ x: pts[i].x + ox, y: pts[i].y + oy });
@@ -166,11 +178,15 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
   switch (entity.type) {
     case "line": {
       const l = entity as LineEntity;
-      const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y;
+      const dx = l.b.x - l.a.x,
+        dy = l.b.y - l.a.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len < 1e-10) return [];
-      const nx = -dy / len * d, ny = dx / len * d;
-      return [{ kind: "line", a: { x: l.a.x + nx, y: l.a.y + ny }, b: { x: l.b.x + nx, y: l.b.y + ny } }];
+      const nx = (-dy / len) * d,
+        ny = (dx / len) * d;
+      return [
+        { kind: "line", a: { x: l.a.x + nx, y: l.a.y + ny }, b: { x: l.b.x + nx, y: l.b.y + ny } },
+      ];
     }
     case "circle": {
       const c = entity as CircleEntity;
@@ -182,12 +198,24 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
       const a = entity as ArcEntity;
       const newR = a.radius + d;
       if (newR <= 0) return [];
-      return [{ kind: "arc", center: { ...a.center }, radius: newR, startAngle: a.startAngle, endAngle: a.endAngle }];
+      return [
+        {
+          kind: "arc",
+          center: { ...a.center },
+          radius: newR,
+          startAngle: a.startAngle,
+          endAngle: a.endAngle,
+        },
+      ];
     }
     case "polyline": {
       const pl = entity as PolylineEntity;
       if (pl.closed) {
-        return offsetPolygon(pl.points, d).map(pts => ({ kind: "polyline" as const, points: pts, closed: true }));
+        return offsetPolygon(pl.points, d).map((pts) => ({
+          kind: "polyline" as const,
+          points: pts,
+          closed: true,
+        }));
       }
       return [{ kind: "polyline", points: offsetOpenPolyline(pl.points, d), closed: false }];
     }
@@ -196,16 +224,18 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
       const newMin = { x: r.minPt.x - d, y: r.minPt.y - d };
       const newMax = { x: r.maxPt.x + d, y: r.maxPt.y + d };
       if (newMax.x <= newMin.x || newMax.y <= newMin.y) return [];
-      return [{
-        kind: "polyline",
-        points: [
-          { x: newMin.x, y: newMin.y },
-          { x: newMax.x, y: newMin.y },
-          { x: newMax.x, y: newMax.y },
-          { x: newMin.x, y: newMax.y },
-        ],
-        closed: true,
-      }];
+      return [
+        {
+          kind: "polyline",
+          points: [
+            { x: newMin.x, y: newMin.y },
+            { x: newMax.x, y: newMin.y },
+            { x: newMax.x, y: newMax.y },
+            { x: newMin.x, y: newMax.y },
+          ],
+          closed: true,
+        },
+      ];
     }
   }
   return [];
@@ -221,10 +251,12 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
   switch (entity.type) {
     case "line": {
       const l = entity as LineEntity;
-      const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y;
+      const dx = l.b.x - l.a.x,
+        dy = l.b.y - l.a.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len < 1e-10) return;
-      const nx = -dy / len * d, ny = dx / len * d;
+      const nx = (-dy / len) * d,
+        ny = (dx / len) * d;
       const e = new LineEntity({ x: l.a.x + nx, y: l.a.y + ny }, { x: l.b.x + nx, y: l.b.y + ny });
       e.selected = true;
       ctx.doc.add(e);
@@ -319,7 +351,7 @@ export class OffsetTool implements Tool {
         this.phase = "placing";
       }
     } else {
-      const ent = ctx.doc.entities.find(en => en.id === this.pickedId);
+      const ent = ctx.doc.entities.find((en) => en.id === this.pickedId);
       if (ent && Math.abs(this.lastD) > 1e-4) {
         ctx.pushHistory();
         commitOffset(ent, this.lastD, ctx);
@@ -332,8 +364,11 @@ export class OffsetTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.phase !== "placing") return;
-    const ent = ctx.doc.entities.find(en => en.id === this.pickedId);
-    if (!ent) { this.cancel(ctx); return; }
+    const ent = ctx.doc.entities.find((en) => en.id === this.pickedId);
+    if (!ent) {
+      this.cancel(ctx);
+      return;
+    }
 
     const d = computeSignedOffset(ent, e.worldRaw);
     this.lastD = d ?? 0;

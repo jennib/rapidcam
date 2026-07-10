@@ -22,10 +22,22 @@ function laserDoc(): CADDocument {
 
 function baseOp(over: Partial<CAMOperation>): CAMOperation {
   return {
-    id: "op1", name: "cut", type: "engrave", entityIds: [], side: "outside",
-    toolNumber: 1, diameter: 0, feedrate: 1200, plungeRate: 300, spindleSpeed: 0,
-    safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
-    laserPower: 80, laserPasses: 1,
+    id: "op1",
+    name: "cut",
+    type: "engrave",
+    entityIds: [],
+    side: "outside",
+    toolNumber: 1,
+    diameter: 0,
+    feedrate: 1200,
+    plungeRate: 300,
+    spindleSpeed: 0,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    laserPower: 80,
+    laserPasses: 1,
     ...over,
   };
 }
@@ -37,7 +49,7 @@ test("engrave emits beam on/off and no Z motion", () => {
   const op = baseOp({ type: "engrave", entityIds: ["L1"] });
 
   const g = generateLaserGCode([op], doc);
-  expect(g).toContain("M4 S800");        // 80% of default 1000
+  expect(g).toContain("M4 S800"); // 80% of default 1000
   expect(g).toContain("M5");
   expect(g).toContain("M30 ; end program");
   // Travel to start (beam off) then a cut move.
@@ -99,8 +111,8 @@ test("generateGCode routes a laser document to the laser generator", () => {
   const op = baseOp({ type: "profile", side: "outside", entityIds: ["R1"] });
 
   const g = generateGCode([op], doc);
-  expect(g).toContain("M4 S");      // laser preamble, not a spindle M3
-  expect(g).not.toContain("M3 S");  // would be the mill spindle command
+  expect(g).toContain("M4 S"); // laser preamble, not a spindle M3
+  expect(g).not.toContain("M3 S"); // would be the mill spindle command
 });
 
 // 7) Mill documents are unaffected -------------------------------------------
@@ -123,7 +135,10 @@ test("preview yields an open path for an engraved line", () => {
   const paths = laserPreviewPaths([op], doc);
   expect(paths.length).toBe(1);
   expect(paths[0].closed).toBe(false);
-  expect(paths[0].pts).toEqual([{ x: 10, y: 10 }, { x: 50, y: 30 }]);
+  expect(paths[0].pts).toEqual([
+    { x: 10, y: 10 },
+    { x: 50, y: 30 },
+  ]);
 });
 
 test("preview reflects profile kerf — outside circle samples at the grown radius", () => {
@@ -194,10 +209,19 @@ test("machineKind and laser op fields round-trip through serialize/apply", () =>
   const doc = laserDoc();
   doc.entities.push(new CircleEntity({ x: 50, y: 50 }, 10, "C1"));
   doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 20, y: 20 }, "R1"));
-  doc.operations.push(baseOp({ type: "profile", side: "outside", entityIds: ["C1"],
-    laserPower: 90, laserPasses: 3, kerfWidth: 0.25 }));
-  doc.operations.push(baseOp({ type: "engrave", entityIds: ["R1"],
-    laserFill: true, laserFillSpacing: 0.3 }));
+  doc.operations.push(
+    baseOp({
+      type: "profile",
+      side: "outside",
+      entityIds: ["C1"],
+      laserPower: 90,
+      laserPasses: 3,
+      kerfWidth: 0.25,
+    }),
+  );
+  doc.operations.push(
+    baseOp({ type: "engrave", entityIds: ["R1"], laserFill: true, laserFillSpacing: 0.3 }),
+  );
 
   // Serialize → JSON → parse → apply into a fresh document.
   const file = JSON.parse(JSON.stringify(serializeDoc(doc, "Laser job")));
@@ -243,7 +267,7 @@ test("LinuxCNC laser post drives the beam as a PWM spindle (M3/M5)", () => {
 
 test("Smoothie post carries inline S (0–1) on each cut move, no modal M3/M4", () => {
   const g = engraveLine("smoothie");
-  expect(g).not.toMatch(/M[34] S/);          // power is not modal
+  expect(g).not.toMatch(/M[34] S/); // power is not modal
   expect(g).toMatch(/G1 X10 Y0 F1200 S0\.8/); // it rides on the cut move
   expect(g).toContain("M5 ; laser off");
 });
@@ -264,7 +288,7 @@ test("air assist emits M8 before the cut and M9 by program end", () => {
   const cut = lines.findIndex((l) => /^G1 /.test(l));
   const off = lines.findIndex((l) => l.startsWith("M9"));
   expect(air).toBeGreaterThanOrEqual(0);
-  expect(air).toBeLessThan(cut);   // air on before the first cut
+  expect(air).toBeLessThan(cut); // air on before the first cut
   expect(off).toBeGreaterThan(cut); // and off after cutting
 });
 
@@ -291,16 +315,22 @@ test("no air-assist commands when the op doesn't request it", () => {
 test("overscan brackets each lit fill run with beam-off run-up/run-down", () => {
   const doc = laserDoc();
   doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }, "R1"));
-  const op = baseOp({ type: "engrave", entityIds: ["R1"], laserPower: 80,
-    laserFill: true, laserFillSpacing: 2, laserOverscan: 3 });
+  const op = baseOp({
+    type: "engrave",
+    entityIds: ["R1"],
+    laserPower: 80,
+    laserFill: true,
+    laserFillSpacing: 2,
+    laserOverscan: 3,
+  });
 
   const g = generateLaserGCode([op], doc);
   // A scan row at y=1 runs 0→10 (rect inset by spacing/2). With 3mm overscan the
   // beam-off run-up reaches X0 from X-3 at S0, fires across to X10 at S800, then
   // overshoots to X13 at S0.
-  expect(g).toMatch(/G1 X0 Y1 F\d+ S0/);   // run-up, beam off
-  expect(g).toMatch(/G1 X10 Y1 S800/);     // lit pass
-  expect(g).toMatch(/G1 X13 Y1 S0/);       // run-down past the edge
+  expect(g).toMatch(/G1 X0 Y1 F\d+ S0/); // run-up, beam off
+  expect(g).toMatch(/G1 X10 Y1 S800/); // lit pass
+  expect(g).toMatch(/G1 X13 Y1 S0/); // run-down past the edge
 });
 
 test("fill without overscan emits no beam-off S0 modulation", () => {

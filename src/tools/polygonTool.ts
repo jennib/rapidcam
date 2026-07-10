@@ -96,7 +96,10 @@ export class PolygonTool implements Tool {
    * the circumradius is (D/2) / cos(π/n).
    */
   private commitByText(raw: string, ctx: ToolContext): boolean {
-    const parts = raw.split(/[x×,]/i).map((s) => s.trim()).filter((s) => s.length > 0);
+    const parts = raw
+      .split(/[x×,]/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
     if (parts.length === 0) return false;
 
     let diaStr = parts[0];
@@ -109,11 +112,12 @@ export class PolygonTool implements Tool {
 
     const d = parseLength(diaStr, ctx.doc.displayUnit);
     if (!d || d <= 0) return false;
-    const r = (d / 2) / Math.cos(Math.PI / this.sides);
+    const r = d / 2 / Math.cos(Math.PI / this.sides);
 
-    const startAngle = this.center && dist(this.center, this.cursor) > 1e-6
-      ? vecAngle(sub(this.cursor, this.center))
-      : 0;
+    const startAngle =
+      this.center && dist(this.center, this.cursor) > 1e-6
+        ? vecAngle(sub(this.cursor, this.center))
+        : 0;
     this.commit(r, startAngle, ctx);
     return true;
   }

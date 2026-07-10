@@ -21,16 +21,30 @@ beforeAll(async () => {
   const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
   const fakeFile = {
     name: "roboto.woff",
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File;
   ({ id: fontId } = await loadFromFile(fakeFile));
 });
 
 const vcarveOp = (entityIds: string[]): CAMOperation => ({
-  id: "v1", name: "carve", type: "vcarve", entityIds, side: "outside",
-  toolType: "v-bit", toolNumber: 1, diameter: 12, vAngle: 60,
-  feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-  safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4, vStep: 0.4,
+  id: "v1",
+  name: "carve",
+  type: "vcarve",
+  entityIds,
+  side: "outside",
+  toolType: "v-bit",
+  toolNumber: 1,
+  diameter: 12,
+  vAngle: 60,
+  feedrate: 1000,
+  plungeRate: 300,
+  spindleSpeed: 18000,
+  safeZ: 5,
+  depth: -3,
+  stepdown: 1.5,
+  stepover: 0.4,
+  vStep: 0.4,
 });
 
 const cutDepths = (g: string): number[] =>

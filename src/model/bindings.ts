@@ -45,7 +45,9 @@ export function bindingTarget(b: ScalarBinding, vars: VarMap): number | null {
  *  target is constant during a solve, so the solver hoists it out of the FD loop. */
 export function bindingResidualAt(b: ScalarBinding, geo: Geo, target: number | null): number[] {
   if (target === null) return [];
-  const cur = geo(b.entityId)?.dofScalars().find((s) => s.key === b.scalarKey)?.value;
+  const cur = geo(b.entityId)
+    ?.dofScalars()
+    .find((s) => s.key === b.scalarKey)?.value;
   return cur === undefined ? [] : [cur - target];
 }
 
@@ -56,7 +58,9 @@ export function bindingResiduals(b: ScalarBinding, geo: Geo, vars: VarMap): numb
 
 /** The binding driving `(entityId, scalarKey)`, if any. */
 export function findBinding(
-  bindings: ScalarBinding[], entityId: EntityId, scalarKey: string,
+  bindings: ScalarBinding[],
+  entityId: EntityId,
+  scalarKey: string,
 ): ScalarBinding | undefined {
   return bindings.find((b) => b.entityId === entityId && b.scalarKey === scalarKey);
 }

@@ -1,9 +1,4 @@
-import {
-  getConsent,
-  getReplayConsent,
-  isDoNotTrack,
-  setConsentChoices,
-} from "../analytics";
+import { getConsent, getReplayConsent, isDoNotTrack, setConsentChoices } from "../analytics";
 import { registerModal } from "./modal";
 
 /**
@@ -18,7 +13,10 @@ export function showPrivacyDialog(): void {
   backdrop.className = "welcome-backdrop";
   backdrop.style.zIndex = "9999";
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
 
   const panel = document.createElement("div");
   panel.className = "about-dialog";
@@ -52,7 +50,7 @@ export function showPrivacyDialog(): void {
   const analyticsRow = labelledRow(
     analyticsCheck,
     "Anonymous usage analytics",
-    "Coarse interaction events only (e.g. \"tool activated\"). No geometry.",
+    'Coarse interaction events only (e.g. "tool activated"). No geometry.',
   );
 
   // --- Session replay row (stricter, depends on analytics) ---
@@ -103,8 +101,14 @@ export function showPrivacyDialog(): void {
 function labelledRow(control: HTMLInputElement, heading: string, detail: string): HTMLElement {
   const row = document.createElement("label");
   row.style.cssText = [
-    "display:flex", "gap:10px", "align-items:flex-start", "cursor:pointer",
-    "margin:12px 0", "color:#ddd", "font-size:13px", "line-height:1.4",
+    "display:flex",
+    "gap:10px",
+    "align-items:flex-start",
+    "cursor:pointer",
+    "margin:12px 0",
+    "color:#ddd",
+    "font-size:13px",
+    "line-height:1.4",
   ].join(";");
   control.style.marginTop = "2px";
   const text = document.createElement("div");

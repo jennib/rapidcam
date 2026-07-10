@@ -41,13 +41,13 @@ export function computeTabRegions(
   tabWidth: number,
 ): TabRegion[] {
   if (count <= 0 || tabWidth <= 0 || totalLength <= 0) return [];
-  const half    = tabWidth / 2;
+  const half = tabWidth / 2;
   const spacing = totalLength / count;
   const regions: TabRegion[] = [];
   for (let i = 0; i < count; i++) {
     const center = spacing * (i + 0.5);
-    const start  = center - half;
-    const end    = center + half;
+    const start = center - half;
+    const end = center + half;
     if (start < 0) {
       regions.push({ sStart: totalLength + start, sEnd: totalLength });
       regions.push({ sStart: 0, sEnd: end });
@@ -62,7 +62,7 @@ export function computeTabRegions(
 }
 
 function isInTab(s: number, regions: TabRegion[]): boolean {
-  return regions.some(r => s >= r.sStart && s <= r.sEnd);
+  return regions.some((r) => s >= r.sStart && s <= r.sEnd);
 }
 
 /**
@@ -78,29 +78,29 @@ export function splitPathForTabs(
   const segments: PathSegment[] = [];
 
   for (let i = 0; i < n; i++) {
-    const p0      = verts[i];
-    const p1      = verts[(i + 1) % n];
-    const s0      = cumLengths[i];
-    const s1      = cumLengths[i + 1];
+    const p0 = verts[i];
+    const p1 = verts[(i + 1) % n];
+    const s0 = cumLengths[i];
+    const s1 = cumLengths[i + 1];
     const edgeLen = s1 - s0;
     if (edgeLen < 1e-9) continue;
 
     // Collect all region boundary crossings within this edge (exclusive endpoints).
     const boundaries: { s: number; entering: boolean }[] = [];
     for (const r of regions) {
-      if (r.sStart > s0 && r.sStart < s1) boundaries.push({ s: r.sStart, entering: true  });
-      if (r.sEnd   > s0 && r.sEnd   < s1) boundaries.push({ s: r.sEnd,   entering: false });
+      if (r.sStart > s0 && r.sStart < s1) boundaries.push({ s: r.sStart, entering: true });
+      if (r.sEnd > s0 && r.sEnd < s1) boundaries.push({ s: r.sEnd, entering: false });
     }
     boundaries.sort((a, b) => a.s - b.s);
 
-    let curr  = p0;
+    let curr = p0;
     let inTab = isInTab(s0 + 1e-9, regions);
 
     for (const b of boundaries) {
-      const t        = (b.s - s0) / edgeLen;
+      const t = (b.s - s0) / edgeLen;
       const splitPt: Vec2 = { x: p0.x + t * (p1.x - p0.x), y: p0.y + t * (p1.y - p0.y) };
       segments.push({ p0: curr, p1: splitPt, isTab: inTab });
-      curr  = splitPt;
+      curr = splitPt;
       inTab = b.entering;
     }
 

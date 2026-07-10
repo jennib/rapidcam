@@ -12,7 +12,7 @@ describe("segCircleIntersect", () => {
   it("finds two crossings of a diameter line", () => {
     const hits = segCircleIntersect({ x: -20, y: 0 }, { x: 20, y: 0 }, { x: 0, y: 0 }, 10);
     expect(hits.length).toBe(2);
-    const xs = hits.map(h => h.point.x).sort((a, b) => a - b);
+    const xs = hits.map((h) => h.point.x).sort((a, b) => a - b);
     expect(xs[0]).toBeCloseTo(-10);
     expect(xs[1]).toBeCloseTo(10);
   });
@@ -31,7 +31,7 @@ describe("segCircleIntersect", () => {
 
   it("reports the angle of each hit on the circle", () => {
     const hits = segCircleIntersect({ x: 0, y: -20 }, { x: 0, y: 20 }, { x: 0, y: 0 }, 10);
-    const thetas = hits.map(h => h.theta).sort((a, b) => a - b);
+    const thetas = hits.map((h) => h.theta).sort((a, b) => a - b);
     expect(thetas[0]).toBeCloseTo(-Math.PI / 2);
     expect(thetas[1]).toBeCloseTo(Math.PI / 2);
   });
@@ -78,8 +78,14 @@ function makeCtx(doc: CADDocument): ToolContext {
 
 function click(tool: TrimTool, ctx: ToolContext, pos: Vec2): void {
   const e: ToolPointerEvent = {
-    world: pos, worldRaw: pos, screen: pos, snap: null,
-    button: 0, shiftKey: false, ctrlKey: false, altKey: false,
+    world: pos,
+    worldRaw: pos,
+    screen: pos,
+    snap: null,
+    button: 0,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
   };
   tool.onPointerDown(e, ctx);
 }
@@ -96,12 +102,12 @@ describe("TrimTool on circles", () => {
     // Click the right half (angle 0) → remove the span -π/2 → π/2.
     click(new TrimTool(), ctx, { x: 10, y: 0 });
 
-    expect(doc.entities.find(e => e instanceof CircleEntity)).toBeUndefined();
-    const arc = doc.entities.find(e => e instanceof ArcEntity) as ArcEntity;
+    expect(doc.entities.find((e) => e instanceof CircleEntity)).toBeUndefined();
+    const arc = doc.entities.find((e) => e instanceof ArcEntity) as ArcEntity;
     expect(arc).toBeDefined();
     expect(arc.radius).toBeCloseTo(10);
     // Kept span runs CCW from π/2 around the left side to -π/2 (i.e. 3π/2 normalized).
-    const span = ((arc.endAngle - arc.startAngle) % TAU + TAU) % TAU;
+    const span = (((arc.endAngle - arc.startAngle) % TAU) + TAU) % TAU;
     expect(span).toBeCloseTo(Math.PI);
     expect(Math.cos(arc.startAngle)).toBeCloseTo(0);
     expect(arc.startPoint.y).toBeCloseTo(10);
@@ -118,10 +124,10 @@ describe("TrimTool on circles", () => {
     // Click c1's rightmost point (inside c2) → remove the lens-side span.
     click(new TrimTool(), ctx, { x: 10, y: 0 });
 
-    const arcs = doc.entities.filter(e => e instanceof ArcEntity) as ArcEntity[];
+    const arcs = doc.entities.filter((e) => e instanceof ArcEntity) as ArcEntity[];
     expect(arcs.length).toBe(1);
     // The cutter circle must survive untouched.
-    const survivors = doc.entities.filter(e => e instanceof CircleEntity) as CircleEntity[];
+    const survivors = doc.entities.filter((e) => e instanceof CircleEntity) as CircleEntity[];
     expect(survivors.length).toBe(1);
     expect(survivors[0].center.x).toBeCloseTo(10);
     // Removed span sits between the two intersections at ±π/3 (cos θ = 5/10).
@@ -141,8 +147,8 @@ describe("TrimTool on circles", () => {
     const ctx = makeCtx(doc);
     click(new TrimTool(), ctx, { x: 10, y: 0 });
 
-    expect(doc.entities.find(e => e instanceof CircleEntity)).toBeDefined();
-    expect(doc.entities.find(e => e instanceof ArcEntity)).toBeUndefined();
+    expect(doc.entities.find((e) => e instanceof CircleEntity)).toBeDefined();
+    expect(doc.entities.find((e) => e instanceof ArcEntity)).toBeUndefined();
   });
 });
 
@@ -183,11 +189,11 @@ describe("TrimTool on arcs", () => {
     // Click the top of the arc, between the two crossings.
     click(new TrimTool(), makeCtx(doc), { x: 0, y: 10 });
 
-    const arcs = doc.entities.filter(e => e instanceof ArcEntity) as ArcEntity[];
+    const arcs = doc.entities.filter((e) => e instanceof ArcEntity) as ArcEntity[];
     expect(arcs.length).toBe(2);
     expect(arc.startAngle).toBeCloseTo(0);
     expect(arc.endAngle).toBeCloseTo(Math.PI / 3);
-    const arc2 = arcs.find(a => a !== arc)!;
+    const arc2 = arcs.find((a) => a !== arc)!;
     expect(arc2.startAngle).toBeCloseTo((2 * Math.PI) / 3);
     expect(arc2.endAngle).toBeCloseTo(Math.PI);
   });
@@ -203,11 +209,11 @@ describe("TrimTool on lines (circle as cutter)", () => {
     // Click the middle of the line, inside the circle.
     click(new TrimTool(), makeCtx(doc), { x: 0, y: 0 });
 
-    const lines = doc.entities.filter(e => e instanceof LineEntity) as LineEntity[];
+    const lines = doc.entities.filter((e) => e instanceof LineEntity) as LineEntity[];
     expect(lines.length).toBe(2);
     expect(line.a.x).toBeCloseTo(-20);
     expect(line.b.x).toBeCloseTo(-10);
-    const line2 = lines.find(l => l !== line)!;
+    const line2 = lines.find((l) => l !== line)!;
     expect(line2.a.x).toBeCloseTo(10);
     expect(line2.b.x).toBeCloseTo(20);
   });

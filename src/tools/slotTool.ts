@@ -72,7 +72,14 @@ export class SlotTool implements Tool {
     if (d < 1e-6) return { previews: [], selectionRect: null };
 
     const r = this.cursorRadius();
-    if (r < 1e-6) return { previews: [{ kind: "point", pos: c1 }, { kind: "point", pos: c2 }], selectionRect: null };
+    if (r < 1e-6)
+      return {
+        previews: [
+          { kind: "point", pos: c1 },
+          { kind: "point", pos: c2 },
+        ],
+        selectionRect: null,
+      };
 
     return { previews: slotPreviews(c1, c2, r), selectionRect: null };
   }
@@ -104,7 +111,7 @@ export class SlotTool implements Tool {
   private createSlot(c1: Vec2, c2: Vec2, r: number, ctx: ToolContext): void {
     const D = normalize(sub(c2, c1));
     const P = perp(D); // 90° CCW from the slot axis
-    const angleP    = Math.atan2(P.y, P.x);
+    const angleP = Math.atan2(P.y, P.x);
     const angleNegP = Math.atan2(-P.y, -P.x);
 
     // Each cap is a 180° arc. Arc angles are CCW (standard math convention).
@@ -114,7 +121,7 @@ export class SlotTool implements Tool {
     const arc2 = new ArcEntity(c2, r, angleNegP, angleP);
 
     // Parallel straight sides
-    const lineTop = new LineEntity(add(c1, scale(P,  r)), add(c2, scale(P,  r)));
+    const lineTop = new LineEntity(add(c1, scale(P, r)), add(c2, scale(P, r)));
     const lineBot = new LineEntity(add(c1, scale(P, -r)), add(c2, scale(P, -r)));
 
     ctx.pushHistory();
@@ -124,17 +131,22 @@ export class SlotTool implements Tool {
     }
 
     const coin = (eid1: string, k1: string, eid2: string, k2: string) =>
-      ctx.doc.addConstraint(makeConstraint("coincident", {
-        points: [{ entityId: eid1, key: k1 }, { entityId: eid2, key: k2 }],
-      }));
+      ctx.doc.addConstraint(
+        makeConstraint("coincident", {
+          points: [
+            { entityId: eid1, key: k1 },
+            { entityId: eid2, key: k2 },
+          ],
+        }),
+      );
 
     // Arc endpoints ↔ line endpoints at the four junctions
     coin(arc1.id, "start", lineTop.id, "a"); // C1 top
-    coin(arc2.id, "end",   lineTop.id, "b"); // C2 top
-    coin(arc1.id, "end",   lineBot.id, "a"); // C1 bottom
+    coin(arc2.id, "end", lineTop.id, "b"); // C2 top
+    coin(arc1.id, "end", lineBot.id, "a"); // C1 bottom
     coin(arc2.id, "start", lineBot.id, "b"); // C2 bottom
 
-    ctx.doc.addConstraint(makeConstraint("equal",    { entities: [arc1.id, arc2.id] }));
+    ctx.doc.addConstraint(makeConstraint("equal", { entities: [arc1.id, arc2.id] }));
     ctx.doc.addConstraint(makeConstraint("parallel", { entities: [lineTop.id, lineBot.id] }));
 
     // Snap centres to existing geometry
@@ -159,12 +171,12 @@ export class SlotTool implements Tool {
 function slotPreviews(c1: Vec2, c2: Vec2, r: number): ToolOverlay["previews"] {
   const D = normalize(sub(c2, c1));
   const P = perp(D);
-  const aP  = Math.atan2(P.y, P.x);
+  const aP = Math.atan2(P.y, P.x);
   const aNP = Math.atan2(-P.y, -P.x);
   return [
-    { kind: "arc",  center: c1, radius: r, startAngle: aP,  endAngle: aNP },
-    { kind: "arc",  center: c2, radius: r, startAngle: aNP, endAngle: aP  },
-    { kind: "line", a: add(c1, scale(P,  r)), b: add(c2, scale(P,  r)) },
+    { kind: "arc", center: c1, radius: r, startAngle: aP, endAngle: aNP },
+    { kind: "arc", center: c2, radius: r, startAngle: aNP, endAngle: aP },
+    { kind: "line", a: add(c1, scale(P, r)), b: add(c2, scale(P, r)) },
     { kind: "line", a: add(c1, scale(P, -r)), b: add(c2, scale(P, -r)) },
     { kind: "point", pos: c1 },
     { kind: "point", pos: c2 },

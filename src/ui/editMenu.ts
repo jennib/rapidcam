@@ -14,7 +14,10 @@ export class EditMenu {
   private dropdown: HTMLElement;
   private isOpen = false;
 
-  constructor(host: HTMLElement, private cb: EditMenuCallbacks) {
+  constructor(
+    host: HTMLElement,
+    private cb: EditMenuCallbacks,
+  ) {
     this.btn = document.createElement("button");
     this.btn.className = "btn";
     this.btn.textContent = "Edit";
@@ -57,16 +60,40 @@ export class EditMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
-    this.item("Delete Selected", "Del", () => { this.close(); this.cb.onDelete(); });
-    this.item("Join", "^J", () => { this.close(); this.cb.onJoin(); });
-    this.item("Explode", "^⇧J", () => { this.close(); this.cb.onExplode(); });
+    this.item("Delete Selected", "Del", () => {
+      this.close();
+      this.cb.onDelete();
+    });
+    this.item("Join", "^J", () => {
+      this.close();
+      this.cb.onJoin();
+    });
+    this.item("Explode", "^⇧J", () => {
+      this.close();
+      this.cb.onExplode();
+    });
     this.sep();
-    this.item("Linear Pattern…",    "", () => { this.close(); this.cb.onLinearPattern(); });
-    this.item("Circular Pattern…",  "", () => { this.close(); this.cb.onCircularPattern(); });
-    this.item("Regenerate Patterns", "^⇧P", () => { this.close(); this.cb.onRegeneratePatterns(); });
+    this.item("Linear Pattern…", "", () => {
+      this.close();
+      this.cb.onLinearPattern();
+    });
+    this.item("Circular Pattern…", "", () => {
+      this.close();
+      this.cb.onCircularPattern();
+    });
+    this.item("Regenerate Patterns", "^⇧P", () => {
+      this.close();
+      this.cb.onRegeneratePatterns();
+    });
     this.sep();
-    this.item("Rectangular Array…", "", () => { this.close(); this.cb.onRectArray(); });
-    this.item("Circular Array…",    "", () => { this.close(); this.cb.onCircArray(); });
+    this.item("Rectangular Array…", "", () => {
+      this.close();
+      this.cb.onRectArray();
+    });
+    this.item("Circular Array…", "", () => {
+      this.close();
+      this.cb.onCircArray();
+    });
   }
 
   private sep(): void {

@@ -32,8 +32,14 @@ function makeCtx(doc: CADDocument): ToolContext {
 
 function clickAt(tool: SelectTool, ctx: ToolContext, pos: Vec2): void {
   const e: ToolPointerEvent = {
-    world: pos, worldRaw: pos, screen: pos, snap: null,
-    button: 0, shiftKey: false, ctrlKey: false, altKey: false,
+    world: pos,
+    worldRaw: pos,
+    screen: pos,
+    snap: null,
+    button: 0,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
   };
   tool.onPointerDown(e, ctx);
   tool.onPointerUp(e, ctx);

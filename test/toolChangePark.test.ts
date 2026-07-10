@@ -7,9 +7,21 @@ import type { CAMOperation } from "../src/cam/types";
 
 // Two ops on different tools force a tool change between them.
 const drillOp = (id: string, ids: string[], tool: number): CAMOperation => ({
-  id, name: "op", type: "drill", entityIds: ids, side: "outside",
-  toolType: "drill", toolNumber: tool, diameter: 3 + tool, feedrate: 200, plungeRate: 120,
-  spindleSpeed: 6000, safeZ: 5, depth: -3, stepdown: 3, stepover: 0.4,
+  id,
+  name: "op",
+  type: "drill",
+  entityIds: ids,
+  side: "outside",
+  toolType: "drill",
+  toolNumber: tool,
+  diameter: 3 + tool,
+  feedrate: 200,
+  plungeRate: 120,
+  spindleSpeed: 6000,
+  safeZ: 5,
+  depth: -3,
+  stepdown: 3,
+  stepover: 0.4,
 });
 
 function twoToolDoc(): { doc: CADDocument; ops: CAMOperation[] } {
@@ -22,8 +34,8 @@ function twoToolDoc(): { doc: CADDocument; ops: CAMOperation[] } {
 test("no park by default — a manual tool change doesn't add a park move", () => {
   const { doc, ops } = twoToolDoc();
   const g = generateGCode(ops, doc);
-  expect(g).toMatch(/Manual tool change to T2/);   // the change happens
-  expect(g).not.toMatch(/park for tool change/);    // but no park
+  expect(g).toMatch(/Manual tool change to T2/); // the change happens
+  expect(g).not.toMatch(/park for tool change/); // but no park
 });
 
 test("park position parks (work coords, at safe Z) right before the manual change", () => {
@@ -35,7 +47,12 @@ test("park position parks (work coords, at safe Z) right before the manual chang
   expect(parkIdx).toBeGreaterThan(-1);
   expect(lines[parkIdx]).toBe("G0 X0 Y90 ; park for tool change");
   // A safe-Z lift precedes the park…
-  expect(lines.slice(0, parkIdx).reverse().find((l) => /^G0 Z/.test(l))).toBe("G0 Z5");
+  expect(
+    lines
+      .slice(0, parkIdx)
+      .reverse()
+      .find((l) => /^G0 Z/.test(l)),
+  ).toBe("G0 Z5");
   // …and the park comes immediately before the manual-change banner.
   expect(lines[parkIdx + 1]).toMatch(/Manual tool change to T2/);
 });

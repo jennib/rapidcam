@@ -9,34 +9,33 @@ import { applyRotate } from "../core/transform";
 import { registerModal } from "./modal";
 
 /** Backdrop element carrying its own registered close (unregister + remove). */
-interface BackdropEl extends HTMLElement { close: () => void }
+interface BackdropEl extends HTMLElement {
+  close: () => void;
+}
 
 // ---------------------------------------------------------------------------
 // Rectangular array
 
-export function openRectArrayDialog(
-  doc: CADDocument,
-  pushHistory: () => void,
-): void {
+export function openRectArrayDialog(doc: CADDocument, pushHistory: () => void): void {
   if (doc.selected.length === 0) {
     alert("Select entities to array first.");
     return;
   }
 
   const backdrop = makeBackdrop();
-  const dialog   = makeDialog(backdrop, "Rectangular Array");
-  const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
+  const dialog = makeDialog(backdrop, "Rectangular Array");
+  const body = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
-  const rowsInp = addField(body, "Rows",             "2",  "1");
-  const colsInp = addField(body, "Columns",          "3",  "1");
-  const dxInp   = addField(body, "X spacing (mm)",   "20", "any");
-  const dyInp   = addField(body, "Y spacing (mm)",   "20", "any");
+  const rowsInp = addField(body, "Rows", "2", "1");
+  const colsInp = addField(body, "Columns", "3", "1");
+  const dxInp = addField(body, "X spacing (mm)", "20", "any");
+  const dyInp = addField(body, "Y spacing (mm)", "20", "any");
 
   addFooter(dialog, backdrop, () => {
     const rows = Math.max(1, parseInt(rowsInp.value, 10) || 1);
     const cols = Math.max(1, parseInt(colsInp.value, 10) || 1);
-    const dx   = parseFloat(dxInp.value) || 0;
-    const dy   = parseFloat(dyInp.value) || 0;
+    const dx = parseFloat(dxInp.value) || 0;
+    const dy = parseFloat(dyInp.value) || 0;
     if (rows === 1 && cols === 1) return;
 
     const selected = doc.selected;
@@ -60,17 +59,15 @@ export function openRectArrayDialog(
 // ---------------------------------------------------------------------------
 // Circular array
 
-export function openCircArrayDialog(
-  doc: CADDocument,
-  pushHistory: () => void,
-): void {
+export function openCircArrayDialog(doc: CADDocument, pushHistory: () => void): void {
   if (doc.selected.length === 0) {
     alert("Select entities to array first.");
     return;
   }
 
   // Default centre: average of selection bounding box centres.
-  let cx = 0, cy = 0;
+  let cx = 0,
+    cy = 0;
   const sel = doc.selected;
   for (const ent of sel) {
     const b = ent.bounds();
@@ -81,18 +78,18 @@ export function openCircArrayDialog(
   cy /= sel.length;
 
   const backdrop = makeBackdrop();
-  const dialog   = makeDialog(backdrop, "Circular Array");
-  const body     = dialog.querySelector(".tp-dialog-body") as HTMLElement;
+  const dialog = makeDialog(backdrop, "Circular Array");
+  const body = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
-  const countInp = addField(body, "Count (total)",   "4",              "1");
-  const cxInp    = addField(body, "Centre X (mm)",   cx.toFixed(2),    "any");
-  const cyInp    = addField(body, "Centre Y (mm)",   cy.toFixed(2),    "any");
+  const countInp = addField(body, "Count (total)", "4", "1");
+  const cxInp = addField(body, "Centre X (mm)", cx.toFixed(2), "any");
+  const cyInp = addField(body, "Centre Y (mm)", cy.toFixed(2), "any");
 
   addFooter(dialog, backdrop, () => {
-    const count   = Math.max(2, parseInt(countInp.value, 10) || 2);
+    const count = Math.max(2, parseInt(countInp.value, 10) || 2);
     const centerX = parseFloat(cxInp.value) || 0;
     const centerY = parseFloat(cyInp.value) || 0;
-    const step    = (2 * Math.PI) / count;
+    const step = (2 * Math.PI) / count;
 
     const selected = doc.selected;
     pushHistory();
@@ -100,7 +97,9 @@ export function openCircArrayDialog(
       for (const ent of selected) {
         let copy = ent.duplicate();
         // applyRotate mutates in place; capture any entity replacement (e.g. Rect→Poly).
-        applyRotate([copy], centerX, centerY, k * step, (_old, newEnt) => { copy = newEnt; });
+        applyRotate([copy], centerX, centerY, k * step, (_old, newEnt) => {
+          copy = newEnt;
+        });
         doc.add(copy);
       }
     }
@@ -116,10 +115,15 @@ export function openCircArrayDialog(
 function makeBackdrop(): BackdropEl {
   let unregister: () => void = () => {};
   const el = Object.assign(document.createElement("div"), {
-    close: () => { unregister(); el.remove(); },
+    close: () => {
+      unregister();
+      el.remove();
+    },
   }) as BackdropEl;
   el.className = "tp-backdrop";
-  el.addEventListener("click", (e) => { if (e.target === el) el.close(); });
+  el.addEventListener("click", (e) => {
+    if (e.target === el) el.close();
+  });
   unregister = registerModal(el, el.close);
   return el;
 }

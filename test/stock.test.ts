@@ -13,10 +13,21 @@ import type { CAMOperation } from "../src/cam/types";
 
 function profileOp(entityIds: string[]): CAMOperation {
   return {
-    id: "op", name: "cut", type: "profile", side: "outside", entityIds,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4,
+    id: "op",
+    name: "cut",
+    type: "profile",
+    side: "outside",
+    entityIds,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
   };
 }
 
@@ -24,7 +35,7 @@ test("stockFootprint follows the stockRect when set, else the canvas", () => {
   const doc = new CADDocument({ width: 300, height: 200 });
   expect(stockFootprint(doc)).toEqual({ width: 300, height: 200 }); // legacy → canvas
   doc.stockRect = { x: 20, y: 15, width: 120, height: 80 };
-  expect(stockFootprint(doc)).toEqual({ width: 120, height: 80 });  // → the blank
+  expect(stockFootprint(doc)).toEqual({ width: 120, height: 80 }); // → the blank
 });
 
 test("a positioned stock puts the WCS origin on the stock, not the work-area corner", () => {

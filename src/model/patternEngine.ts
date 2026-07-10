@@ -36,7 +36,11 @@ interface Step {
 // create / regen / load time, so a pattern always reflects the latest variable
 // values (including its count).
 
-function resolveExpr(expr: string | undefined, cached: number, vm: ReadonlyMap<string, number>): number {
+function resolveExpr(
+  expr: string | undefined,
+  cached: number,
+  vm: ReadonlyMap<string, number>,
+): number {
   if (!expr) return cached;
   const v = evalExpr(expr, vm);
   return v !== null && Number.isFinite(v) ? v : cached; // keep last good value on a bad/unknown expr
@@ -138,8 +142,12 @@ export function isParamStale(doc: CADDocument, pat: PatternDef): boolean {
   if (pat.kind === "linear") {
     const p = pat.params as LinearPatternParams;
     const r = resolveLinearParams(doc, p);
-    return r.countX !== p.countX || r.countY !== p.countY
-      || r.spacingX !== p.spacingX || r.spacingY !== p.spacingY;
+    return (
+      r.countX !== p.countX ||
+      r.countY !== p.countY ||
+      r.spacingX !== p.spacingX ||
+      r.spacingY !== p.spacingY
+    );
   }
   const p = pat.params as CircularPatternParams;
   return resolveCircularParams(doc, p).count !== p.count;
@@ -151,8 +159,10 @@ export function isParamStale(doc: CADDocument, pat: PatternDef): boolean {
  * are never source-stale.
  */
 export function isSourceStale(doc: CADDocument, pat: PatternDef): boolean {
-  return pat.sourceSnapshot !== undefined
-    && computeSourceSnapshot(doc.entities, pat.sourceIds) !== pat.sourceSnapshot;
+  return (
+    pat.sourceSnapshot !== undefined &&
+    computeSourceSnapshot(doc.entities, pat.sourceIds) !== pat.sourceSnapshot
+  );
 }
 
 /**
@@ -177,7 +187,10 @@ export function regenerateStalePatterns(doc: CADDocument): boolean {
 }
 
 /** Number of instance steps a pattern should have for the given resolved params. */
-function expectedStepCount(pat: PatternDef, resolved: LinearPatternParams | CircularPatternParams): number {
+function expectedStepCount(
+  pat: PatternDef,
+  resolved: LinearPatternParams | CircularPatternParams,
+): number {
   if (pat.kind === "linear") {
     const p = resolved as LinearPatternParams;
     return Math.max(0, p.countX * p.countY - 1);
@@ -195,9 +208,10 @@ function expectedStepCount(pat: PatternDef, resolved: LinearPatternParams | Circ
  */
 export function reconcileLoadedPatterns(doc: CADDocument): void {
   for (const pat of [...doc.patterns]) {
-    const resolved = pat.kind === "linear"
-      ? resolveLinearParams(doc, pat.params as LinearPatternParams)
-      : resolveCircularParams(doc, pat.params as CircularPatternParams);
+    const resolved =
+      pat.kind === "linear"
+        ? resolveLinearParams(doc, pat.params as LinearPatternParams)
+        : resolveCircularParams(doc, pat.params as CircularPatternParams);
     const mismatch = pat.instanceIds.length !== expectedStepCount(pat, resolved);
     if (!mismatch && !isParamStale(doc, pat)) continue;
     if (pat.kind === "linear") {

@@ -5,7 +5,13 @@
  */
 
 import { type Vec2, dist, clone } from "../core/vec2";
-import { type Entity, type EntityId, type LineEntity, type ArcEntity, PolylineEntity } from "../model/entities";
+import {
+  type Entity,
+  type EntityId,
+  type LineEntity,
+  type ArcEntity,
+  PolylineEntity,
+} from "../model/entities";
 import type { CADDocument } from "../model/document";
 import { TAU } from "../core/geom";
 
@@ -21,13 +27,16 @@ interface Seg {
 }
 
 function tessellateArc(arc: ArcEntity): Vec2[] {
-  let span = ((arc.endAngle - arc.startAngle) % TAU + TAU) % TAU;
+  let span = (((arc.endAngle - arc.startAngle) % TAU) + TAU) % TAU;
   if (span < 1e-10) span = TAU;
   const steps = Math.max(4, Math.ceil(span / (Math.PI / 90))); // ~2° per step
   const pts: Vec2[] = [];
   for (let i = 0; i <= steps; i++) {
     const a = arc.startAngle + (span * i) / steps;
-    pts.push({ x: arc.center.x + arc.radius * Math.cos(a), y: arc.center.y + arc.radius * Math.sin(a) });
+    pts.push({
+      x: arc.center.x + arc.radius * Math.cos(a),
+      y: arc.center.y + arc.radius * Math.sin(a),
+    });
   }
   return pts;
 }
@@ -75,17 +84,20 @@ function buildChains(segs: Seg[]): Chain[] {
       const tail = chain.pts[chain.pts.length - 1];
       for (const seg of pool) {
         if (used.has(seg.id)) continue;
-        const s0 = seg.pts[0], sN = seg.pts[seg.pts.length - 1];
+        const s0 = seg.pts[0],
+          sN = seg.pts[seg.pts.length - 1];
         if (dist(tail, s0) < JOIN_TOL) {
           chain.pts.push(...seg.pts.slice(1));
           chain.ids.push(seg.id);
           used.add(seg.id);
-          grew = true; break;
+          grew = true;
+          break;
         } else if (dist(tail, sN) < JOIN_TOL) {
           chain.pts.push(...seg.pts.slice().reverse().slice(1));
           chain.ids.push(seg.id);
           used.add(seg.id);
-          grew = true; break;
+          grew = true;
+          break;
         }
       }
     }
@@ -97,17 +109,20 @@ function buildChains(segs: Seg[]): Chain[] {
       const head = chain.pts[0];
       for (const seg of pool) {
         if (used.has(seg.id)) continue;
-        const s0 = seg.pts[0], sN = seg.pts[seg.pts.length - 1];
+        const s0 = seg.pts[0],
+          sN = seg.pts[seg.pts.length - 1];
         if (dist(head, sN) < JOIN_TOL) {
           chain.pts.unshift(...seg.pts.slice(0, -1));
           chain.ids.push(seg.id);
           used.add(seg.id);
-          grew = true; break;
+          grew = true;
+          break;
         } else if (dist(head, s0) < JOIN_TOL) {
           chain.pts.unshift(...seg.pts.slice().reverse().slice(0, -1));
           chain.ids.push(seg.id);
           used.add(seg.id);
-          grew = true; break;
+          grew = true;
+          break;
         }
       }
     }
@@ -126,7 +141,7 @@ function buildChains(segs: Seg[]): Chain[] {
  *  connected chain.  Returns true if anything was changed.
  *  Caller must call pushHistory() before invoking. */
 export function joinSelected(doc: CADDocument): boolean {
-  const selected = doc.entities.filter(e => e.selected);
+  const selected = doc.entities.filter((e) => e.selected);
   const segs = selected.map(toSeg).filter((s): s is Seg => s !== null);
   if (segs.length < 2) return false;
 
@@ -144,7 +159,7 @@ export function joinSelected(doc: CADDocument): boolean {
 
     const pl = new PolylineEntity(pts, closed);
     pl.selected = true;
-    const firstSrc = selected.find(e => e.id === chain.ids[0]);
+    const firstSrc = selected.find((e) => e.id === chain.ids[0]);
     if (firstSrc) pl.layerId = firstSrc.layerId;
 
     for (const id of chain.ids) joinedIds.add(id);

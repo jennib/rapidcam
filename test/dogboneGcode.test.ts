@@ -10,22 +10,39 @@ import type { CAMOperation } from "../src/cam/types";
 // dip below x=3 / y=3, which a plain pocket never does.
 
 function squarePocket(doc: CADDocument, x: number, y: number, s: number): string[] {
-  const p = [{ x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s }];
+  const p = [
+    { x, y },
+    { x: x + s, y },
+    { x: x + s, y: y + s },
+    { x, y: y + s },
+  ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4])).id);
 }
 
 function pocketOp(ids: string[], cornerStyle?: "none" | "dogbone"): CAMOperation {
   return {
-    id: "op", name: "pocket", type: "pocket", side: "outside", entityIds: ids,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 10000,
-    safeZ: 5, depth: -2, stepdown: 2, stepover: 0.4,
+    id: "op",
+    name: "pocket",
+    type: "pocket",
+    side: "outside",
+    entityIds: ids,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 10000,
+    safeZ: 5,
+    depth: -2,
+    stepdown: 2,
+    stepover: 0.4,
     cornerStyle,
   };
 }
 
 const cutCoords = (code: string): { x: number; y: number }[] =>
-  code.split("\n")
+  code
+    .split("\n")
     .filter((l) => /^G[123] /.test(l) && /X/.test(l) && /Y/.test(l))
     .map((l) => ({
       x: parseFloat(l.match(/X(-?[\d.]+)/)![1]),
@@ -59,8 +76,10 @@ test("all four corners are relieved", () => {
   const pts = cutCoords(g);
   // One overcut point per corner, ≈ toolR·(√2−1) ≈ 1.243 outside each wall corner.
   const corners = [
-    { x: 2.121, y: 2.121 }, { x: 47.879, y: 2.121 },
-    { x: 47.879, y: 47.879 }, { x: 2.121, y: 47.879 },
+    { x: 2.121, y: 2.121 },
+    { x: 47.879, y: 2.121 },
+    { x: 47.879, y: 47.879 },
+    { x: 2.121, y: 47.879 },
   ];
   for (const c of corners) {
     const hit = pts.some((p) => Math.abs(p.x - c.x) < 0.05 && Math.abs(p.y - c.y) < 0.05);

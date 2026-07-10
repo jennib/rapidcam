@@ -77,10 +77,12 @@ test("over-deep: a normal through-cut overshoot (<1mm) stays quiet", () => {
 // --- fast plunge -------------------------------------------------------------
 test("fast plunge: a straight plunge at/above cutting feed warns", () => {
   const g = [
-    "G0 Z5", "G0 X10 Y10",
-    "G1 X20 Y10 F1000",   // establish the cutting feed
-    "G0 Z5", "G0 X30 Y30",
-    "G1 Z-3 F1200",       // plunge faster than cutting → warn
+    "G0 Z5",
+    "G0 X10 Y10",
+    "G1 X20 Y10 F1000", // establish the cutting feed
+    "G0 Z5",
+    "G0 X30 Y30",
+    "G1 Z-3 F1200", // plunge faster than cutting → warn
   ].join("\n");
   const f = lintGCode(g, CTX).find((x) => x.code === "fast-plunge");
   expect(f?.severity).toBe("warning");
@@ -88,19 +90,23 @@ test("fast plunge: a straight plunge at/above cutting feed warns", () => {
 
 test("fast plunge: a slow plunge below cutting feed is clean", () => {
   const g = [
-    "G0 Z5", "G0 X10 Y10",
+    "G0 Z5",
+    "G0 X10 Y10",
     "G1 X20 Y10 F1000",
-    "G0 Z5", "G0 X30 Y30",
-    "G1 Z-3 F300",        // proper plunge rate
+    "G0 Z5",
+    "G0 X30 Y30",
+    "G1 Z-3 F300", // proper plunge rate
   ].join("\n");
   expect(codes(g)).not.toContain("fast-plunge");
 });
 
 test("fast plunge: a ramp entry (lateral + Z at feed) is not flagged", () => {
   const g = [
-    "G0 Z5", "G0 X10 Y10",
+    "G0 Z5",
+    "G0 X10 Y10",
     "G1 X20 Y10 F1000",
-    "G0 Z5", "G0 X30 Y30",
+    "G0 Z5",
+    "G0 X30 Y30",
     "G1 X40 Y30 Z-3 F1000", // ramps down while moving laterally — intentional
   ].join("\n");
   expect(codes(g)).not.toContain("fast-plunge");
@@ -142,11 +148,21 @@ function docWith(op: Partial<CAMOperation>): { doc: CADDocument; op: CAMOperatio
   const rect = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 60 }));
   doc.add(new CircleEntity({ x: 50, y: 40 }, 15));
   const base: CAMOperation = {
-    id: "op1", name: "profile", type: "profile",
-    entityIds: [rect.id], side: "outside",
-    toolNumber: 1, toolType: "end-mill", diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
+    id: "op1",
+    name: "profile",
+    type: "profile",
+    entityIds: [rect.id],
+    side: "outside",
+    toolNumber: 1,
+    toolType: "end-mill",
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
     ...op,
   } as CAMOperation;
   return { doc, op: base };

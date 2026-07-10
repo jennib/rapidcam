@@ -25,7 +25,12 @@
  * engrave, v-carve, drill, relief — wraps for free. Mill-only.
  */
 
-import { type CADDocument, resolveOrigin, stockFootprint, type RotarySettings } from "../model/document";
+import {
+  type CADDocument,
+  resolveOrigin,
+  stockFootprint,
+  type RotarySettings,
+} from "../model/document";
 import { generateGCode, type GCodeOptions } from "./gcode";
 import { n } from "./postprocessors/base";
 
@@ -84,9 +89,16 @@ const WORD_RE = /([A-Za-z])(-?\d*\.?\d+)/g;
  * within `tol`.
  */
 export function flattenArc(
-  sx: number, sy: number, ex: number, ey: number,
-  cx: number, cy: number, cw: boolean, tol: number,
-  zStart?: number, zEnd?: number,
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number,
+  cx: number,
+  cy: number,
+  cw: boolean,
+  tol: number,
+  zStart?: number,
+  zEnd?: number,
 ): { x: number; y: number; z?: number }[] {
   const r = Math.hypot(sx - cx, sy - cy);
   if (r < 1e-9) return [{ x: ex, y: ey, z: zEnd }];
@@ -96,8 +108,11 @@ export function flattenArc(
   let sweep = a1 - a0;
   // Normalise to the correct arc direction. A zero raw difference on a closed
   // path (start == end) is a full turn, not a no-op — the common engraveCircle case.
-  if (cw) { while (sweep >= 0) sweep -= 2 * Math.PI; }
-  else    { while (sweep <= 0) sweep += 2 * Math.PI; }
+  if (cw) {
+    while (sweep >= 0) sweep -= 2 * Math.PI;
+  } else {
+    while (sweep <= 0) sweep += 2 * Math.PI;
+  }
 
   // Max angular step that keeps the chord bulge under tol: bulge = r(1-cos(Δ/2)).
   const ratio = Math.max(-1, Math.min(1, 1 - tol / r));
@@ -159,22 +174,34 @@ export interface WrapOptions {
  * `inverseTimeFeed`, feed moves are re-fed in G93 inverse-time (see {@link WrapOptions}).
  * Pure — no document access; the caller supplies the settings.
  */
-export function wrapGCode(program: string, settings: RotarySettings, opts: WrapOptions = {}): string {
+export function wrapGCode(
+  program: string,
+  settings: RotarySettings,
+  opts: WrapOptions = {},
+): string {
   const inverseTime = opts.inverseTimeFeed === true;
-  const tol = settings.arcTolerance && settings.arcTolerance > 0 ? settings.arcTolerance : ARC_TOL_DEFAULT;
+  const tol =
+    settings.arcTolerance && settings.arcTolerance > 0 ? settings.arcTolerance : ARC_TOL_DEFAULT;
   const wrapX = settings.wrapAxis === "x";
-  const keep = wrapX ? "Y" : "X";       // the linear axis we leave alone
+  const keep = wrapX ? "Y" : "X"; // the linear axis we leave alone
   const A = settings.axisWord;
 
   // Current tool position in work coords (needed to reconstruct arcs); modal feed
   // carried across moves so a G1 that omits F still knows its surface feed.
-  let cx = 0, cy = 0, cz = 0;
+  let cx = 0,
+    cy = 0,
+    cz = 0;
   let curFeed = 0;
   let g93 = false;
   const out: string[] = [];
 
   const ang = (coord: number) => wrapAngleDeg(coord, settings);
-  const emitG93 = (): void => { if (inverseTime && !g93) { out.push("G93 ; inverse-time feed (rotary combined moves)"); g93 = true; } };
+  const emitG93 = (): void => {
+    if (inverseTime && !g93) {
+      out.push("G93 ; inverse-time feed (rotary combined moves)");
+      g93 = true;
+    }
+  };
   // Inverse-time F for a segment of flat length L (mm) at surface feed f (mm/min):
   // the move takes L/f minutes, so F = 1/time = f/L. Unrolling is an isometry —
   // flat length equals the true surface distance — so L is just the flat move
@@ -182,9 +209,14 @@ export function wrapGCode(program: string, settings: RotarySettings, opts: WrapO
   const invF = (L: number, f: number): number | null => (L < 1e-9 || f <= 0 ? null : f / L);
 
   // Format a flattened arc point as a wrapped linear move.
-  const wrappedPoint = (x: number, y: number, z: number | undefined, f: number | undefined): string => {
-    const linCoord = wrapX ? y : x;      // the axis kept linear
-    const rotCoord = wrapX ? x : y;      // the axis rolled to rotation
+  const wrappedPoint = (
+    x: number,
+    y: number,
+    z: number | undefined,
+    f: number | undefined,
+  ): string => {
+    const linCoord = wrapX ? y : x; // the axis kept linear
+    const rotCoord = wrapX ? x : y; // the axis rolled to rotation
     let s = `G1 ${keep}${n(linCoord)} ${A}${n(ang(rotCoord))}`;
     if (z !== undefined) s += ` Z${n(z)}`;
     if (f !== undefined) s += ` F${n(f)}`;
@@ -202,31 +234,56 @@ export function wrapGCode(program: string, settings: RotarySettings, opts: WrapO
     if (!mv) {
       // Restore feed-per-minute just before the program ends, so the machine isn't
       // left in inverse-time mode after the job.
-      if (inverseTime && g93 && /^\s*M30\b/.test(codePart)) { out.push("G94 ; feed per minute"); g93 = false; }
+      if (inverseTime && g93 && /^\s*M30\b/.test(codePart)) {
+        out.push("G94 ; feed per minute");
+        g93 = false;
+      }
       out.push(rawLine);
       continue;
     }
     if (mv.f !== undefined) curFeed = mv.f;
 
     // Resolve the move's endpoint against modal state (omitted words hold).
-    const nx = mv.x ?? cx, ny = mv.y ?? cy, nz = mv.z ?? cz;
+    const nx = mv.x ?? cx,
+      ny = mv.y ?? cy,
+      nz = mv.z ?? cz;
 
     if (mv.g === 2 || mv.g === 3) {
       // Arc: reconstruct centre from I/J (offsets from the start point), flatten
       // to chords, and emit each as a wrapped linear move. Under inverse time each
       // chord carries its own F (a per-move quantity), else only the first does.
-      const ci = cx + (mv.i ?? 0), cj = cy + (mv.j ?? 0);
+      const ci = cx + (mv.i ?? 0),
+        cj = cy + (mv.j ?? 0);
       const helical = mv.z !== undefined && Math.abs(nz - cz) > 1e-9;
-      const pts = flattenArc(cx, cy, nx, ny, ci, cj, mv.g === 2, tol, helical ? cz : undefined, helical ? nz : undefined);
+      const pts = flattenArc(
+        cx,
+        cy,
+        nx,
+        ny,
+        ci,
+        cj,
+        mv.g === 2,
+        tol,
+        helical ? cz : undefined,
+        helical ? nz : undefined,
+      );
       emitG93();
-      let px = cx, py = cy, pz = cz, first = true;
+      let px = cx,
+        py = cy,
+        pz = cz,
+        first = true;
       for (const p of pts) {
         const pz2 = p.z !== undefined ? p.z : cz;
         const f = inverseTime
           ? (invF(Math.hypot(p.x - px, p.y - py, pz2 - pz), curFeed) ?? undefined)
-          : (first ? mv.f : undefined);
+          : first
+            ? mv.f
+            : undefined;
         out.push(wrappedPoint(p.x, p.y, p.z, f) + (first ? comment : ""));
-        px = p.x; py = p.y; pz = pz2; first = false;
+        px = p.x;
+        py = p.y;
+        pz = pz2;
+        first = false;
       }
     } else {
       // Linear move (G0/G1): swap only the wrapped word, preserving which words
@@ -246,7 +303,9 @@ export function wrapGCode(program: string, settings: RotarySettings, opts: WrapO
       out.push(`${cmd} ${parts.join(" ")}${comment}`.trimEnd());
     }
 
-    cx = nx; cy = ny; cz = nz;
+    cx = nx;
+    cy = ny;
+    cz = nz;
   }
   // Fallback: restore G94 if the program had no M30 to anchor it.
   if (inverseTime && g93) out.push("G94 ; feed per minute");
@@ -287,9 +346,13 @@ export function validateRotary(doc: CADDocument): string[] {
   const out: string[] = [];
 
   if (doc.machineKind === "laser")
-    out.push("Rotary wrap is mill-only, but this document is set to a laser machine — switch to mill, or the wrap is ignored.");
+    out.push(
+      "Rotary wrap is mill-only, but this document is set to a laser machine — switch to mill, or the wrap is ignored.",
+    );
   if (doc.flip)
-    out.push("Rotary wrap and double-sided (flip) machining can't be combined — turn one of them off.");
+    out.push(
+      "Rotary wrap and double-sided (flip) machining can't be combined — turn one of them off.",
+    );
   if (!(s.diameter > 0))
     out.push("Cylinder diameter must be greater than 0 — set the rotary stock diameter.");
 
@@ -298,7 +361,9 @@ export function validateRotary(doc: CADDocument): string[] {
     const span = s.wrapAxis === "y" ? foot.height : foot.width;
     const turns = span / circumference(s);
     if (turns > 1.0001)
-      out.push(`The design spans ${n(wrapAngleDeg(span, s))}° (${n(turns)} turns) around the cylinder — past one full wrap, so the ends overlap. Increase the diameter, or shrink the design along ${s.wrapAxis.toUpperCase()}.`);
+      out.push(
+        `The design spans ${n(wrapAngleDeg(span, s))}° (${n(turns)} turns) around the cylinder — past one full wrap, so the ends overlap. Increase the diameter, or shrink the design along ${s.wrapAxis.toUpperCase()}.`,
+      );
   }
   return out;
 }

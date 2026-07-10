@@ -11,7 +11,18 @@ import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
 import { formatLength } from "../core/units";
-import { DEFAULTS, TOOL_TYPE_LABELS, selectedOpsInOrder, type CAMOperation, type CAMOpType, type ChamferSide, type CoolantMode, type LeadType, type ToolDef, type ToolType } from "../cam/types";
+import {
+  DEFAULTS,
+  TOOL_TYPE_LABELS,
+  selectedOpsInOrder,
+  type CAMOperation,
+  type CAMOpType,
+  type ChamferSide,
+  type CoolantMode,
+  type LeadType,
+  type ToolDef,
+  type ToolType,
+} from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
@@ -121,8 +132,14 @@ interface DialogHooks {
 }
 
 const TP_PALETTE = [
-  "#4aa3ff", "#f59e42", "#4cdc9a", "#e05a9f",
-  "#b97cf5", "#f5e04c", "#5ad8e0", "#f55a5a",
+  "#4aa3ff",
+  "#f59e42",
+  "#4cdc9a",
+  "#e05a9f",
+  "#b97cf5",
+  "#f5e04c",
+  "#5ad8e0",
+  "#f55a5a",
 ];
 
 export class CamBar {
@@ -280,7 +297,10 @@ export class CamBar {
   }
 
   private openFlip(): void {
-    if (this.doc.machineKind !== "mill") { toast("Two-sided machining is for flat (non-rotary) milling jobs."); return; }
+    if (this.doc.machineKind !== "mill") {
+      toast("Two-sided machining is for flat (non-rotary) milling jobs.");
+      return;
+    }
     openFlipDialog({
       doc: this.doc,
       pushHistory: this.pushHistory,
@@ -290,8 +310,14 @@ export class CamBar {
   }
 
   private openStitch(): void {
-    if (this.doc.operations.length === 0) { toast("No toolpaths to tile — add some first."); return; }
-    if (this.doc.machineKind !== "mill") { toast("Stitch tiling is for flat (non-rotary) milling jobs."); return; }
+    if (this.doc.operations.length === 0) {
+      toast("No toolpaths to tile — add some first.");
+      return;
+    }
+    if (this.doc.machineKind !== "mill") {
+      toast("Stitch tiling is for flat (non-rotary) milling jobs.");
+      return;
+    }
     const gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     openStitchDialog({
       gcode,
@@ -355,7 +381,7 @@ export class CamBar {
 
   private highlightOp(id: string | null): void {
     this.highlightedOpId = id;
-    const opIndex = id ? this.doc.operations.findIndex(o => o.id === id) : -1;
+    const opIndex = id ? this.doc.operations.findIndex((o) => o.id === id) : -1;
     const op = opIndex >= 0 ? this.doc.operations[opIndex] : null;
     this.doc.toolpathHighlightColor = op ? TP_PALETTE[opIndex % TP_PALETTE.length] : null;
     if (op?.regions?.length) {
@@ -403,7 +429,9 @@ export class CamBar {
         el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
       });
       const rect = item.getBoundingClientRect();
-      item.classList.add(e.clientY < rect.top + rect.height / 2 ? "tp-drag-over-top" : "tp-drag-over-bottom");
+      item.classList.add(
+        e.clientY < rect.top + rect.height / 2 ? "tp-drag-over-top" : "tp-drag-over-bottom",
+      );
     });
     item.addEventListener("dragleave", (e) => {
       if (!item.contains(e.relatedTarget as Node))
@@ -414,7 +442,8 @@ export class CamBar {
       item.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
       const src = this.dragSrcIdx;
       if (src === null || src === index) return;
-      const insertBefore = e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
+      const insertBefore =
+        e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
       const ops = [...this.doc.operations];
       const [moved] = ops.splice(src, 1);
       const tgt = src < index ? index - 1 : index;
@@ -467,14 +496,23 @@ export class CamBar {
     const badge = document.createElement("span");
     badge.className = `tp-badge tp-badge-${op.type}`;
     badge.textContent =
-      op.type === "profile" ? (op.side === "outside" ? "OUT" : "IN")
-      : op.type === "pocket"  ? "PKT"
-      : op.type === "engrave" ? "ENG"
-      : op.type === "chamfer" ? "CHM"
-      : op.type === "vcarve"  ? "VCV"
-      : op.type === "relief-rough" ? "RUF"
-      : op.type === "score"   ? "SCR"
-      : "DRL";
+      op.type === "profile"
+        ? op.side === "outside"
+          ? "OUT"
+          : "IN"
+        : op.type === "pocket"
+          ? "PKT"
+          : op.type === "engrave"
+            ? "ENG"
+            : op.type === "chamfer"
+              ? "CHM"
+              : op.type === "vcarve"
+                ? "VCV"
+                : op.type === "relief-rough"
+                  ? "RUF"
+                  : op.type === "score"
+                    ? "SCR"
+                    : "DRL";
     topRow.appendChild(badge);
 
     // Double-sided: mark bottom-face ops so they're distinguishable in the list.
@@ -497,20 +535,34 @@ export class CamBar {
     info.className = "tp-op-info";
     const params = document.createElement("div");
     params.className = "tp-op-params";
-    const toolLabel = op.toolType === "v-bit" ? `V-Bit(${op.vAngle ?? 60}°)`
-      : op.toolType === "drill" ? "Drill"
-      : op.toolType === "ball-nose" ? "Ball Nose"
-      : "End Mill";
+    const toolLabel =
+      op.toolType === "v-bit"
+        ? `V-Bit(${op.vAngle ?? 60}°)`
+        : op.toolType === "drill"
+          ? "Drill"
+          : op.toolType === "ball-nose"
+            ? "Ball Nose"
+            : "End Mill";
     // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
     // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
-    params.textContent = this.doc.machineKind === "laser"
-      ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min`
-        + (op.laserFill ? " · fill" : op.type === "profile" && (op.kerfWidth ?? 0) > 0 ? ` · kerf ${op.kerfWidth}mm` : "")
-      : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
+    params.textContent =
+      this.doc.machineKind === "laser"
+        ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min` +
+          (op.laserFill
+            ? " · fill"
+            : op.type === "profile" && (op.kerfWidth ?? 0) > 0
+              ? ` · kerf ${op.kerfWidth}mm`
+              : "")
+        : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
     // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
     // chamfer) left in a laser document won't produce a toolpath — flag it here
     // rather than letting it surface only as a "; NOTE:" buried in the G-code.
-    if (this.doc.machineKind === "laser" && op.type !== "profile" && op.type !== "engrave" && op.type !== "score") {
+    if (
+      this.doc.machineKind === "laser" &&
+      op.type !== "profile" &&
+      op.type !== "engrave" &&
+      op.type !== "score"
+    ) {
       params.textContent = "⚠ no laser equivalent — use Cut, Score, or Engrave";
       params.style.color = "var(--warn, #e0a85a)";
       item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
@@ -622,10 +674,12 @@ export class CamBar {
       // A mill relief (engrave targeting an image) needs a depth-shaping bit, so a
       // new one defaults to a ball-nose rather than the flat end mill (which carves
       // nothing). Done here at state init so the tool selector reflects it on open.
-      toolType: (existing?.toolType ?? (
-        !isLaser && initialCombo === "engrave" && preSelectedEnts.some((e) => e instanceof RasterImageEntity)
-          ? "ball-nose" : DEFAULTS.toolType
-      )) as ToolType,
+      toolType: (existing?.toolType ??
+        (!isLaser &&
+        initialCombo === "engrave" &&
+        preSelectedEnts.some((e) => e instanceof RasterImageEntity)
+          ? "ball-nose"
+          : DEFAULTS.toolType)) as ToolType,
       toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
       diameter: existing?.diameter ?? DEFAULTS.diameter,
       vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
@@ -645,47 +699,51 @@ export class CamBar {
       vStep: existing?.vStep ?? DEFAULTS.vStep,
       vHopClearance: existing?.vHopClearance ?? 0,
       coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
-      entityIds:    new Set<string>(existing?.entityIds ?? [...preSelected]),
-      islandIds:    new Set<string>(existing?.islandIds ?? []),
+      entityIds: new Set<string>(existing?.entityIds ?? [...preSelected]),
+      islandIds: new Set<string>(existing?.islandIds ?? []),
       followPattern: existing?.followPattern ?? true,
-      face:         (existing?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
-      regionSeeds:  existing?.regions?.length
+      face: (existing?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
+      regionSeeds: existing?.regions?.length
         ? seedsFromRegions(this.doc, existing.regions)
         : existing && comboOf(existing) === "pocket"
           ? legacyPocketSeeds(existing, this.doc)
           : ([] as Vec2[]),
-      tabsEnabled:  existing?.tabs?.enabled ?? false,
-      tabStrategy:  (existing?.tabs?.strategy ?? "count") as "count" | "spacing",
-      tabCount:     existing?.tabs?.count   ?? 4,
-      tabSpacing:   existing?.tabs?.spacing ?? 40,
-      tabWidth:     existing?.tabs?.width   ?? 4,
-      tabHeight:    existing?.tabs?.height  ?? 2,
-      stepover:     existing?.stepover ?? DEFAULTS.stepover,
-      cornerStyle:  existing?.cornerStyle ?? "none",
+      tabsEnabled: existing?.tabs?.enabled ?? false,
+      tabStrategy: (existing?.tabs?.strategy ?? "count") as "count" | "spacing",
+      tabCount: existing?.tabs?.count ?? 4,
+      tabSpacing: existing?.tabs?.spacing ?? 40,
+      tabWidth: existing?.tabs?.width ?? 4,
+      tabHeight: existing?.tabs?.height ?? 2,
+      stepover: existing?.stepover ?? DEFAULTS.stepover,
+      cornerStyle: existing?.cornerStyle ?? "none",
       // New profiles default to climb (best on rigid CNC); an existing profile
       // without the field defaults to whatever its raw winding already cuts, so
       // re-applying an old op doesn't silently flip its direction.
-      cutDirection: existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
-      rampAngle:    existing?.rampAngle,
+      cutDirection:
+        existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
+      rampAngle: existing?.rampAngle,
       pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
-      leadInType:   (existing?.leadIn?.type  ?? "none") as LeadType,
-      leadInLen:    existing?.leadIn?.length  ?? 2,
-      leadOutType:  (existing?.leadOut?.type ?? "none") as LeadType,
-      leadOutLen:   existing?.leadOut?.length ?? 2,
+      leadInType: (existing?.leadIn?.type ?? "none") as LeadType,
+      leadInLen: existing?.leadIn?.length ?? 2,
+      leadOutType: (existing?.leadOut?.type ?? "none") as LeadType,
+      leadOutLen: existing?.leadOut?.length ?? 2,
       // A score/fold marks the surface, not through it — seed a low default power
       // for a new one (a full-power score would burn through the fold line).
-      laserPower:   existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
-      laserPasses:  existing?.laserPasses ?? DEFAULTS.laserPasses,
-      kerfWidth:    existing?.kerfWidth   ?? DEFAULTS.kerfWidth,
-      laserFill:    existing?.laserFill   ?? false,
+      laserPower: existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
+      laserPasses: existing?.laserPasses ?? DEFAULTS.laserPasses,
+      kerfWidth: existing?.kerfWidth ?? DEFAULTS.kerfWidth,
+      laserFill: existing?.laserFill ?? false,
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
       laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
-      airAssist:    existing?.airAssist   ?? false,
+      airAssist: existing?.airAssist ?? false,
       // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
       // scales with the bit — ~10% of the cutter diameter is a good scallop/speed
       // balance (a fixed fine value is a needlessly long cut with a wide bit).
-      rasterLineInterval: existing?.rasterLineInterval
-        ?? (isLaser ? DEFAULTS.rasterLineInterval : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * 0.1)),
+      rasterLineInterval:
+        existing?.rasterLineInterval ??
+        (isLaser
+          ? DEFAULTS.rasterLineInterval
+          : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * 0.1)),
       rasterDotPitch: existing?.rasterDotPitch ?? 0,
       rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
       rasterInvert: existing?.rasterInvert ?? false,
@@ -719,7 +777,9 @@ export class CamBar {
     nameInput.type = "text";
     nameInput.className = "dim tp-name-input";
     nameInput.value = state.name;
-    nameInput.addEventListener("input", () => { state.name = nameInput.value; });
+    nameInput.addEventListener("input", () => {
+      state.name = nameInput.value;
+    });
     body.appendChild(this.dField("Name", nameInput));
 
     // type
@@ -728,23 +788,24 @@ export class CamBar {
     const combos: [OpCombo, string][] = isLaser
       ? [
           ["profile-outside", "Cut (outside)"],
-          ["profile-inside",  "Cut (inside)"],
-          ["score",           "Score / Fold (low power)"],
-          ["engrave",         "Engrave (centreline)"],
+          ["profile-inside", "Cut (inside)"],
+          ["score", "Score / Fold (low power)"],
+          ["engrave", "Engrave (centreline)"],
         ]
       : [
           ["profile-outside", "Profile (outside)"],
-          ["profile-inside",  "Profile (inside)"],
-          ["pocket",          "Pocket (interior clear)"],
-          ["chamfer",         "Chamfer (V-bevel edge)"],
-          ["vcarve",          "V-Carve (text/shape)"],
-          ["engrave",         "Engrave"],
-          ["relief-rough",    "Relief Roughing (image)"],
-          ["drill",           "Drill"],
+          ["profile-inside", "Profile (inside)"],
+          ["pocket", "Pocket (interior clear)"],
+          ["chamfer", "Chamfer (V-bevel edge)"],
+          ["vcarve", "V-Carve (text/shape)"],
+          ["engrave", "Engrave"],
+          ["relief-rough", "Relief Roughing (image)"],
+          ["drill", "Drill"],
         ];
     for (const [v, l] of combos) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       typeSelect.appendChild(o);
     }
     typeSelect.value = state.combo;
@@ -762,10 +823,17 @@ export class CamBar {
     const depthRow = document.createElement("div");
     depthRow.className = "tp-depth-row";
     const depthInp = document.createElement("input");
-    depthInp.type = "number"; depthInp.className = "dim"; depthInp.step = "any";
+    depthInp.type = "number";
+    depthInp.className = "dim";
+    depthInp.step = "any";
     depthInp.value = String(state.depth);
     depthInp.addEventListener("change", () => {
-      const v = parseFloat(depthInp.value); if (Number.isFinite(v)) { state.depth = v; hooks.updateVBitHint(); updateReliefEstimate(); }
+      const v = parseFloat(depthInp.value);
+      if (Number.isFinite(v)) {
+        state.depth = v;
+        hooks.updateVBitHint();
+        updateReliefEstimate();
+      }
     });
     const throughBtn = document.createElement("button");
     throughBtn.className = "cbtn";
@@ -798,10 +866,13 @@ export class CamBar {
     hooks.updateVBitHint();
 
     const stepInp = document.createElement("input");
-    stepInp.type = "number"; stepInp.className = "dim"; stepInp.step = "any";
+    stepInp.type = "number";
+    stepInp.className = "dim";
+    stepInp.step = "any";
     stepInp.value = String(state.stepdown);
     stepInp.addEventListener("change", () => {
-      const v = parseFloat(stepInp.value); if (Number.isFinite(v)) state.stepdown = v;
+      const v = parseFloat(stepInp.value);
+      if (Number.isFinite(v)) state.stepdown = v;
       updateReliefEstimate();
     });
     const stepRow = this.dField("Stepdown (mm)", stepInp);
@@ -809,20 +880,28 @@ export class CamBar {
 
     // Peck depth — drill ops only. 0 = single full-depth plunge.
     const peckInp = document.createElement("input");
-    peckInp.type = "number"; peckInp.className = "dim"; peckInp.step = "any"; peckInp.min = "0";
+    peckInp.type = "number";
+    peckInp.className = "dim";
+    peckInp.step = "any";
+    peckInp.min = "0";
     peckInp.value = String(state.peckDepth);
     peckInp.addEventListener("change", () => {
-      const v = parseFloat(peckInp.value); state.peckDepth = Number.isFinite(v) && v > 0 ? v : 0;
+      const v = parseFloat(peckInp.value);
+      state.peckDepth = Number.isFinite(v) && v > 0 ? v : 0;
     });
     const peckRow = this.dField("Peck depth (mm, 0=off)", peckInp);
     cutSec.appendChild(peckRow);
 
     const stepoverInp = document.createElement("input");
-    stepoverInp.type = "number"; stepoverInp.className = "dim"; stepoverInp.step = "any";
-    stepoverInp.min = "0.01"; stepoverInp.max = "1";
+    stepoverInp.type = "number";
+    stepoverInp.className = "dim";
+    stepoverInp.step = "any";
+    stepoverInp.min = "0.01";
+    stepoverInp.max = "1";
     stepoverInp.value = String(state.stepover);
     stepoverInp.addEventListener("change", () => {
-      const v = parseFloat(stepoverInp.value); if (Number.isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
+      const v = parseFloat(stepoverInp.value);
+      if (Number.isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
     });
     const stepoverRow = this.dField("Stepover (0–1)", stepoverInp);
     cutSec.appendChild(stepoverRow);
@@ -830,10 +909,14 @@ export class CamBar {
     // V-carve pitch — radial inset between offset-peel passes (mm). Smaller =
     // smoother floor, more passes. Depth field acts as the max (floor) depth.
     const vStepInp = document.createElement("input");
-    vStepInp.type = "number"; vStepInp.className = "dim"; vStepInp.step = "any"; vStepInp.min = "0.01";
+    vStepInp.type = "number";
+    vStepInp.className = "dim";
+    vStepInp.step = "any";
+    vStepInp.min = "0.01";
     vStepInp.value = String(state.vStep);
     vStepInp.addEventListener("change", () => {
-      const v = parseFloat(vStepInp.value); if (Number.isFinite(v) && v > 0) state.vStep = v;
+      const v = parseFloat(vStepInp.value);
+      if (Number.isFinite(v) && v > 0) state.vStep = v;
     });
     const vStepRow = this.dField("V-carve pitch (mm)", vStepInp);
     cutSec.appendChild(vStepRow);
@@ -843,11 +926,16 @@ export class CamBar {
     // for speed, and is only safe if no clamp/fixture stands above the stock within
     // the carve. Off unless the user opts in.
     const vHopInp = document.createElement("input");
-    vHopInp.type = "number"; vHopInp.className = "dim"; vHopInp.step = "any"; vHopInp.min = "0";
+    vHopInp.type = "number";
+    vHopInp.className = "dim";
+    vHopInp.step = "any";
+    vHopInp.min = "0";
     vHopInp.value = String(state.vHopClearance);
-    vHopInp.title = "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
+    vHopInp.title =
+      "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
     vHopInp.addEventListener("change", () => {
-      const v = parseFloat(vHopInp.value); if (Number.isFinite(v) && v >= 0) state.vHopClearance = v;
+      const v = parseFloat(vHopInp.value);
+      if (Number.isFinite(v) && v >= 0) state.vHopClearance = v;
     });
     const vHopRow = this.dField("V-carve hop clearance (mm, 0 = safe Z)", vHopInp);
     cutSec.appendChild(vHopRow);
@@ -856,39 +944,56 @@ export class CamBar {
     // depth-modulated 2.5-D. Depth (max) + Stepdown above drive the cut; these set
     // the raster resolution. Needs a ball-nose/V-bit (forced below).
     const reliefLineInp = document.createElement("input");
-    reliefLineInp.type = "number"; reliefLineInp.className = "dim"; reliefLineInp.step = "any"; reliefLineInp.min = "0.01";
+    reliefLineInp.type = "number";
+    reliefLineInp.className = "dim";
+    reliefLineInp.step = "any";
+    reliefLineInp.min = "0.01";
     reliefLineInp.value = String(state.rasterLineInterval);
-    reliefLineInp.title = "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
+    reliefLineInp.title =
+      "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
     reliefLineInp.addEventListener("change", () => {
-      const v = parseFloat(reliefLineInp.value); if (Number.isFinite(v) && v > 0) state.rasterLineInterval = v;
+      const v = parseFloat(reliefLineInp.value);
+      if (Number.isFinite(v) && v > 0) state.rasterLineInterval = v;
       updateReliefEstimate();
     });
     const reliefLineRow = this.dField("Relief stepover (mm)", reliefLineInp);
     cutSec.appendChild(reliefLineRow);
 
     const reliefDotInp = document.createElement("input");
-    reliefDotInp.type = "number"; reliefDotInp.className = "dim"; reliefDotInp.step = "any"; reliefDotInp.min = "0";
+    reliefDotInp.type = "number";
+    reliefDotInp.className = "dim";
+    reliefDotInp.step = "any";
+    reliefDotInp.min = "0";
     reliefDotInp.value = String(state.rasterDotPitch);
     reliefDotInp.title = "Horizontal dot pitch. 0 = square dots (use the stepover).";
     reliefDotInp.addEventListener("change", () => {
-      const v = parseFloat(reliefDotInp.value); if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = v;
+      const v = parseFloat(reliefDotInp.value);
+      if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = v;
     });
     const reliefDotRow = this.dField("Relief dot pitch (mm, 0 = square)", reliefDotInp);
     cutSec.appendChild(reliefDotRow);
 
     const reliefInvChk = document.createElement("input");
-    reliefInvChk.type = "checkbox"; reliefInvChk.className = "settings-checkbox";
+    reliefInvChk.type = "checkbox";
+    reliefInvChk.className = "settings-checkbox";
     reliefInvChk.checked = state.rasterInvert;
-    reliefInvChk.addEventListener("change", () => { state.rasterInvert = reliefInvChk.checked; });
+    reliefInvChk.addEventListener("change", () => {
+      state.rasterInvert = reliefInvChk.checked;
+    });
     const reliefInvRow = this.dField("Invert (carve the light areas)", reliefInvChk);
     cutSec.appendChild(reliefInvRow);
 
     const reliefGammaInp = document.createElement("input");
-    reliefGammaInp.type = "number"; reliefGammaInp.className = "dim"; reliefGammaInp.step = "any"; reliefGammaInp.min = "0.1";
+    reliefGammaInp.type = "number";
+    reliefGammaInp.className = "dim";
+    reliefGammaInp.step = "any";
+    reliefGammaInp.min = "0.1";
     reliefGammaInp.value = String(state.reliefGamma);
-    reliefGammaInp.title = "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
+    reliefGammaInp.title =
+      "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
     reliefGammaInp.addEventListener("change", () => {
-      const v = parseFloat(reliefGammaInp.value); if (Number.isFinite(v) && v > 0) state.reliefGamma = v;
+      const v = parseFloat(reliefGammaInp.value);
+      if (Number.isFinite(v) && v > 0) state.reliefGamma = v;
     });
     const reliefGammaRow = this.dField("Tone curve (gamma, 1 = linear)", reliefGammaInp);
     cutSec.appendChild(reliefGammaRow);
@@ -906,7 +1011,10 @@ export class CamBar {
       const ent = [...state.entityIds]
         .map((id) => this.doc.entities.find((e) => e.id === id))
         .find((e): e is RasterImageEntity => e instanceof RasterImageEntity);
-      if (!ent) { reliefEstSpan.textContent = ""; return; }
+      if (!ent) {
+        reliefEstSpan.textContent = "";
+        return;
+      }
       const maxDepth = Math.abs(state.depth);
       const stepdown = state.stepdown > 0 ? state.stepdown : maxDepth;
       // Roughing rasters at the tool's stepover (fraction × diameter) over the
@@ -915,13 +1023,18 @@ export class CamBar {
       const rough = state.combo === "relief-rough";
       const li = rough
         ? Math.max(0.05, state.stepover * state.diameter)
-        : (state.rasterLineInterval > 0 ? state.rasterLineInterval : DEFAULTS.rasterLineInterval);
-      const cutDepth = rough ? Math.max(0, maxDepth - Math.max(0, state.finishAllowance)) : maxDepth;
+        : state.rasterLineInterval > 0
+          ? state.rasterLineInterval
+          : DEFAULTS.rasterLineInterval;
+      const cutDepth = rough
+        ? Math.max(0, maxDepth - Math.max(0, state.finishAllowance))
+        : maxDepth;
       const passes = Math.max(1, Math.ceil(cutDepth / stepdown));
       const rows = ent.heightMM / li;
       const lenMM = rows * ent.widthMM * passes; // boustrophedon X traversal ≈ cut length
       const mins = state.feedrate > 0 ? lenMM / state.feedrate : 0;
-      const time = mins >= 90 ? `${(mins / 60).toFixed(1)} h` : `${Math.max(1, Math.round(mins))} min`;
+      const time =
+        mins >= 90 ? `${(mins / 60).toFixed(1)} h` : `${Math.max(1, Math.round(mins))} min`;
       reliefEstSpan.textContent = `≈ ${time} to cut @ ${state.feedrate} mm/min · ${Math.round(rows)} rows × ${passes} pass${passes > 1 ? "es" : ""}`;
     };
 
@@ -933,17 +1046,23 @@ export class CamBar {
       // Finish-only raster controls (scan-row spacing / dot pitch).
       for (const r of [reliefLineRow, reliefDotRow]) r.style.display = isFinish ? "" : "none";
       // Image controls shared by finish + roughing (invert / tone curve / estimate).
-      for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow]) r.style.display = (isFinish || isRough) ? "" : "none";
+      for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
+        r.style.display = isFinish || isRough ? "" : "none";
       // The finish needs a depth-shaping bit; roughing wants a flat/bull tool (leave it).
-      if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") hooks.setToolType("ball-nose");
+      if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit")
+        hooks.setToolType("ball-nose");
       if (isFinish || isRough) updateReliefEstimate();
     };
 
     const strategySelect = document.createElement("select");
     strategySelect.className = "unit";
-    for (const [v, l] of [["offset", "Adaptive (contour-parallel)"], ["raster", "Raster (zig-zag)"]] as const) {
+    for (const [v, l] of [
+      ["offset", "Adaptive (contour-parallel)"],
+      ["raster", "Raster (zig-zag)"],
+    ] as const) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       strategySelect.appendChild(o);
     }
     strategySelect.value = state.pocketStrategy;
@@ -963,10 +1082,14 @@ export class CamBar {
     cutSec.appendChild(finishRow);
 
     const finishAllowInp = document.createElement("input");
-    finishAllowInp.type = "number"; finishAllowInp.className = "dim"; finishAllowInp.step = "any"; finishAllowInp.min = "0";
+    finishAllowInp.type = "number";
+    finishAllowInp.className = "dim";
+    finishAllowInp.step = "any";
+    finishAllowInp.min = "0";
     finishAllowInp.value = String(state.finishAllowance);
     finishAllowInp.addEventListener("change", () => {
-      const v = parseFloat(finishAllowInp.value); state.finishAllowance = Number.isFinite(v) && v >= 0 ? v : 0;
+      const v = parseFloat(finishAllowInp.value);
+      state.finishAllowance = Number.isFinite(v) && v >= 0 ? v : 0;
     });
     const finishAllowRow = this.dField("Finish allowance (mm)", finishAllowInp);
     cutSec.appendChild(finishAllowRow);
@@ -981,13 +1104,19 @@ export class CamBar {
     // tool's corner radius. Visibility is toggled in the combo handler below.
     const cornerSelect = document.createElement("select");
     cornerSelect.className = "unit";
-    for (const [v, l] of [["none", "None (leave fillet)"], ["dogbone", "Dog-bone"]] as const) {
+    for (const [v, l] of [
+      ["none", "None (leave fillet)"],
+      ["dogbone", "Dog-bone"],
+    ] as const) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       cornerSelect.appendChild(o);
     }
     cornerSelect.value = state.cornerStyle;
-    cornerSelect.addEventListener("change", () => { state.cornerStyle = cornerSelect.value as "none" | "dogbone"; });
+    cornerSelect.addEventListener("change", () => {
+      state.cornerStyle = cornerSelect.value as "none" | "dogbone";
+    });
     const cornerRow = this.dField("Corner overcut", cornerSelect);
     cutSec.appendChild(cornerRow);
 
@@ -995,13 +1124,19 @@ export class CamBar {
     // the M3 spindle; visibility is set in the combo handler below.
     const dirSelect = document.createElement("select");
     dirSelect.className = "unit";
-    for (const [v, l] of [["climb", "Climb"], ["conventional", "Conventional"]] as const) {
+    for (const [v, l] of [
+      ["climb", "Climb"],
+      ["conventional", "Conventional"],
+    ] as const) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       dirSelect.appendChild(o);
     }
     dirSelect.value = state.cutDirection;
-    dirSelect.addEventListener("change", () => { state.cutDirection = dirSelect.value as "climb" | "conventional"; });
+    dirSelect.addEventListener("change", () => {
+      state.cutDirection = dirSelect.value as "climb" | "conventional";
+    });
     const dirRow = this.dField("Cut direction", dirSelect);
     cutSec.appendChild(dirRow);
 
@@ -1009,11 +1144,18 @@ export class CamBar {
     // plunging straight. Empty = the per-context default (shown as placeholder);
     // visibility + placeholder are set in the combo handler below.
     const rampInp = document.createElement("input");
-    rampInp.type = "number"; rampInp.className = "dim"; rampInp.step = "any"; rampInp.min = "0.5"; rampInp.max = "45";
+    rampInp.type = "number";
+    rampInp.className = "dim";
+    rampInp.step = "any";
+    rampInp.min = "0.5";
+    rampInp.max = "45";
     rampInp.value = state.rampAngle !== undefined ? String(state.rampAngle) : "";
     rampInp.addEventListener("change", () => {
       const v = parseFloat(rampInp.value);
-      state.rampAngle = rampInp.value.trim() === "" || !Number.isFinite(v) ? undefined : Math.max(0.5, Math.min(45, v));
+      state.rampAngle =
+        rampInp.value.trim() === "" || !Number.isFinite(v)
+          ? undefined
+          : Math.max(0.5, Math.min(45, v));
       if (state.rampAngle !== undefined) rampInp.value = String(state.rampAngle);
     });
     const rampRow = this.dField("Plunge ramp angle (°)", rampInp);
@@ -1021,7 +1163,10 @@ export class CamBar {
 
     // Chamfer — width (bevel face) + side. Depth is derived from the V-bit angle.
     const chamWidthInp = document.createElement("input");
-    chamWidthInp.type = "number"; chamWidthInp.className = "dim"; chamWidthInp.step = "any"; chamWidthInp.min = "0";
+    chamWidthInp.type = "number";
+    chamWidthInp.className = "dim";
+    chamWidthInp.step = "any";
+    chamWidthInp.min = "0";
     chamWidthInp.value = String(state.chamferWidth);
     const chamHint = document.createElement("div");
     chamHint.className = "cam-vbit-hint";
@@ -1031,7 +1176,8 @@ export class CamBar {
       chamHint.textContent = `→ depth ${depth.toFixed(2)} mm · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
     };
     chamWidthInp.addEventListener("input", () => {
-      const v = parseFloat(chamWidthInp.value); if (Number.isFinite(v) && v >= 0) state.chamferWidth = v;
+      const v = parseFloat(chamWidthInp.value);
+      if (Number.isFinite(v) && v >= 0) state.chamferWidth = v;
       updateChamHint();
     });
     const chamWidthRow = this.dField("Chamfer width (mm)", chamWidthInp);
@@ -1040,13 +1186,20 @@ export class CamBar {
 
     const chamSideSelect = document.createElement("select");
     chamSideSelect.className = "unit";
-    for (const [v, l] of [["on", "On edge (centred)"], ["outside", "Outside"], ["inside", "Inside"]] as const) {
+    for (const [v, l] of [
+      ["on", "On edge (centred)"],
+      ["outside", "Outside"],
+      ["inside", "Inside"],
+    ] as const) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       chamSideSelect.appendChild(o);
     }
     chamSideSelect.value = state.chamferSide;
-    chamSideSelect.addEventListener("change", () => { state.chamferSide = chamSideSelect.value as ChamferSide; });
+    chamSideSelect.addEventListener("change", () => {
+      state.chamferSide = chamSideSelect.value as ChamferSide;
+    });
     const chamSideRow = this.dField("Bevel side", chamSideSelect);
     cutSec.appendChild(chamSideRow);
 
@@ -1054,13 +1207,18 @@ export class CamBar {
     sharpenChk.type = "checkbox";
     sharpenChk.className = "settings-checkbox";
     sharpenChk.checked = state.sharpenCorners;
-    sharpenChk.addEventListener("change", () => { state.sharpenCorners = sharpenChk.checked; });
+    sharpenChk.addEventListener("change", () => {
+      state.sharpenCorners = sharpenChk.checked;
+    });
     const sharpenRow = this.dField("Sharpen corners", sharpenChk);
     cutSec.appendChild(sharpenRow);
     updateChamHint();
     // Keep the chamfer depth readout in sync when the V-bit angle changes.
     const baseVBitHint = hooks.updateVBitHint;
-    hooks.updateVBitHint = () => { baseVBitHint(); updateChamHint(); };
+    hooks.updateVBitHint = () => {
+      baseVBitHint();
+      updateChamHint();
+    };
 
     const updateChamferVisibility = () => {
       const show = state.combo === "chamfer";
@@ -1075,9 +1233,14 @@ export class CamBar {
     if (getMachineHasCoolant()) {
       const coolantSelect = document.createElement("select");
       coolantSelect.className = "unit";
-      for (const [v, l] of [["off", "Off"], ["mist", "Mist (M7)"], ["flood", "Flood (M8)"]] as const) {
+      for (const [v, l] of [
+        ["off", "Off"],
+        ["mist", "Mist (M7)"],
+        ["flood", "Flood (M8)"],
+      ] as const) {
         const o = document.createElement("option");
-        o.value = v; o.textContent = l;
+        o.value = v;
+        o.textContent = l;
         coolantSelect.appendChild(o);
       }
       coolantSelect.value = state.coolant;
@@ -1126,7 +1289,9 @@ export class CamBar {
       followChk.type = "checkbox";
       followChk.className = "settings-checkbox";
       followChk.checked = state.followPattern;
-      followChk.addEventListener("change", () => { state.followPattern = followChk.checked; });
+      followChk.addEventListener("change", () => {
+        state.followPattern = followChk.checked;
+      });
       body.appendChild(this.dField("Follow pattern (cut all copies)", followChk));
     }
 
@@ -1134,13 +1299,19 @@ export class CamBar {
     // has a flip setup (and not for a laser, which is single-sided here).
     if (this.doc.flip && !isLaser) {
       const faceSel = document.createElement("select");
-      for (const [v, label] of [["top", "Top (side A — as drawn)"], ["bottom", "Bottom (side B — mirrored)"]] as const) {
+      for (const [v, label] of [
+        ["top", "Top (side A — as drawn)"],
+        ["bottom", "Bottom (side B — mirrored)"],
+      ] as const) {
         const o = document.createElement("option");
-        o.value = v; o.textContent = label;
+        o.value = v;
+        o.textContent = label;
         if (v === state.face) o.selected = true;
         faceSel.appendChild(o);
       }
-      faceSel.addEventListener("change", () => { state.face = faceSel.value as "top" | "bottom"; });
+      faceSel.addEventListener("change", () => {
+        state.face = faceSel.value as "top" | "bottom";
+      });
       body.appendChild(this.dField("Face (two-sided)", faceSel));
     }
 
@@ -1153,20 +1324,23 @@ export class CamBar {
         nameInput.value = state.name;
       }
       if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
-      stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
-      peckRow.style.display     = state.combo === "drill"   ? "" : "none";
-      stepoverRow.style.display = state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
-      strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
-      vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
-      vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
+      stepRow.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
+      peckRow.style.display = state.combo === "drill" ? "" : "none";
+      stepoverRow.style.display =
+        state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
+      strategyRow.style.display = state.combo === "pocket" ? "" : "none";
+      vStepRow.style.display = state.combo === "vcarve" ? "" : "none";
+      vHopRow.style.display = state.combo === "vcarve" ? "" : "none";
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
-      finishRow.style.display      = showFinish ? "" : "none";
+      finishRow.style.display = showFinish ? "" : "none";
       // Roughing always leaves an allowance (no finish-pass checkbox — it's implicit).
-      finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      finishAllowRow.style.display =
+        (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       // Corner overcut is a female-feature relief — inside profiles and pockets only.
-      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
+      cornerRow.style.display =
+        state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
       // Cut direction — mill profile contours only (a laser beam has no climb/conventional).
-      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
+      dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
       // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
       const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
       rampRow.style.display = showRamp ? "" : "none";
@@ -1177,7 +1351,10 @@ export class CamBar {
         hooks.setToolType("v-bit");
       // Roughing wants a flat tool — reset a depth-shaping bit (often inherited from
       // the image → Engrave default) to an end mill when switching to it.
-      if (state.combo === "relief-rough" && (state.toolType === "ball-nose" || state.toolType === "v-bit"))
+      if (
+        state.combo === "relief-rough" &&
+        (state.toolType === "ball-nose" || state.toolType === "v-bit")
+      )
         hooks.setToolType("end-mill");
       hooks.updateVBitHint();
       updateTabsVisibility();
@@ -1190,18 +1367,21 @@ export class CamBar {
       }
       renderEntities();
     });
-    stepRow.style.display     = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
-    peckRow.style.display     = state.combo === "drill"   ? "" : "none";
-    stepoverRow.style.display = state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
-    strategyRow.style.display = state.combo === "pocket"  ? "" : "none";
-    vStepRow.style.display    = state.combo === "vcarve"  ? "" : "none";
-    vHopRow.style.display     = state.combo === "vcarve"  ? "" : "none";
+    stepRow.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
+    peckRow.style.display = state.combo === "drill" ? "" : "none";
+    stepoverRow.style.display =
+      state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
+    strategyRow.style.display = state.combo === "pocket" ? "" : "none";
+    vStepRow.style.display = state.combo === "vcarve" ? "" : "none";
+    vHopRow.style.display = state.combo === "vcarve" ? "" : "none";
     {
       const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
-      finishRow.style.display      = showFinish ? "" : "none";
-      finishAllowRow.style.display = (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
-      cornerRow.style.display = (state.combo === "profile-inside" || state.combo === "pocket") ? "" : "none";
-      dirRow.style.display = (state.combo.startsWith("profile") && !isLaser) ? "" : "none";
+      finishRow.style.display = showFinish ? "" : "none";
+      finishAllowRow.style.display =
+        (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+      cornerRow.style.display =
+        state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
+      dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
       const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
       rampRow.style.display = showRamp ? "" : "none";
       rampInp.placeholder = "auto";
@@ -1221,16 +1401,19 @@ export class CamBar {
     const footer = document.createElement("div");
     footer.className = "tp-dialog-footer";
     const cancelBtn = document.createElement("button");
-    cancelBtn.className = "btn"; cancelBtn.textContent = "Cancel";
+    cancelBtn.className = "btn";
+    cancelBtn.textContent = "Cancel";
     cancelBtn.addEventListener("click", () => closeDialog());
     const applyBtn = document.createElement("button");
-    applyBtn.className = "btn tp-apply-btn"; applyBtn.textContent = "Apply";
+    applyBtn.className = "btn tp-apply-btn";
+    applyBtn.textContent = "Apply";
     applyBtn.addEventListener("click", () => {
       let ids = [...state.entityIds];
       // Pocket must be region-picked. V-carve may be region-picked OR driven by
       // selected entities (text/closed shapes); regions win when both exist.
       if (state.combo === "pocket" && state.regionSeeds.length === 0) {
-        alert("Pick at least one enclosed area."); return;
+        alert("Pick at least one enclosed area.");
+        return;
       }
       const regionBased =
         (state.combo === "pocket" || state.combo === "vcarve") && state.regionSeeds.length > 0;
@@ -1247,37 +1430,61 @@ export class CamBar {
         // Keep only the selection valid for this op type; a specific message when
         // none are (e.g. an image selected for a Cut → "can only be engraved").
         const check = checkOpSelection(this.doc.entities, state.entityIds, state.combo);
-        if (check.error) { alert(check.error); return; }
+        if (check.error) {
+          alert(check.error);
+          return;
+        }
         ids = check.validIds;
       }
 
       this.pushHistory?.();
 
       let type: CAMOpType, side: "outside" | "inside";
-      if (state.combo === "profile-outside") { type = "profile"; side = "outside"; }
-      else if (state.combo === "profile-inside") { type = "profile"; side = "inside"; }
-      else if (state.combo === "pocket") { type = "pocket"; side = "outside"; }
-      else if (state.combo === "chamfer") { type = "chamfer"; side = "outside"; }
-      else if (state.combo === "vcarve") { type = "vcarve"; side = "outside"; }
-      else if (state.combo === "engrave") { type = "engrave"; side = "outside"; }
-      else if (state.combo === "score") { type = "score"; side = "outside"; }
-      else if (state.combo === "relief-rough") { type = "relief-rough"; side = "outside"; }
-      else { type = "drill"; side = "outside"; }
+      if (state.combo === "profile-outside") {
+        type = "profile";
+        side = "outside";
+      } else if (state.combo === "profile-inside") {
+        type = "profile";
+        side = "inside";
+      } else if (state.combo === "pocket") {
+        type = "pocket";
+        side = "outside";
+      } else if (state.combo === "chamfer") {
+        type = "chamfer";
+        side = "outside";
+      } else if (state.combo === "vcarve") {
+        type = "vcarve";
+        side = "outside";
+      } else if (state.combo === "engrave") {
+        type = "engrave";
+        side = "outside";
+      } else if (state.combo === "score") {
+        type = "score";
+        side = "outside";
+      } else if (state.combo === "relief-rough") {
+        type = "relief-rough";
+        side = "outside";
+      } else {
+        type = "drill";
+        side = "outside";
+      }
 
       const isProfile = type === "profile";
       const reliefRough = type === "relief-rough";
       // Image engrave: laser raster OR mill relief — both carry the same raster
       // resolution fields (rasterLineInterval/DotPitch/Invert).
       const imageEngrave = type === "engrave" && this.opTargetsImage(state.entityIds);
-      const raster = isLaser && imageEngrave;       // laser-only field (rasterMinPower)
-      const rasterFields = imageEngrave;             // shared by laser raster + mill relief
+      const raster = isLaser && imageEngrave; // laser-only field (rasterMinPower)
+      const rasterFields = imageEngrave; // shared by laser raster + mill relief
       // Invert / tone curve apply to both the mill relief FINISH and its roughing.
       const reliefImageFields = imageEngrave || reliefRough;
 
       const op: CAMOperation = {
         id: existing?.id ?? nextId("cam"),
         name: state.name || this.autoName(state.combo),
-        type, side, entityIds: ids,
+        type,
+        side,
+        entityIds: ids,
         followPattern: state.followPattern ? undefined : false, // omit when following (default)
         // Double-sided: persist "bottom" only; "top" is the default, so omit it.
         face: this.doc.flip && state.face === "bottom" ? "bottom" : undefined,
@@ -1288,55 +1495,84 @@ export class CamBar {
         vAngle: state.toolType === "v-bit" ? state.vAngle : undefined,
         tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
         feedrate: state.feedrate,
-        plungeRate: state.plungeRate, spindleSpeed: state.spindleSpeed,
-        safeZ: state.safeZ, depth: state.depth, stepdown: state.stepdown,
+        plungeRate: state.plungeRate,
+        spindleSpeed: state.spindleSpeed,
+        safeZ: state.safeZ,
+        depth: state.depth,
+        stepdown: state.stepdown,
         stepover: state.stepover,
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
-        finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+        finishPass:
+          (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
         // Dog-bone corner relief applies only to female features (inside profile / pocket).
-        cornerStyle: ((state.combo === "profile-inside" || state.combo === "pocket") && state.cornerStyle === "dogbone")
-          ? "dogbone" : undefined,
+        cornerStyle:
+          (state.combo === "profile-inside" || state.combo === "pocket") &&
+          state.cornerStyle === "dogbone"
+            ? "dogbone"
+            : undefined,
         // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
-        rampAngle: ((state.combo === "pocket" || state.combo === "relief-rough") && state.rampAngle !== undefined)
-          ? state.rampAngle : undefined,
+        rampAngle:
+          (state.combo === "pocket" || state.combo === "relief-rough") &&
+          state.rampAngle !== undefined
+            ? state.rampAngle
+            : undefined,
         // Cut direction — mill profile contours only (a laser cut has no climb/conventional).
-        cutDirection: (type === "profile" && !isLaser) ? state.cutDirection : undefined,
+        cutDirection: type === "profile" && !isLaser ? state.cutDirection : undefined,
         // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
-        finishAllowance: ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough ? state.finishAllowance : undefined,
+        finishAllowance:
+          ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough
+            ? state.finishAllowance
+            : undefined,
         chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
         chamferSide: type === "chamfer" ? state.chamferSide : undefined,
         sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
         vStep: type === "vcarve" ? state.vStep : undefined,
-        vHopClearance: type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
+        vHopClearance:
+          type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
         coolant: state.coolant !== "off" ? state.coolant : undefined,
         pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
-        regions: regionBased
-          ? refsFromSeeds(this.doc, state.regionSeeds)
+        regions: regionBased ? refsFromSeeds(this.doc, state.regionSeeds) : undefined,
+        tabs: isProfile
+          ? {
+              enabled: state.tabsEnabled,
+              strategy: state.tabStrategy !== "count" ? state.tabStrategy : undefined,
+              count: state.tabCount,
+              spacing: state.tabStrategy === "spacing" ? state.tabSpacing : undefined,
+              width: state.tabWidth,
+              height: state.tabHeight,
+            }
           : undefined,
-        tabs: isProfile ? {
-          enabled: state.tabsEnabled,
-          strategy: state.tabStrategy !== "count" ? state.tabStrategy : undefined,
-          count:   state.tabCount,
-          spacing: state.tabStrategy === "spacing" ? state.tabSpacing : undefined,
-          width:   state.tabWidth,
-          height:  state.tabHeight,
-        } : undefined,
-        leadIn:  isProfile && state.leadInType  !== "none" ? { type: state.leadInType,  length: state.leadInLen  } : undefined,
-        leadOut: isProfile && state.leadOutType !== "none" ? { type: state.leadOutType, length: state.leadOutLen } : undefined,
-        laserPower:  isLaser ? state.laserPower  : undefined,
+        leadIn:
+          isProfile && state.leadInType !== "none"
+            ? { type: state.leadInType, length: state.leadInLen }
+            : undefined,
+        leadOut:
+          isProfile && state.leadOutType !== "none"
+            ? { type: state.leadOutType, length: state.leadOutLen }
+            : undefined,
+        laserPower: isLaser ? state.laserPower : undefined,
         laserPasses: isLaser ? state.laserPasses : undefined,
-        kerfWidth:   isLaser && isProfile ? state.kerfWidth : undefined,
-        laserFill:   isLaser && type === "engrave" && !raster && state.laserFill ? true : undefined,
-        laserFillSpacing: isLaser && type === "engrave" && !raster && state.laserFill ? state.laserFillSpacing : undefined,
+        kerfWidth: isLaser && isProfile ? state.kerfWidth : undefined,
+        laserFill: isLaser && type === "engrave" && !raster && state.laserFill ? true : undefined,
+        laserFillSpacing:
+          isLaser && type === "engrave" && !raster && state.laserFill
+            ? state.laserFillSpacing
+            : undefined,
         // Overscan serves both vector fill and raster rows.
-        laserOverscan: isLaser && type === "engrave" && (raster || state.laserFill) && state.laserOverscan > 0 ? state.laserOverscan : undefined,
-        airAssist:   isLaser && state.airAssist ? true : undefined,
+        laserOverscan:
+          isLaser && type === "engrave" && (raster || state.laserFill) && state.laserOverscan > 0
+            ? state.laserOverscan
+            : undefined,
+        airAssist: isLaser && state.airAssist ? true : undefined,
         rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
         rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
         rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
         rasterInvert: reliefImageFields && state.rasterInvert ? true : undefined,
         // Tone curve is a mill-relief control (a laser raster uses min/max power instead).
-        reliefGamma: !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1 ? state.reliefGamma : undefined,
+        reliefGamma:
+          !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1
+            ? state.reliefGamma
+            : undefined,
       };
 
       if (existing) {
@@ -1377,7 +1613,11 @@ export class CamBar {
         e.layerId = this.doc.activeLayerId;
         this.doc.entities.push(e);
       }
-      this.doc.groups.push({ id: nextId("group"), name: "Material Test", entityIds: entities.map((e) => e.id) });
+      this.doc.groups.push({
+        id: nextId("group"),
+        name: "Material Test",
+        entityIds: entities.map((e) => e.id),
+      });
       for (const op of operations) this.doc.operations.push(op);
       this.doc.emitChange();
       this.renderOps();
@@ -1398,7 +1638,10 @@ export class CamBar {
    * user can override ("Export anyway"). Errors colour the confirm red. Returns
    * true to proceed with export.
    */
-  private async preflight(gcode: string, ctxOpts?: { extraDepthBelowBottom?: number }): Promise<boolean> {
+  private async preflight(
+    gcode: string,
+    ctxOpts?: { extraDepthBelowBottom?: number },
+  ): Promise<boolean> {
     const findings = lintGCode(gcode, buildLintContext(this.doc, ctxOpts));
     if (findings.length === 0) return true;
     const errors = findings.filter((f) => f.severity === "error").length;
@@ -1420,7 +1663,10 @@ export class CamBar {
   }
 
   private async generate(): Promise<void> {
-    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    if (this.doc.operations.length === 0) {
+      alert("Add at least one toolpath first.");
+      return;
+    }
     if (!(await this.confirmMissingFonts())) return;
     const isRotary = this.doc.machineKind === "mill-rotary";
     // Double-sided jobs export two programs (top + mirrored bottom). Not for a
@@ -1439,7 +1685,10 @@ export class CamBar {
       gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     }
     if (!(await this.preflight(gcode))) return;
-    track("gcode_generated", { operation_count: this.doc.operations.length, ...(isRotary ? { rotary: true } : {}) });
+    track("gcode_generated", {
+      operation_count: this.doc.operations.length,
+      ...(isRotary ? { rotary: true } : {}),
+    });
     const n = this.doc.operations.length;
     const file = this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
     toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
@@ -1484,7 +1733,10 @@ export class CamBar {
       if (!proceed) return;
     }
     // Side A may bore pins past the stock bottom by design — allow that depth.
-    if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
+    if (
+      !(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))
+    )
+      return;
     if (!(await this.preflight(sideB))) return;
     track("gcode_generated", { operation_count: this.doc.operations.length, flip: true });
     // One timestamp for the whole two-sided export so the two programs and the
@@ -1501,7 +1753,9 @@ export class CamBar {
     const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = zipName; a.click();
+    a.href = url;
+    a.download = zipName;
+    a.click();
     URL.revokeObjectURL(url);
     toast(`Exported side A + side B → ${zipName}`);
     maybeShowSharePrompt();
@@ -1532,7 +1786,10 @@ export class CamBar {
    * connection problem, offers a plain file download so the work is never trapped.
    */
   private async sendToGsender(): Promise<void> {
-    if (this.doc.operations.length === 0) { alert("Add at least one toolpath first."); return; }
+    if (this.doc.operations.length === 0) {
+      alert("Add at least one toolpath first.");
+      return;
+    }
     if (!(await this.confirmMissingFonts())) return;
     const isRotary = this.doc.machineKind === "mill-rotary";
     // A two-sided job can't run as one program — send side A now, side B after
@@ -1555,11 +1812,17 @@ export class CamBar {
     // One name for both the send and any fallback download below.
     const jobName = this.exportName(isRotary ? "all-rotary" : "all");
     const res = await sendToGsender(getGsenderUrl(), jobName, gcode);
-    track("gcode_sent_gsender", { ok: res.ok, hint: res.hint, ...(isRotary ? { rotary: true } : {}) });
+    track("gcode_sent_gsender", {
+      ok: res.ok,
+      hint: res.hint,
+      ...(isRotary ? { rotary: true } : {}),
+    });
     if (res.ok) {
-      toast(res.port
-        ? `Loaded into gSender on ${res.port} — press Play there to run.`
-        : "Loaded into gSender — connect your machine and press Play there.");
+      toast(
+        res.port
+          ? `Loaded into gSender on ${res.port} — press Play there to run.`
+          : "Loaded into gSender — connect your machine and press Play there.",
+      );
       maybeShowSharePrompt();
       return;
     }
@@ -1593,7 +1856,10 @@ export class CamBar {
       });
       if (!proceed) return;
     }
-    if (!(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))) return;
+    if (
+      !(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))
+    )
+      return;
 
     // One timestamp so side A and side B read as a matched pair.
     const project = this.projectName();
@@ -1625,19 +1891,29 @@ export class CamBar {
       confirmLabel: "Send side B",
       cancelLabel: "Later",
     });
-    if (!goB) { toast("Side B not sent — reopen and Send to gSender when ready."); return; }
+    if (!goB) {
+      toast("Side B not sent — reopen and Send to gSender when ready.");
+      return;
+    }
     if (!(await this.preflight(sideB))) return;
     toast("Sending side B to gSender…");
     const resB = await sendToGsender(getGsenderUrl(), nameB, sideB);
     track("gcode_sent_gsender", { ok: resB.ok, hint: resB.hint, flip: "B" });
-    if (resB.ok) { toast("Side B loaded — press Play in gSender to run it."); maybeShowSharePrompt(); return; }
+    if (resB.ok) {
+      toast("Side B loaded — press Play in gSender to run it.");
+      maybeShowSharePrompt();
+      return;
+    }
     const dl = await confirmDialog({
       title: "Couldn't send side B",
       message: `${resB.error}\n\nDownload the side B file instead?`,
       confirmLabel: "Download file",
       cancelLabel: "Close",
     });
-    if (dl) { const f = this.download(sideB, nameB); toast(`Exported → ${f}`); }
+    if (dl) {
+      const f = this.download(sideB, nameB);
+      toast(`Exported → ${f}`);
+    }
   }
 
   /** Text entities targeted by an operation whose font can't be resolved. */
@@ -1680,15 +1956,23 @@ export class CamBar {
 
   private autoName(combo: OpCombo): string {
     const prefix =
-      combo === "profile-outside" ? "Profile (outside)"
-      : combo === "profile-inside" ? "Profile (inside)"
-      : combo === "pocket"  ? "Pocket"
-      : combo === "chamfer" ? "Chamfer"
-      : combo === "vcarve"  ? "V-Carve"
-      : combo === "engrave" ? "Engrave"
-      : combo === "relief-rough" ? "Relief Roughing"
-      : combo === "score" ? "Score / Fold"
-      : "Drill";
+      combo === "profile-outside"
+        ? "Profile (outside)"
+        : combo === "profile-inside"
+          ? "Profile (inside)"
+          : combo === "pocket"
+            ? "Pocket"
+            : combo === "chamfer"
+              ? "Chamfer"
+              : combo === "vcarve"
+                ? "V-Carve"
+                : combo === "engrave"
+                  ? "Engrave"
+                  : combo === "relief-rough"
+                    ? "Relief Roughing"
+                    : combo === "score"
+                      ? "Score / Fold"
+                      : "Drill";
     const n = this.doc.operations.filter((o) => comboOf(o) === combo).length + 1;
     return `${prefix} ${n}`;
   }
@@ -1719,27 +2003,48 @@ export class CamBar {
   }
 
   /** Labelled number input that writes through `set` on change. */
-  private numRow(label: string, get: () => number, set: (v: number) => void): { el: HTMLElement; inp: HTMLInputElement } {
+  private numRow(
+    label: string,
+    get: () => number,
+    set: (v: number) => void,
+  ): { el: HTMLElement; inp: HTMLInputElement } {
     const inp = document.createElement("input");
-    inp.type = "number"; inp.className = "dim"; inp.step = "any";
+    inp.type = "number";
+    inp.className = "dim";
+    inp.step = "any";
     inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v); });
+    inp.addEventListener("change", () => {
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v)) set(v);
+    });
     return { el: this.dField(label, inp), inp };
   }
 
   /** Like numRow, but `set` also receives the input so a ToolDef load can repopulate it. */
-  private syncableInput(label: string, get: () => number, set: (v: number, inp: HTMLInputElement) => void): { el: HTMLElement; inp: HTMLInputElement } {
+  private syncableInput(
+    label: string,
+    get: () => number,
+    set: (v: number, inp: HTMLInputElement) => void,
+  ): { el: HTMLElement; inp: HTMLInputElement } {
     const inp = document.createElement("input");
-    inp.type = "number"; inp.className = "dim"; inp.step = "any";
+    inp.type = "number";
+    inp.className = "dim";
+    inp.step = "any";
     inp.value = String(get());
-    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) set(v, inp); });
+    inp.addEventListener("change", () => {
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v)) set(v, inp);
+    });
     return { el: this.dField(label, inp), inp };
   }
 
   // --- Add/Edit dialog section builders --------------------------------------
 
   /** Backdrop + draggable dialog frame (header, close, body). */
-  private buildDialogShell(isNew: boolean, onClose: () => void): { backdrop: HTMLElement; dialog: HTMLElement; body: HTMLElement } {
+  private buildDialogShell(
+    isNew: boolean,
+    onClose: () => void,
+  ): { backdrop: HTMLElement; dialog: HTMLElement; body: HTMLElement } {
     const backdrop = document.createElement("div");
     backdrop.id = "tp-dialog-backdrop";
     backdrop.className = "tp-backdrop";
@@ -1772,7 +2077,10 @@ export class CamBar {
         const { left, top } = JSON.parse(storedPos);
         const lVal = parseFloat(left);
         const tVal = parseFloat(top);
-        if (!Number.isNaN(lVal) && !Number.isNaN(tVal)) { applyPos(lVal, tVal); positioned = true; }
+        if (!Number.isNaN(lVal) && !Number.isNaN(tVal)) {
+          applyPos(lVal, tVal);
+          positioned = true;
+        }
       } catch {
         // Ignore malformed localStorage data
       }
@@ -1787,7 +2095,10 @@ export class CamBar {
     // viewport shrinks. Self-removes on the first resize after any close path
     // (the backdrop is gone), so it needs no explicit teardown hook.
     const onResize = () => {
-      if (!backdrop.isConnected) { window.removeEventListener("resize", onResize); return; }
+      if (!backdrop.isConnected) {
+        window.removeEventListener("resize", onResize);
+        return;
+      }
       applyPos(parseFloat(dialog.style.left) || 0, parseFloat(dialog.style.top) || 0);
     };
     window.addEventListener("resize", onResize);
@@ -1796,7 +2107,11 @@ export class CamBar {
     dheader.className = "tp-dialog-header";
     dheader.style.cursor = "move";
 
-    let isDragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    let isDragging = false,
+      startX = 0,
+      startY = 0,
+      startLeft = 0,
+      startTop = 0;
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
       dialog.style.left = `${startLeft + (e.clientX - startX)}px`;
@@ -1806,17 +2121,22 @@ export class CamBar {
       isDragging = false;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      localStorage.setItem(StorageKeys.toolpathDialogPosition, JSON.stringify({
-        left: dialog.style.left,
-        top: dialog.style.top
-      }));
+      localStorage.setItem(
+        StorageKeys.toolpathDialogPosition,
+        JSON.stringify({
+          left: dialog.style.left,
+          top: dialog.style.top,
+        }),
+      );
     };
     dheader.addEventListener("mousedown", (e) => {
       if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;
       isDragging = true;
-      startX = e.clientX; startY = e.clientY;
+      startX = e.clientX;
+      startY = e.clientY;
       const rect = dialog.getBoundingClientRect();
-      startLeft = rect.left; startTop = rect.top;
+      startLeft = rect.left;
+      startTop = rect.top;
       dialog.style.position = "absolute";
       dialog.style.margin = "0";
       dialog.style.left = `${startLeft}px`;
@@ -1860,7 +2180,10 @@ export class CamBar {
       toolContent.style.display = toolExpanded ? "" : "none";
       toolArrow.textContent = toolExpanded ? "▲" : "▼";
     };
-    toolSectionTitle.addEventListener("click", () => { toolExpanded = !toolExpanded; applyToolCollapse(); });
+    toolSectionTitle.addEventListener("click", () => {
+      toolExpanded = !toolExpanded;
+      applyToolCollapse();
+    });
     applyToolCollapse();
 
     // --- library row ---
@@ -1879,7 +2202,8 @@ export class CamBar {
     toolContent.appendChild(libRow);
 
     const libPicker = document.createElement("div");
-    libPicker.style.cssText = "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
+    libPicker.style.cssText =
+      "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
       "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
     toolContent.appendChild(libPicker);
 
@@ -1895,10 +2219,15 @@ export class CamBar {
       }
       for (const t of tools) {
         const row = document.createElement("div");
-        row.style.cssText = "display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;" +
+        row.style.cssText =
+          "display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;" +
           "border-bottom:1px solid var(--border);font-size:11px;";
-        row.addEventListener("mouseover", () => { row.style.background = "var(--panel-2)"; });
-        row.addEventListener("mouseout",  () => { row.style.background = ""; });
+        row.addEventListener("mouseover", () => {
+          row.style.background = "var(--panel-2)";
+        });
+        row.addEventListener("mouseout", () => {
+          row.style.background = "";
+        });
         const nameSpan = document.createElement("span");
         nameSpan.style.flex = "1";
         nameSpan.textContent = t.name;
@@ -1930,9 +2259,12 @@ export class CamBar {
     });
 
     saveLibBtn.addEventListener("click", () => {
-      const name = window.prompt("Save tool as:", state.toolType === "v-bit"
-        ? `${state.vAngle}° V-Bit ⌀${state.diameter}mm`
-        : `⌀${state.diameter}mm ${TOOL_TYPE_LABELS[state.toolType]}`);
+      const name = window.prompt(
+        "Save tool as:",
+        state.toolType === "v-bit"
+          ? `${state.vAngle}° V-Bit ⌀${state.diameter}mm`
+          : `⌀${state.diameter}mm ${TOOL_TYPE_LABELS[state.toolType]}`,
+      );
       if (!name) return;
       const def: ToolDef = {
         id: `tool-${Date.now()}`,
@@ -1955,31 +2287,98 @@ export class CamBar {
     toolTypeSelect.className = "unit";
     for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
       const o = document.createElement("option");
-      o.value = v; o.textContent = l;
+      o.value = v;
+      o.textContent = l;
       toolTypeSelect.appendChild(o);
     }
     toolTypeSelect.value = state.toolType;
     toolContent.appendChild(this.dField("Tool Type", toolTypeSelect));
 
-    const toolNumRow  = this.numRow("Tool # (T)", () => state.toolNumber, (v) => { state.toolNumber = Math.max(1, Math.round(v)); });
-    const diamRow     = this.syncableInput("Diameter (mm)", () => state.diameter, (v, i) => { fork(); state.diameter = v; i.value = String(v); hooks.updateVBitHint(); });
-    const spindleRow  = this.syncableInput("Spindle (rpm)", () => state.spindleSpeed, (v, i) => { fork(); state.spindleSpeed = Math.round(v); i.value = String(Math.round(v)); });
+    const toolNumRow = this.numRow(
+      "Tool # (T)",
+      () => state.toolNumber,
+      (v) => {
+        state.toolNumber = Math.max(1, Math.round(v));
+      },
+    );
+    const diamRow = this.syncableInput(
+      "Diameter (mm)",
+      () => state.diameter,
+      (v, i) => {
+        fork();
+        state.diameter = v;
+        i.value = String(v);
+        hooks.updateVBitHint();
+      },
+    );
+    const spindleRow = this.syncableInput(
+      "Spindle (rpm)",
+      () => state.spindleSpeed,
+      (v, i) => {
+        fork();
+        state.spindleSpeed = Math.round(v);
+        i.value = String(Math.round(v));
+      },
+    );
     // Clamp cutting rates to >= 1 (F0 faults/stalls the controller) and Safe Z to
     // > 0 (a negative "safe" height turns every retract into a rapid into the stock).
-    const feedRow     = this.syncableInput("Feed (mm/min)", () => state.feedrate, (v, i) => { fork(); state.feedrate = Math.max(1, v); i.value = String(state.feedrate); });
-    const plungeRow   = this.syncableInput("Plunge (mm/min)", () => state.plungeRate, (v, i) => { fork(); state.plungeRate = Math.max(1, v); i.value = String(state.plungeRate); });
-    const safeZRow    = this.syncableInput("Safe Z (mm)", () => state.safeZ, (v, i) => { fork(); state.safeZ = Math.max(0.1, v); i.value = String(state.safeZ); });
+    const feedRow = this.syncableInput(
+      "Feed (mm/min)",
+      () => state.feedrate,
+      (v, i) => {
+        fork();
+        state.feedrate = Math.max(1, v);
+        i.value = String(state.feedrate);
+      },
+    );
+    const plungeRow = this.syncableInput(
+      "Plunge (mm/min)",
+      () => state.plungeRate,
+      (v, i) => {
+        fork();
+        state.plungeRate = Math.max(1, v);
+        i.value = String(state.plungeRate);
+      },
+    );
+    const safeZRow = this.syncableInput(
+      "Safe Z (mm)",
+      () => state.safeZ,
+      (v, i) => {
+        fork();
+        state.safeZ = Math.max(0.1, v);
+        i.value = String(state.safeZ);
+      },
+    );
 
     const vAngleInp = document.createElement("input");
-    vAngleInp.type = "number"; vAngleInp.className = "dim"; vAngleInp.step = "any"; vAngleInp.min = "1"; vAngleInp.max = "179";
+    vAngleInp.type = "number";
+    vAngleInp.className = "dim";
+    vAngleInp.step = "any";
+    vAngleInp.min = "1";
+    vAngleInp.max = "179";
     vAngleInp.value = String(state.vAngle);
-    vAngleInp.addEventListener("change", () => { const v = parseFloat(vAngleInp.value); if (Number.isFinite(v)) { fork(); state.vAngle = v; hooks.updateVBitHint(); } });
+    vAngleInp.addEventListener("change", () => {
+      const v = parseFloat(vAngleInp.value);
+      if (Number.isFinite(v)) {
+        fork();
+        state.vAngle = v;
+        hooks.updateVBitHint();
+      }
+    });
     const vAngleRow = this.dField("V Angle (°)", vAngleInp);
 
     const tipAngleInp = document.createElement("input");
-    tipAngleInp.type = "number"; tipAngleInp.className = "dim"; tipAngleInp.step = "any";
+    tipAngleInp.type = "number";
+    tipAngleInp.className = "dim";
+    tipAngleInp.step = "any";
     tipAngleInp.value = String(state.tipAngle);
-    tipAngleInp.addEventListener("change", () => { const v = parseFloat(tipAngleInp.value); if (Number.isFinite(v)) { fork(); state.tipAngle = v; } });
+    tipAngleInp.addEventListener("change", () => {
+      const v = parseFloat(tipAngleInp.value);
+      if (Number.isFinite(v)) {
+        fork();
+        state.tipAngle = v;
+      }
+    });
     const tipAngleRow = this.dField("Tip Angle (°)", tipAngleInp);
 
     toolContent.appendChild(toolNumRow.el);
@@ -1994,36 +2393,38 @@ export class CamBar {
 
     const updateToolTypeVisibility = () => {
       const tt = state.toolType;
-      vAngleRow.style.display   = tt === "v-bit" ? "" : "none";
-      tipAngleRow.style.display = tt === "drill"  ? "" : "none";
+      vAngleRow.style.display = tt === "v-bit" ? "" : "none";
+      tipAngleRow.style.display = tt === "drill" ? "" : "none";
     };
 
     // Manual edits to any tool-defining field fork the op off its library tool.
-    const fork = () => { state.toolId = undefined; };
+    const fork = () => {
+      state.toolId = undefined;
+    };
 
     const applyToolDef = (t: ToolDef) => {
-      state.toolId     = t.id;
+      state.toolId = t.id;
       // Embed (upsert) the tool in the document so the file is self-contained
       // and a single tool can drive multiple operations.
       const existingIdx = this.doc.tools.findIndex((x) => x.id === t.id);
       if (existingIdx >= 0) this.doc.tools[existingIdx] = { ...t };
       else this.doc.tools.push({ ...t });
-      state.toolType   = t.toolType;
-      state.diameter   = t.diameter;
-      state.vAngle     = t.vAngle ?? DEFAULTS.vAngle;
-      state.tipAngle   = t.tipAngle ?? DEFAULTS.tipAngle;
-      state.feedrate   = t.feedrate;
+      state.toolType = t.toolType;
+      state.diameter = t.diameter;
+      state.vAngle = t.vAngle ?? DEFAULTS.vAngle;
+      state.tipAngle = t.tipAngle ?? DEFAULTS.tipAngle;
+      state.feedrate = t.feedrate;
       state.plungeRate = t.plungeRate;
       state.spindleSpeed = t.spindleSpeed;
-      state.safeZ      = t.safeZ;
-      toolTypeSelect.value   = t.toolType;
-      diamRow.inp.value      = String(t.diameter);
-      vAngleInp.value        = String(state.vAngle);
-      tipAngleInp.value      = String(state.tipAngle);
-      spindleRow.inp.value   = String(t.spindleSpeed);
-      feedRow.inp.value      = String(t.feedrate);
-      plungeRow.inp.value    = String(t.plungeRate);
-      safeZRow.inp.value     = String(t.safeZ);
+      state.safeZ = t.safeZ;
+      toolTypeSelect.value = t.toolType;
+      diamRow.inp.value = String(t.diameter);
+      vAngleInp.value = String(state.vAngle);
+      tipAngleInp.value = String(state.tipAngle);
+      spindleRow.inp.value = String(t.spindleSpeed);
+      feedRow.inp.value = String(t.feedrate);
+      plungeRow.inp.value = String(t.plungeRate);
+      safeZRow.inp.value = String(t.safeZ);
       updateToolTypeVisibility();
       hooks.updateVBitHint();
     };
@@ -2056,24 +2457,55 @@ export class CamBar {
     const tabEnabledLbl = document.createElement("label");
     tabEnabledLbl.textContent = "Enable tabs";
     tabEnabledLbl.style.cssText = "font-size:12px;cursor:pointer;";
-    tabEnabledLbl.addEventListener("click", () => { tabEnabledCb.click(); });
+    tabEnabledLbl.addEventListener("click", () => {
+      tabEnabledCb.click();
+    });
     tabEnabledWrap.appendChild(tabEnabledCb);
     tabEnabledWrap.appendChild(tabEnabledLbl);
     tabsSec.appendChild(tabEnabledWrap);
 
     const tabStrategySel = document.createElement("select");
     tabStrategySel.className = "unit";
-    for (const [v, l] of [["count", "By count"], ["spacing", "By spacing"]] as const) {
-      const o = document.createElement("option"); o.value = v; o.textContent = l;
+    for (const [v, l] of [
+      ["count", "By count"],
+      ["spacing", "By spacing"],
+    ] as const) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = l;
       tabStrategySel.appendChild(o);
     }
     tabStrategySel.value = state.tabStrategy;
     const tabStrategyRow = this.dField("Tabs by", tabStrategySel);
 
-    const tabCountRow   = this.numRow("Tab count",       () => state.tabCount,   (v) => { state.tabCount   = Math.max(1, Math.round(v)); });
-    const tabSpacingRow = this.numRow("Tab spacing (mm)", () => state.tabSpacing, (v) => { state.tabSpacing = Math.max(1, v); });
-    const tabWidthRow   = this.numRow("Tab width (mm)",  () => state.tabWidth,   (v) => { state.tabWidth   = Math.max(0.1, v); });
-    const tabHeightRow  = this.numRow("Tab height (mm)", () => state.tabHeight,  (v) => { state.tabHeight  = Math.max(0.1, v); });
+    const tabCountRow = this.numRow(
+      "Tab count",
+      () => state.tabCount,
+      (v) => {
+        state.tabCount = Math.max(1, Math.round(v));
+      },
+    );
+    const tabSpacingRow = this.numRow(
+      "Tab spacing (mm)",
+      () => state.tabSpacing,
+      (v) => {
+        state.tabSpacing = Math.max(1, v);
+      },
+    );
+    const tabWidthRow = this.numRow(
+      "Tab width (mm)",
+      () => state.tabWidth,
+      (v) => {
+        state.tabWidth = Math.max(0.1, v);
+      },
+    );
+    const tabHeightRow = this.numRow(
+      "Tab height (mm)",
+      () => state.tabHeight,
+      (v) => {
+        state.tabHeight = Math.max(0.1, v);
+      },
+    );
     tabsSec.appendChild(tabStrategyRow);
     tabsSec.appendChild(tabCountRow.el);
     tabsSec.appendChild(tabSpacingRow.el);
@@ -2085,13 +2517,16 @@ export class CamBar {
       tabsSec.style.display = isProfile ? "" : "none";
       const fieldsOn = isProfile && state.tabsEnabled;
       const byCount = state.tabStrategy !== "spacing";
-      tabStrategyRow.style.display  = fieldsOn ? "" : "none";
-      tabCountRow.el.style.display  = fieldsOn && byCount ? "" : "none";
+      tabStrategyRow.style.display = fieldsOn ? "" : "none";
+      tabCountRow.el.style.display = fieldsOn && byCount ? "" : "none";
       tabSpacingRow.el.style.display = fieldsOn && !byCount ? "" : "none";
-      tabWidthRow.el.style.display  = fieldsOn ? "" : "none";
+      tabWidthRow.el.style.display = fieldsOn ? "" : "none";
       tabHeightRow.el.style.display = fieldsOn ? "" : "none";
     };
-    tabStrategySel.addEventListener("change", () => { state.tabStrategy = tabStrategySel.value as "count" | "spacing"; update(); });
+    tabStrategySel.addEventListener("change", () => {
+      state.tabStrategy = tabStrategySel.value as "count" | "spacing";
+      update();
+    });
     update();
 
     tabEnabledCb.addEventListener("change", () => {
@@ -2110,7 +2545,8 @@ export class CamBar {
    */
   /** True if any of the op's target entities is a raster image (→ raster engrave). */
   private opTargetsImage(ids: Set<string>): boolean {
-    for (const id of ids) if (this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity) return true;
+    for (const id of ids)
+      if (this.doc.entities.find((e) => e.id === id) instanceof RasterImageEntity) return true;
     return false;
   }
 
@@ -2124,21 +2560,50 @@ export class CamBar {
     if (op.type !== "relief-rough") return null;
     const shared = new Set(op.entityIds);
     const finishDepths = this.doc.operations
-      .filter((o) => o.type === "engrave" && o.entityIds.some((id) => shared.has(id)) && this.opTargetsImage(new Set(o.entityIds)))
+      .filter(
+        (o) =>
+          o.type === "engrave" &&
+          o.entityIds.some((id) => shared.has(id)) &&
+          this.opTargetsImage(new Set(o.entityIds)),
+      )
       .map((o) => Math.abs(o.depth));
-    if (finishDepths.length === 0) return null;                    // no finish op to compare against
+    if (finishDepths.length === 0) return null; // no finish op to compare against
     const roughFloor = Math.abs(op.depth) - Math.max(0, op.finishAllowance ?? 0);
-    const finishDepth = Math.min(...finishDepths);                // the shallowest finish is the binding one
+    const finishDepth = Math.min(...finishDepths); // the shallowest finish is the binding one
     if (roughFloor <= finishDepth + 1e-6) return null;
     return `Roughing clears to ${roughFloor.toFixed(2)} mm but the finish op only reaches ${finishDepth.toFixed(2)} mm — it will gouge below the final surface. Lower this op's depth or raise its finish allowance.`;
   }
 
   private buildLaserSection(state: OpState): { root: HTMLElement; update: () => void } {
     const sec = this.dSection("Laser");
-    const feed   = this.numRow("Feed (mm/min)", () => state.feedrate,   (v) => { state.feedrate   = Math.max(1, v); });
-    const power  = this.numRow("Power (%)",     () => state.laserPower,  (v) => { state.laserPower  = Math.min(100, Math.max(0, v)); });
-    const passes = this.numRow("Passes",        () => state.laserPasses, (v) => { state.laserPasses = Math.max(1, Math.round(v)); });
-    const kerf   = this.numRow("Kerf width (mm)", () => state.kerfWidth, (v) => { state.kerfWidth   = Math.max(0, v); });
+    const feed = this.numRow(
+      "Feed (mm/min)",
+      () => state.feedrate,
+      (v) => {
+        state.feedrate = Math.max(1, v);
+      },
+    );
+    const power = this.numRow(
+      "Power (%)",
+      () => state.laserPower,
+      (v) => {
+        state.laserPower = Math.min(100, Math.max(0, v));
+      },
+    );
+    const passes = this.numRow(
+      "Passes",
+      () => state.laserPasses,
+      (v) => {
+        state.laserPasses = Math.max(1, Math.round(v));
+      },
+    );
+    const kerf = this.numRow(
+      "Kerf width (mm)",
+      () => state.kerfWidth,
+      (v) => {
+        state.kerfWidth = Math.max(0, v);
+      },
+    );
     sec.appendChild(feed.el);
     sec.appendChild(power.el);
     sec.appendChild(passes.el);
@@ -2150,22 +2615,54 @@ export class CamBar {
     fillChk.className = "settings-checkbox";
     fillChk.checked = state.laserFill;
     const fillRow = this.dField("Fill area (engrave solid)", fillChk);
-    const fillSpacing = this.numRow("Fill spacing (mm)", () => state.laserFillSpacing, (v) => { state.laserFillSpacing = Math.max(0.01, v); });
-    const overscan = this.numRow("Overscan (mm, 0=off)", () => state.laserOverscan, (v) => { state.laserOverscan = Math.max(0, v); });
+    const fillSpacing = this.numRow(
+      "Fill spacing (mm)",
+      () => state.laserFillSpacing,
+      (v) => {
+        state.laserFillSpacing = Math.max(0.01, v);
+      },
+    );
+    const overscan = this.numRow(
+      "Overscan (mm, 0=off)",
+      () => state.laserOverscan,
+      (v) => {
+        state.laserOverscan = Math.max(0, v);
+      },
+    );
     sec.appendChild(fillRow);
     sec.appendChild(fillSpacing.el);
     sec.appendChild(overscan.el);
 
     // Raster engrave — shown when the engrave op targets an image entity. Power (%)
     // above is the black/darkest power; these add the resolution and tonal range.
-    const rLine = this.numRow("Line interval (mm)", () => state.rasterLineInterval, (v) => { state.rasterLineInterval = Math.max(0.001, v); });
-    const rDot  = this.numRow("Dot pitch (mm, 0=square)", () => state.rasterDotPitch, (v) => { state.rasterDotPitch = Math.max(0, v); });
-    const rMin  = this.numRow("Min power (%)", () => state.rasterMinPower, (v) => { state.rasterMinPower = Math.min(100, Math.max(0, v)); });
+    const rLine = this.numRow(
+      "Line interval (mm)",
+      () => state.rasterLineInterval,
+      (v) => {
+        state.rasterLineInterval = Math.max(0.001, v);
+      },
+    );
+    const rDot = this.numRow(
+      "Dot pitch (mm, 0=square)",
+      () => state.rasterDotPitch,
+      (v) => {
+        state.rasterDotPitch = Math.max(0, v);
+      },
+    );
+    const rMin = this.numRow(
+      "Min power (%)",
+      () => state.rasterMinPower,
+      (v) => {
+        state.rasterMinPower = Math.min(100, Math.max(0, v));
+      },
+    );
     const invChk = document.createElement("input");
     invChk.type = "checkbox";
     invChk.className = "settings-checkbox";
     invChk.checked = state.rasterInvert;
-    invChk.addEventListener("change", () => { state.rasterInvert = invChk.checked; });
+    invChk.addEventListener("change", () => {
+      state.rasterInvert = invChk.checked;
+    });
     const rInvRow = this.dField("Invert (engrave light areas)", invChk);
     sec.appendChild(rLine.el);
     sec.appendChild(rDot.el);
@@ -2177,7 +2674,9 @@ export class CamBar {
     airChk.type = "checkbox";
     airChk.className = "settings-checkbox";
     airChk.checked = state.airAssist;
-    airChk.addEventListener("change", () => { state.airAssist = airChk.checked; });
+    airChk.addEventListener("change", () => {
+      state.airAssist = airChk.checked;
+    });
     sec.appendChild(this.dField("Air assist (M8/M9)", airChk));
 
     const update = () => {
@@ -2189,10 +2688,15 @@ export class CamBar {
       fillRow.style.display = isEngrave && !isRaster ? "" : "none";
       fillSpacing.el.style.display = isEngrave && !isRaster && state.laserFill ? "" : "none";
       // Overscan serves both vector fill and raster rows.
-      overscan.el.style.display = isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
-      for (const r of [rLine.el, rDot.el, rMin.el, rInvRow]) r.style.display = isRaster ? "" : "none";
+      overscan.el.style.display =
+        isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
+      for (const r of [rLine.el, rDot.el, rMin.el, rInvRow])
+        r.style.display = isRaster ? "" : "none";
     };
-    fillChk.addEventListener("change", () => { state.laserFill = fillChk.checked; update(); });
+    fillChk.addEventListener("change", () => {
+      state.laserFill = fillChk.checked;
+      update();
+    });
     update();
     return { root: sec, update };
   }
@@ -2200,35 +2704,66 @@ export class CamBar {
   /** Lead-in / lead-out section (profile ops only). Returns its visibility updater. */
   private buildLeadSection(state: OpState): { root: HTMLElement; update: () => void } {
     const leadSec = this.dSection("Lead-in / Lead-out");
-    const leadTypes: [LeadType, string][] = [["none", "None"], ["linear", "Linear"], ["arc", "Arc (90°)"]];
+    const leadTypes: [LeadType, string][] = [
+      ["none", "None"],
+      ["linear", "Linear"],
+      ["arc", "Arc (90°)"],
+    ];
 
     const update = () => {
       const isProfile = state.combo.startsWith("profile");
-      leadSec.style.display     = isProfile ? "" : "none";
-      liLenRow.el.style.display = (isProfile && state.leadInType  !== "none") ? "" : "none";
-      loLenRow.el.style.display = (isProfile && state.leadOutType !== "none") ? "" : "none";
+      leadSec.style.display = isProfile ? "" : "none";
+      liLenRow.el.style.display = isProfile && state.leadInType !== "none" ? "" : "none";
+      loLenRow.el.style.display = isProfile && state.leadOutType !== "none" ? "" : "none";
     };
 
     const makeLeadSelect = (get: () => string, set: (v: LeadType) => void) => {
       const sel = document.createElement("select");
       sel.className = "unit";
       for (const [v, l] of leadTypes) {
-        const o = document.createElement("option"); o.value = v; o.textContent = l;
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = l;
         sel.appendChild(o);
       }
       sel.value = get();
-      sel.addEventListener("change", () => { set(sel.value as LeadType); update(); });
+      sel.addEventListener("change", () => {
+        set(sel.value as LeadType);
+        update();
+      });
       return sel;
     };
 
-    const liSel = makeLeadSelect(() => state.leadInType, (v) => { state.leadInType = v; });
+    const liSel = makeLeadSelect(
+      () => state.leadInType,
+      (v) => {
+        state.leadInType = v;
+      },
+    );
     leadSec.appendChild(this.dField("Lead-in", liSel));
-    const liLenRow = this.numRow("Lead-in length (mm)", () => state.leadInLen, (v) => { state.leadInLen = Math.max(0.1, v); });
+    const liLenRow = this.numRow(
+      "Lead-in length (mm)",
+      () => state.leadInLen,
+      (v) => {
+        state.leadInLen = Math.max(0.1, v);
+      },
+    );
     leadSec.appendChild(liLenRow.el);
 
-    const loSel = makeLeadSelect(() => state.leadOutType, (v) => { state.leadOutType = v; });
+    const loSel = makeLeadSelect(
+      () => state.leadOutType,
+      (v) => {
+        state.leadOutType = v;
+      },
+    );
     leadSec.appendChild(this.dField("Lead-out", loSel));
-    const loLenRow = this.numRow("Lead-out length (mm)", () => state.leadOutLen, (v) => { state.leadOutLen = Math.max(0.1, v); });
+    const loLenRow = this.numRow(
+      "Lead-out length (mm)",
+      () => state.leadOutLen,
+      (v) => {
+        state.leadOutLen = Math.max(0.1, v);
+      },
+    );
     leadSec.appendChild(loLenRow.el);
 
     update();
@@ -2273,7 +2808,12 @@ export class CamBar {
 
         const addSeed = (p: Vec2, region: ReturnType<typeof regionAtPoint>) => {
           if (!region) return false;
-          if (state.regionSeeds.some((s) => pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h))))
+          if (
+            state.regionSeeds.some(
+              (s) =>
+                pointInPolygon(s, region.outer) && !region.holes.some((h) => pointInPolygon(s, h)),
+            )
+          )
             return false;
           state.regionSeeds.push(p);
           return true;
@@ -2284,13 +2824,13 @@ export class CamBar {
         // Outer contours are CCW in Y-up (positive signed area); holes are CW (negative).
         for (const e of this.doc.entities) {
           if (!e.selected || e.isConstruction || !(e instanceof TextEntity)) continue;
-          const contours = textToContours(e).filter(c => c.closed && c.points.length >= 3);
-          const outers = contours.filter(c => signedArea(c.points) > 0);
-          const inners = contours.filter(c => signedArea(c.points) <= 0);
+          const contours = textToContours(e).filter((c) => c.closed && c.points.length >= 3);
+          const outers = contours.filter((c) => signedArea(c.points) > 0);
+          const inners = contours.filter((c) => signedArea(c.points) <= 0);
           for (const outer of outers) {
             const holes = inners
-              .filter(inn => pointInPolygon(inn.points[0], outer.points))
-              .map(inn => inn.points);
+              .filter((inn) => pointInPolygon(inn.points[0], outer.points))
+              .map((inn) => inn.points);
             const p = interiorPoint(outer.points, holes);
             if (!p) continue;
             if (addSeed(p, regionAtPoint(p, docLoops))) added++;
@@ -2298,7 +2838,9 @@ export class CamBar {
         }
 
         // Non-text entities: existing region-seed behaviour.
-        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected && !(e instanceof TextEntity)));
+        const selLoops = collectClosedLoops(
+          this.doc.entities.filter((e) => e.selected && !(e instanceof TextEntity)),
+        );
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
@@ -2324,7 +2866,7 @@ export class CamBar {
     clearBtn.addEventListener("click", () => {
       state.regionSeeds.length = 0;
       for (const id of state.entityIds) {
-        const ent = this.doc.entities.find(x => x.id === id);
+        const ent = this.doc.entities.find((x) => x.id === id);
         if (ent) ent.selected = false;
       }
       state.entityIds.clear();
@@ -2345,7 +2887,10 @@ export class CamBar {
     geoSec.appendChild(pickHint);
 
     const stopPickMode = () => {
-      if (unsubPickMode) { unsubPickMode(); unsubPickMode = null; }
+      if (unsubPickMode) {
+        unsubPickMode();
+        unsubPickMode = null;
+      }
       this.doc.regionPickHandler = null;
       this.doc.regionHoverHandler = null;
       this.doc.regionPickHoverFill = null;
@@ -2370,7 +2915,9 @@ export class CamBar {
           // If the click lands inside an already-picked region, remove that seed.
           const hit = state.regionSeeds.findIndex((seed) => {
             const r = regionAtPoint(seed, loops);
-            return r && pointInPolygon(world, r.outer) && !r.holes.some((h) => pointInPolygon(world, h));
+            return (
+              r && pointInPolygon(world, r.outer) && !r.holes.some((h) => pointInPolygon(world, h))
+            );
           });
           if (hit >= 0) state.regionSeeds.splice(hit, 1);
           else if (regionAtPoint(world, loops)) state.regionSeeds.push({ ...world });
@@ -2453,7 +3000,10 @@ export class CamBar {
         const desc = document.createElement("span");
         desc.style.flex = "1";
         if (it.region) {
-          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
           for (const v of it.region.outer) {
             if (v.x < minX) minX = v.x;
             if (v.x > maxX) maxX = v.x;
@@ -2461,9 +3011,10 @@ export class CamBar {
             if (v.y > maxY) maxY = v.y;
           }
           const size = `${formatLength(maxX - minX, u)} × ${formatLength(maxY - minY, u)}`;
-          const isl = it.region.holes.length > 0
-            ? ` — ${it.region.holes.length} island${it.region.holes.length === 1 ? "" : "s"}`
-            : "";
+          const isl =
+            it.region.holes.length > 0
+              ? ` — ${it.region.holes.length} island${it.region.holes.length === 1 ? "" : "s"}`
+              : "";
           desc.textContent = `Area ${idx + 1} — ${size}${isl}`;
         } else {
           desc.textContent = `Area ${idx + 1} — no longer enclosed`;
@@ -2501,8 +3052,10 @@ export class CamBar {
       // Pocket is always region-based. V-carve supports BOTH: show the region
       // list once areas are picked (or while flood-fill picking), else fall
       // through to the entity list so text/closed shapes can be selected.
-      if (state.combo === "pocket" ||
-          (state.combo === "vcarve" && (state.regionSeeds.length > 0 || pickModeActive))) {
+      if (
+        state.combo === "pocket" ||
+        (state.combo === "vcarve" && (state.regionSeeds.length > 0 || pickModeActive))
+      ) {
         renderRegionList();
         return;
       }
@@ -2525,8 +3078,7 @@ export class CamBar {
 
       // Build entity → group reverse map
       const entityGroupMap = new Map<string, GroupDef>();
-      for (const g of this.doc.groups)
-        for (const eid of g.entityIds) entityGroupMap.set(eid, g);
+      for (const g of this.doc.groups) for (const eid of g.entityIds) entityGroupMap.set(eid, g);
 
       // Group entities by layer
       const byLayer = new Map<string, Entity[]>();
@@ -2537,9 +3089,9 @@ export class CamBar {
       }
 
       const makeEntityRow = (e: Entity, section: "boundary" | "island", indent = false) => {
-        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const thisSet = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
-        const inOther  = otherSet.has(e.id);
+        const inOther = otherSet.has(e.id);
         const disabled = inOther; // all entities in ents[] are already valid for this combo
 
         const row = document.createElement("div");
@@ -2550,12 +3102,18 @@ export class CamBar {
         lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${disabled ? "default" : "pointer"};`;
 
         const cb = document.createElement("input");
-        cb.type = "checkbox"; cb.className = "tp-entity-cb";
+        cb.type = "checkbox";
+        cb.className = "tp-entity-cb";
         cb.checked = thisSet.has(e.id);
         cb.disabled = disabled;
         cb.addEventListener("change", () => {
-          if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
-          else { thisSet.delete(e.id); e.selected = false; }
+          if (cb.checked) {
+            thisSet.add(e.id);
+            otherSet.delete(e.id);
+          } else {
+            thisSet.delete(e.id);
+            e.selected = false;
+          }
           renderEntities();
         });
 
@@ -2571,8 +3129,11 @@ export class CamBar {
         row.appendChild(lbl);
 
         // Chain button: boundary section, line-like entities only
-        if (section === "boundary" && !inOther &&
-            (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)) {
+        if (
+          section === "boundary" &&
+          !inOther &&
+          (e instanceof LineEntity || e instanceof ArcEntity || e instanceof BezierEntity)
+        ) {
           const chainBtn = document.createElement("button");
           chainBtn.className = "btn";
           chainBtn.style.cssText = "padding:2px 6px;font-size:10px;";
@@ -2581,7 +3142,10 @@ export class CamBar {
           chainBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             const chainIds = findContiguousChain(e.id, this.doc, state.combo);
-            for (const id of chainIds) { state.entityIds.add(id); state.islandIds.delete(id); }
+            for (const id of chainIds) {
+              state.entityIds.add(id);
+              state.islandIds.delete(id);
+            }
             renderEntities();
           });
           row.appendChild(chainBtn);
@@ -2591,13 +3155,13 @@ export class CamBar {
       };
 
       const makeChainRow = (chain: LineEntity[], section: "boundary" | "island") => {
-        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const thisSet = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
-        const allInOther  = chain.every(e => otherSet.has(e.id));
-        const someInOther = chain.some(e => otherSet.has(e.id));
+        const allInOther = chain.every((e) => otherSet.has(e.id));
+        const someInOther = chain.some((e) => otherSet.has(e.id));
         const disabled = allInOther || someInOther;
-        const checked  = !disabled && chain.every(e => thisSet.has(e.id));
-        const indeterminate = !disabled && !checked && chain.some(e => thisSet.has(e.id));
+        const checked = !disabled && chain.every((e) => thisSet.has(e.id));
+        const indeterminate = !disabled && !checked && chain.some((e) => thisSet.has(e.id));
 
         const row = document.createElement("div");
         row.className = `tp-entity-row${disabled ? " tp-entity-disabled" : ""}`;
@@ -2607,14 +3171,20 @@ export class CamBar {
         lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${disabled ? "default" : "pointer"};`;
 
         const cb = document.createElement("input");
-        cb.type = "checkbox"; cb.className = "tp-entity-cb";
+        cb.type = "checkbox";
+        cb.className = "tp-entity-cb";
         cb.checked = checked;
         cb.indeterminate = indeterminate;
         cb.disabled = disabled;
         cb.addEventListener("change", () => {
           for (const e of chain) {
-            if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
-            else { thisSet.delete(e.id); e.selected = false; }
+            if (cb.checked) {
+              thisSet.add(e.id);
+              otherSet.delete(e.id);
+            } else {
+              thisSet.delete(e.id);
+              e.selected = false;
+            }
           }
           renderEntities();
         });
@@ -2633,7 +3203,7 @@ export class CamBar {
       };
 
       const renderSection = (section: "boundary" | "island", container: HTMLElement) => {
-        const thisSet  = section === "boundary" ? state.entityIds : state.islandIds;
+        const thisSet = section === "boundary" ? state.entityIds : state.islandIds;
         const otherSet = section === "boundary" ? state.islandIds : state.entityIds;
 
         for (const layer of this.doc.layers) {
@@ -2654,7 +3224,8 @@ export class CamBar {
 
           // Layer header (with toggle button on boundary section only)
           const lh = document.createElement("div");
-          lh.style.cssText = "display:flex;justify-content:space-between;align-items:center;" +
+          lh.style.cssText =
+            "display:flex;justify-content:space-between;align-items:center;" +
             "padding:4px 8px;background:var(--panel);border-radius:4px;margin-top:8px;margin-bottom:4px;";
           const lhTitle = document.createElement("span");
           lhTitle.style.cssText = "font-size:11px;font-weight:700;color:var(--text);";
@@ -2667,11 +3238,15 @@ export class CamBar {
             lToggle.style.cssText = "padding:2px 6px;font-size:10px;";
             lToggle.textContent = "Toggle";
             lToggle.addEventListener("click", () => {
-              const valid = layerEnts.filter(e => isValidFor(e, state.combo) && !otherSet.has(e.id));
-              const allChecked = valid.every(e => thisSet.has(e.id));
+              const valid = layerEnts.filter(
+                (e) => isValidFor(e, state.combo) && !otherSet.has(e.id),
+              );
+              const allChecked = valid.every((e) => thisSet.has(e.id));
               for (const e of valid) {
-                if (allChecked) { thisSet.delete(e.id); e.selected = false; }
-                else thisSet.add(e.id);
+                if (allChecked) {
+                  thisSet.delete(e.id);
+                  e.selected = false;
+                } else thisSet.add(e.id);
               }
               renderEntities();
             });
@@ -2681,11 +3256,11 @@ export class CamBar {
 
           // Groups
           for (const { group, ents: gEnts } of groupsInLayer.values()) {
-            const validEnts  = gEnts.filter(e => isValidFor(e, state.combo));
-            const available  = validEnts.filter(e => !otherSet.has(e.id));
-            const isValid    = validEnts.length > 0;
-            const allChecked = available.length > 0 && available.every(e => thisSet.has(e.id));
-            const someChecked = available.some(e => thisSet.has(e.id));
+            const validEnts = gEnts.filter((e) => isValidFor(e, state.combo));
+            const available = validEnts.filter((e) => !otherSet.has(e.id));
+            const isValid = validEnts.length > 0;
+            const allChecked = available.length > 0 && available.every((e) => thisSet.has(e.id));
+            const someChecked = available.some((e) => thisSet.has(e.id));
 
             const groupRow = document.createElement("div");
             groupRow.className = `tp-entity-row${isValid ? "" : " tp-entity-disabled"}`;
@@ -2695,14 +3270,20 @@ export class CamBar {
             lbl.style.cssText = `display:flex;align-items:center;gap:8px;flex:1;cursor:${isValid ? "pointer" : "default"};`;
 
             const cb = document.createElement("input");
-            cb.type = "checkbox"; cb.className = "tp-entity-cb";
+            cb.type = "checkbox";
+            cb.className = "tp-entity-cb";
             cb.checked = allChecked;
             cb.indeterminate = someChecked && !allChecked;
             cb.disabled = !isValid;
             cb.addEventListener("change", () => {
               for (const e of available) {
-                if (cb.checked) { thisSet.add(e.id); otherSet.delete(e.id); }
-                else { thisSet.delete(e.id); e.selected = false; }
+                if (cb.checked) {
+                  thisSet.add(e.id);
+                  otherSet.delete(e.id);
+                } else {
+                  thisSet.delete(e.id);
+                  e.selected = false;
+                }
               }
               renderEntities();
             });
@@ -2711,10 +3292,13 @@ export class CamBar {
             nameInput.type = "text";
             nameInput.value = group.name;
             nameInput.placeholder = `Group — ${gEnts.length} ${gEnts.length === 1 ? "entity" : "entities"}`;
-            nameInput.style.cssText = "background:transparent;border:none;border-bottom:1px solid var(--border);" +
+            nameInput.style.cssText =
+              "background:transparent;border:none;border-bottom:1px solid var(--border);" +
               "color:var(--text);font:inherit;font-style:italic;width:160px;padding:0 2px;outline:none;";
-            nameInput.addEventListener("change", () => { group.name = nameInput.value.trim(); });
-            nameInput.addEventListener("click", ev => ev.stopPropagation());
+            nameInput.addEventListener("change", () => {
+              group.name = nameInput.value.trim();
+            });
+            nameInput.addEventListener("click", (ev) => ev.stopPropagation());
 
             lbl.appendChild(cb);
             lbl.appendChild(nameInput);
@@ -2724,11 +3308,13 @@ export class CamBar {
           }
 
           // Ungrouped: group line entities into closed chains, render each chain as one item
-          const ungroupedLines = ungroupedEnts.filter((e): e is LineEntity => e instanceof LineEntity);
-          const ungroupedOther = ungroupedEnts.filter(e => !(e instanceof LineEntity));
-          const { chains: lineChains, singles: openLines } = groupLinesIntoClosedChains(ungroupedLines);
-          for (const chain of lineChains)
-            container.appendChild(makeChainRow(chain, section));
+          const ungroupedLines = ungroupedEnts.filter(
+            (e): e is LineEntity => e instanceof LineEntity,
+          );
+          const ungroupedOther = ungroupedEnts.filter((e) => !(e instanceof LineEntity));
+          const { chains: lineChains, singles: openLines } =
+            groupLinesIntoClosedChains(ungroupedLines);
+          for (const chain of lineChains) container.appendChild(makeChainRow(chain, section));
           if (section === "boundary")
             for (const e of openLines) container.appendChild(makeEntityRow(e, section));
           for (const e of ungroupedOther) container.appendChild(makeEntityRow(e, section));
@@ -2760,7 +3346,9 @@ export class CamBar {
       startPickMode,
       stopPickMode,
       getPickActive: () => pickModeActive,
-      cleanup: () => { if (unsubPickMode) unsubPickMode(); },
+      cleanup: () => {
+        if (unsubPickMode) unsubPickMode();
+      },
     };
   }
 }

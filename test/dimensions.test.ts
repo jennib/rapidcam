@@ -12,7 +12,9 @@ import { dist } from "../src/core/vec2";
 import { test, expect } from "vitest";
 
 function check(name: string, ok: boolean, detail = ""): void {
-  test(name, () => { expect(ok, detail).toBe(true); });
+  test(name, () => {
+    expect(ok, detail).toBe(true);
+  });
 }
 /**
  * KNOWN LIMITATION: when a length-locked endpoint is dragged PAST its reach, the
@@ -23,7 +25,9 @@ function check(name: string, ok: boolean, detail = ""): void {
  * the behaviour ever improves enough to promote to check().
  */
 function checkKnownFail(name: string, ok: boolean, detail = ""): void {
-  test.fails(`[known-fail] ${name}`, () => { expect(ok, detail).toBe(true); });
+  test.fails(`[known-fail] ${name}`, () => {
+    expect(ok, detail).toBe(true);
+  });
 }
 const geoOf = (doc: CADDocument): Geo => {
   const m = new Map(doc.entities.map((e) => [e.id, e]));
@@ -35,9 +39,15 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
 {
   const doc = new CADDocument({ width: 300, height: 200 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
-  doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 50, offset: 12 }));
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 50, offset: 12 }),
+  );
   const r = solve(doc);
-  check("distance dim drives length to 50", Math.abs(l.length - 50) < 1e-3, `len=${l.length.toFixed(4)}`);
+  check(
+    "distance dim drives length to 50",
+    Math.abs(l.length - 50) < 1e-3,
+    `len=${l.length.toFixed(4)}`,
+  );
   check("distance dim converged", r.converged);
 }
 
@@ -45,18 +55,30 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
 {
   const doc = new CADDocument({ width: 300, height: 200 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 30 })) as LineEntity;
-  doc.addDimension(makeDimension("horizontal", { points: [pr(l, "a"), pr(l, "b")], value: 40, offset: 12 }));
+  doc.addDimension(
+    makeDimension("horizontal", { points: [pr(l, "a"), pr(l, "b")], value: 40, offset: 12 }),
+  );
   solve(doc);
-  check("horizontal dim drives Δx to 40", Math.abs(Math.abs(l.a.x - l.b.x) - 40) < 1e-3, `dx=${Math.abs(l.a.x - l.b.x).toFixed(4)}`);
+  check(
+    "horizontal dim drives Δx to 40",
+    Math.abs(Math.abs(l.a.x - l.b.x) - 40) < 1e-3,
+    `dx=${Math.abs(l.a.x - l.b.x).toFixed(4)}`,
+  );
 }
 
 // 3) Vertical distance dimension -------------------------------------------
 {
   const doc = new CADDocument({ width: 300, height: 200 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 30 })) as LineEntity;
-  doc.addDimension(makeDimension("vertical", { points: [pr(l, "a"), pr(l, "b")], value: 75, offset: 12 }));
+  doc.addDimension(
+    makeDimension("vertical", { points: [pr(l, "a"), pr(l, "b")], value: 75, offset: 12 }),
+  );
   solve(doc);
-  check("vertical dim drives Δy to 75", Math.abs(Math.abs(l.a.y - l.b.y) - 75) < 1e-3, `dy=${Math.abs(l.a.y - l.b.y).toFixed(4)}`);
+  check(
+    "vertical dim drives Δy to 75",
+    Math.abs(Math.abs(l.a.y - l.b.y) - 75) < 1e-3,
+    `dy=${Math.abs(l.a.y - l.b.y).toFixed(4)}`,
+  );
 }
 
 // 4) Radius dimension ------------------------------------------------------
@@ -65,7 +87,11 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const c = doc.add(new CircleEntity({ x: 50, y: 50 }, 20)) as CircleEntity;
   doc.addDimension(makeDimension("radius", { entities: [c.id], value: 12, offset: 0.7 }));
   solve(doc);
-  check("radius dim drives radius to 12", Math.abs(c.radius - 12) < 1e-3, `r=${c.radius.toFixed(4)}`);
+  check(
+    "radius dim drives radius to 12",
+    Math.abs(c.radius - 12) < 1e-3,
+    `r=${c.radius.toFixed(4)}`,
+  );
 }
 
 // 5) Diameter dimension ----------------------------------------------------
@@ -74,7 +100,11 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const c = doc.add(new CircleEntity({ x: 50, y: 50 }, 20)) as CircleEntity;
   doc.addDimension(makeDimension("diameter", { entities: [c.id], value: 50, offset: 0.7 }));
   solve(doc);
-  check("diameter dim drives radius to 25", Math.abs(c.radius - 25) < 1e-3, `r=${c.radius.toFixed(4)}`);
+  check(
+    "diameter dim drives radius to 25",
+    Math.abs(c.radius - 25) < 1e-3,
+    `r=${c.radius.toFixed(4)}`,
+  );
 }
 
 // 5b) Circle-gap dimension (inner/outer offset) ----------------------------
@@ -84,15 +114,24 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const inner = doc.add(new CircleEntity({ x: 50, y: 50 }, 30)) as CircleEntity;
   // Concentric gap is the radial difference: 40 − 30 = 10.
   const gap = makeDimension("circle-gap", { entities: [outer.id, inner.id], value: 0, offset: 0 });
-  check("circle-gap measures radial gap", Math.abs((dimensionMeasure(gap, geoOf(doc)) ?? 0) - 10) < 1e-6);
+  check(
+    "circle-gap measures radial gap",
+    Math.abs((dimensionMeasure(gap, geoOf(doc)) ?? 0) - 10) < 1e-6,
+  );
 
   // With the circles held concentric and the outer radius pinned, driving the
   // gap to 4 must come out of the inner radius → 36.
   doc.constraints.push(makeConstraint("concentric", { entities: [outer.id, inner.id] }));
   doc.addDimension(makeDimension("radius", { entities: [outer.id], value: 40, offset: 0.7 }));
-  doc.addDimension(makeDimension("circle-gap", { entities: [outer.id, inner.id], value: 4, offset: 0 }));
+  doc.addDimension(
+    makeDimension("circle-gap", { entities: [outer.id, inner.id], value: 4, offset: 0 }),
+  );
   solve(doc);
-  check("circle-gap drives inner radius to 36", Math.abs(inner.radius - 36) < 1e-3, `r=${inner.radius.toFixed(4)}`);
+  check(
+    "circle-gap drives inner radius to 36",
+    Math.abs(inner.radius - 36) < 1e-3,
+    `r=${inner.radius.toFixed(4)}`,
+  );
 }
 
 // 5c) Linear dimension anchored to a circle edge ---------------------------
@@ -103,14 +142,22 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   // Edge point at θ=0 is (10,0); distance from line endpoint a (30,0) is 20.
   const edgeRef = { entityId: c.id, key: "edge@0" };
   const dim = makeDimension("distance", { points: [pr(l, "a"), edgeRef], value: 0, offset: 5 });
-  check("circle-edge anchor measures to the rim", Math.abs((dimensionMeasure(dim, geoOf(doc)) ?? 0) - 20) < 1e-6);
+  check(
+    "circle-edge anchor measures to the rim",
+    Math.abs((dimensionMeasure(dim, geoOf(doc)) ?? 0) - 20) < 1e-6,
+  );
 
   // Drive it to 8: the solver must satisfy the rim-to-point distance.
-  doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), edgeRef], value: 8, offset: 5 }));
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l, "a"), edgeRef], value: 8, offset: 5 }),
+  );
   const r = solve(doc);
   check("circle-edge dim converged", r.converged);
-  check("circle-edge dim drives distance to 8",
-    Math.abs((dimensionMeasure(doc.dimensions[doc.dimensions.length - 1], geoOf(doc)) ?? 0) - 8) < 1e-3);
+  check(
+    "circle-edge dim drives distance to 8",
+    Math.abs((dimensionMeasure(doc.dimensions[doc.dimensions.length - 1], geoOf(doc)) ?? 0) - 8) <
+      1e-3,
+  );
 }
 
 // 6) Measure correctness --------------------------------------------------
@@ -119,7 +166,11 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 30, y: 40 })) as LineEntity;
   const geo = geoOf(doc);
   const dist = makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 0, offset: 0 });
-  const horiz = makeDimension("horizontal", { points: [pr(l, "a"), pr(l, "b")], value: 0, offset: 0 });
+  const horiz = makeDimension("horizontal", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 0,
+    offset: 0,
+  });
   const vert = makeDimension("vertical", { points: [pr(l, "a"), pr(l, "b")], value: 0, offset: 0 });
   check("measure distance = 50", Math.abs((dimensionMeasure(dist, geo) ?? 0) - 50) < 1e-9);
   check("measure horizontal = 30", Math.abs((dimensionMeasure(horiz, geo) ?? 0) - 30) < 1e-9);
@@ -130,12 +181,18 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
 {
   const doc = new CADDocument({ width: 300, height: 200 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
-  const d = doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }));
+  const d = doc.addDimension(
+    makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }),
+  );
   solve(doc);
   check("dim @100 keeps length", Math.abs(l.length - 100) < 1e-3, `len=${l.length.toFixed(4)}`);
   d.value = 250; // user edits the value
   solve(doc);
-  check("editing dim to 250 stretches line", Math.abs(l.length - 250) < 1e-3, `len=${l.length.toFixed(4)}`);
+  check(
+    "editing dim to 250 stretches line",
+    Math.abs(l.length - 250) < 1e-3,
+    `len=${l.length.toFixed(4)}`,
+  );
 }
 
 // 8) Drag one end of a length-dimensioned line → the OTHER end stays put ----
@@ -143,31 +200,59 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
 {
   const doc = new CADDocument({ width: 400, height: 300 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
-  doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }));
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }),
+  );
   solve(doc); // settle
 
   // Drag endpoint b toward a point beyond the fixed length; a must not move.
   solve(doc, new Map([[`${l.id}:b`, { x: 100, y: 50 }]]));
-  check("dragging b leaves a stationary", dist(l.a, { x: 0, y: 0 }) < 0.5, `a=(${l.a.x.toFixed(3)}, ${l.a.y.toFixed(3)})`);
-  check("length dimension still satisfied", Math.abs(l.length - 100) < 1e-2, `len=${l.length.toFixed(4)}`);
+  check(
+    "dragging b leaves a stationary",
+    dist(l.a, { x: 0, y: 0 }) < 0.5,
+    `a=(${l.a.x.toFixed(3)}, ${l.a.y.toFixed(3)})`,
+  );
+  check(
+    "length dimension still satisfied",
+    Math.abs(l.length - 100) < 1e-2,
+    `len=${l.length.toFixed(4)}`,
+  );
   // b stays on the reachable circle (length holds) but may lag the cursor's angle
   // slightly when dragged past reach — cosmetic; see PIN_WEIGHT note in solver.ts.
-  checkKnownFail("b slid to the reachable point (~89.4, 44.7)", dist(l.b, { x: 89.44, y: 44.72 }) < 0.5, `b=(${l.b.x.toFixed(2)}, ${l.b.y.toFixed(2)})`);
-  check("b stays on the reachable circle (length 100 from a)", Math.abs(dist(l.a, l.b) - 100) < 1e-2, `|ab|=${dist(l.a, l.b).toFixed(3)}`);
+  checkKnownFail(
+    "b slid to the reachable point (~89.4, 44.7)",
+    dist(l.b, { x: 89.44, y: 44.72 }) < 0.5,
+    `b=(${l.b.x.toFixed(2)}, ${l.b.y.toFixed(2)})`,
+  );
+  check(
+    "b stays on the reachable circle (length 100 from a)",
+    Math.abs(dist(l.a, l.b) - 100) < 1e-2,
+    `|ab|=${dist(l.a, l.b).toFixed(3)}`,
+  );
 }
 
 // 9) Continuous drag must not let the anchored end CREEP over many steps -----
 {
   const doc = new CADDocument({ width: 400, height: 300 });
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
-  doc.addDimension(makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }));
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l, "a"), pr(l, "b")], value: 100, offset: 12 }),
+  );
   solve(doc);
   // Sweep the cursor for b through 60 steps (always "beyond" the reachable length).
   for (let i = 0; i <= 60; i++) {
     solve(doc, new Map([[`${l.id}:b`, { x: 100, y: i * 1.5 }]]));
   }
-  check("anchored end does not creep over 60 drag steps", dist(l.a, { x: 0, y: 0 }) < 0.5, `a drift=${dist(l.a, { x: 0, y: 0 }).toFixed(3)} mm`);
-  check("length held through the whole drag", Math.abs(l.length - 100) < 1e-2, `len=${l.length.toFixed(4)}`);
+  check(
+    "anchored end does not creep over 60 drag steps",
+    dist(l.a, { x: 0, y: 0 }) < 0.5,
+    `a drift=${dist(l.a, { x: 0, y: 0 }).toFixed(3)} mm`,
+  );
+  check(
+    "length held through the whole drag",
+    Math.abs(l.length - 100) < 1e-2,
+    `len=${l.length.toFixed(4)}`,
+  );
 }
 
 // 10) Chain propagation: anchored points DO move when a hard constraint forces it,
@@ -177,13 +262,20 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
   const l2 = doc.add(new LineEntity({ x: 100, y: 0 }, { x: 100, y: 50 })) as LineEntity;
   doc.addConstraint(makeConstraint("coincident", { points: [pr(l1, "b"), pr(l2, "a")] }));
-  doc.addDimension(makeDimension("distance", { points: [pr(l1, "a"), pr(l1, "b")], value: 100, offset: 12 }));
-  doc.addDimension(makeDimension("distance", { points: [pr(l2, "a"), pr(l2, "b")], value: 50, offset: 12 }));
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l1, "a"), pr(l1, "b")], value: 100, offset: 12 }),
+  );
+  doc.addDimension(
+    makeDimension("distance", { points: [pr(l2, "a"), pr(l2, "b")], value: 50, offset: 12 }),
+  );
   solve(doc);
   // Drag the free end of the chain; everything downstream must reflow.
   solve(doc, new Map([[`${l1.id}:a`, { x: 0, y: 60 }]]));
-  check("chain: coincident joint stays tight", dist(l1.b, l2.a) < 0.05, `gap=${dist(l1.b, l2.a).toFixed(4)}`);
+  check(
+    "chain: coincident joint stays tight",
+    dist(l1.b, l2.a) < 0.05,
+    `gap=${dist(l1.b, l2.a).toFixed(4)}`,
+  );
   check("chain: l1 length held", Math.abs(l1.length - 100) < 0.1, `len1=${l1.length.toFixed(3)}`);
   check("chain: l2 length held", Math.abs(l2.length - 50) < 0.1, `len2=${l2.length.toFixed(3)}`);
 }
-

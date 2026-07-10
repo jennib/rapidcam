@@ -16,8 +16,14 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, stockFootprint } from "../model/document";
 import {
-  LineEntity, CircleEntity, RectEntity,
-  PolylineEntity, ArcEntity, BezierEntity, TextEntity, RasterImageEntity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+  BezierEntity,
+  TextEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
@@ -31,7 +37,12 @@ import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { expandOpPatternTargets } from "./patternExpand";
 import { resolveRegion } from "./regions";
-import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
+import {
+  vcarveRegion,
+  vcarveParamsForOp,
+  groupContoursIntoRegions,
+  type CarveRegion,
+} from "./vcarve";
 import type { Entity } from "../model/entities";
 import { flattenBezier } from "../core/geom";
 
@@ -68,14 +79,15 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   RES = TARGET_RES;
   while (RES > MIN_RES && Math.ceil(stockW * RES) * Math.ceil(stockH * RES) > MAX_CELLS) RES--;
 
-  const gridW  = Math.ceil(stockW * RES);
-  const gridH  = Math.ceil(stockH * RES);
-  const data   = new Float32Array(gridW * gridH).fill(stockT);
+  const gridW = Math.ceil(stockW * RES);
+  const gridH = Math.ceil(stockH * RES);
+  const data = new Float32Array(gridW * gridH).fill(stockT);
 
-  const entityMap = new Map(doc.entities.map(e => [e.id, e]));
+  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   // Expand pattern targets so the 3D preview matches the toolpath: an op on
   // patterned geometry renders all instances and follows the count.
-  for (const op of ops) rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT);
+  for (const op of ops)
+    rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT);
 
   return { data, gridW, gridH, stockW, stockH, stockT };
 }
@@ -101,8 +113,8 @@ function rasterizeOp(
     return;
   }
 
-  const stamp  = makeStampFn(op, data, gridW, gridH, stockT);
-  const stepR  = effectiveToolR(op);
+  const stamp = makeStampFn(op, data, gridW, gridH, stockT);
+  const stepR = effectiveToolR(op);
   const lineSegIds = new Set<string>();
 
   // Region pockets (mirrors gcode.ts): resolve each parametric region from live
@@ -125,11 +137,16 @@ function rasterizeOp(
       const e = entityMap.get(id) as any;
       if (!e || e.isConstruction) continue;
       if (e instanceof CircleEntity) {
-        const nSegs = Math.max(64, Math.ceil(2 * Math.PI * e.radius / 0.5));
-        islands.push(Array.from({ length: nSegs }, (_: unknown, i: number) => {
-          const a = (i / nSegs) * 2 * Math.PI;
-          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
-        }));
+        const nSegs = Math.max(64, Math.ceil((2 * Math.PI * e.radius) / 0.5));
+        islands.push(
+          Array.from({ length: nSegs }, (_: unknown, i: number) => {
+            const a = (i / nSegs) * 2 * Math.PI;
+            return {
+              x: e.center.x + e.radius * Math.cos(a),
+              y: e.center.y + e.radius * Math.sin(a),
+            };
+          }),
+        );
       } else if (e instanceof RectEntity) {
         islands.push([...e.corners()]);
       } else if (e instanceof PolylineEntity && e.closed) {
@@ -138,21 +155,21 @@ function rasterizeOp(
     }
     // Also chain any line segments in the island set into closed polygons.
     const islandLineEnts = [...islandSet]
-      .map(id => entityMap.get(id))
+      .map((id) => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons)
-      islands.push(verts);
+    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons) islands.push(verts);
   }
 
   // Chain any selected line segments into closed polygons for profile/pocket ops.
   if (op.type === "profile" || op.type === "pocket") {
     const lineEnts = op.entityIds
-      .filter(id => !islandSet.has(id))
-      .map(id => entityMap.get(id))
+      .filter((id) => !islandSet.has(id))
+      .map((id) => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length > 0) {
       for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) {
-        if (op.type === "pocket") rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        if (op.type === "pocket")
+          rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else rasProfilePolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
       }
       lineEnts.forEach((e) => {
@@ -184,43 +201,95 @@ function rasterizeOp(
       if (ent instanceof CircleEntity) {
         const cx = ent.center.x * RES;
         const cy = ent.center.y * RES;
-        for (const z of depthPasses(op))
-          stamp(cx, cy, stockT + z);
+        for (const z of depthPasses(op)) stamp(cx, cy, stockT + z);
       }
     } else if (op.type === "relief-rough") {
       if (ent instanceof RasterImageEntity) rasReliefRough(ent, op, stamp, stockT);
     } else if (op.type === "engrave") {
       if (ent instanceof RasterImageEntity) {
         // Relief needs a depth-shaping bit (matches gcode.ts, which skips others).
-        if (op.toolType === "ball-nose" || op.toolType === "v-bit") rasRelief(ent, op, stamp, stockT);
-      }
-      else if (ent instanceof LineEntity)
+        if (op.toolType === "ball-nose" || op.toolType === "v-bit")
+          rasRelief(ent, op, stamp, stockT);
+      } else if (ent instanceof LineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
       else if (ent instanceof CircleEntity)
-        sweepCircle(op, data, gridW, gridH, stockT,
-          ent.center.x, ent.center.y, ent.radius, stamp, stepR);
+        sweepCircle(
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          ent.center.x,
+          ent.center.y,
+          ent.radius,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof RectEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [...ent.corners()], true, stamp, stepR);
       else if (ent instanceof PolylineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, ent.points, ent.closed, stamp, stepR);
       else if (ent instanceof ArcEntity)
-        sweepArc(op, data, gridW, gridH, stockT,
-          ent.center.x, ent.center.y, ent.radius, ent.startAngle, ent.endAngle, stamp, stepR);
+        sweepArc(
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          ent.center.x,
+          ent.center.y,
+          ent.radius,
+          ent.startAngle,
+          ent.endAngle,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof BezierEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT,
-          flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
+        sweepPolyline(
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05),
+          false,
+          stamp,
+          stepR,
+        );
     } else if (op.type === "pocket") {
       if (ent instanceof CircleEntity)
-        rasPocketCircle(ent.center.x, ent.center.y, ent.radius,
-          islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketCircle(
+          ent.center.x,
+          ent.center.y,
+          ent.radius,
+          islands,
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof RectEntity)
         rasPocketPolygon([...ent.corners()], islands, op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
         rasPocketPolygon(ent.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
-    } else { // profile
+    } else {
+      // profile
       if (ent instanceof CircleEntity)
-        rasProfileCircle(ent.center.x, ent.center.y, ent.radius,
-          op, data, gridW, gridH, stockT, stamp, stepR);
+        rasProfileCircle(
+          ent.center.x,
+          ent.center.y,
+          ent.radius,
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof RectEntity)
         rasProfilePolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
@@ -236,7 +305,10 @@ function rasterizeOp(
 function rasChamfer(
   op: CAMOperation,
   entityMap: Map<string, unknown>,
-  data: Float32Array, gridW: number, gridH: number, stockT: number,
+  data: Float32Array,
+  gridW: number,
+  gridH: number,
+  stockT: number,
 ): void {
   if (op.toolType !== "v-bit" || (op.chamferWidth ?? 0) <= 0) return;
   const cop = { ...op, depth: chamferDepth(op) };
@@ -262,13 +334,18 @@ function rasChamfer(
       const ccw = signedArea(p) >= 0 ? p : [...p].reverse();
       const seq = chamferSharpSequence(ccw, w);
       for (let k = 0; k < seq.length; k++) {
-        const a = seq[k], b = seq[(k + 1) % seq.length];
-        const za = a.lift ? 0 : cop.depth, zb = b.lift ? 0 : cop.depth;
+        const a = seq[k],
+          b = seq[(k + 1) % seq.length];
+        const za = a.lift ? 0 : cop.depth,
+          zb = b.lift ? 0 : cop.depth;
         const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * RES));
         for (let s = 0; s <= steps; s++) {
           const t = s / steps;
-          stamp((a.x + (b.x - a.x) * t) * RES, (a.y + (b.y - a.y) * t) * RES,
-            stockT + za + (zb - za) * t);
+          stamp(
+            (a.x + (b.x - a.x) * t) * RES,
+            (a.y + (b.y - a.y) * t) * RES,
+            stockT + za + (zb - za) * t,
+          );
         }
       }
     }
@@ -290,8 +367,12 @@ function rasChamfer(
     if (ent instanceof TextEntity) {
       for (const c of textToContours(ent)) if (c.closed) closed(c.points);
     } else if (ent instanceof CircleEntity) {
-      const r = side === "outside" ? ent.radius + w
-              : side === "inside"  ? Math.max(0.01, ent.radius - w) : ent.radius;
+      const r =
+        side === "outside"
+          ? ent.radius + w
+          : side === "inside"
+            ? Math.max(0.01, ent.radius - w)
+            : ent.radius;
       sweepCircle(cop, data, gridW, gridH, stockT, ent.center.x, ent.center.y, r, stamp, stepR);
     } else if (ent instanceof RectEntity) {
       closed([...ent.corners()]);
@@ -302,11 +383,32 @@ function rasChamfer(
     } else if (ent instanceof LineEntity) {
       sweepPolyline(cop, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
     } else if (ent instanceof ArcEntity) {
-      sweepArc(cop, data, gridW, gridH, stockT,
-        ent.center.x, ent.center.y, ent.radius, ent.startAngle, ent.endAngle, stamp, stepR);
+      sweepArc(
+        cop,
+        data,
+        gridW,
+        gridH,
+        stockT,
+        ent.center.x,
+        ent.center.y,
+        ent.radius,
+        ent.startAngle,
+        ent.endAngle,
+        stamp,
+        stepR,
+      );
     } else if (ent instanceof BezierEntity) {
-      sweepPolyline(cop, data, gridW, gridH, stockT,
-        flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05), false, stamp, stepR);
+      sweepPolyline(
+        cop,
+        data,
+        gridW,
+        gridH,
+        stockT,
+        flattenBezier(ent.p0, ent.p1, ent.p2, ent.p3, 0.05),
+        false,
+        stamp,
+        stepR,
+      );
     }
   }
 }
@@ -320,7 +422,10 @@ function rasChamfer(
 function rasVcarve(
   op: CAMOperation,
   entityMap: Map<string, unknown>,
-  data: Float32Array, gridW: number, gridH: number, stockT: number,
+  data: Float32Array,
+  gridW: number,
+  gridH: number,
+  stockT: number,
 ): void {
   if (op.toolType !== "v-bit") return;
   const stamp = makeStampFn(op, data, gridW, gridH, stockT);
@@ -333,8 +438,7 @@ function rasVcarve(
       for (const loop of pass.loops) {
         const np = loop.length;
         if (np < 2) continue;
-        for (let i = 0; i < np; i++)
-          walkSegment(loop[i], loop[(i + 1) % np], stepR, depth, stamp);
+        for (let i = 0; i < np; i++) walkSegment(loop[i], loop[(i + 1) % np], stepR, depth, stamp);
       }
     }
   };
@@ -363,7 +467,10 @@ function rasVcarve(
       const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
       const outer = Array.from({ length: nSegs }, (_, i) => {
         const a = (i / nSegs) * 2 * Math.PI;
-        return { x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) };
+        return {
+          x: ent.center.x + ent.radius * Math.cos(a),
+          y: ent.center.y + ent.radius * Math.sin(a),
+        };
       });
       carve({ outer, holes: [] });
     }
@@ -383,10 +490,17 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
   const maxDepth = Math.min(Math.abs(op.depth), stockT);
   if (maxDepth <= 0) return;
   const field = rasterField(grid, {
-    widthMM: ent.widthMM, heightMM: ent.heightMM,
-    lineIntervalMM: op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval,
-    dotPitchMM: op.rasterDotPitch, invert: op.rasterInvert, gamma: op.reliefGamma,
-    flipX: ent.flipX, flipY: ent.flipY,
+    widthMM: ent.widthMM,
+    heightMM: ent.heightMM,
+    lineIntervalMM:
+      op.rasterLineInterval && op.rasterLineInterval > 0
+        ? op.rasterLineInterval
+        : DEFAULTS.rasterLineInterval,
+    dotPitchMM: op.rasterDotPitch,
+    invert: op.rasterInvert,
+    gamma: op.reliefGamma,
+    flipX: ent.flipX,
+    flipY: ent.flipY,
   });
   // Stamp each dot at its rotated world position so a tilted image previews tilted.
   const xf = makeRasterXf(ent.position, ent.angle);
@@ -407,13 +521,18 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
  * and level→plane arithmetic as `reliefRoughImage` in gcode.ts, so the preview and
  * the toolpath agree; the (flat) tool stamp gives the flat-bottomed staircase.
  */
-function rasReliefRough(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number): void {
+function rasReliefRough(
+  ent: RasterImageEntity,
+  op: CAMOperation,
+  stamp: StampFn,
+  stockT: number,
+): void {
   const grid = getImageGrid(ent.imageId);
   if (!grid) return;
   const maxDepth = Math.min(Math.abs(op.depth), stockT);
   if (maxDepth <= 0) return;
   const allowance = Math.max(0, op.finishAllowance ?? 0);
-  const maxCut = maxDepth - allowance;               // deepest material roughing removes
+  const maxCut = maxDepth - allowance; // deepest material roughing removes
   if (maxCut <= 1e-6) return;
   const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
   const pitch = Math.max(0.05, (op.stepover > 0 ? op.stepover : DEFAULTS.stepover) * op.diameter);
@@ -430,16 +549,20 @@ function rasReliefRough(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn
   };
 
   const field = rasterField(grid, {
-    widthMM: ent.widthMM, heightMM: ent.heightMM,
-    lineIntervalMM: pitch, dotPitchMM: pitch,
-    invert: op.rasterInvert, gamma: op.reliefGamma,
-    flipX: ent.flipX, flipY: ent.flipY,
+    widthMM: ent.widthMM,
+    heightMM: ent.heightMM,
+    lineIntervalMM: pitch,
+    dotPitchMM: pitch,
+    invert: op.rasterInvert,
+    gamma: op.reliefGamma,
+    flipX: ent.flipX,
+    flipY: ent.flipY,
   });
   const xf = makeRasterXf(ent.position, ent.angle);
   for (const row of field.rows) {
     for (let c = 0; c < field.cols; c++) {
       const z = floorZ(Math.min(0, -row.levels[c] * maxDepth + allowance));
-      if (z >= 0) continue;                          // nothing removed here
+      if (z >= 0) continue; // nothing removed here
       const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
       stamp(w.x * RES, w.y * RES, stockT + z);
     }
@@ -453,11 +576,14 @@ type StampFn = (cx: number, cy: number, depth: number) => void;
 
 function makeStampFn(
   op: CAMOperation,
-  data: Float32Array, w: number, h: number, stockT: number,
+  data: Float32Array,
+  w: number,
+  h: number,
+  stockT: number,
 ): StampFn {
-  const R     = op.diameter / 2;
+  const R = op.diameter / 2;
   const Rcell = R * RES;
-  const tt    = op.toolType ?? "end-mill";
+  const tt = op.toolType ?? "end-mill";
 
   if (tt === "ball-nose") {
     return (cx, cy, d) => stampBallNose(data, w, h, cx, cy, R, d);
@@ -478,10 +604,7 @@ function makeStampFn(
 function effectiveToolR(op: CAMOperation): number {
   if ((op.toolType ?? "end-mill") === "v-bit") {
     // At max depth the V-bit footprint is this wide; use it for dense-enough stepping.
-    return Math.max(
-      0.05,
-      Math.abs(op.depth) * Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180)),
-    );
+    return Math.max(0.05, Math.abs(op.depth) * Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180)));
   }
   return op.diameter / 2;
 }
@@ -491,8 +614,13 @@ function effectiveToolR(op: CAMOperation): number {
 
 /** Flat-bottomed disc (end mill). */
 function stampDisc(
-  data: Float32Array, w: number, h: number,
-  cx: number, cy: number, rCell: number, depth: number,
+  data: Float32Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rCell: number,
+  depth: number,
 ): void {
   const x0 = Math.max(0, Math.floor(cx - rCell));
   const x1 = Math.min(w - 1, Math.ceil(cx + rCell));
@@ -502,7 +630,8 @@ function stampDisc(
   for (let y = y0; y <= y1; y++) {
     const base = y * w;
     for (let x = x0; x <= x1; x++) {
-      const dx = x - cx, dy = y - cy;
+      const dx = x - cx,
+        dy = y - cy;
       if (dx * dx + dy * dy <= r2) {
         if (depth < data[base + x]) data[base + x] = depth;
       }
@@ -516,11 +645,16 @@ function stampDisc(
  * Produces a rounded trough cross-section.
  */
 function stampBallNose(
-  data: Float32Array, w: number, h: number,
-  cx: number, cy: number, R_mm: number, depth: number,
+  data: Float32Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  R_mm: number,
+  depth: number,
 ): void {
   const Rcell = R_mm * RES;
-  const R2    = R_mm * R_mm;
+  const R2 = R_mm * R_mm;
   const x0 = Math.max(0, Math.floor(cx - Rcell));
   const x1 = Math.min(w - 1, Math.ceil(cx + Rcell));
   const y0 = Math.max(0, Math.floor(cy - Rcell));
@@ -546,11 +680,17 @@ function stampBallNose(
  * radius since the height field transitions sharply from h(R) to stockT outside R.
  */
 function stampVCone(
-  data: Float32Array, w: number, h: number,
-  cx: number, cy: number, halfAngleTan: number, depth: number, stockT: number,
+  data: Float32Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  halfAngleTan: number,
+  depth: number,
+  stockT: number,
 ): void {
   // Maximum lateral reach in mm where the cone still removes material
-  const dMaxMM   = (stockT - depth) * halfAngleTan;
+  const dMaxMM = (stockT - depth) * halfAngleTan;
   const dMaxCell = dMaxMM * RES;
   const x0 = Math.max(0, Math.floor(cx - dMaxCell));
   const x1 = Math.min(w - 1, Math.ceil(cx + dMaxCell));
@@ -561,8 +701,8 @@ function stampVCone(
     for (let x = x0; x <= x1; x++) {
       const dxMM = (x - cx) / RES;
       const dyMM = (y - cy) / RES;
-      const dMM  = Math.sqrt(dxMM * dxMM + dyMM * dyMM);
-      const hAt  = depth + dMM / halfAngleTan;
+      const dMM = Math.sqrt(dxMM * dxMM + dyMM * dyMM);
+      const hAt = depth + dMM / halfAngleTan;
       if (hAt < stockT && hAt < data[base + x]) data[base + x] = hAt;
     }
   }
@@ -572,14 +712,14 @@ function stampVCone(
 // Walk / sweep helpers
 
 /** Stamp along a segment p0→p1, spaced at half the effective tool radius. */
-function walkSegment(
-  p0: Vec2, p1: Vec2,
-  stepR_mm: number, depth: number,
-  stamp: StampFn,
-): void {
-  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+function walkSegment(p0: Vec2, p1: Vec2, stepR_mm: number, depth: number, stamp: StampFn): void {
+  const dx = p1.x - p0.x,
+    dy = p1.y - p0.y;
   const lenMM = Math.sqrt(dx * dx + dy * dy);
-  if (lenMM < 1e-9) { stamp(p0.x * RES, p0.y * RES, depth); return; }
+  if (lenMM < 1e-9) {
+    stamp(p0.x * RES, p0.y * RES, depth);
+    return;
+  }
   const steps = Math.max(1, Math.ceil(lenMM / (stepR_mm * 0.5)));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -588,27 +728,39 @@ function walkSegment(
 }
 
 function sweepPolyline(
-  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
-  pts: Vec2[], closed: boolean,
-  stamp: StampFn, stepR: number,
+  op: CAMOperation,
+  _data: Float32Array,
+  _gridW: number,
+  _gridH: number,
+  stockT: number,
+  pts: Vec2[],
+  closed: boolean,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   if (pts.length < 2) return;
-  const n    = pts.length;
+  const n = pts.length;
   const segs = closed ? n : n - 1;
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
-    for (let i = 0; i < segs; i++)
-      walkSegment(pts[i], pts[(i + 1) % n], stepR, depth, stamp);
+    for (let i = 0; i < segs; i++) walkSegment(pts[i], pts[(i + 1) % n], stepR, depth, stamp);
   }
 }
 
 function sweepCircle(
-  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
-  cx: number, cy: number, radius: number,
-  stamp: StampFn, stepR: number,
+  op: CAMOperation,
+  _data: Float32Array,
+  _gridW: number,
+  _gridH: number,
+  stockT: number,
+  cx: number,
+  cy: number,
+  radius: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   if (radius <= 0) return;
-  const steps = Math.max(32, Math.ceil(2 * Math.PI * radius / (stepR * 0.5)));
+  const steps = Math.max(32, Math.ceil((2 * Math.PI * radius) / (stepR * 0.5)));
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
     for (let i = 0; i <= steps; i++) {
@@ -619,14 +771,23 @@ function sweepCircle(
 }
 
 function sweepArc(
-  op: CAMOperation, _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
-  cx: number, cy: number, radius: number, startAngle: number, endAngle: number,
-  stamp: StampFn, stepR: number,
+  op: CAMOperation,
+  _data: Float32Array,
+  _gridW: number,
+  _gridH: number,
+  stockT: number,
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   if (radius <= 0) return;
-  let span = ((endAngle - startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  let span = (((endAngle - startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   if (span < 1e-9) span = 2 * Math.PI;
-  const steps = Math.max(4, Math.ceil(radius * span / (stepR * 0.5)));
+  const steps = Math.max(4, Math.ceil((radius * span) / (stepR * 0.5)));
   for (const z of depthPasses(op)) {
     const depth = stockT + z;
     for (let i = 0; i <= steps; i++) {
@@ -640,30 +801,42 @@ function sweepArc(
 // Profile helpers (offset then sweep)
 
 function rasProfilePolygon(
-  verts: Vec2[], op: CAMOperation,
-  _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
-  stamp: StampFn, stepR: number,
+  verts: Vec2[],
+  op: CAMOperation,
+  _data: Float32Array,
+  _gridW: number,
+  _gridH: number,
+  stockT: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   const toolR = op.diameter / 2;
   const paths = offsetPolygon(verts, op.side === "outside" ? toolR : -toolR);
   // Mirror the G-code so the preview shows dog-bone corner relief (inside only).
   const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
 
-  const tabs    = op.tabs;
+  const tabs = op.tabs;
   const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
-  const hasTabs = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
+  const hasTabs = !!(
+    tabs?.enabled &&
+    (tabs.count > 0 || tabsBySpacing) &&
+    tabs.width > 0 &&
+    tabs.height > 0
+  );
   // Match the G-code: tab height is measured from the stock bottom, not the cut
   // floor, so a through-cut's tabs stay in real material. See cam/gcode.ts.
   const tabZOff = hasTabs ? Math.max(op.depth, -stockT) + tabs!.height : 0;
 
   // Lead-in/out lengths (linear approximation of the cut path — enough to carve
   // the lead grooves into the height field so the preview matches the G-code).
-  const liLen = op.leadIn  && op.leadIn.type  !== "none" ? (op.leadIn.length  ?? 2) : 0;
+  const liLen = op.leadIn && op.leadIn.type !== "none" ? (op.leadIn.length ?? 2) : 0;
   const loLen = op.leadOut && op.leadOut.type !== "none" ? (op.leadOut.length ?? 2) : 0;
 
   const useLead = liLen > 0 || loLen > 0;
   const unit = (a: Vec2, b: Vec2): Vec2 => {
-    const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+    const dx = b.x - a.x,
+      dy = b.y - a.y,
+      L = Math.hypot(dx, dy) || 1;
     return { x: dx / L, y: dy / L };
   };
   for (const rawPath of paths) {
@@ -673,27 +846,32 @@ function rasProfilePolygon(
     const path = useLead ? startAtLongestEdgeMid(db) : db;
     const np = path.length;
 
-    const tIn = unit(path[0], path[1]);            // entry tangent
-    const tOut = unit(path[np - 1], path[0]);      // exit (arrival) tangent
-    const leadInP  = liLen > 0 ? { x: path[0].x - tIn.x * liLen, y: path[0].y - tIn.y * liLen } : null;
-    const leadOutP = loLen > 0 ? { x: path[0].x + tOut.x * loLen, y: path[0].y + tOut.y * loLen } : null;
+    const tIn = unit(path[0], path[1]); // entry tangent
+    const tOut = unit(path[np - 1], path[0]); // exit (arrival) tangent
+    const leadInP =
+      liLen > 0 ? { x: path[0].x - tIn.x * liLen, y: path[0].y - tIn.y * liLen } : null;
+    const leadOutP =
+      loLen > 0 ? { x: path[0].x + tOut.x * loLen, y: path[0].y + tOut.y * loLen } : null;
 
     for (const z of depthPasses(op)) {
-      const depth              = stockT + z;
-      const useTabsThisPass    = hasTabs && z < tabZOff;
+      const depth = stockT + z;
+      const useTabsThisPass = hasTabs && z < tabZOff;
 
       if (leadInP) walkSegment(leadInP, path[0], stepR, depth, stamp);
 
       if (!useTabsThisPass) {
-        for (let i = 0; i < np; i++)
-          walkSegment(path[i], path[(i + 1) % np], stepR, depth, stamp);
+        for (let i = 0; i < np; i++) walkSegment(path[i], path[(i + 1) % np], stepR, depth, stamp);
       } else {
         const tabDepth = stockT + tabZOff;
-        const cumLens  = pathLengths(path);
+        const cumLens = pathLengths(path);
         const totalLen = cumLens[path.length];
-        const tabN     = resolveTabCount(totalLen, tabs!.count, tabsBySpacing ? tabs!.spacing : undefined);
-        const regions  = computeTabRegions(totalLen, tabN, tabs!.width);
-        const segs     = splitPathForTabs(path, cumLens, regions);
+        const tabN = resolveTabCount(
+          totalLen,
+          tabs!.count,
+          tabsBySpacing ? tabs!.spacing : undefined,
+        );
+        const regions = computeTabRegions(totalLen, tabN, tabs!.width);
+        const segs = splitPathForTabs(path, cumLens, regions);
         for (const seg of segs)
           walkSegment(seg.p0, seg.p1, stepR, seg.isTab ? tabDepth : depth, stamp);
       }
@@ -704,34 +882,48 @@ function rasProfilePolygon(
 }
 
 function rasProfileCircle(
-  cx: number, cy: number, r: number, op: CAMOperation,
-  data: Float32Array, gridW: number, gridH: number, stockT: number,
-  stamp: StampFn, stepR: number,
+  cx: number,
+  cy: number,
+  r: number,
+  op: CAMOperation,
+  data: Float32Array,
+  gridW: number,
+  gridH: number,
+  stockT: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   const toolR = op.diameter / 2;
-  const cutR  = op.side === "outside" ? r + toolR : r - toolR;
+  const cutR = op.side === "outside" ? r + toolR : r - toolR;
   if (cutR <= 0) return;
   sweepCircle(op, data, gridW, gridH, stockT, cx, cy, cutR, stamp, stepR);
 }
 
 function rasPocketPolygon(
-  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
-  _data: Float32Array, _gridW: number, _gridH: number, stockT: number,
-  stamp: StampFn, stepR: number,
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  _data: Float32Array,
+  _gridW: number,
+  _gridH: number,
+  stockT: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
-  const toolR    = op.diameter / 2;
+  const toolR = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
-  const insets   = offsetPolygon(verts, -toolR);
-  const islandKeepouts = islands.flatMap(isl => {
+  const insets = offsetPolygon(verts, -toolR);
+  const islandKeepouts = islands.flatMap((isl) => {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
     const expanded = offsetPolygon(pts, toolR);
     return expanded.length > 0 ? expanded : [pts];
   });
   for (const inset of insets) {
     if (inset.length < 2) continue;
-    const rows = islandKeepouts.length > 0
-      ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
-      : rasterRows(inset, stepover);
+    const rows =
+      islandKeepouts.length > 0
+        ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
+        : rasterRows(inset, stepover);
     for (const z of depthPasses(op)) {
       const depth = stockT + z;
       for (const row of rows)
@@ -741,8 +933,7 @@ function rasPocketPolygon(
       // matching the G-code's wall lap. The interior clearing rows stay plain.
       const wall = op.cornerStyle === "dogbone" ? addDogbones(inset, toolR) : inset;
       const np = wall.length;
-      for (let i = 0; i < np; i++)
-        walkSegment(wall[i], wall[(i + 1) % np], stepR, depth, stamp);
+      for (let i = 0; i < np; i++) walkSegment(wall[i], wall[(i + 1) % np], stepR, depth, stamp);
       // Sweep island keepout boundaries (finish pass for island walls)
       for (const keepout of islandKeepouts) {
         const kn = keepout.length;
@@ -754,13 +945,21 @@ function rasPocketPolygon(
 }
 
 function rasPocketCircle(
-  cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
-  data: Float32Array, gridW: number, gridH: number, stockT: number,
-  stamp: StampFn, stepR: number,
+  cx: number,
+  cy: number,
+  r: number,
+  islands: Vec2[][],
+  op: CAMOperation,
+  data: Float32Array,
+  gridW: number,
+  gridH: number,
+  stockT: number,
+  stamp: StampFn,
+  stepR: number,
 ): void {
   const toolR = op.diameter / 2;
   if (islands.length > 0) {
-    const nSegs = Math.max(64, Math.ceil(2 * Math.PI * r / 0.5));
+    const nSegs = Math.max(64, Math.ceil((2 * Math.PI * r) / 0.5));
     const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
       const a = (i / nSegs) * 2 * Math.PI;
       return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
@@ -770,11 +969,10 @@ function rasPocketCircle(
   }
   const cutR = r - toolR;
   if (cutR <= 0) return;
-  const nSegs = Math.max(64, Math.ceil(2 * Math.PI * cutR / 0.5));
+  const nSegs = Math.max(64, Math.ceil((2 * Math.PI * cutR) / 0.5));
   const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {
     const a = (i / nSegs) * 2 * Math.PI;
     return { x: cx + cutR * Math.cos(a), y: cy + cutR * Math.sin(a) };
   });
   rasPocketPolygon(verts, [], op, data, gridW, gridH, stockT, stamp, stepR);
 }
-

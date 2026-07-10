@@ -29,8 +29,17 @@ export interface RegistrationOptions {
   feedRate?: number;
 }
 
-const mv = (motion: 0 | 1, over: Partial<GMoveEvent>): GMoveEvent =>
-  ({ kind: "move", motion, x: 0, y: 0, z: 0, hasX: false, hasY: false, hasZ: false, ...over });
+const mv = (motion: 0 | 1, over: Partial<GMoveEvent>): GMoveEvent => ({
+  kind: "move",
+  motion,
+  x: 0,
+  y: 0,
+  z: 0,
+  hasX: false,
+  hasY: false,
+  hasZ: false,
+  ...over,
+});
 
 /** Retract, rapid over the point, plunge a hole, retract. */
 function holeEvents(p: Vec2, safeZ: number, depth: number, plunge: number): GMoveEvent[] {
@@ -43,7 +52,14 @@ function holeEvents(p: Vec2, safeZ: number, depth: number, plunge: number): GMov
 }
 
 /** Score a shallow "+" centred on the point. */
-function crosshairEvents(p: Vec2, safeZ: number, depth: number, size: number, feed: number, plunge: number): GMoveEvent[] {
+function crosshairEvents(
+  p: Vec2,
+  safeZ: number,
+  depth: number,
+  size: number,
+  feed: number,
+  plunge: number,
+): GMoveEvent[] {
   return [
     mv(0, { z: safeZ, hasZ: true }),
     mv(0, { x: p.x - size, y: p.y, hasX: true, hasY: true }),
@@ -69,7 +85,8 @@ export function registrationEvents(features: Vec2[], opts: RegistrationOptions):
 
   const out: GEvent[] = [{ kind: "raw", text: `; --- Stitch registration (${opts.mode}) ---` }];
   for (const f of features) {
-    if (opts.mode === "holes" || opts.mode === "both") out.push(...holeEvents(f, opts.safeZ, holeDepth, plunge));
+    if (opts.mode === "holes" || opts.mode === "both")
+      out.push(...holeEvents(f, opts.safeZ, holeDepth, plunge));
     if (opts.mode === "crosshairs" || opts.mode === "both") {
       out.push(...crosshairEvents(f, opts.safeZ, crossDepth, size, feed, plunge));
     }

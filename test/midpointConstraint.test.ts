@@ -16,13 +16,15 @@ describe("midpoint constraint — two-point variant", () => {
     doc.addConstraint(makeConstraint("fixed", { entities: [l2.id] }));
 
     const circ = doc.add(new CircleEntity({ x: 10, y: 10 }, 5)) as CircleEntity;
-    doc.addConstraint(makeConstraint("midpoint", {
-      points: [
-        { entityId: circ.id, key: "c" },
-        { entityId: l1.id, key: "a" },  // (0, 0)
-        { entityId: l2.id, key: "b" },  // (100, 50)
-      ],
-    }));
+    doc.addConstraint(
+      makeConstraint("midpoint", {
+        points: [
+          { entityId: circ.id, key: "c" },
+          { entityId: l1.id, key: "a" }, // (0, 0)
+          { entityId: l2.id, key: "b" }, // (100, 50)
+        ],
+      }),
+    );
 
     solve(doc);
     expect(circ.center.x).toBeCloseTo(50, 3);
@@ -35,10 +37,12 @@ describe("midpoint constraint — two-point variant", () => {
     doc.addConstraint(makeConstraint("fixed", { entities: [l1.id] }));
 
     const circ = doc.add(new CircleEntity({ x: 90, y: 90 }, 5)) as CircleEntity;
-    doc.addConstraint(makeConstraint("midpoint", {
-      points: [{ entityId: circ.id, key: "c" }],
-      entities: [l1.id],
-    }));
+    doc.addConstraint(
+      makeConstraint("midpoint", {
+        points: [{ entityId: circ.id, key: "c" }],
+        entities: [l1.id],
+      }),
+    );
 
     solve(doc);
     expect(circ.center.x).toBeCloseTo(50, 3);

@@ -13,8 +13,10 @@ import { CADDocument } from "../src/model/document";
 function acrossFlats(pts: { x: number; y: number }[], center = { x: 0, y: 0 }): number {
   let minApothem = Infinity;
   for (let i = 0; i < pts.length; i++) {
-    const a = pts[i], b = pts[(i + 1) % pts.length];
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const a = pts[i],
+      b = pts[(i + 1) % pts.length];
+    const mx = (a.x + b.x) / 2,
+      my = (a.y + b.y) / 2;
     minApothem = Math.min(minApothem, Math.hypot(mx - center.x, my - center.y));
   }
   return 2 * minApothem;
@@ -24,8 +26,9 @@ describe("polygon across-flats sizing", () => {
   const center = { x: 0, y: 0 };
 
   it("hexagon: typed Ø 50 yields 50 across flats", () => {
-    const n = 6, d = 50;
-    const r = (d / 2) / Math.cos(Math.PI / n);
+    const n = 6,
+      d = 50;
+    const r = d / 2 / Math.cos(Math.PI / n);
     const pts = polygonPoints(center, r, n, 0);
     expect(pts).toHaveLength(6);
     expect(acrossFlats(pts, center)).toBeCloseTo(50, 6);
@@ -34,15 +37,16 @@ describe("polygon across-flats sizing", () => {
   it("square and octagon also honour across-flats regardless of orientation", () => {
     for (const n of [4, 8]) {
       const d = 30;
-      const r = (d / 2) / Math.cos(Math.PI / n);
+      const r = d / 2 / Math.cos(Math.PI / n);
       const pts = polygonPoints(center, r, n, 0.37); // arbitrary rotation
       expect(acrossFlats(pts, center)).toBeCloseTo(30, 6);
     }
   });
 
   it("circumradius exceeds the across-flats radius (corners stick out past flats)", () => {
-    const n = 6, d = 50;
-    const r = (d / 2) / Math.cos(Math.PI / n);
+    const n = 6,
+      d = 50;
+    const r = d / 2 / Math.cos(Math.PI / n);
     expect(r).toBeGreaterThan(d / 2);
   });
 });
@@ -58,8 +62,13 @@ describe("polygon construction metadata", () => {
     const doc2 = new CADDocument({ width: 1, height: 1 }, "mm");
     doc2.restore(before);
 
-    const restored = doc2.entities.find(e => e instanceof PolylineEntity) as PolylineEntity;
-    expect(restored.polygon).toEqual({ sides: 6, center: { x: 60, y: 40 }, radius: 25, rotation: 0.2 });
+    const restored = doc2.entities.find((e) => e instanceof PolylineEntity) as PolylineEntity;
+    expect(restored.polygon).toEqual({
+      sides: 6,
+      center: { x: 60, y: 40 },
+      radius: 25,
+      rotation: 0.2,
+    });
   });
 
   it("translate() shifts the polygon centre so params stay consistent", () => {

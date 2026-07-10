@@ -71,16 +71,18 @@ export function repairChangeCount(r: RepairReport): number {
   return r.degenerateRemoved + r.duplicatesRemoved + r.gapsWelded + r.polylinesClosed;
 }
 
-const plural = (count: number, one: string, many: string) =>
-  `${count} ${count === 1 ? one : many}`;
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** Human-readable lines describing what the repair did (empty if it changed nothing). */
 export function summarizeRepairs(r: RepairReport): string[] {
   const out: string[] = [];
   if (r.gapsWelded) out.push(`welded ${plural(r.gapsWelded, "gap", "gaps")}`);
-  if (r.polylinesClosed) out.push(`closed ${plural(r.polylinesClosed, "open contour", "open contours")}`);
-  if (r.duplicatesRemoved) out.push(`removed ${plural(r.duplicatesRemoved, "duplicate", "duplicates")}`);
-  if (r.degenerateRemoved) out.push(`removed ${plural(r.degenerateRemoved, "empty entity", "empty entities")}`);
+  if (r.polylinesClosed)
+    out.push(`closed ${plural(r.polylinesClosed, "open contour", "open contours")}`);
+  if (r.duplicatesRemoved)
+    out.push(`removed ${plural(r.duplicatesRemoved, "duplicate", "duplicates")}`);
+  if (r.degenerateRemoved)
+    out.push(`removed ${plural(r.degenerateRemoved, "empty entity", "empty entities")}`);
   return out;
 }
 
@@ -140,8 +142,14 @@ interface WeldNode {
 
 function arcEndpoints(a: ArcEntity): [Vec2, Vec2] {
   return [
-    { x: a.center.x + a.radius * Math.cos(a.startAngle), y: a.center.y + a.radius * Math.sin(a.startAngle) },
-    { x: a.center.x + a.radius * Math.cos(a.endAngle), y: a.center.y + a.radius * Math.sin(a.endAngle) },
+    {
+      x: a.center.x + a.radius * Math.cos(a.startAngle),
+      y: a.center.y + a.radius * Math.sin(a.startAngle),
+    },
+    {
+      x: a.center.x + a.radius * Math.cos(a.endAngle),
+      y: a.center.y + a.radius * Math.sin(a.endAngle),
+    },
   ];
 }
 
@@ -150,16 +158,40 @@ function weldNodes(entities: Entity[]): WeldNode[] {
   const nodes: WeldNode[] = [];
   for (const e of entities) {
     if (e instanceof LineEntity) {
-      nodes.push({ owner: e, pos: e.a, set: (p) => { e.a = { ...p }; } });
-      nodes.push({ owner: e, pos: e.b, set: (p) => { e.b = { ...p }; } });
+      nodes.push({
+        owner: e,
+        pos: e.a,
+        set: (p) => {
+          e.a = { ...p };
+        },
+      });
+      nodes.push({
+        owner: e,
+        pos: e.b,
+        set: (p) => {
+          e.b = { ...p };
+        },
+      });
     } else if (e instanceof ArcEntity) {
       const [a, b] = arcEndpoints(e);
       nodes.push({ owner: e, pos: a });
       nodes.push({ owner: e, pos: b });
     } else if (e instanceof PolylineEntity && !e.closed && e.points.length >= 2) {
       const last = e.points.length - 1;
-      nodes.push({ owner: e, pos: e.points[0], set: (p) => { e.points[0] = { ...p }; } });
-      nodes.push({ owner: e, pos: e.points[last], set: (p) => { e.points[last] = { ...p }; } });
+      nodes.push({
+        owner: e,
+        pos: e.points[0],
+        set: (p) => {
+          e.points[0] = { ...p };
+        },
+      });
+      nodes.push({
+        owner: e,
+        pos: e.points[last],
+        set: (p) => {
+          e.points[last] = { ...p };
+        },
+      });
     }
   }
   return nodes;
@@ -174,7 +206,10 @@ function clusterEndpoints(nodes: WeldNode[], tol: number): number[][] {
   const n = nodes.length;
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (i: number): number => {
-    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
     return i;
   };
   // O(n²) pairwise — fine for typical DXF sizes (hundreds of endpoints).
@@ -210,7 +245,10 @@ function weldEndpoints(entities: Entity[], tol: number): number {
     let moved = false;
     for (const i of members) {
       const node = nodes[i];
-      if (node.set && dist(node.pos, target) > 1e-9) { node.set(target); moved = true; }
+      if (node.set && dist(node.pos, target) > 1e-9) {
+        node.set(target);
+        moved = true;
+      }
     }
     if (moved) gaps++;
   }
@@ -222,8 +260,12 @@ function closeOpenPolylines(entities: Entity[], tol: number): number {
   let closed = 0;
   for (const e of entities) {
     if (e instanceof PolylineEntity && !e.closed && e.points.length >= 3) {
-      const first = e.points[0], last = e.points[e.points.length - 1];
-      if (dist(first, last) < tol) { e.closed = true; closed++; }
+      const first = e.points[0],
+        last = e.points[e.points.length - 1];
+      if (dist(first, last) < tol) {
+        e.closed = true;
+        closed++;
+      }
     }
   }
   return closed;
@@ -259,7 +301,10 @@ export function repairImportedEntities(
 
   if (removeDegenerate) {
     result = result.filter((e) => {
-      if (isDegenerate(e)) { report.degenerateRemoved++; return false; }
+      if (isDegenerate(e)) {
+        report.degenerateRemoved++;
+        return false;
+      }
       return true;
     });
   }
@@ -269,7 +314,10 @@ export function repairImportedEntities(
     result = result.filter((e) => {
       const key = dupeKey(e);
       if (key === null) return true;
-      if (seen.has(key)) { report.duplicatesRemoved++; return false; }
+      if (seen.has(key)) {
+        report.duplicatesRemoved++;
+        return false;
+      }
       seen.add(key);
       return true;
     });
@@ -361,9 +409,15 @@ export function diagnoseImportedEntities(
   // Unclosed contours — polylines whose ends meet but aren't flagged closed.
   for (const e of live) {
     if (e instanceof PolylineEntity && !e.closed && e.points.length >= 3) {
-      const a = e.points[0], b = e.points[e.points.length - 1];
+      const a = e.points[0],
+        b = e.points[e.points.length - 1];
       const d = dist(a, b);
-      if (d < tol) diags.push({ kind: "open-contour", pos: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, sizeMM: d });
+      if (d < tol)
+        diags.push({
+          kind: "open-contour",
+          pos: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+          sizeMM: d,
+        });
     }
   }
 
@@ -372,11 +426,17 @@ export function diagnoseImportedEntities(
 
 /** Human-readable lines describing diagnosed issues (empty if none). */
 export function summarizeDiagnostics(diags: DxfDiagnostic[]): string[] {
-  const c: Record<DiagnosticKind, number> = { gap: 0, "open-contour": 0, duplicate: 0, degenerate: 0 };
+  const c: Record<DiagnosticKind, number> = {
+    gap: 0,
+    "open-contour": 0,
+    duplicate: 0,
+    degenerate: 0,
+  };
   for (const d of diags) c[d.kind]++;
   const out: string[] = [];
   if (c.gap) out.push(plural(c.gap, "gap", "gaps"));
-  if (c["open-contour"]) out.push(plural(c["open-contour"], "unclosed contour", "unclosed contours"));
+  if (c["open-contour"])
+    out.push(plural(c["open-contour"], "unclosed contour", "unclosed contours"));
   if (c.duplicate) out.push(plural(c.duplicate, "duplicate", "duplicates"));
   if (c.degenerate) out.push(plural(c.degenerate, "empty entity", "empty entities"));
   return out;

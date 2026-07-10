@@ -25,7 +25,7 @@ export function openTextDialog(
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog";
   dialog.style.width = "320px";
-  dialog.addEventListener("click", e => e.stopPropagation());
+  dialog.addEventListener("click", (e) => e.stopPropagation());
 
   // Header
   const hdr = document.createElement("div");
@@ -40,7 +40,7 @@ export function openTextDialog(
   dialog.appendChild(body);
 
   // Text
-  const textInp = addField(body, "Text", inp => {
+  const textInp = addField(body, "Text", (inp) => {
     inp.type = "text";
     inp.className = "dim";
     inp.value = initial.text ?? "";
@@ -105,9 +105,9 @@ export function openTextDialog(
         if (!embeddable) {
           alert(
             `"${name}" loaded — but its license does not permit embedding. ` +
-            `Text using it will NOT be saved into the .rcam file, so it may render ` +
-            `as a placeholder (and be omitted from G-code) on machines that don't ` +
-            `have the font installed.`,
+              `Text using it will NOT be saved into the .rcam file, so it may render ` +
+              `as a placeholder (and be omitted from G-code) on machines that don't ` +
+              `have the font installed.`,
           );
         }
       } catch (e) {
@@ -120,7 +120,7 @@ export function openTextDialog(
   body.appendChild(loadRow);
 
   // Size
-  const sizeInp = addField(body, "Height (mm)", inp => {
+  const sizeInp = addField(body, "Height (mm)", (inp) => {
     inp.type = "number";
     inp.className = "dim";
     inp.value = (initial.sizeMM ?? 10).toString();
@@ -130,10 +130,10 @@ export function openTextDialog(
   });
 
   // Angle
-  const angleInp = addField(body, "Angle (°)", inp => {
+  const angleInp = addField(body, "Angle (°)", (inp) => {
     inp.type = "number";
     inp.className = "dim";
-    inp.value = ((initial.angle ?? 0) * 180 / Math.PI).toFixed(1);
+    inp.value = (((initial.angle ?? 0) * 180) / Math.PI).toFixed(1);
     inp.step = "5";
     inp.style.width = "90px";
   });
@@ -143,10 +143,16 @@ export function openTextDialog(
   ftr.className = "tp-dialog-footer";
 
   let unregister: () => void = () => {};
-  const close = () => { unregister(); backdrop.remove(); };
+  const close = () => {
+    unregister();
+    backdrop.remove();
+  };
   // User-driven dismissal (Escape, backdrop click, Cancel) also aborts via
   // onCancel; the returned `close` is the programmatic path that doesn't.
-  const cancel = () => { close(); onCancel?.(); };
+  const cancel = () => {
+    close();
+    onCancel?.();
+  };
 
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn";
@@ -158,24 +164,32 @@ export function openTextDialog(
   applyBtn.textContent = applyLabel;
   applyBtn.addEventListener("click", () => {
     const text = textInp.value.trim();
-    if (!text) { textInp.focus(); return; }
-    if (!fontSel.value) { alert("Please select or load a font first."); return; }
+    if (!text) {
+      textInp.focus();
+      return;
+    }
+    if (!fontSel.value) {
+      alert("Please select or load a font first.");
+      return;
+    }
     close();
     onApply({
       text,
       fontId: fontSel.value,
       sizeMM: Math.max(0.5, parseFloat(sizeInp.value) || 10),
-      angle: (parseFloat(angleInp.value) || 0) * Math.PI / 180,
+      angle: ((parseFloat(angleInp.value) || 0) * Math.PI) / 180,
     });
   });
 
   // Allow Enter to apply (Escape is handled globally by the modal manager,
   // which invokes the registered `cancel`).
-  dialog.addEventListener("keydown", e => {
+  dialog.addEventListener("keydown", (e) => {
     if (e.key === "Enter") applyBtn.click();
   });
 
-  backdrop.addEventListener("click", e => { if (e.target === backdrop) cancel(); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) cancel();
+  });
 
   ftr.appendChild(cancelBtn);
   ftr.appendChild(applyBtn);
@@ -188,7 +202,11 @@ export function openTextDialog(
   return close;
 }
 
-function addField(parent: HTMLElement, label: string, configure: (inp: HTMLInputElement) => void): HTMLInputElement {
+function addField(
+  parent: HTMLElement,
+  label: string,
+  configure: (inp: HTMLInputElement) => void,
+): HTMLInputElement {
   const row = document.createElement("div");
   row.className = "tp-field";
   const lbl = document.createElement("label");

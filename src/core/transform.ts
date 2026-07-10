@@ -1,10 +1,22 @@
-import { type Entity, LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, RasterImageEntity } from "../model/entities";
+import {
+  type Entity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+  BezierEntity,
+  RasterImageEntity,
+} from "../model/entities";
 import type { Bounds } from "../model/entities";
 import { type Vec2, dist } from "./vec2";
 
 export function selectionBounds(entities: Entity[]): Bounds | null {
   if (entities.length === 0) return null;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const e of entities) {
     const b = e.bounds();
     if (b.min.x < minX) minX = b.min.x;
@@ -15,7 +27,13 @@ export function selectionBounds(entities: Entity[]): Bounds | null {
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 
-export function applyScale(entities: Entity[], cx: number, cy: number, sx: number, sy: number): void {
+export function applyScale(
+  entities: Entity[],
+  cx: number,
+  cy: number,
+  sx: number,
+  sy: number,
+): void {
   const scalePt = (p: Vec2) => {
     p.x = cx + (p.x - cx) * sx;
     p.y = cy + (p.y - cy) * sy;
@@ -24,20 +42,28 @@ export function applyScale(entities: Entity[], cx: number, cy: number, sx: numbe
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e instanceof LineEntity) {
-      scalePt(e.a); scalePt(e.b);
+      scalePt(e.a);
+      scalePt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) scalePt(p);
     } else if (e instanceof BezierEntity) {
-      scalePt(e.p0); scalePt(e.p1); scalePt(e.p2); scalePt(e.p3);
+      scalePt(e.p0);
+      scalePt(e.p1);
+      scalePt(e.p2);
+      scalePt(e.p3);
     } else if (e instanceof CircleEntity) {
       if (Math.abs(sx - sy) > 1e-6) {
-        console.warn("[transform] Non-uniform scale applied to CircleEntity — will result in distortion (ellipse not supported)");
+        console.warn(
+          "[transform] Non-uniform scale applied to CircleEntity — will result in distortion (ellipse not supported)",
+        );
       }
       scalePt(e.center);
       e.radius *= Math.abs(sx);
     } else if (e instanceof ArcEntity) {
       if (Math.abs(sx - sy) > 1e-6) {
-        console.warn("[transform] Non-uniform scale applied to ArcEntity — will result in distortion (ellipse not supported)");
+        console.warn(
+          "[transform] Non-uniform scale applied to ArcEntity — will result in distortion (ellipse not supported)",
+        );
       }
       scalePt(e.center);
       e.radius *= Math.abs(sx);
@@ -45,9 +71,12 @@ export function applyScale(entities: Entity[], cx: number, cy: number, sx: numbe
       // We assume sx, sy are positive for normal scale ops.
       // Flips should be done via applyFlipH / applyFlipV explicitly.
     } else if (e instanceof RectEntity) {
-      scalePt(e.p0); scalePt(e.p1);
-      const minX = Math.min(e.p0.x, e.p1.x), maxX = Math.max(e.p0.x, e.p1.x);
-      const minY = Math.min(e.p0.y, e.p1.y), maxY = Math.max(e.p0.y, e.p1.y);
+      scalePt(e.p0);
+      scalePt(e.p1);
+      const minX = Math.min(e.p0.x, e.p1.x),
+        maxX = Math.max(e.p0.x, e.p1.x);
+      const minY = Math.min(e.p0.y, e.p1.y),
+        maxY = Math.max(e.p0.y, e.p1.y);
       e.p0 = { x: minX, y: minY };
       e.p1 = { x: maxX, y: maxY };
     } else if (e instanceof RasterImageEntity) {
@@ -58,22 +87,34 @@ export function applyScale(entities: Entity[], cx: number, cy: number, sx: numbe
   }
 }
 
-export function applyRotate(entities: Entity[], cx: number, cy: number, angle: number, onReplace?: (oldE: Entity, newE: Entity) => void): void {
-  const cos = Math.cos(angle), sin = Math.sin(angle);
+export function applyRotate(
+  entities: Entity[],
+  cx: number,
+  cy: number,
+  angle: number,
+  onReplace?: (oldE: Entity, newE: Entity) => void,
+): void {
+  const cos = Math.cos(angle),
+    sin = Math.sin(angle);
   const rotPt = (p: Vec2) => {
-    const dx = p.x - cx, dy = p.y - cy;
+    const dx = p.x - cx,
+      dy = p.y - cy;
     p.x = cx + dx * cos - dy * sin;
     p.y = cy + dx * sin + dy * cos;
   };
-  
+
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e instanceof LineEntity) {
-      rotPt(e.a); rotPt(e.b);
+      rotPt(e.a);
+      rotPt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) rotPt(p);
     } else if (e instanceof BezierEntity) {
-      rotPt(e.p0); rotPt(e.p1); rotPt(e.p2); rotPt(e.p3);
+      rotPt(e.p0);
+      rotPt(e.p1);
+      rotPt(e.p2);
+      rotPt(e.p3);
     } else if (e instanceof CircleEntity) {
       rotPt(e.center);
     } else if (e instanceof RasterImageEntity) {
@@ -89,9 +130,12 @@ export function applyRotate(entities: Entity[], cx: number, cy: number, angle: n
     } else if (e instanceof RectEntity) {
       const rem = Math.abs(angle % (Math.PI / 2));
       if (rem < 1e-6 || Math.abs(rem - Math.PI / 2) < 1e-6) {
-        rotPt(e.p0); rotPt(e.p1);
-        const minX = Math.min(e.p0.x, e.p1.x), maxX = Math.max(e.p0.x, e.p1.x);
-        const minY = Math.min(e.p0.y, e.p1.y), maxY = Math.max(e.p0.y, e.p1.y);
+        rotPt(e.p0);
+        rotPt(e.p1);
+        const minX = Math.min(e.p0.x, e.p1.x),
+          maxX = Math.max(e.p0.x, e.p1.x);
+        const minY = Math.min(e.p0.y, e.p1.y),
+          maxY = Math.max(e.p0.y, e.p1.y);
         e.p0 = { x: minX, y: minY };
         e.p1 = { x: maxX, y: maxY };
       } else {
@@ -117,15 +161,18 @@ function normalizeAngle(a: number): number {
 /** Returns the 4 corners (CCW-sorted) if `sel` is exactly 4 connected lines forming a closed quad; otherwise null. */
 export function getRectanglePolygon(sel: Entity[]): Vec2[] | null {
   if (sel.length !== 4) return null;
-  const lines = sel.filter(e => e.type === "line") as LineEntity[];
+  const lines = sel.filter((e) => e.type === "line") as LineEntity[];
   if (lines.length !== 4) return null;
 
   const pts: Vec2[] = [];
-  for (const l of lines) { pts.push(l.a); pts.push(l.b); }
+  for (const l of lines) {
+    pts.push(l.a);
+    pts.push(l.b);
+  }
 
   const unique: Vec2[] = [];
   for (const p of pts) {
-    if (!unique.find(u => dist(u, p) < 1e-4)) unique.push(p);
+    if (!unique.find((u) => dist(u, p) < 1e-4)) unique.push(p);
   }
   if (unique.length !== 4) return null;
 
@@ -136,16 +183,22 @@ export function getRectanglePolygon(sel: Entity[]): Vec2[] | null {
 }
 
 export function applyFlipH(entities: Entity[], cx: number): void {
-  const flipPt = (p: Vec2) => { p.x = cx - (p.x - cx); };
+  const flipPt = (p: Vec2) => {
+    p.x = cx - (p.x - cx);
+  };
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e instanceof LineEntity) {
-      flipPt(e.a); flipPt(e.b);
+      flipPt(e.a);
+      flipPt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) flipPt(p);
       e.points.reverse(); // Maintain winding order
     } else if (e instanceof BezierEntity) {
-      flipPt(e.p0); flipPt(e.p1); flipPt(e.p2); flipPt(e.p3);
+      flipPt(e.p0);
+      flipPt(e.p1);
+      flipPt(e.p2);
+      flipPt(e.p3);
     } else if (e instanceof CircleEntity) {
       flipPt(e.center);
     } else if (e instanceof ArcEntity) {
@@ -155,9 +208,12 @@ export function applyFlipH(entities: Entity[], cx: number): void {
       e.startAngle = normalizeAngle(start);
       e.endAngle = normalizeAngle(end);
     } else if (e instanceof RectEntity) {
-      flipPt(e.p0); flipPt(e.p1);
-      const minX = Math.min(e.p0.x, e.p1.x), maxX = Math.max(e.p0.x, e.p1.x);
-      e.p0.x = minX; e.p1.x = maxX;
+      flipPt(e.p0);
+      flipPt(e.p1);
+      const minX = Math.min(e.p0.x, e.p1.x),
+        maxX = Math.max(e.p0.x, e.p1.x);
+      e.p0.x = minX;
+      e.p1.x = maxX;
     } else if (e instanceof RasterImageEntity) {
       // Mirror the image content (flipX) and reflect its centre about cx. The
       // 2·offX term reflects the footprint's centre, so a lone image flips in
@@ -170,16 +226,22 @@ export function applyFlipH(entities: Entity[], cx: number): void {
 }
 
 export function applyFlipV(entities: Entity[], cy: number): void {
-  const flipPt = (p: Vec2) => { p.y = cy - (p.y - cy); };
+  const flipPt = (p: Vec2) => {
+    p.y = cy - (p.y - cy);
+  };
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
     if (e instanceof LineEntity) {
-      flipPt(e.a); flipPt(e.b);
+      flipPt(e.a);
+      flipPt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) flipPt(p);
       e.points.reverse(); // Maintain winding order
     } else if (e instanceof BezierEntity) {
-      flipPt(e.p0); flipPt(e.p1); flipPt(e.p2); flipPt(e.p3);
+      flipPt(e.p0);
+      flipPt(e.p1);
+      flipPt(e.p2);
+      flipPt(e.p3);
     } else if (e instanceof CircleEntity) {
       flipPt(e.center);
     } else if (e instanceof ArcEntity) {
@@ -189,9 +251,12 @@ export function applyFlipV(entities: Entity[], cy: number): void {
       e.startAngle = normalizeAngle(start);
       e.endAngle = normalizeAngle(end);
     } else if (e instanceof RectEntity) {
-      flipPt(e.p0); flipPt(e.p1);
-      const minY = Math.min(e.p0.y, e.p1.y), maxY = Math.max(e.p0.y, e.p1.y);
-      e.p0.y = minY; e.p1.y = maxY;
+      flipPt(e.p0);
+      flipPt(e.p1);
+      const minY = Math.min(e.p0.y, e.p1.y),
+        maxY = Math.max(e.p0.y, e.p1.y);
+      e.p0.y = minY;
+      e.p1.y = maxY;
     } else if (e instanceof RasterImageEntity) {
       const offY = (e.widthMM / 2) * Math.sin(e.angle) + (e.heightMM / 2) * Math.cos(e.angle);
       e.position.y = 2 * cy - e.position.y - 2 * offY;

@@ -34,7 +34,9 @@ const MAX_SWEEP = (150 * Math.PI) / 180;
 function circleFrom3(a: Vec2, b: Vec2, c: Vec2): { cx: number; cy: number; r: number } | null {
   const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
   if (Math.abs(d) < 1e-9) return null;
-  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const a2 = a.x * a.x + a.y * a.y,
+    b2 = b.x * b.x + b.y * b.y,
+    c2 = c.x * c.x + c.y * c.y;
   const cx = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
   const cy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
   return { cx, cy, r: Math.hypot(a.x - cx, a.y - cy) };
@@ -92,7 +94,10 @@ export function fitArcs(path: Vec2[], opts: ArcFitOpts = {}): FitMove[] {
       if (!c || c.r > maxR) break;
       let ok = true;
       for (let k = i; k <= j; k++) {
-        if (Math.abs(Math.hypot(path[k].x - c.cx, path[k].y - c.cy) - c.r) > tol) { ok = false; break; }
+        if (Math.abs(Math.hypot(path[k].x - c.cx, path[k].y - c.cy) - c.r) > tol) {
+          ok = false;
+          break;
+        }
       }
       // Also require segment MIDPOINTS to lie on the arc. Vertices alone aren't
       // enough: a square's corners all sit on their circumcircle, but the edges
@@ -100,8 +105,12 @@ export function fitArcs(path: Vec2[], opts: ArcFitOpts = {}): FitMove[] {
       // straight-edged profiles as lines.
       if (ok) {
         for (let k = i; k < j; k++) {
-          const mx = (path[k].x + path[k + 1].x) / 2, my = (path[k].y + path[k + 1].y) / 2;
-          if (Math.abs(Math.hypot(mx - c.cx, my - c.cy) - c.r) > tol) { ok = false; break; }
+          const mx = (path[k].x + path[k + 1].x) / 2,
+            my = (path[k].y + path[k + 1].y) / 2;
+          if (Math.abs(Math.hypot(mx - c.cx, my - c.cy) - c.r) > tol) {
+            ok = false;
+            break;
+          }
         }
       }
       if (!ok) break;

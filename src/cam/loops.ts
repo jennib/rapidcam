@@ -26,7 +26,10 @@ const EPS = 1e-4;
  *   chains  — arrays that form closed loops (≥3 segments, endpoints meet)
  *   singles — remaining open-path segments not part of any closed loop
  */
-export function groupLinesIntoClosedChains(lines: LineEntity[]): { chains: LineEntity[][], singles: LineEntity[] } {
+export function groupLinesIntoClosedChains(lines: LineEntity[]): {
+  chains: LineEntity[][];
+  singles: LineEntity[];
+} {
   const unused = new Set(lines);
   const chains: LineEntity[][] = [];
   const singles: LineEntity[] = [];
@@ -47,15 +50,39 @@ export function groupLinesIntoClosedChains(lines: LineEntity[]): { chains: LineE
         const da_b = Math.hypot(frontA.x - seg.b.x, frontA.y - seg.b.y);
         const db_a = Math.hypot(frontB.x - seg.a.x, frontB.y - seg.a.y);
         const db_b = Math.hypot(frontB.x - seg.b.x, frontB.y - seg.b.y);
-        if (db_a < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
-        if (db_b < EPS) { component.push(seg);    unused.delete(seg); frontB = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
-        if (da_a < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.b.x, y: seg.b.y }; growing = true; break; }
-        if (da_b < EPS) { component.unshift(seg); unused.delete(seg); frontA = { x: seg.a.x, y: seg.a.y }; growing = true; break; }
+        if (db_a < EPS) {
+          component.push(seg);
+          unused.delete(seg);
+          frontB = { x: seg.b.x, y: seg.b.y };
+          growing = true;
+          break;
+        }
+        if (db_b < EPS) {
+          component.push(seg);
+          unused.delete(seg);
+          frontB = { x: seg.a.x, y: seg.a.y };
+          growing = true;
+          break;
+        }
+        if (da_a < EPS) {
+          component.unshift(seg);
+          unused.delete(seg);
+          frontA = { x: seg.b.x, y: seg.b.y };
+          growing = true;
+          break;
+        }
+        if (da_b < EPS) {
+          component.unshift(seg);
+          unused.delete(seg);
+          frontA = { x: seg.a.x, y: seg.a.y };
+          growing = true;
+          break;
+        }
       }
     }
 
-    const closed = component.length >= 3 &&
-      Math.hypot(frontA.x - frontB.x, frontA.y - frontB.y) < EPS;
+    const closed =
+      component.length >= 3 && Math.hypot(frontA.x - frontB.x, frontA.y - frontB.y) < EPS;
 
     if (closed) chains.push(component);
     else singles.push(...component);
@@ -68,8 +95,9 @@ export function groupLinesIntoClosedChains(lines: LineEntity[]): { chains: LineE
 export function chainToPolygon(chain: LineEntity[]): Vec2[] {
   const near = (p: Vec2, q: Vec2) => Math.hypot(p.x - q.x, p.y - q.y) < EPS;
   // Start at the endpoint of seg 0 that does NOT touch seg 1, then walk forward.
-  const s0 = chain[0], s1 = chain[1];
-  let cur = (near(s0.b, s1.a) || near(s0.b, s1.b)) ? { ...s0.a } : { ...s0.b };
+  const s0 = chain[0],
+    s1 = chain[1];
+  let cur = near(s0.b, s1.a) || near(s0.b, s1.b) ? { ...s0.a } : { ...s0.b };
   const poly: Vec2[] = [];
   for (const seg of chain) {
     poly.push(cur);
@@ -87,7 +115,10 @@ export interface ChainedPolygon {
  * Chain loose line segments into as many closed polygons as they form.
  * `leftover` holds segments that do not belong to any closed loop.
  */
-export function chainLinesIntoPolygons(lines: LineEntity[]): { polygons: ChainedPolygon[]; leftover: LineEntity[] } {
+export function chainLinesIntoPolygons(lines: LineEntity[]): {
+  polygons: ChainedPolygon[];
+  leftover: LineEntity[];
+} {
   const { chains, singles } = groupLinesIntoClosedChains(lines);
   return {
     polygons: chains.map((c) => ({ verts: chainToPolygon(c), segs: c })),
@@ -99,9 +130,9 @@ export function chainLinesIntoPolygons(lines: LineEntity[]): { polygons: Chained
 export function pointInPolygon(p: Vec2, poly: Vec2[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i], b = poly[j];
-    if ((a.y > p.y) !== (b.y > p.y) &&
-        p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x)
+    const a = poly[i],
+      b = poly[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x)
       inside = !inside;
   }
   return inside;
@@ -116,25 +147,29 @@ export interface RegionLoop {
 /** An open curve (line/arc/bezier/open-polyline) flattened for loop chaining. */
 interface OpenSeg {
   id: string;
-  a: Vec2;          // first endpoint
-  b: Vec2;          // last endpoint
-  pts: Vec2[];      // densified vertices a→b inclusive (≥2)
+  a: Vec2; // first endpoint
+  b: Vec2; // last endpoint
+  pts: Vec2[]; // densified vertices a→b inclusive (≥2)
 }
 
 /** Tessellate an arc (CCW from startAngle to endAngle) into polyline points. */
 function arcPoints(arc: ArcEntity): Vec2[] {
-  let span = ((arc.endAngle - arc.startAngle) % TAU + TAU) % TAU;
+  let span = (((arc.endAngle - arc.startAngle) % TAU) + TAU) % TAU;
   if (span < 1e-9) span = TAU; // full circle
   const steps = Math.max(2, Math.ceil(span / (Math.PI / 45))); // ~4° chords
   return Array.from({ length: steps + 1 }, (_, k) => {
     const a = arc.startAngle + (span * k) / steps;
-    return { x: arc.center.x + arc.radius * Math.cos(a), y: arc.center.y + arc.radius * Math.sin(a) };
+    return {
+      x: arc.center.x + arc.radius * Math.cos(a),
+      y: arc.center.y + arc.radius * Math.sin(a),
+    };
   });
 }
 
 /** An open curve as a chainable segment, or null for non-open-curve entities. */
 function openSegOf(e: Entity): OpenSeg | null {
-  if (e instanceof LineEntity) return { id: e.id, a: { ...e.a }, b: { ...e.b }, pts: [{ ...e.a }, { ...e.b }] };
+  if (e instanceof LineEntity)
+    return { id: e.id, a: { ...e.a }, b: { ...e.b }, pts: [{ ...e.a }, { ...e.b }] };
   if (e instanceof ArcEntity) {
     const pts = arcPoints(e);
     return { id: e.id, a: pts[0], b: pts[pts.length - 1], pts };
@@ -159,15 +194,40 @@ function groupSegsIntoClosedChains(segs: OpenSeg[]): OpenSeg[][] {
     const start = unused.values().next().value as OpenSeg;
     unused.delete(start);
     const comp: OpenSeg[] = [start];
-    let frontA = start.a, frontB = start.b;
+    let frontA = start.a,
+      frontB = start.b;
     let growing = true;
     while (growing) {
       growing = false;
       for (const s of unused) {
-        if (near(frontB, s.a)) { comp.push(s);    unused.delete(s); frontB = s.b; growing = true; break; }
-        if (near(frontB, s.b)) { comp.push(s);    unused.delete(s); frontB = s.a; growing = true; break; }
-        if (near(frontA, s.a)) { comp.unshift(s); unused.delete(s); frontA = s.b; growing = true; break; }
-        if (near(frontA, s.b)) { comp.unshift(s); unused.delete(s); frontA = s.a; growing = true; break; }
+        if (near(frontB, s.a)) {
+          comp.push(s);
+          unused.delete(s);
+          frontB = s.b;
+          growing = true;
+          break;
+        }
+        if (near(frontB, s.b)) {
+          comp.push(s);
+          unused.delete(s);
+          frontB = s.a;
+          growing = true;
+          break;
+        }
+        if (near(frontA, s.a)) {
+          comp.unshift(s);
+          unused.delete(s);
+          frontA = s.b;
+          growing = true;
+          break;
+        }
+        if (near(frontA, s.b)) {
+          comp.unshift(s);
+          unused.delete(s);
+          frontA = s.a;
+          growing = true;
+          break;
+        }
       }
     }
     if (comp.length >= 2 && near(frontA, frontB)) chains.push(comp);
@@ -182,8 +242,9 @@ function chainSegsToPolygon(chain: OpenSeg[]): Vec2[] {
   let cur: Vec2;
   if (chain.length === 1) cur = chain[0].a;
   else {
-    const s0 = chain[0], s1 = chain[1];
-    cur = (near(s0.b, s1.a) || near(s0.b, s1.b)) ? s0.a : s0.b;
+    const s0 = chain[0],
+      s1 = chain[1];
+    cur = near(s0.b, s1.a) || near(s0.b, s1.b) ? s0.a : s0.b;
   }
   const poly: Vec2[] = [];
   for (const seg of chain) {
@@ -233,4 +294,3 @@ export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
   }
   return loops;
 }
-

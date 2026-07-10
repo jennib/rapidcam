@@ -3,8 +3,14 @@ import { exportDxf } from "../src/io/dxfExport";
 import { importDxf } from "../src/io/dxfImport";
 import { CADDocument } from "../src/model/document";
 import {
-  LineEntity, CircleEntity, ArcEntity, RectEntity, PolylineEntity,
-  PointEntity, BezierEntity, TextEntity,
+  LineEntity,
+  CircleEntity,
+  ArcEntity,
+  RectEntity,
+  PolylineEntity,
+  PointEntity,
+  BezierEntity,
+  TextEntity,
 } from "../src/model/entities";
 
 const doc = () => new CADDocument({ width: 200, height: 150 });
@@ -61,14 +67,35 @@ test("rect exports as a closed LWPOLYLINE with its four corners", () => {
   expect(pl).toBeInstanceOf(PolylineEntity);
   expect(pl.closed).toBe(true);
   expect(pl.points).toEqual([
-    { x: 10, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 50 }, { x: 10, y: 50 },
+    { x: 10, y: 20 },
+    { x: 40, y: 20 },
+    { x: 40, y: 50 },
+    { x: 10, y: 50 },
   ]);
 });
 
 test("open and closed polylines keep their shape and closed flag", () => {
   const d = doc();
-  d.add(new PolylineEntity([{ x: 0, y: 0 }, { x: 5, y: 5 }, { x: 10, y: 0 }], false));
-  d.add(new PolylineEntity([{ x: 20, y: 0 }, { x: 30, y: 0 }, { x: 25, y: 8 }], true));
+  d.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 5, y: 5 },
+        { x: 10, y: 0 },
+      ],
+      false,
+    ),
+  );
+  d.add(
+    new PolylineEntity(
+      [
+        { x: 20, y: 0 },
+        { x: 30, y: 0 },
+        { x: 25, y: 8 },
+      ],
+      true,
+    ),
+  );
   const back = importDxf(exportDxf(d).dxf);
   const pls = back.entities.filter((e) => e instanceof PolylineEntity) as PolylineEntity[];
   // Open 3-point polyline stays a polyline; closed one stays closed.
@@ -81,7 +108,10 @@ test("open and closed polylines keep their shape and closed flag", () => {
 
 test("bezier exports as a SPLINE that re-imports onto the exact curve", () => {
   const d = doc();
-  const p0 = { x: 0, y: 0 }, p1 = { x: 10, y: 20 }, p2 = { x: 30, y: 20 }, p3 = { x: 40, y: 0 };
+  const p0 = { x: 0, y: 0 },
+    p1 = { x: 10, y: 20 },
+    p2 = { x: 30, y: 20 },
+    p3 = { x: 40, y: 0 };
   d.add(new BezierEntity(p0, p1, p2, p3));
   const { dxf } = exportDxf(d);
   expect(dxf).toContain("SPLINE");

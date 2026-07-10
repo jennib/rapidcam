@@ -5,10 +5,21 @@ import type { CAMOperation } from "../src/cam/types";
 // Minimal op factory — depthPasses only reads `depth` and `stepdown`.
 function op(depth: number, stepdown: number): CAMOperation {
   return {
-    id: "t", name: "t", type: "profile", entityIds: [],
-    side: "outside", toolType: "end-mill", toolNumber: 1, diameter: 3,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5,
-    depth, stepdown, stepover: 0.4,
+    id: "t",
+    name: "t",
+    type: "profile",
+    entityIds: [],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 3,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth,
+    stepdown,
+    stepover: 0.4,
   };
 }
 

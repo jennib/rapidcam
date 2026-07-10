@@ -7,15 +7,32 @@ import type { CAMOperation } from "../src/cam/types";
 import type { Vec2 } from "../src/core/vec2";
 
 const square = (s: number): Vec2[] => [
-  { x: 10, y: 10 }, { x: 10 + s, y: 10 }, { x: 10 + s, y: 10 + s }, { x: 10, y: 10 + s },
+  { x: 10, y: 10 },
+  { x: 10 + s, y: 10 },
+  { x: 10 + s, y: 10 + s },
+  { x: 10, y: 10 + s },
 ];
 
 function vcarveOp(entityIds: string[], over: Partial<CAMOperation> = {}): CAMOperation {
   return {
-    id: "v1", name: "carve", type: "vcarve", entityIds, side: "outside",
-    toolType: "v-bit", toolNumber: 1, diameter: 12, vAngle: 90,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000,
-    safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4, vStep: 1, ...over,
+    id: "v1",
+    name: "carve",
+    type: "vcarve",
+    entityIds,
+    side: "outside",
+    toolType: "v-bit",
+    toolNumber: 1,
+    diameter: 12,
+    vAngle: 90,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    vStep: 1,
+    ...over,
   };
 }
 
@@ -46,9 +63,9 @@ describe("v-carve G-code", () => {
     const poly = doc.add(new PolylineEntity(square(20), true));
     const out = generateGCode([vcarveOp([poly.id])], doc); // no vHopClearance
 
-    const plunges = [...out.matchAll(/G1 Z-\d/g)].length;     // one per carved contour
+    const plunges = [...out.matchAll(/G1 Z-\d/g)].length; // one per carved contour
     const lowHops = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // would-be low clearance
-    const safes   = [...out.matchAll(/^G0 Z5$/gm)].length;    // full safe-Z (safeZ=5)
+    const safes = [...out.matchAll(/^G0 Z5$/gm)].length; // full safe-Z (safeZ=5)
 
     expect(plunges).toBeGreaterThan(3);
     // Safe default: no low hops, and a safe-Z retract before every contour.
@@ -62,8 +79,8 @@ describe("v-carve G-code", () => {
     const out = generateGCode([vcarveOp([poly.id], { vHopClearance: 0.5 })], doc);
 
     const plunges = [...out.matchAll(/G1 Z-\d/g)].length;
-    const hops    = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // the opted-in hop height
-    const safes   = [...out.matchAll(/^G0 Z5$/gm)].length;
+    const hops = [...out.matchAll(/^G0 Z0\.5$/gm)].length; // the opted-in hop height
+    const safes = [...out.matchAll(/^G0 Z5$/gm)].length;
 
     expect(plunges).toBeGreaterThan(3);
     // All but the first contour is reached by a cheap low hop…
@@ -84,8 +101,12 @@ describe("v-carve G-code", () => {
 describe("groupContoursIntoRegions", () => {
   it("nests a counter as a hole", () => {
     const outer = square(20);
-    const hole: Vec2[] = [ // inner ring → becomes a hole
-      { x: 16, y: 16 }, { x: 24, y: 16 }, { x: 24, y: 24 }, { x: 16, y: 24 },
+    const hole: Vec2[] = [
+      // inner ring → becomes a hole
+      { x: 16, y: 16 },
+      { x: 24, y: 16 },
+      { x: 24, y: 24 },
+      { x: 16, y: 24 },
     ];
     const regions = groupContoursIntoRegions([outer, hole]);
     expect(regions.length).toBe(1);
@@ -94,7 +115,12 @@ describe("groupContoursIntoRegions", () => {
 
   it("treats two disjoint shapes as two solid regions", () => {
     const a = square(10);
-    const b: Vec2[] = [ { x: 40, y: 40 }, { x: 50, y: 40 }, { x: 50, y: 50 }, { x: 40, y: 50 } ];
+    const b: Vec2[] = [
+      { x: 40, y: 40 },
+      { x: 50, y: 40 },
+      { x: 50, y: 50 },
+      { x: 40, y: 50 },
+    ];
     const regions = groupContoursIntoRegions([a, b]);
     expect(regions.length).toBe(2);
     expect(regions.every((r) => r.holes.length === 0)).toBe(true);

@@ -44,14 +44,15 @@ export class DimEditor {
     input.className = "dim-edit";
 
     // Show expression string when re-editing a formula-driven dimension
-    input.value = (dim.type !== "angle" && dim.expr)
-      ? dim.expr
-      : dim.type === "angle"
-        ? formatAngle(dim.value)
-        : formatLength(dim.value, displayUnit);
+    input.value =
+      dim.type !== "angle" && dim.expr
+        ? dim.expr
+        : dim.type === "angle"
+          ? formatAngle(dim.value)
+          : formatLength(dim.value, displayUnit);
 
     input.style.left = `${screenPos.x - 36}px`;
-    input.style.top  = `${screenPos.y - 11}px`;
+    input.style.top = `${screenPos.y - 11}px`;
 
     // Variable name autocomplete via native <datalist>
     if (vars.size > 0) {
@@ -75,7 +76,10 @@ export class DimEditor {
         const v = parseAngle(raw);
         if (v !== null && v > 0) {
           const ok = onCommit(v);
-          if (!ok) { this.flash(input); return; }
+          if (!ok) {
+            this.flash(input);
+            return;
+          }
         }
         this.close();
         return;
@@ -86,7 +90,10 @@ export class DimEditor {
       const lenVal = parseLength(raw, displayUnit);
       if (lenVal !== null && lenVal > 0) {
         const ok = onCommit(lenVal, undefined);
-        if (!ok) { this.flash(input); return; }
+        if (!ok) {
+          this.flash(input);
+          return;
+        }
         this.close();
         return;
       }
@@ -96,7 +103,10 @@ export class DimEditor {
       const exprVal = evalExpr(raw, vars);
       if (exprVal !== null && exprVal > 0) {
         const ok = onCommit(exprVal, raw);
-        if (!ok) { this.flash(input); return; }
+        if (!ok) {
+          this.flash(input);
+          return;
+        }
         this.close();
         return;
       }
@@ -131,6 +141,8 @@ export class DimEditor {
 
   private flash(input: HTMLInputElement): void {
     input.style.color = "#e05555";
-    setTimeout(() => { if (this.el === input) input.style.color = ""; }, 600);
+    setTimeout(() => {
+      if (this.el === input) input.style.color = "";
+    }, 600);
   }
 }

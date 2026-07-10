@@ -1,10 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const runtimeTests = [
-  "test/dimensions.test.ts",
-  "test/solver.test.ts",
-  "test/gcode.test.ts",
-];
+const runtimeTests = ["test/dimensions.test.ts", "test/solver.test.ts", "test/gcode.test.ts"];
 
 let failed = false;
 

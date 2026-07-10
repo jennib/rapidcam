@@ -10,15 +10,32 @@ import type { CAMOperation } from "../src/cam/types";
 // strictly more material with dog-bone on — i.e. the relief is visible.
 
 function squarePocket(doc: CADDocument): string[] {
-  const p = [{ x: 20, y: 20 }, { x: 70, y: 20 }, { x: 70, y: 70 }, { x: 20, y: 70 }];
+  const p = [
+    { x: 20, y: 20 },
+    { x: 70, y: 20 },
+    { x: 70, y: 70 },
+    { x: 20, y: 70 },
+  ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4])).id);
 }
 function op(kind: "pocket", ids: string[], cornerStyle?: "none" | "dogbone"): CAMOperation {
   return {
-    id: "op", name: "p", type: kind, side: "outside", entityIds: ids,
-    toolType: "end-mill", toolNumber: 1, diameter: 6,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 10000,
-    safeZ: 5, depth: -3, stepdown: 3, stepover: 0.4, cornerStyle,
+    id: "op",
+    name: "p",
+    type: kind,
+    side: "outside",
+    entityIds: ids,
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 10000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 3,
+    stepover: 0.4,
+    cornerStyle,
   };
 }
 
@@ -34,8 +51,8 @@ const carvedCells = (_ids: string[], cornerStyle?: "none" | "dogbone"): number =
 test("the 3-D preview carves the dog-bone relief (more material removed than a plain pocket)", () => {
   const plain = carvedCells([], "none");
   const dog = carvedCells([], "dogbone");
-  expect(plain).toBeGreaterThan(0);        // sanity: the pocket is carved at all
-  expect(dog).toBeGreaterThan(plain);      // dog-bone removes the extra corner material
+  expect(plain).toBeGreaterThan(0); // sanity: the pocket is carved at all
+  expect(dog).toBeGreaterThan(plain); // dog-bone removes the extra corner material
 });
 
 test("an inside profile's dog-bone also shows in the preview", () => {

@@ -6,7 +6,13 @@ import { evaluateAll, makeVariable } from "../src/model/variables";
 import { serializeDoc, applyFile } from "../src/io/fileio";
 import { registerEmbeddedImage, type EmbeddedImage } from "../src/core/imageManager";
 
-const emb: EmbeddedImage = { id: "img-p1", name: "x", width: 2, height: 2, data: btoa(String.fromCharCode(0, 255, 255, 0)) };
+const emb: EmbeddedImage = {
+  id: "img-p1",
+  name: "x",
+  width: 2,
+  height: 2,
+  data: btoa(String.fromCharCode(0, 255, 255, 0)),
+};
 
 function resolve(doc: CADDocument) {
   evaluateAll(doc.variables, doc.dimensions, doc.displayUnit);
@@ -65,8 +71,13 @@ test("legacy image formula fields (widthExpr/heightExpr/angleExpr) migrate to bi
   doc.add(new RasterImageEntity("img-p1", { x: 5, y: 6 }, 40, 20, 0));
   // Hand-craft a pre-unification file: inject the retired *Expr fields.
   const file = structuredClone(serializeDoc(doc, "legacy"));
-  const ie = file.entities!.find((x) => (x as { type: string }).type === "image") as Record<string, unknown>;
-  ie.widthExpr = "plateW/2"; ie.heightExpr = "plateW/4"; ie.angleExpr = "tilt";
+  const ie = file.entities!.find((x) => (x as { type: string }).type === "image") as Record<
+    string,
+    unknown
+  >;
+  ie.widthExpr = "plateW/2";
+  ie.heightExpr = "plateW/4";
+  ie.angleExpr = "tilt";
 
   const doc2 = new CADDocument({ width: 1, height: 1 });
   applyFile(doc2, file);
@@ -75,7 +86,7 @@ test("legacy image formula fields (widthExpr/heightExpr/angleExpr) migrate to bi
   expect(b.find((x) => x.scalarKey === "h")?.expr).toBe("plateW/4");
   const ang = b.find((x) => x.scalarKey === "angle");
   expect(ang?.expr).toBe("tilt");
-  expect(ang?.scale).toBeCloseTo(Math.PI / 180, 9);   // degree formula → radian DOF
+  expect(ang?.scale).toBeCloseTo(Math.PI / 180, 9); // degree formula → radian DOF
 
   // …and the migrated bindings actually drive the image.
   doc2.variables.push(makeVariable("plateW", "100", "mm"), makeVariable("tilt", "30", "mm"));
@@ -94,7 +105,9 @@ test("aspectLocked round-trips (and legacy files default to true)", () => {
   doc.add(e);
   const doc2 = new CADDocument({ width: 1, height: 1 });
   applyFile(doc2, serializeDoc(doc, "al"));
-  expect((doc2.entities.find((x) => x.type === "image") as RasterImageEntity).aspectLocked).toBe(false);
+  expect((doc2.entities.find((x) => x.type === "image") as RasterImageEntity).aspectLocked).toBe(
+    false,
+  );
 });
 
 test("renaming a variable rewrites an image's binding formula", () => {

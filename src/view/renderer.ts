@@ -16,12 +16,23 @@ import {
 } from "../model/entities";
 import { getFont } from "../core/fontManager";
 import { getImageCanvas } from "../core/imageManager";
-import { constraintAnchors, CONSTRAINT_GLYPH, type Geo, constraintEntityIds } from "../model/constraints";
+import {
+  constraintAnchors,
+  CONSTRAINT_GLYPH,
+  type Geo,
+  constraintEntityIds,
+} from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
 import type { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
-import type { Overlay, PreviewShape, DiagnosticMarker, StitchPreview, FlipPreview } from "./overlay";
+import type {
+  Overlay,
+  PreviewShape,
+  DiagnosticMarker,
+  StitchPreview,
+  FlipPreview,
+} from "./overlay";
 import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 
@@ -220,7 +231,7 @@ export class Renderer {
     const ctx = this.ctx;
     const { ox, oy } = resolveOrigin(doc);
     const o = view.worldToScreen({ x: ox, y: oy });
-    const originSelected = doc.selectedPoints.some(p => p.entityId === ORIGIN_ENTITY_ID);
+    const originSelected = doc.selectedPoints.some((p) => p.entityId === ORIGIN_ENTITY_ID);
     const arm = 22; // screen px
 
     ctx.save();
@@ -329,9 +340,9 @@ export class Renderer {
     for (const e of doc.entities) {
       if (e.id === ORIGIN_ENTITY_ID) continue; // rendered by drawOrigin
       const b = e.bounds();
-      if (b.max.x < vb.min.x || b.min.x > vb.max.x ||
-          b.max.y < vb.min.y || b.min.y > vb.max.y) continue;
-      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      if (b.max.x < vb.min.x || b.min.x > vb.max.x || b.max.y < vb.min.y || b.min.y > vb.max.y)
+        continue;
+      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       if (!layer.visible) continue;
 
       const isHover = overlay.hover === e.id;
@@ -455,12 +466,19 @@ export class Renderer {
         if (cv) {
           ctx.save();
           const tl = cs[3]; // top-left world corner → image row 0 draws downward here
-          const iw = view.toScreenLen(ie.widthMM), ih = view.toScreenLen(ie.heightMM);
+          const iw = view.toScreenLen(ie.widthMM),
+            ih = view.toScreenLen(ie.heightMM);
           ctx.translate(tl.x, tl.y);
           ctx.rotate(-ie.angle);
           // Mirror within the WxH box so the drawn pixels match the flipped engrave.
-          if (ie.flipX) { ctx.translate(iw, 0); ctx.scale(-1, 1); }
-          if (ie.flipY) { ctx.translate(0, ih); ctx.scale(1, -1); }
+          if (ie.flipX) {
+            ctx.translate(iw, 0);
+            ctx.scale(-1, 1);
+          }
+          if (ie.flipY) {
+            ctx.translate(0, ih);
+            ctx.scale(1, -1);
+          }
           ctx.drawImage(cv, 0, 0, iw, ih);
           ctx.restore();
         }
@@ -478,7 +496,10 @@ export class Renderer {
   }
 
   private drawHandles(e: Entity, view: Viewport): void {
-    if (e.type === "bezier") { this.drawBezierHandles(e as BezierEntity, view); return; }
+    if (e.type === "bezier") {
+      this.drawBezierHandles(e as BezierEntity, view);
+      return;
+    }
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.entitySelected;
     for (const sp of e.snapPoints()) {
@@ -490,8 +511,10 @@ export class Renderer {
 
   private drawBezierHandles(e: BezierEntity, view: Viewport): void {
     const ctx = this.ctx;
-    const s0 = view.worldToScreen(e.p0), s1 = view.worldToScreen(e.p1);
-    const s2 = view.worldToScreen(e.p2), s3 = view.worldToScreen(e.p3);
+    const s0 = view.worldToScreen(e.p0),
+      s1 = view.worldToScreen(e.p1);
+    const s2 = view.worldToScreen(e.p2),
+      s3 = view.worldToScreen(e.p3);
 
     // Control arms (dashed, half-opacity)
     ctx.save();
@@ -500,8 +523,10 @@ export class Renderer {
     ctx.globalAlpha = 0.5;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y);
-    ctx.moveTo(s3.x, s3.y); ctx.lineTo(s2.x, s2.y);
+    ctx.moveTo(s0.x, s0.y);
+    ctx.lineTo(s1.x, s1.y);
+    ctx.moveTo(s3.x, s3.y);
+    ctx.lineTo(s2.x, s2.y);
     ctx.stroke();
     ctx.restore();
 
@@ -531,14 +556,14 @@ export class Renderer {
       if (id === ORIGIN_ENTITY_ID) return true;
       const e = byId.get(id);
       if (!e) return false;
-      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       return layer.visible;
     };
 
     for (const dim of doc.dimensions) {
       if (dim.hidden) continue; // headless driving dim (a property-field formula) — not drawn
-      if (dim.entities.some(id => !isVisible(id))) continue;
-      if (dim.points.some(p => !isVisible(p.entityId))) continue;
+      if (dim.entities.some((id) => !isVisible(id))) continue;
+      if (dim.points.some((p) => !isVisible(p.entityId))) continue;
 
       const layout = dimensionLayout(dim, geo, unit);
       if (!layout) continue;
@@ -561,10 +586,14 @@ export class Renderer {
         const sc = view.worldToScreen(center);
         const sr = view.toScreenLen(radius);
         ctx.beginPath();
-        ctx.arc(sc.x, sc.y, sr,
+        ctx.arc(
+          sc.x,
+          sc.y,
+          sr,
           -Math.atan2(startDir.y, startDir.x),
           -Math.atan2(endDir.y, endDir.x),
-          ccw);
+          ccw,
+        );
         ctx.stroke();
       }
       for (const ar of layout.arrows) this.drawArrowHead(ar.tip, ar.dir, view);
@@ -625,7 +654,7 @@ export class Renderer {
       if (id === ORIGIN_ENTITY_ID) return true;
       const e = byId.get(id);
       if (!e) return false;
-      const layer = doc.layers.find(l => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       return layer.visible;
     };
 
@@ -634,8 +663,8 @@ export class Renderer {
     ctx.textBaseline = "middle";
 
     for (const c of doc.constraints) {
-      if (c.entities.some(id => !isVisible(id))) continue;
-      if (c.points.some(p => !isVisible(p.entityId))) continue;
+      if (c.entities.some((id) => !isVisible(id))) continue;
+      if (c.points.some((p) => !isVisible(p.entityId))) continue;
 
       let shouldShow = c.id === doc.selectedConstraintId || overlay.hoverConstraint === c.id;
       if (!shouldShow) {
@@ -649,7 +678,10 @@ export class Renderer {
             shouldShow = true;
             break;
           }
-          if (eid === ORIGIN_ENTITY_ID && doc.selectedPoints.some(p => p.entityId === ORIGIN_ENTITY_ID)) {
+          if (
+            eid === ORIGIN_ENTITY_ID &&
+            doc.selectedPoints.some((p) => p.entityId === ORIGIN_ENTITY_ID)
+          ) {
             shouldShow = true;
             break;
           }
@@ -678,7 +710,7 @@ export class Renderer {
 
         ctx.fillStyle = isSelected ? "#ffffff" : COLORS.constraintGlyph;
         ctx.fillText(CONSTRAINT_GLYPH[c.type], bx, by + 0.5);
-        
+
         // Draw tooltip if hovered
         if (overlay.hoverConstraint === c.id) {
           ctx.save();
@@ -688,11 +720,11 @@ export class Renderer {
           const th = 14;
           const px = bx;
           const py = by - 16;
-          
+
           ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-          roundRect(ctx, px - tw/2 - 4, py - th/2, tw + 8, th, 4);
+          roundRect(ctx, px - tw / 2 - 4, py - th / 2, tw + 8, th, 4);
           ctx.fill();
-          
+
           ctx.fillStyle = "#ffffff";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
@@ -713,7 +745,7 @@ export class Renderer {
     for (const ref of doc.selectedSegments) {
       const ent = byId.get(ref.entityId);
       if (!(ent instanceof PolylineEntity)) continue;
-      const layer = doc.layers.find(l => l.id === ent.layerId) || doc.layers[0];
+      const layer = doc.layers.find((l) => l.id === ent.layerId) || doc.layers[0];
       if (!layer.visible) continue;
 
       const count = ent.segmentCount();
@@ -738,8 +770,8 @@ export class Renderer {
     for (const ref of doc.selectedPoints) {
       const ent = byId.get(ref.entityId);
       if (!ent) continue;
-      
-      const layer = doc.layers.find(l => l.id === ent.layerId) || doc.layers[0];
+
+      const layer = doc.layers.find((l) => l.id === ent.layerId) || doc.layers[0];
       if (!layer.visible && ent.id !== ORIGIN_ENTITY_ID) continue;
 
       let pos: Vec2;
@@ -797,7 +829,7 @@ export class Renderer {
 
     if (vector.length) {
       strokeBatch(vector, 4, COLORS.laserCutGlow); // soft glow
-      strokeBatch(vector, 1.25, COLORS.laserCut);  // crisp beam core
+      strokeBatch(vector, 1.25, COLORS.laserCut); // crisp beam core
     }
 
     if (raster.length) this.drawRasterShaded(view, raster);
@@ -866,8 +898,10 @@ export class Renderer {
           break;
         }
         case "bezier": {
-          const s0 = view.worldToScreen(p.p0), s1 = view.worldToScreen(p.p1);
-          const s2 = view.worldToScreen(p.p2), s3 = view.worldToScreen(p.p3);
+          const s0 = view.worldToScreen(p.p0),
+            s1 = view.worldToScreen(p.p1);
+          const s2 = view.worldToScreen(p.p2),
+            s3 = view.worldToScreen(p.p3);
           ctx.moveTo(s0.x, s0.y);
           ctx.bezierCurveTo(s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
           ctx.stroke();
@@ -931,8 +965,10 @@ export class Renderer {
     for (const t of preview.tiles) {
       const a = view.worldToScreen(t.min);
       const b = view.worldToScreen(t.max);
-      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
-      const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+      const x = Math.min(a.x, b.x),
+        y = Math.min(a.y, b.y);
+      const w = Math.abs(b.x - a.x),
+        h = Math.abs(b.y - a.y);
       ctx.fillRect(x, y, w, h);
       ctx.strokeRect(x, y, w, h);
     }
@@ -978,8 +1014,10 @@ export class Renderer {
       ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(s.x - 8, s.y); ctx.lineTo(s.x + 8, s.y);
-      ctx.moveTo(s.x, s.y - 8); ctx.lineTo(s.x, s.y + 8);
+      ctx.moveTo(s.x - 8, s.y);
+      ctx.lineTo(s.x + 8, s.y);
+      ctx.moveTo(s.x, s.y - 8);
+      ctx.lineTo(s.x, s.y + 8);
       ctx.stroke();
     }
     ctx.restore();
@@ -1008,8 +1046,10 @@ export class Renderer {
         // A little ✕ to read as "remove".
         const d = R * 0.5;
         ctx.beginPath();
-        ctx.moveTo(s.x - d, s.y - d); ctx.lineTo(s.x + d, s.y + d);
-        ctx.moveTo(s.x + d, s.y - d); ctx.lineTo(s.x - d, s.y + d);
+        ctx.moveTo(s.x - d, s.y - d);
+        ctx.lineTo(s.x + d, s.y + d);
+        ctx.moveTo(s.x + d, s.y - d);
+        ctx.lineTo(s.x - d, s.y + d);
         ctx.stroke();
       } else {
         // A center dot marks the point the gap closes onto.
@@ -1124,7 +1164,7 @@ export class Renderer {
     }
 
     // Draw rotation stem line for whichever handle has stem:true
-    const rotHandle = handles.find(h => h.stem);
+    const rotHandle = handles.find((h) => h.stem);
     if (rotHandle) {
       const topCenterX = x + w / 2;
       const topCenterY = y;
@@ -1171,13 +1211,12 @@ export class Renderer {
 
         // White rotate arrow inside
         ctx.beginPath();
-        ctx.arc(s.x, s.y, 3.5, -Math.PI/2, Math.PI, false);
+        ctx.arc(s.x, s.y, 3.5, -Math.PI / 2, Math.PI, false);
         // Arrow head at left side (pointing up)
         ctx.moveTo(s.x - 3.5 - 2, s.y + 1.5);
         ctx.lineTo(s.x - 3.5, s.y - 0.5);
         ctx.lineTo(s.x - 3.5 + 2, s.y + 1.5);
         ctx.stroke();
-
       } else if (hnd.type === "scale-arrow") {
         const r = 8;
         ctx.fillStyle = "#f59e0b"; // Amber/Orange
@@ -1190,36 +1229,38 @@ export class Renderer {
         ctx.stroke(); // White border
 
         const centerS = arrowCenterS;
-        
+
         let dx = s.x - centerS.x;
         let dy = s.y - centerS.y;
         const len = Math.hypot(dx, dy);
         if (len > 1e-4) {
-          dx /= len; dy /= len;
+          dx /= len;
+          dy /= len;
         } else {
-          dx = 0; dy = -1; // Fallback to pointing up
+          dx = 0;
+          dy = -1; // Fallback to pointing up
         }
 
         // White double-arrow inside
         ctx.beginPath();
-        
+
         const L = 3.5; // Half-length of the arrow line
         const P1 = { x: s.x + dx * L, y: s.y + dy * L }; // Outward tip
         const P2 = { x: s.x - dx * L, y: s.y - dy * L }; // Inward tip
-        
+
         // Main diagonal line
         ctx.moveTo(P2.x, P2.y);
         ctx.lineTo(P1.x, P1.y);
 
         // Outward arrowhead (tip is P1, vector is dir)
-        ctx.moveTo(P1.x - 3*dx - 3*dy, P1.y - 3*dy + 3*dx);
+        ctx.moveTo(P1.x - 3 * dx - 3 * dy, P1.y - 3 * dy + 3 * dx);
         ctx.lineTo(P1.x, P1.y);
-        ctx.lineTo(P1.x - 3*dx + 3*dy, P1.y - 3*dy - 3*dx);
+        ctx.lineTo(P1.x - 3 * dx + 3 * dy, P1.y - 3 * dy - 3 * dx);
 
         // Inward arrowhead (tip is P2, vector is -dir)
-        ctx.moveTo(P2.x + 3*dx + 3*dy, P2.y + 3*dy - 3*dx);
+        ctx.moveTo(P2.x + 3 * dx + 3 * dy, P2.y + 3 * dy - 3 * dx);
         ctx.lineTo(P2.x, P2.y);
-        ctx.lineTo(P2.x + 3*dx - 3*dy, P2.y + 3*dy + 3*dx);
+        ctx.lineTo(P2.x + 3 * dx - 3 * dy, P2.y + 3 * dy + 3 * dx);
 
         ctx.stroke();
       }

@@ -1,11 +1,7 @@
 import type { Unit } from "../core/units";
 import type { CADDocument, DocSnapshot } from "../model/document";
 import { TextEntity, RasterImageEntity } from "../model/entities";
-import {
-  collectEmbeddedFonts,
-  registerEmbeddedFont,
-  type EmbeddedFont,
-} from "../core/fontManager";
+import { collectEmbeddedFonts, registerEmbeddedFont, type EmbeddedFont } from "../core/fontManager";
 import {
   collectEmbeddedImages,
   registerEmbeddedImage,
@@ -290,16 +286,22 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
   reconcileLoadedPatterns(doc);
 }
 
-export async function openFile(): Promise<{ name: string; file: RcamFile; handle?: FileSystemFileHandle } | null> {
-  if ('showOpenFilePicker' in window) {
+export async function openFile(): Promise<{
+  name: string;
+  file: RcamFile;
+  handle?: FileSystemFileHandle;
+} | null> {
+  if ("showOpenFilePicker" in window) {
     try {
       const [handle] = await (window as any).showOpenFilePicker({
-        types: [{
-          description: 'RapidCAM Project (.rcam)',
-          accept: {
-            'application/json': ['.rcam'],
-          }
-        }]
+        types: [
+          {
+            description: "RapidCAM Project (.rcam)",
+            accept: {
+              "application/json": [".rcam"],
+            },
+          },
+        ],
       });
       const fileObj = await handle.getFile();
       const text = await fileObj.text();
@@ -308,7 +310,7 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
       pushRecent({ name, savedAt: Date.now(), data: file });
       return { name, file, handle };
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return null;
+      if ((e as Error).name === "AbortError") return null;
     }
   }
 
@@ -334,7 +336,10 @@ export async function openFile(): Promise<{ name: string; file: RcamFile; handle
 
     input.addEventListener("change", () => {
       const f = input.files?.[0];
-      if (!f) { settle(null); return; }
+      if (!f) {
+        settle(null);
+        return;
+      }
       const name = f.name.replace(/\.rcam$/i, "");
       const reader = new FileReader();
       reader.onload = () => {

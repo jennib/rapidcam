@@ -9,12 +9,19 @@ export class LinuxCNC extends PostProcessor {
   //   I/J = vector from current position (p0) to first control handle (p1)
   //   P/Q = vector from end point (p3) to second control handle (p2)
   override engraveBezier(
-    p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    p3: Vec2,
     op: CAMOperation,
-    ox: number, oy: number, zOff: number,
+    ox: number,
+    oy: number,
+    zOff: number,
   ): string[] {
-    const I = n(p1.x - p0.x), J = n(p1.y - p0.y);
-    const P = n(p2.x - p3.x), Q = n(p2.y - p3.y);
+    const I = n(p1.x - p0.x),
+      J = n(p1.y - p0.y);
+    const P = n(p2.x - p3.x),
+      Q = n(p2.y - p3.y);
     const lines: string[] = [];
     for (const z of depthPasses(op)) {
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);

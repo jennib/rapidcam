@@ -39,7 +39,10 @@ export function validateExpr(expr: string, vars: VarMap): string | null {
 
 class Parser {
   private pos = 0;
-  constructor(private readonly src: string, private readonly vars: VarMap) {}
+  constructor(
+    private readonly src: string,
+    private readonly vars: VarMap,
+  ) {}
 
   done(): boolean {
     this.skipWs();
@@ -49,7 +52,10 @@ class Parser {
   parseExpr(): number {
     let left = this.parseTerm();
     this.skipWs();
-    while (this.pos < this.src.length && (this.src[this.pos] === "+" || this.src[this.pos] === "-")) {
+    while (
+      this.pos < this.src.length &&
+      (this.src[this.pos] === "+" || this.src[this.pos] === "-")
+    ) {
       const op = this.src[this.pos++];
       const right = this.parseTerm();
       left = op === "+" ? left + right : left - right;
@@ -61,7 +67,10 @@ class Parser {
   private parseTerm(): number {
     let left = this.parsePower();
     this.skipWs();
-    while (this.pos < this.src.length && (this.src[this.pos] === "*" || this.src[this.pos] === "/")) {
+    while (
+      this.pos < this.src.length &&
+      (this.src[this.pos] === "*" || this.src[this.pos] === "/")
+    ) {
       const op = this.src[this.pos++];
       const right = this.parsePower();
       if (op === "/" && right === 0) throw new Error("Division by zero");
@@ -103,7 +112,8 @@ class Parser {
       this.pos++;
       const v = this.parseExpr();
       this.skipWs();
-      if (this.pos >= this.src.length || this.src[this.pos] !== ")") throw new Error("Missing closing parenthesis");
+      if (this.pos >= this.src.length || this.src[this.pos] !== ")")
+        throw new Error("Missing closing parenthesis");
       this.pos++;
       return v;
     }

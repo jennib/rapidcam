@@ -1,10 +1,26 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
-import { LineEntity, CircleEntity, RectEntity, PolylineEntity, BezierEntity, TextEntity, ArcEntity, RasterImageEntity } from "../model/entities";
+import {
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  BezierEntity,
+  TextEntity,
+  ArcEntity,
+  RasterImageEntity,
+} from "../model/entities";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
-import { type CAMOperation, type CoolantMode, DEFAULTS, chamferDepth, chamferSharpSequence, resolveOpTool } from "./types";
+import {
+  type CAMOperation,
+  type CoolantMode,
+  DEFAULTS,
+  chamferDepth,
+  chamferSharpSequence,
+  resolveOpTool,
+} from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addDogbones } from "./dogbone";
 
@@ -27,7 +43,12 @@ import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } fro
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
-import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRegion } from "./vcarve";
+import {
+  vcarveRegion,
+  vcarveParamsForOp,
+  groupContoursIntoRegions,
+  type CarveRegion,
+} from "./vcarve";
 import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
@@ -36,8 +57,10 @@ import { generateLaserGCode } from "./lasergcode";
 
 export function getPostProcessor(name: string): PostProcessor {
   switch (name) {
-    case "grbl":     return new Grbl();
-    default:         return new LinuxCNC();
+    case "grbl":
+      return new Grbl();
+    default:
+      return new LinuxCNC();
   }
 }
 
@@ -45,21 +68,29 @@ export function getPostProcessor(name: string): PostProcessor {
 
 /** Compute normalised entry/exit tangent and optional lead geometry for a closed path. */
 function leadInGeo(path: Vec2[], leadR: number, side: "outside" | "inside") {
-  const t1 = path[1], t0 = path[0], tn = path[path.length - 1];
-  const dx  = t1.x - t0.x, dy  = t1.y - t0.y;
+  const t1 = path[1],
+    t0 = path[0],
+    tn = path[path.length - 1];
+  const dx = t1.x - t0.x,
+    dy = t1.y - t0.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 1e-9) return null;
-  const tx = dx / len, ty = dy / len;
+  const tx = dx / len,
+    ty = dy / len;
   // Left normal for outside (CW), right normal for inside (CCW).
-  const sg  = side === "outside" ? 1 : -1;
-  const nx  = -ty * sg, ny = tx * sg;
+  const sg = side === "outside" ? 1 : -1;
+  const nx = -ty * sg,
+    ny = tx * sg;
   // Entry arc start point
   const arcStart: Vec2 = { x: t0.x + nx * leadR - tx * leadR, y: t0.y + ny * leadR - ty * leadR };
   // Exit tangent (direction arriving at path[0] from the last move)
-  const ex = t0.x - tn.x, ey = t0.y - tn.y;
+  const ex = t0.x - tn.x,
+    ey = t0.y - tn.y;
   const el = Math.sqrt(ex * ex + ey * ey);
-  const etx = el > 1e-9 ? ex / el : tx, ety = el > 1e-9 ? ey / el : ty;
-  const enx = -ety * sg, eny = etx * sg;
+  const etx = el > 1e-9 ? ex / el : tx,
+    ety = el > 1e-9 ? ey / el : ty;
+  const enx = -ety * sg,
+    eny = etx * sg;
   const arcOut: Vec2 = { x: t0.x + enx * leadR + etx * leadR, y: t0.y + eny * leadR + ety * leadR };
   const arcCmd = side === "outside" ? "G3" : "G2";
   return { tx, ty, nx, ny, arcStart, arcCmd, etx, ety, enx, eny, arcOut };
@@ -80,8 +111,12 @@ function finishAllowance(op: CAMOperation): number {
 }
 
 function profilePolygon(
-  verts: Vec2[], op: CAMOperation,
-  ox: number, oy: number, zOff: number, stockThickness: number,
+  verts: Vec2[],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
+  stockThickness: number,
 ): string[] {
   const toolR = op.diameter / 2;
   // Normalise winding to CCW so "outside" (+toolR) always expands and "inside"
@@ -92,26 +127,33 @@ function profilePolygon(
   // Roughing leaves `allowance` of stock on the wall; the finishing lap then cuts
   // at the true offset to remove it. With no allowance the finish lap coincides
   // with roughing — a spring pass.
-  const allowance   = finishAllowance(op);
-  const roughPaths  = offsetPolygon(ccw, sideSign * (toolR + allowance));
+  const allowance = finishAllowance(op);
+  const roughPaths = offsetPolygon(ccw, sideSign * (toolR + allowance));
   if (roughPaths.length === 0) return [];
   const finishPaths = op.finishPass
-    ? (allowance > 0 ? offsetPolygon(ccw, sideSign * toolR) : roughPaths)
+    ? allowance > 0
+      ? offsetPolygon(ccw, sideSign * toolR)
+      : roughPaths
     : [];
 
-  const tabs      = op.tabs;
+  const tabs = op.tabs;
   const tabsBySpacing = tabs?.strategy === "spacing" && (tabs.spacing ?? 0) > 0;
-  const hasTabs   = !!(tabs?.enabled && (tabs.count > 0 || tabsBySpacing) && tabs.width > 0 && tabs.height > 0);
+  const hasTabs = !!(
+    tabs?.enabled &&
+    (tabs.count > 0 || tabsBySpacing) &&
+    tabs.width > 0 &&
+    tabs.height > 0
+  );
   // Tabs leave `height` mm of material measured from the STOCK BOTTOM, not the cut
   // floor: a through-cut (depth past the stock) would otherwise sink the tab into
   // the spoilboard, holding nothing. `max` keeps a shallow profile's tab at its own
   // floor (its cut never reaches the stock bottom).
-  const tabZOff   = hasTabs ? Math.max(op.depth, -stockThickness) + tabs!.height : 0;
+  const tabZOff = hasTabs ? Math.max(op.depth, -stockThickness) + tabs!.height : 0;
 
-  const liType = op.leadIn?.type  ?? "none";
+  const liType = op.leadIn?.type ?? "none";
   const loType = op.leadOut?.type ?? "none";
-  const liLen  = op.leadIn?.length  ?? 2;
-  const loLen  = op.leadOut?.length ?? 2;
+  const liLen = op.leadIn?.length ?? 2;
+  const loLen = op.leadOut?.length ?? 2;
   const useLead = liType !== "none" || loType !== "none";
 
   const lines: string[] = [];
@@ -129,17 +171,21 @@ function profilePolygon(
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
     } else if (liType === "linear") {
       const { tx, ty } = geo;
-      const lx = s.x - tx * liLen, ly = s.y - ty * liLen;
+      const lx = s.x - tx * liLen,
+        ly = s.y - ty * liLen;
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
       lines.push(`G0 X${X(lx, ox)} Y${Y(ly, oy)}`);
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
       lines.push(`G1 X${X(s.x, ox)} Y${Y(s.y, oy)} F${n(op.feedrate)}`);
-    } else { // arc
+    } else {
+      // arc
       const { arcStart, arcCmd, tx, ty } = leadInGeo(path, liLen, op.side)!;
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
       lines.push(`G0 X${X(arcStart.x, ox)} Y${Y(arcStart.y, oy)}`);
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
-      lines.push(`${arcCmd} X${X(s.x, ox)} Y${Y(s.y, oy)} I${n(tx * liLen)} J${n(ty * liLen)} F${n(op.feedrate)}`);
+      lines.push(
+        `${arcCmd} X${X(s.x, ox)} Y${Y(s.y, oy)} I${n(tx * liLen)} J${n(ty * liLen)} F${n(op.feedrate)}`,
+      );
     }
 
     // Arc-fit an open run of points starting at the current tool position
@@ -154,7 +200,9 @@ function profilePolygon(
           lines.push(`G1 X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)}${f}`);
         } else {
           const cmd = mv.cw ? "G2" : "G3";
-          lines.push(`${cmd} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}${f}`);
+          lines.push(
+            `${cmd} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}${f}`,
+          );
         }
         cur = mv.to;
         first = false;
@@ -166,17 +214,21 @@ function profilePolygon(
       // Arc-fit the whole closed lap.
       emitRun([...path, s], liType === "none");
     } else {
-      const cumLens  = pathLengths(path);
+      const cumLens = pathLengths(path);
       const totalLen = cumLens[path.length];
-      const tabN     = resolveTabCount(totalLen, tabs!.count, tabsBySpacing ? tabs!.spacing : undefined);
-      const regions  = computeTabRegions(totalLen, tabN, tabs!.width);
-      const segs     = splitPathForTabs(path, cumLens, regions);
+      const tabN = resolveTabCount(
+        totalLen,
+        tabs!.count,
+        tabsBySpacing ? tabs!.spacing : undefined,
+      );
+      const regions = computeTabRegions(totalLen, tabN, tabs!.width);
+      const segs = splitPathForTabs(path, cumLens, regions);
 
       // Walk the split segments, arc-fitting each maximal run of material-cutting
       // (non-tab) segments so curved profiles stay smooth between tabs; tab bridges
       // ride up to tabZOff and stay straight G1 lines (they're short by design).
       let currentZ = z;
-      let first    = liType === "none";
+      let first = liType === "none";
       let i = 0;
       while (i < segs.length) {
         if (segs[i].isTab) {
@@ -190,7 +242,10 @@ function profilePolygon(
           i++;
         } else {
           const runPts: Vec2[] = [segs[i].p0];
-          while (i < segs.length && !segs[i].isTab) { runPts.push(segs[i].p1); i++; }
+          while (i < segs.length && !segs[i].isTab) {
+            runPts.push(segs[i].p1);
+            i++;
+          }
           if (currentZ !== z) {
             lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
             currentZ = z;
@@ -206,7 +261,9 @@ function profilePolygon(
       lines.push(`G1 X${X(s.x + etx * loLen, ox)} Y${Y(s.y + ety * loLen, oy)}`);
     } else if (loType === "arc" && geo) {
       const loGeo = leadInGeo(path, loLen, op.side)!;
-      lines.push(`${loGeo.arcCmd} X${X(loGeo.arcOut.x, ox)} Y${Y(loGeo.arcOut.y, oy)} I${n(loGeo.enx * loLen)} J${n(loGeo.eny * loLen)}`);
+      lines.push(
+        `${loGeo.arcCmd} X${X(loGeo.arcOut.x, ox)} Y${Y(loGeo.arcOut.y, oy)} I${n(loGeo.enx * loLen)} J${n(loGeo.eny * loLen)}`,
+      );
     }
   };
 
@@ -269,8 +326,14 @@ const RAMP_CLEAR = 0.5;
  * cut at depth. Falls back to a straight plunge for degenerate segments.
  */
 function rampPlunge(
-  a: Vec2, b: Vec2, zStart: number, zTarget: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  a: Vec2,
+  b: Vec2,
+  zStart: number,
+  zTarget: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const out: string[] = [];
   out.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -278,7 +341,7 @@ function rampPlunge(
   out.push(`G0 Z${Z(zStart + RAMP_CLEAR, zOff)}`); // rapid into cleared air above last level
 
   const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-  const depth  = zStart - zTarget; // positive: how far we still need to descend
+  const depth = zStart - zTarget; // positive: how far we still need to descend
   if (segLen < 1e-6 || depth < 1e-9) {
     out.push(`G1 Z${Z(zTarget, zOff)} F${n(op.plungeRate)}`);
     if (segLen >= 1e-6) out.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
@@ -289,7 +352,8 @@ function rampPlunge(
   const run = depth / Math.tan((rampAngleDeg(op, RAMP_ANGLE_DEG) * Math.PI) / 180); // horizontal travel needed
 
   let dist = 0;
-  let cur = a, target = b;
+  let cur = a,
+    target = b;
   while (dist < run - 1e-9) {
     const remaining = run - dist;
     if (segLen <= remaining) {
@@ -323,8 +387,13 @@ const HELIX_ANGLE_MAX_DEG = 10;
  * a single short edge.
  */
 function helicalLoop(
-  loop: Vec2[], zStart: number, z: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  loop: Vec2[],
+  zStart: number,
+  z: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const out: string[] = [];
   const N = loop.length;
@@ -336,53 +405,70 @@ function helicalLoop(
   const seg: number[] = [];
   let perim = 0;
   for (let i = 0; i < N; i++) {
-    const a = loop[i], b = loop[(i + 1) % N];
+    const a = loop[i],
+      b = loop[(i + 1) % N];
     const L = Math.hypot(b.x - a.x, b.y - a.y);
-    seg.push(L); perim += L;
+    seg.push(L);
+    perim += L;
   }
   const depth = zStart - z;
   if (perim < 1e-9 || depth < 1e-9) {
     out.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
     for (let i = 1; i <= N; i++)
-      out.push(`G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}${i === 1 ? ` F${n(op.feedrate)}` : ""}`);
+      out.push(
+        `G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}${i === 1 ? ` F${n(op.feedrate)}` : ""}`,
+      );
     return out;
   }
 
-  const nLaps = Math.max(1, Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
+  const nLaps = Math.max(
+    1,
+    Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))),
+  );
   const totalArc = nLaps * perim;
-  let acc = 0, first = true;
+  let acc = 0,
+    first = true;
   for (let lap = 0; lap < nLaps; lap++) {
     for (let i = 1; i <= N; i++) {
       acc += seg[(i - 1) % N];
       const zc = zStart - depth * Math.min(1, acc / totalArc);
       const p = loop[i % N];
-      out.push(`G1 X${X(p.x, ox)} Y${Y(p.y, oy)} Z${Z(zc, zOff)}${first ? ` F${n(op.feedrate)}` : ""}`);
+      out.push(
+        `G1 X${X(p.x, ox)} Y${Y(p.y, oy)} Z${Z(zc, zOff)}${first ? ` F${n(op.feedrate)}` : ""}`,
+      );
       first = false;
     }
   }
   // Flat finishing lap at full depth (ends at loop[0]).
-  for (let i = 1; i <= N; i++)
-    out.push(`G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}`);
+  for (let i = 1; i <= N; i++) out.push(`G1 X${X(loop[i % N].x, ox)} Y${Y(loop[i % N].y, oy)}`);
   return out;
 }
 
 /** Profile a closed contour at a fixed depth, entering with a ramp along its first edge. */
 function finishContour(
-  poly: Vec2[], zStart: number, z: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  poly: Vec2[],
+  zStart: number,
+  z: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   if (poly.length < 3) return [];
   const out = rampPlunge(poly[0], poly[1], zStart, z, op, ox, oy, zOff); // ends at poly[1] @ z
-  for (let i = 2; i < poly.length; i++)
-    out.push(`G1 X${X(poly[i].x, ox)} Y${Y(poly[i].y, oy)}`);
+  for (let i = 2; i < poly.length; i++) out.push(`G1 X${X(poly[i].x, ox)} Y${Y(poly[i].y, oy)}`);
   out.push(`G1 X${X(poly[0].x, ox)} Y${Y(poly[0].y, oy)}`);
   return out;
 }
 
 /** Dispatch to the configured pocket clearing strategy (default: contour-parallel). */
 function pocketPolygon(
-  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const clear = (v: Vec2[], isl: Vec2[][]): string[] =>
     (op.pocketStrategy ?? "offset") === "raster"
@@ -422,8 +508,12 @@ function pocketPolygon(
  * clearing strategy.
  */
 function pocketWallFinish(
-  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const toolR = op.diameter / 2;
   const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
@@ -432,13 +522,10 @@ function pocketWallFinish(
 
   // Dog-bone corner relief lives on the region walls (not the islands): the
   // inside corners of the pocket are what must seat a square part.
-  const wallLoops = op.cornerStyle === "dogbone"
-    ? walls.map((w) => addDogbones(w, toolR))
-    : walls;
+  const wallLoops = op.cornerStyle === "dogbone" ? walls.map((w) => addDogbones(w, toolR)) : walls;
 
   const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
-  for (const w of wallLoops)
-    lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));
+  for (const w of wallLoops) lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));
   for (const isl of islands) {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
     for (const k of offsetPolygon(pts, toolR))
@@ -455,14 +542,17 @@ function pocketWallFinish(
  * cut, otherwise the tool lifts and ramps back in.
  */
 function pocketPolygonOffset(
-  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
-  const toolR    = op.diameter / 2;
+  const toolR = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
-  const moves    = contourParallelClear(verts, islands, toolR, stepover);
-  if (moves.length === 0)
-    return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
+  const moves = contourParallelClear(verts, islands, toolR, stepover);
+  if (moves.length === 0) return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
   const lines: string[] = [];
   let prevZ = 0; // top of stock (work surface)
@@ -490,21 +580,24 @@ function pocketPolygonOffset(
 }
 
 function pocketPolygonRaster(
-  verts: Vec2[], islands: Vec2[][], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
-  const toolR    = op.diameter / 2;
+  const toolR = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   // Normalise winding to CCW so the inward (-toolR) inset always shrinks the
   // boundary, regardless of the source geometry's winding direction.
-  const ccw      = signedArea(verts) >= 0 ? verts : [...verts].reverse();
-  const insets   = offsetPolygon(ccw, -toolR);
-  if (insets.length === 0)
-    return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
+  const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
+  const insets = offsetPolygon(ccw, -toolR);
+  if (insets.length === 0) return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
   // Expand each island outward by toolR to create keepout zones.
   // If the offset returns empty (degenerate case), fall back to the raw polygon.
-  const islandKeepouts = islands.flatMap(isl => {
+  const islandKeepouts = islands.flatMap((isl) => {
     const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
     const expanded = offsetPolygon(pts, toolR);
     return expanded.length > 0 ? expanded : [pts];
@@ -513,9 +606,10 @@ function pocketPolygonRaster(
   const lines: string[] = [];
 
   for (const inset of insets) {
-    const rows = islandKeepouts.length > 0
-      ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
-      : rasterRows(inset, stepover);
+    const rows =
+      islandKeepouts.length > 0
+        ? rasterRowsWithIslands(inset, islandKeepouts, stepover)
+        : rasterRows(inset, stepover);
     if (rows.length === 0 && islandKeepouts.length === 0) continue;
 
     // Cut each depth level COMPLETELY (rough rows → finish walls) before
@@ -532,7 +626,8 @@ function pocketPolygonRaster(
         let entered = false;
         for (const row of rows) {
           for (let i = 0; i + 1 < row.length; i += 2) {
-            const a = row[i], b = row[i + 1];
+            const a = row[i],
+              b = row[i + 1];
             if (!entered) {
               lines.push(...rampPlunge(a, b, prevZ, z, op, ox, oy, zOff));
               entered = true;
@@ -570,8 +665,15 @@ function pocketPolygonRaster(
  * the tool at (cx+rad, cy, zTarget).
  */
 function helicalBore(
-  cx: number, cy: number, rad: number, zStart: number, zTarget: number,
-  op: CAMOperation, ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  rad: number,
+  zStart: number,
+  zTarget: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const sx = cx + rad;
   const out: string[] = [
@@ -581,8 +683,19 @@ function helicalBore(
     `G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`,
   ];
   const depth = zStart - zTarget;
-  const turns = depth < 1e-9 ? 0
-    : Math.max(1, Math.ceil(depth / (2 * Math.PI * rad * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))));
+  const turns =
+    depth < 1e-9
+      ? 0
+      : Math.max(
+          1,
+          Math.ceil(
+            depth /
+              (2 *
+                Math.PI *
+                rad *
+                Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180)),
+          ),
+        );
   for (let i = 1; i <= turns; i++) {
     const zc = zStart - depth * (i / turns);
     out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 Z${Z(zc, zOff)} F${n(op.feedrate)}`);
@@ -592,8 +705,14 @@ function helicalBore(
 }
 
 function pocketCircle(
-  cx: number, cy: number, r: number, islands: Vec2[][], op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  r: number,
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   // Islands make smooth concentric arcs impossible — fall back to the general
   // polygon clearer (tessellated), which handles arbitrary islands.
@@ -607,16 +726,15 @@ function pocketCircle(
   }
 
   const toolR = op.diameter / 2;
-  const cutR  = r - toolR;
-  if (cutR <= 0)
-    return [`; NOTE: pocket circle too small for ⌀${op.diameter}mm tool — skipped`];
+  const cutR = r - toolR;
+  if (cutR <= 0) return [`; NOTE: pocket circle too small for ⌀${op.diameter}mm tool — skipped`];
 
-  const so        = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const so = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
   const allowance = finishAllowance(op);
   // Rough out to the wall less the allowance; the finishing lap takes the wall.
-  const roughR    = allowance > 0 ? Math.max(0.01, cutR - allowance) : cutR;
+  const roughR = allowance > 0 ? Math.max(0.01, cutR - allowance) : cutR;
   // Helix radius small enough that the tool covers the centre (≤ toolR).
-  const helixR    = Math.min(roughR, toolR * 0.9);
+  const helixR = Math.min(roughR, toolR * 0.9);
 
   // Concentric tool-centre radii: helixR, helixR+so, … up to roughR.
   const radii: number[] = [];
@@ -629,7 +747,7 @@ function pocketCircle(
     lines.push(...helicalBore(cx, cy, helixR, prevZ, z, op, ox, oy, zOff));
     // Clear outward with concentric full circles at this depth.
     for (const rr of radii) {
-      lines.push(`G1 X${X(cx + rr, ox)} Y${Y(cy, oy)} F${n(op.feedrate)}`);   // step out
+      lines.push(`G1 X${X(cx + rr, ox)} Y${Y(cy, oy)} F${n(op.feedrate)}`); // step out
       lines.push(`G2 X${X(cx + rr, ox)} Y${Y(cy, oy)} I${n(-rr)} J0 F${n(op.feedrate)}`);
     }
     lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -650,8 +768,13 @@ function pocketCircle(
 }
 
 function profileCircle(
-  cx: number, cy: number, r: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  r: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const toolR = op.diameter / 2;
   const cutR = op.side === "outside" ? r + toolR : r - toolR;
@@ -681,8 +804,12 @@ function profileCircle(
 // --- engrave -----------------------------------------------------------------
 
 function engravePoints(
-  pts: Vec2[], closed: boolean, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  pts: Vec2[],
+  closed: boolean,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   if (pts.length === 0) return [];
   const lines: string[] = [];
@@ -702,8 +829,13 @@ function engravePoints(
 }
 
 function engraveCircle(
-  cx: number, cy: number, r: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  r: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const lines: string[] = [];
   const sx = cx + r;
@@ -724,10 +856,13 @@ function engraveCircle(
  * relative to the arc start point.
  */
 function engraveArc(
-  arc: ArcEntity, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  arc: ArcEntity,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
-  const span = ((arc.endAngle - arc.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const span = (((arc.endAngle - arc.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   if (span < 1e-6) return [`; NOTE: arc (${arc.id}) has zero sweep — skipped`];
   const s = arc.startPoint;
   const e = arc.endPoint;
@@ -763,18 +898,27 @@ function engraveArc(
  * own tilted rows (each point lifted through the entity transform).
  */
 function reliefImage(
-  ent: RasterImageEntity, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  ent: RasterImageEntity,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   if (op.toolType !== "ball-nose" && op.toolType !== "v-bit")
-    return [`; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`];
+    return [
+      `; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`,
+    ];
   const grid = getImageGrid(ent.imageId);
   if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
 
   const maxDepth = Math.abs(op.depth);
-  if (maxDepth <= 0) return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
+  if (maxDepth <= 0)
+    return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
   const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
-  const lineInterval = op.rasterLineInterval && op.rasterLineInterval > 0 ? op.rasterLineInterval : DEFAULTS.rasterLineInterval;
+  const lineInterval =
+    op.rasterLineInterval && op.rasterLineInterval > 0
+      ? op.rasterLineInterval
+      : DEFAULTS.rasterLineInterval;
 
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
@@ -783,9 +927,11 @@ function reliefImage(
     dotPitchMM: op.rasterDotPitch,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
-    flipX: ent.flipX, flipY: ent.flipY,
+    flipX: ent.flipX,
+    flipY: ent.flipY,
   });
-  if (field.rows.length === 0) return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
+  if (field.rows.length === 0)
+    return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
 
   const { cols, colPitch, rows } = field;
   const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
@@ -795,7 +941,9 @@ function reliefImage(
   // A V-bit cuts a cone per dot, not a smooth surface — fine for line-art but
   // engraving-like for a photo. Flag it so the result isn't a surprise.
   if (op.toolType === "v-bit")
-    lines.push(`; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, or a V-carve op for line art`);
+    lines.push(
+      `; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, or a V-carve op for line art`,
+    );
 
   for (let p = 1; p <= passes; p++) {
     const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
@@ -812,11 +960,20 @@ function reliefImage(
         const prev = ltr ? c - 1 : c + 1;
         const next = ltr ? c + 1 : c - 1;
         const z = zAt(c);
-        const keep = k === 0 || k === cols - 1
-          || prev < 0 || prev >= cols || z !== zAt(prev)
-          || next < 0 || next >= cols || z !== zAt(next);
+        const keep =
+          k === 0 ||
+          k === cols - 1 ||
+          prev < 0 ||
+          prev >= cols ||
+          z !== zAt(prev) ||
+          next < 0 ||
+          next >= cols ||
+          z !== zAt(next);
         // Lift the local (x, y) dot through the entity transform (rotation-aware).
-        if (keep) { const w = xfPoint(xf, (c + 0.5) * colPitch, row.y); verts.push({ x: w.x, y: w.y, z }); }
+        if (keep) {
+          const w = xfPoint(xf, (c + 0.5) * colPitch, row.y);
+          verts.push({ x: w.x, y: w.y, z });
+        }
       }
     }
     if (verts.length === 0) continue;
@@ -854,17 +1011,23 @@ function reliefImage(
  * allowance won't be uniform; they're exposed on both ops for that reason.
  */
 function reliefRoughImage(
-  ent: RasterImageEntity, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  ent: RasterImageEntity,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const grid = getImageGrid(ent.imageId);
   if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
 
   const maxDepth = Math.abs(op.depth);
-  if (maxDepth <= 0) return [`; NOTE: relief roughing depth is 0 — set a cut depth; image ${ent.id} skipped`];
+  if (maxDepth <= 0)
+    return [`; NOTE: relief roughing depth is 0 — set a cut depth; image ${ent.id} skipped`];
   const allowance = Math.max(0, op.finishAllowance ?? 0);
   if (maxDepth - allowance <= 1e-6)
-    return [`; NOTE: relief depth (${maxDepth}mm) ≤ finish allowance (${allowance}mm) — nothing to rough; the finish pass cuts it all. image ${ent.id} skipped`];
+    return [
+      `; NOTE: relief depth (${maxDepth}mm) ≤ finish allowance (${allowance}mm) — nothing to rough; the finish pass cuts it all. image ${ent.id} skipped`,
+    ];
 
   const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
   // stepover is a fraction of tool diameter (like a pocket); the coarse raster
@@ -875,55 +1038,64 @@ function reliefRoughImage(
     widthMM: ent.widthMM,
     heightMM: ent.heightMM,
     lineIntervalMM: pitch,
-    dotPitchMM: pitch,               // coarse square grid at the tool's stepover
+    dotPitchMM: pitch, // coarse square grid at the tool's stepover
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
-    flipX: ent.flipX, flipY: ent.flipY,
+    flipX: ent.flipX,
+    flipY: ent.flipY,
   });
-  if (field.rows.length === 0) return [`; NOTE: relief roughing produced nothing (blank or zero size) — image ${ent.id} skipped`];
+  if (field.rows.length === 0)
+    return [
+      `; NOTE: relief roughing produced nothing (blank or zero size) — image ${ent.id} skipped`,
+    ];
 
   const { cols, colPitch, rows } = field;
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
   if (op.toolType === "v-bit" || op.toolType === "ball-nose")
-    lines.push(`; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`);
+    lines.push(
+      `; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`,
+    );
 
   // Rough surface per cell = final depth left with the allowance on top, capped at
   // the stock top (Z=0). White (level 0) → 0 → never cut.
   const roughSurf = (level: number) => Math.min(0, -level * maxDepth + allowance);
-  const deepest = -(maxDepth - allowance);                          // deepest plane needed
+  const deepest = -(maxDepth - allowance); // deepest plane needed
   const nPasses = Math.max(1, Math.ceil((maxDepth - allowance) / stepdown));
-  const RC = RAMP_CLEAR;                                            // hop height above stock top
+  const RC = RAMP_CLEAR; // hop height above stock top
 
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-  let firstRun = true;                                             // first traverse clears fixtures at safeZ
+  let firstRun = true; // first traverse clears fixtures at safeZ
   for (let p = 1; p <= nPasses; p++) {
-    const zP = Math.max(-p * stepdown, deepest);                   // this pass's flat cutting plane
+    const zP = Math.max(-p * stepdown, deepest); // this pass's flat cutting plane
     const zPrev = p === 1 ? RC : Math.max(-(p - 1) * stepdown, deepest); // cleared floor just above zP
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       const ltr = r % 2 === 0;
       // Emit runs of consecutive in-mask cells; runFrom is the scan-order START.
-      let runFrom = -1, runTo = -1;
+      let runFrom = -1,
+        runTo = -1;
       const flush = () => {
         if (runFrom < 0) return;
-        const a = xfPoint(xf, (runFrom + 0.5) * colPitch, row.y);  // cut runFrom → runTo (boustrophedon)
+        const a = xfPoint(xf, (runFrom + 0.5) * colPitch, row.y); // cut runFrom → runTo (boustrophedon)
         const b = xfPoint(xf, (runTo + 0.5) * colPitch, row.y);
         const hop = firstRun ? op.safeZ : RC;
-        lines.push(`G0 Z${Z(hop, zOff)}`);                         // lift over the gap
+        lines.push(`G0 Z${Z(hop, zOff)}`); // lift over the gap
         lines.push(`G0 X${X(a.x, ox)} Y${Y(a.y, oy)}`);
-        if (zPrev !== hop) lines.push(`G0 Z${Z(zPrev, zOff)}`);    // rapid down onto the prior-pass floor
+        if (zPrev !== hop) lines.push(`G0 Z${Z(zPrev, zOff)}`); // rapid down onto the prior-pass floor
         // Enter with a ramp along the run (spreads the plunge load off the tool tip)
         // when there's length for it; otherwise a short run just plunges straight.
         const L = Math.hypot(b.x - a.x, b.y - a.y);
-        const rampDist = (zPrev - zP) / Math.tan(rampAngleDeg(op, ROUGH_RAMP_DEG) * Math.PI / 180);
+        const rampDist =
+          (zPrev - zP) / Math.tan((rampAngleDeg(op, ROUGH_RAMP_DEG) * Math.PI) / 180);
         if (L > rampDist && rampDist > 1e-6) {
-          const t = rampDist / L;                                  // ramp to full depth over rampDist of a→b
-          const rx = a.x + (b.x - a.x) * t, ry = a.y + (b.y - a.y) * t;
+          const t = rampDist / L; // ramp to full depth over rampDist of a→b
+          const rx = a.x + (b.x - a.x) * t,
+            ry = a.y + (b.y - a.y) * t;
           lines.push(`G1 X${X(rx, ox)} Y${Y(ry, oy)} Z${Z(zP, zOff)} F${n(op.plungeRate)}`); // descending ramp
-          lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);                 // flat cut remainder
+          lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`); // flat cut remainder
         } else {
-          lines.push(`G1 Z${Z(zP, zOff)} F${n(op.plungeRate)}`);   // too short to ramp — straight plunge
+          lines.push(`G1 Z${Z(zP, zOff)} F${n(op.plungeRate)}`); // too short to ramp — straight plunge
           lines.push(`G1 X${X(b.x, ox)} Y${Y(b.y, oy)} F${n(op.feedrate)}`);
         }
         firstRun = false;
@@ -931,7 +1103,8 @@ function reliefRoughImage(
       };
       for (let k = 0; k < cols; k++) {
         const c = ltr ? k : cols - 1 - k;
-        if (roughSurf(row.levels[c]) <= zP + 1e-9) {               // material present at this plane
+        if (roughSurf(row.levels[c]) <= zP + 1e-9) {
+          // material present at this plane
           if (runFrom < 0) runFrom = c;
           runTo = c;
         } else flush();
@@ -954,8 +1127,12 @@ const PECK_CLEAR = 0.5;
 // the hole is cut in increments, fully retracting to safe Z between pecks to
 // clear chips (G83-style); otherwise it's a single full-depth plunge.
 function drillPoint(
-  cx: number, cy: number, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const lines = [`G0 X${X(cx, ox)} Y${Y(cy, oy)}`];
   const peck = op.peckDepth ?? 0;
@@ -1000,7 +1177,11 @@ function chamferOffsets(verts: Vec2[], op: CAMOperation): Vec2[][] {
  * two bevel faces meet at a crisp point instead of a rounded fillet.
  */
 function chamferContourSharp(
-  verts: Vec2[], op: CAMOperation, ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
   if (ccw.length < 3) return [];
@@ -1025,26 +1206,37 @@ function chamferContourSharp(
 
 /** Chamfer a closed contour: trace the (optionally offset) edge at the derived depth. */
 function chamferPolygon(
-  verts: Vec2[], op: CAMOperation, ox: number, oy: number, zOff: number,
+  verts: Vec2[],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const cop = { ...op, depth: chamferDepth(op) };
   const lines: string[] = [];
   for (const path of chamferOffsets(verts, op))
-    lines.push(...(op.sharpenCorners
-      ? chamferContourSharp(path, op, ox, oy, zOff)
-      : engravePoints(path, true, cop, ox, oy, zOff)));
+    lines.push(
+      ...(op.sharpenCorners
+        ? chamferContourSharp(path, op, ox, oy, zOff)
+        : engravePoints(path, true, cop, ox, oy, zOff)),
+    );
   return lines;
 }
 
 /** Chamfer a circle: trace a circle shifted per side at the derived depth. */
 function chamferCircle(
-  cx: number, cy: number, r: number, op: CAMOperation, ox: number, oy: number, zOff: number,
+  cx: number,
+  cy: number,
+  r: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const cop = { ...op, depth: chamferDepth(op) };
   const w = op.chamferWidth ?? 0;
-  const radius = op.chamferSide === "outside" ? r + w
-               : op.chamferSide === "inside"  ? Math.max(0.01, r - w)
-               : r;
+  const radius =
+    op.chamferSide === "outside" ? r + w : op.chamferSide === "inside" ? Math.max(0.01, r - w) : r;
   return engraveCircle(cx, cy, radius, cop, ox, oy, zOff);
 }
 
@@ -1063,8 +1255,11 @@ function chamferCircle(
  * is off unless asked for. The first approach and final park always use `safeZ`.
  */
 function vcarveRegionGcode(
-  region: CarveRegion, op: CAMOperation,
-  ox: number, oy: number, zOff: number,
+  region: CarveRegion,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
 ): string[] {
   const passes = vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op));
   if (passes.length === 0) return [];
@@ -1094,8 +1289,11 @@ function vcarveRegionGcode(
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
 function toolpathBody(
-  op: CAMOperation, doc: CADDocument,
-  ox: number, oy: number, zOff: number,
+  op: CAMOperation,
+  doc: CADDocument,
+  ox: number,
+  oy: number,
+  zOff: number,
   pp: PostProcessor,
 ): string[] {
   const lines: string[] = [];
@@ -1103,20 +1301,24 @@ function toolpathBody(
 
   // A chamfer needs a V-bit (the bevel angle comes from the tool) and a width.
   if (op.type === "chamfer") {
-    if (op.toolType !== "v-bit")
-      return [`; NOTE: chamfer requires a V-bit tool — skipped`];
-    if ((op.chamferWidth ?? 0) <= 0)
-      return [`; NOTE: chamfer width is 0 — skipped`];
+    if (op.toolType !== "v-bit") return [`; NOTE: chamfer requires a V-bit tool — skipped`];
+    if ((op.chamferWidth ?? 0) <= 0) return [`; NOTE: chamfer width is 0 — skipped`];
     // A V-bit can only cut a face as wide as its cutting radius (the half of the
     // cutting diameter at the top of the V); past that the requested bevel runs
     // off the cutting edge into the shank.
     const cuttingR = op.diameter / 2;
     if ((op.chamferWidth ?? 0) > cuttingR)
-      lines.push(`; NOTE: chamfer face ${op.chamferWidth}mm exceeds the V-bit's cutting radius ${n(cuttingR)}mm (⌀${op.diameter}mm cutting diameter) — the bit can't cut a face this wide; use a larger-diameter bit or reduce the width`);
+      lines.push(
+        `; NOTE: chamfer face ${op.chamferWidth}mm exceeds the V-bit's cutting radius ${n(cuttingR)}mm (⌀${op.diameter}mm cutting diameter) — the bit can't cut a face this wide; use a larger-diameter bit or reduce the width`,
+      );
     const d = chamferDepth(op);
     if (-d > doc.stockThickness)
-      lines.push(`; NOTE: chamfer depth ${n(-d)}mm exceeds stock thickness ${n(doc.stockThickness)}mm — reduce the chamfer width or use a wider-angle bit`);
-    lines.push(`; Chamfer: ⌀ V-bit ${op.vAngle ?? 60}° · face ${op.chamferWidth}mm → depth ${n(d)}mm (${op.chamferSide ?? "on"})`);
+      lines.push(
+        `; NOTE: chamfer depth ${n(-d)}mm exceeds stock thickness ${n(doc.stockThickness)}mm — reduce the chamfer width or use a wider-angle bit`,
+      );
+    lines.push(
+      `; Chamfer: ⌀ V-bit ${op.vAngle ?? 60}° · face ${op.chamferWidth}mm → depth ${n(d)}mm (${op.chamferSide ?? "on"})`,
+    );
   }
 
   // A v-carve needs a V-bit — the slope of the cut comes from the bit's angle.
@@ -1131,10 +1333,14 @@ function toolpathBody(
     for (const ref of op.regions) {
       const region = resolveRegion(ref, loops);
       if (!region) {
-        lines.push(`; NOTE: a v-carve region could not be resolved — its boundary geometry changed or was removed — skipped`);
+        lines.push(
+          `; NOTE: a v-carve region could not be resolved — its boundary geometry changed or was removed — skipped`,
+        );
         continue;
       }
-      lines.push(...vcarveRegionGcode({ outer: region.outer, holes: region.holes }, op, ox, oy, zOff));
+      lines.push(
+        ...vcarveRegionGcode({ outer: region.outer, holes: region.holes }, op, ox, oy, zOff),
+      );
     }
     return lines;
   }
@@ -1147,7 +1353,9 @@ function toolpathBody(
     for (const ref of op.regions) {
       const region = resolveRegion(ref, loops);
       if (!region) {
-        lines.push(`; NOTE: a pocket region could not be resolved — its boundary geometry changed or was removed — skipped`);
+        lines.push(
+          `; NOTE: a pocket region could not be resolved — its boundary geometry changed or was removed — skipped`,
+        );
         continue;
       }
       lines.push(...pocketPolygon(region.outer, region.holes, op, ox, oy, zOff));
@@ -1163,11 +1371,16 @@ function toolpathBody(
       const e = entityMap.get(id);
       if (!e || e.isConstruction) continue;
       if (e instanceof CircleEntity) {
-        const nSegs = Math.max(64, Math.ceil(2 * Math.PI * e.radius / 0.5));
-        islands.push(Array.from({ length: nSegs }, (_, i) => {
-          const a = (i / nSegs) * 2 * Math.PI;
-          return { x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) };
-        }));
+        const nSegs = Math.max(64, Math.ceil((2 * Math.PI * e.radius) / 0.5));
+        islands.push(
+          Array.from({ length: nSegs }, (_, i) => {
+            const a = (i / nSegs) * 2 * Math.PI;
+            return {
+              x: e.center.x + e.radius * Math.cos(a),
+              y: e.center.y + e.radius * Math.sin(a),
+            };
+          }),
+        );
       } else if (e instanceof RectEntity) {
         islands.push([...e.corners()]);
       } else if (e instanceof PolylineEntity && e.closed) {
@@ -1176,10 +1389,9 @@ function toolpathBody(
     }
     // Also chain any line segments in the island set into closed polygons.
     const islandLineEnts = [...islandSet]
-      .map(id => entityMap.get(id))
+      .map((id) => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons)
-      islands.push(verts);
+    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons) islands.push(verts);
     lines.push(`; islands: ${islands.length} polygon(s) from ${islandSet.size} entity id(s)`);
   }
 
@@ -1187,8 +1399,8 @@ function toolpathBody(
   const lineSegIds = new Set<string>();
   if (op.type === "profile" || op.type === "pocket" || op.type === "chamfer") {
     const lineEnts = op.entityIds
-      .filter(id => !islandSet.has(id))
-      .map(id => entityMap.get(id))
+      .filter((id) => !islandSet.has(id))
+      .map((id) => entityMap.get(id))
       .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
     if (lineEnts.length > 0) {
       const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
@@ -1198,7 +1410,9 @@ function toolpathBody(
         else lines.push(...profilePolygon(verts, op, ox, oy, zOff, doc.stockThickness));
       }
       if (leftover.length > 0)
-        lines.push(`; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`);
+        lines.push(
+          `; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`,
+        );
       for (const e of lineEnts) lineSegIds.add(e.id);
     }
   }
@@ -1212,7 +1426,10 @@ function toolpathBody(
     if (op.type === "drill") {
       if (ent instanceof CircleEntity) {
         // Establish safe Z once, before the first hole, then peck each hole.
-        if (firstDrill) { lines.push(`G0 Z${Z(op.safeZ, zOff)}`); firstDrill = false; }
+        if (firstDrill) {
+          lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+          firstDrill = false;
+        }
         lines.push(...drillPoint(ent.center.x, ent.center.y, op, ox, oy, zOff));
       }
       continue;
@@ -1255,11 +1472,17 @@ function toolpathBody(
         const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
         outer = Array.from({ length: nSegs }, (_, i) => {
           const a = (i / nSegs) * 2 * Math.PI;
-          return { x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) };
+          return {
+            x: ent.center.x + ent.radius * Math.cos(a),
+            y: ent.center.y + ent.radius * Math.sin(a),
+          };
         });
       }
       if (outer) lines.push(...vcarveRegionGcode({ outer, holes: [] }, op, ox, oy, zOff));
-      else lines.push(`; NOTE: v-carve needs a closed shape (rect, circle, closed polyline, text, or a picked region) — entity ${ent.id} skipped`);
+      else
+        lines.push(
+          `; NOTE: v-carve needs a closed shape (rect, circle, closed polyline, text, or a picked region) — entity ${ent.id} skipped`,
+        );
       continue;
     }
 
@@ -1275,8 +1498,7 @@ function toolpathBody(
         lines.push(...engravePoints(ent.points, false, cop, ox, oy, zOff)); // open edge, centred
       else if (ent instanceof LineEntity)
         lines.push(...engravePoints([ent.a, ent.b], false, cop, ox, oy, zOff));
-      else if (ent instanceof ArcEntity)
-        lines.push(...engraveArc(ent, cop, ox, oy, zOff));
+      else if (ent instanceof ArcEntity) lines.push(...engraveArc(ent, cop, ox, oy, zOff));
       else if (ent instanceof BezierEntity)
         lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, cop, ox, oy, zOff));
       continue;
@@ -1287,7 +1509,9 @@ function toolpathBody(
         // Append element-wise (not push(...)): roughing can emit 100k+ lines.
         for (const l of reliefRoughImage(ent, op, ox, oy, zOff)) lines.push(l);
       else
-        lines.push(`; NOTE: relief roughing targets a greyscale image — entity ${ent.id} (${ent.type}) skipped`);
+        lines.push(
+          `; NOTE: relief roughing targets a greyscale image — entity ${ent.id} (${ent.type}) skipped`,
+        );
       continue;
     }
 
@@ -1304,8 +1528,7 @@ function toolpathBody(
         lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
         lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
-      else if (ent instanceof ArcEntity)
-        lines.push(...engraveArc(ent, op, ox, oy, zOff));
+      else if (ent instanceof ArcEntity) lines.push(...engraveArc(ent, op, ox, oy, zOff));
       else if (ent instanceof BezierEntity)
         lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, op, ox, oy, zOff));
       continue;
@@ -1314,13 +1537,17 @@ function toolpathBody(
     // profile / pocket
     if (op.type === "pocket") {
       if (ent instanceof CircleEntity)
-        lines.push(...pocketCircle(ent.center.x, ent.center.y, ent.radius, islands, op, ox, oy, zOff));
+        lines.push(
+          ...pocketCircle(ent.center.x, ent.center.y, ent.radius, islands, op, ox, oy, zOff),
+        );
       else if (ent instanceof RectEntity)
         lines.push(...pocketPolygon([...ent.corners()], islands, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
         lines.push(...pocketPolygon(ent.points, islands, op, ox, oy, zOff));
       else if (ent instanceof ArcEntity)
-        lines.push(`; NOTE: arc (${ent.id}) skipped — pocket requires a closed region (use a closed loop or region pick)`);
+        lines.push(
+          `; NOTE: arc (${ent.id}) skipped — pocket requires a closed region (use a closed loop or region pick)`,
+        );
     } else {
       if (ent instanceof CircleEntity)
         lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
@@ -1333,7 +1560,9 @@ function toolpathBody(
       else if (ent instanceof LineEntity)
         lines.push("; NOTE: open line skipped — profile requires closed geometry");
       else if (ent instanceof ArcEntity)
-        lines.push(`; NOTE: arc (${ent.id}) skipped — profile requires closed geometry (use engrave for an open arc)`);
+        lines.push(
+          `; NOTE: arc (${ent.id}) skipped — profile requires closed geometry (use engrave for an open arc)`,
+        );
       else if (ent instanceof BezierEntity)
         lines.push(`; NOTE: bezier (${ent.id}) skipped in profile — beziers are open paths`);
     }
@@ -1365,7 +1594,9 @@ function customLines(block: string | undefined): string[] {
 }
 
 export function generateGCode(
-  rawOps: CAMOperation[], doc: CADDocument, opts: GCodeOptions = {},
+  rawOps: CAMOperation[],
+  doc: CADDocument,
+  opts: GCodeOptions = {},
 ): string {
   // Laser machines have no spindle/Z — route to the fixed-Z beam generator,
   // which reuses the same XY geometry but emits beam on/off instead.
@@ -1390,9 +1621,8 @@ export function generateGCode(
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
-  const zLabel = doc.origin.z === "top"
-    ? "Top of stock"
-    : `Bed (top at Z=${n(doc.stockThickness)}mm)`;
+  const zLabel =
+    doc.origin.z === "top" ? "Top of stock" : `Bed (top at Z=${n(doc.stockThickness)}mm)`;
 
   const toolsSeen = new Map<number, CAMOperation>();
   for (const op of ops) {
@@ -1401,19 +1631,23 @@ export function generateGCode(
   const toolSummary = [...toolsSeen.entries()]
     .sort(([a], [b]) => a - b)
     .map(([t, op]) => {
-      const tl = op.toolType === "v-bit"    ? `V-Bit(${op.vAngle ?? 60}°)`
-               : op.toolType === "ball-nose" ? "BallNose"
-               : op.toolType === "drill"     ? "Drill"
-               : "EndMill";
+      const tl =
+        op.toolType === "v-bit"
+          ? `V-Bit(${op.vAngle ?? 60}°)`
+          : op.toolType === "ball-nose"
+            ? "BallNose"
+            : op.toolType === "drill"
+              ? "Drill"
+              : "EndMill";
       return `T${t} ⌀${op.diameter}mm ${tl} ${op.spindleSpeed}rpm`;
     })
     .join(", ");
 
   const md = doc.metadata ?? {};
   const metaLines: string[] = [];
-  if (md.job?.trim())      metaLines.push(`; Job: ${md.job.trim()}`);
+  if (md.job?.trim()) metaLines.push(`; Job: ${md.job.trim()}`);
   if (md.revision?.trim()) metaLines.push(`; Revision: ${md.revision.trim()}`);
-  if (md.notes?.trim())    metaLines.push(`; Notes: ${md.notes.trim().replace(/\r?\n/g, " ")}`);
+  if (md.notes?.trim()) metaLines.push(`; Notes: ${md.notes.trim().replace(/\r?\n/g, " ")}`);
 
   const lines: string[] = [
     "; RapidCAM generated G-code - https://rapidcam.app",
@@ -1440,9 +1674,7 @@ export function generateGCode(
   // program end. Suppressed entirely when the machine has no coolant.
   const coolantSupported = opts.coolantSupported !== false;
   const coolantOnCode = (m: CoolantMode): string | null =>
-    m === "mist"  ? "M7 ; mist coolant on"
-    : m === "flood" ? "M8 ; flood coolant on"
-    : null;
+    m === "mist" ? "M7 ; mist coolant on" : m === "flood" ? "M8 ; flood coolant on" : null;
   let currentCoolant: CoolantMode = "off";
 
   let currentTool: number | null = null;
@@ -1456,7 +1688,10 @@ export function generateGCode(
     if (toolChanged || isFirst) {
       if (!isFirst) {
         lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
-        if (currentCoolant !== "off") { lines.push("M9 ; coolant off"); currentCoolant = "off"; }
+        if (currentCoolant !== "off") {
+          lines.push("M9 ; coolant off");
+          currentCoolant = "off";
+        }
         lines.push("M5 ; spindle stop");
       }
 
@@ -1492,18 +1727,30 @@ export function generateGCode(
     }
 
     const typeLabel =
-      op.type === "profile" ? `Profile (${op.side})`
-      : op.type === "pocket"  ? "Pocket"
-      : op.type === "engrave" ? "Engrave"
-      : op.type === "vcarve"  ? "V-Carve"
-      : op.type === "chamfer" ? "Chamfer"
-      : op.type === "relief-rough" ? "Relief Roughing"
-      : "Drill";
-    const toolLabel = op.toolType === "v-bit"     ? `V-Bit(${op.vAngle ?? 60}°)`
-                    : op.toolType === "ball-nose"  ? "Ball Nose"
-                    : op.toolType === "drill"      ? `Drill(tip ${op.tipAngle ?? 118}°)`
-                    : "End Mill";
-    lines.push(`; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  depth:${op.depth}mm ---`);
+      op.type === "profile"
+        ? `Profile (${op.side})`
+        : op.type === "pocket"
+          ? "Pocket"
+          : op.type === "engrave"
+            ? "Engrave"
+            : op.type === "vcarve"
+              ? "V-Carve"
+              : op.type === "chamfer"
+                ? "Chamfer"
+                : op.type === "relief-rough"
+                  ? "Relief Roughing"
+                  : "Drill";
+    const toolLabel =
+      op.toolType === "v-bit"
+        ? `V-Bit(${op.vAngle ?? 60}°)`
+        : op.toolType === "ball-nose"
+          ? "Ball Nose"
+          : op.toolType === "drill"
+            ? `Drill(tip ${op.tipAngle ?? 118}°)`
+            : "End Mill";
+    lines.push(
+      `; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  depth:${op.depth}mm ---`,
+    );
     if (op.toolType === "v-bit" && op.type === "engrave") {
       const halfAngle = ((op.vAngle ?? 60) / 2) * (Math.PI / 180);
       const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);

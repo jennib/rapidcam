@@ -10,11 +10,29 @@
  */
 
 import { type Vec2, clone, add, mid, dist, sub } from "../core/vec2";
-import { distToSegment, distToCircle, distToArc, angleInArc, clamp, TAU, flattenBezier, bezierBounds } from "../core/geom";
+import {
+  distToSegment,
+  distToCircle,
+  distToArc,
+  angleInArc,
+  clamp,
+  TAU,
+  flattenBezier,
+  bezierBounds,
+} from "../core/geom";
 import { nextId } from "./ids";
 
 export type EntityId = string;
-export type EntityType = "line" | "circle" | "rectangle" | "polyline" | "arc" | "bezier" | "point" | "text" | "image";
+export type EntityType =
+  | "line"
+  | "circle"
+  | "rectangle"
+  | "polyline"
+  | "arc"
+  | "bezier"
+  | "point"
+  | "text"
+  | "image";
 
 export interface Bounds {
   min: Vec2;
@@ -94,13 +112,13 @@ export abstract class Entity {
     throw new Error(`${this.type} has no point '${key}'`);
   }
   /** Write a point DOF by key. */
-  setPoint(_key: string, _v: Vec2): void { }
+  setPoint(_key: string, _v: Vec2): void {}
   /** Scalar DOFs (e.g. radius). */
   dofScalars(): DofScalar[] {
     return [];
   }
   /** Write a scalar DOF by key. */
-  setScalar(_key: string, _v: number): void { }
+  setScalar(_key: string, _v: number): void {}
 }
 
 // ---------------------------------------------------------------------------
@@ -152,13 +170,16 @@ export class LineEntity extends Entity {
     ];
   }
   override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
-    if (key === "mid") return [
-      { key: "a", axis: "x" }, { key: "a", axis: "y" },
-      { key: "b", axis: "x" }, { key: "b", axis: "y" }
-    ];
+    if (key === "mid")
+      return [
+        { key: "a", axis: "x" },
+        { key: "a", axis: "y" },
+        { key: "b", axis: "x" },
+        { key: "b", axis: "y" },
+      ];
     return [
       { key, axis: "x" },
-      { key, axis: "y" }
+      { key, axis: "y" },
     ];
   }
   override pickablePoints(): DofPoint[] {
@@ -351,8 +372,10 @@ export class RectEntity extends Entity {
   }
   override dofsAffectedBy(_key: string): { key: string; axis: "x" | "y" }[] {
     return [
-      { key: "bl", axis: "x" }, { key: "bl", axis: "y" },
-      { key: "tr", axis: "x" }, { key: "tr", axis: "y" },
+      { key: "bl", axis: "x" },
+      { key: "bl", axis: "y" },
+      { key: "tr", axis: "x" },
+      { key: "tr", axis: "y" },
     ];
   }
   override setPoint(key: string, v: Vec2): void {
@@ -541,11 +564,17 @@ export class PolylineEntity extends Entity {
   override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
     if (key.startsWith("mid_")) {
       const i = this.vertexIndex(key.slice(4));
-      if (i < 0) return [{ key, axis: "x" }, { key, axis: "y" }];
+      if (i < 0)
+        return [
+          { key, axis: "x" },
+          { key, axis: "y" },
+        ];
       const next = (i + 1) % this.points.length;
       return [
-        { key: `v${this.vertexIds[i]}`, axis: "x" }, { key: `v${this.vertexIds[i]}`, axis: "y" },
-        { key: `v${this.vertexIds[next]}`, axis: "x" }, { key: `v${this.vertexIds[next]}`, axis: "y" },
+        { key: `v${this.vertexIds[i]}`, axis: "x" },
+        { key: `v${this.vertexIds[i]}`, axis: "y" },
+        { key: `v${this.vertexIds[next]}`, axis: "x" },
+        { key: `v${this.vertexIds[next]}`, axis: "y" },
       ];
     }
     return [
@@ -599,10 +628,16 @@ export class ArcEntity extends Entity {
   }
 
   get startPoint(): Vec2 {
-    return { x: this.center.x + this.radius * Math.cos(this.startAngle), y: this.center.y + this.radius * Math.sin(this.startAngle) };
+    return {
+      x: this.center.x + this.radius * Math.cos(this.startAngle),
+      y: this.center.y + this.radius * Math.sin(this.startAngle),
+    };
   }
   get endPoint(): Vec2 {
-    return { x: this.center.x + this.radius * Math.cos(this.endAngle), y: this.center.y + this.radius * Math.sin(this.endAngle) };
+    return {
+      x: this.center.x + this.radius * Math.cos(this.endAngle),
+      y: this.center.y + this.radius * Math.sin(this.endAngle),
+    };
   }
 
   override bounds(): Bounds {
@@ -611,11 +646,14 @@ export class ArcEntity extends Entity {
     for (let k = 0; k < 4; k++) {
       const a = k * (Math.PI / 2);
       if (angleInArc(a, this.startAngle, this.endAngle)) {
-        pts.push({ x: this.center.x + this.radius * Math.cos(a), y: this.center.y + this.radius * Math.sin(a) });
+        pts.push({
+          x: this.center.x + this.radius * Math.cos(a),
+          y: this.center.y + this.radius * Math.sin(a),
+        });
       }
     }
-    const min = { x: Math.min(...pts.map(p => p.x)), y: Math.min(...pts.map(p => p.y)) };
-    const max = { x: Math.max(...pts.map(p => p.x)), y: Math.max(...pts.map(p => p.y)) };
+    const min = { x: Math.min(...pts.map((p) => p.x)), y: Math.min(...pts.map((p) => p.y)) };
+    const max = { x: Math.max(...pts.map((p) => p.x)), y: Math.max(...pts.map((p) => p.y)) };
     return { min, max };
   }
 
@@ -630,14 +668,28 @@ export class ArcEntity extends Entity {
       { pos: this.endPoint, kind: "endpoint", entityId: this.id, key: "end" },
     ];
     // Midpoint of the arc (angle midway between start and end).
-    const span = ((this.endAngle - this.startAngle) % TAU + TAU) % TAU;
+    const span = (((this.endAngle - this.startAngle) % TAU) + TAU) % TAU;
     const midAngle = this.startAngle + span / 2;
-    pts.push({ pos: { x: this.center.x + this.radius * Math.cos(midAngle), y: this.center.y + this.radius * Math.sin(midAngle) }, kind: "midpoint", entityId: this.id });
+    pts.push({
+      pos: {
+        x: this.center.x + this.radius * Math.cos(midAngle),
+        y: this.center.y + this.radius * Math.sin(midAngle),
+      },
+      kind: "midpoint",
+      entityId: this.id,
+    });
     // Quadrant snaps for any cardinal angle that falls within the arc span.
     for (let k = 0; k < 4; k++) {
       const a = k * (Math.PI / 2);
       if (angleInArc(a, this.startAngle, this.endAngle)) {
-        pts.push({ pos: { x: this.center.x + this.radius * Math.cos(a), y: this.center.y + this.radius * Math.sin(a) }, kind: "quadrant", entityId: this.id });
+        pts.push({
+          pos: {
+            x: this.center.x + this.radius * Math.cos(a),
+            y: this.center.y + this.radius * Math.sin(a),
+          },
+          kind: "quadrant",
+          entityId: this.id,
+        });
       }
     }
     return pts;
@@ -675,9 +727,18 @@ export class ArcEntity extends Entity {
   }
 
   override setPoint(key: string, v: Vec2): void {
-    if (key === "c") { this.center = clone(v); return; }
-    if (key === "start") { this.startAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x); return; }
-    if (key === "end") { this.endAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x); return; }
+    if (key === "c") {
+      this.center = clone(v);
+      return;
+    }
+    if (key === "start") {
+      this.startAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x);
+      return;
+    }
+    if (key === "end") {
+      this.endAngle = Math.atan2(v.y - this.center.y, v.x - this.center.x);
+      return;
+    }
   }
 
   override dofScalars(): DofScalar[] {
@@ -721,8 +782,10 @@ export class BezierEntity extends Entity {
 
   constructor(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, id?: EntityId) {
     super(id);
-    this.p0 = clone(p0); this.p1 = clone(p1);
-    this.p2 = clone(p2); this.p3 = clone(p3);
+    this.p0 = clone(p0);
+    this.p1 = clone(p1);
+    this.p2 = clone(p2);
+    this.p3 = clone(p3);
   }
 
   override bounds(): Bounds {
@@ -746,8 +809,10 @@ export class BezierEntity extends Entity {
   }
 
   override translate(d: Vec2): void {
-    this.p0 = add(this.p0, d); this.p1 = add(this.p1, d);
-    this.p2 = add(this.p2, d); this.p3 = add(this.p3, d);
+    this.p0 = add(this.p0, d);
+    this.p1 = add(this.p1, d);
+    this.p2 = add(this.p2, d);
+    this.p3 = add(this.p3, d);
   }
 
   override duplicate(): BezierEntity {
@@ -783,9 +848,11 @@ export class BezierEntity extends Entity {
       const d = sub(v, this.p0);
       this.p0 = clone(v);
       this.p1 = add(this.p1, d);
-    } else if (key === "p1") { this.p1 = clone(v); }
-    else if (key === "p2") { this.p2 = clone(v); }
-    else if (key === "p3") {
+    } else if (key === "p1") {
+      this.p1 = clone(v);
+    } else if (key === "p2") {
+      this.p2 = clone(v);
+    } else if (key === "p3") {
       const d = sub(v, this.p3);
       this.p3 = clone(v);
       this.p2 = add(this.p2, d);
@@ -817,7 +884,14 @@ export class TextEntity extends Entity {
    */
   mirror: { axis: "h" | "v"; c: number } | null = null;
 
-  constructor(text: string, fontId: string, sizeMM: number, position: Vec2, angle = 0, id?: EntityId) {
+  constructor(
+    text: string,
+    fontId: string,
+    sizeMM: number,
+    position: Vec2,
+    angle = 0,
+    id?: EntityId,
+  ) {
     super(id);
     this.text = text;
     this.fontId = fontId;
@@ -829,23 +903,28 @@ export class TextEntity extends Entity {
   override bounds(): Bounds {
     const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
     const h = this.sizeMM * 1.2;
-    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    const c = Math.cos(this.angle),
+      s = Math.sin(this.angle);
     const corners = [
-      { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h },
-    ].map(p => ({
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h },
+    ].map((p) => ({
       x: this.position.x + p.x * c - p.y * s,
       y: this.position.y + p.x * s + p.y * c,
     }));
     return {
-      min: { x: Math.min(...corners.map(p => p.x)), y: Math.min(...corners.map(p => p.y)) },
-      max: { x: Math.max(...corners.map(p => p.x)), y: Math.max(...corners.map(p => p.y)) },
+      min: { x: Math.min(...corners.map((p) => p.x)), y: Math.min(...corners.map((p) => p.y)) },
+      max: { x: Math.max(...corners.map((p) => p.x)), y: Math.max(...corners.map((p) => p.y)) },
     };
   }
 
   override distanceTo(p: Vec2): number {
     const dx = p.x - this.position.x;
     const dy = p.y - this.position.y;
-    const c = Math.cos(-this.angle), s = Math.sin(-this.angle);
+    const c = Math.cos(-this.angle),
+      s = Math.sin(-this.angle);
     const lx = dx * c - dy * s;
     const ly = dx * s + dy * c;
     const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
@@ -907,7 +986,16 @@ export class RasterImageEntity extends Entity {
    *  convenience — a formula in one side writes a proportional one to the other). */
   aspectLocked = true;
 
-  constructor(imageId: string, position: Vec2, widthMM: number, heightMM: number, angle = 0, flipX = false, flipY = false, id?: EntityId) {
+  constructor(
+    imageId: string,
+    position: Vec2,
+    widthMM: number,
+    heightMM: number,
+    angle = 0,
+    flipX = false,
+    flipY = false,
+    id?: EntityId,
+  ) {
     super(id);
     this.imageId = imageId;
     this.position = clone(position);
@@ -920,7 +1008,8 @@ export class RasterImageEntity extends Entity {
 
   /** Map a point in the image's local (unrotated) frame to world space. */
   private toWorld(l: Vec2): Vec2 {
-    const c = Math.cos(this.angle), s = Math.sin(this.angle);
+    const c = Math.cos(this.angle),
+      s = Math.sin(this.angle);
     return { x: this.position.x + l.x * c - l.y * s, y: this.position.y + l.x * s + l.y * c };
   }
 
@@ -929,12 +1018,18 @@ export class RasterImageEntity extends Entity {
   private static readonly LOCAL_KEYS = ["c0", "c1", "c2", "c3", "center"] as const;
   private localPoint(key: string): Vec2 | null {
     switch (key) {
-      case "c0": return { x: 0, y: 0 };
-      case "c1": return { x: this.widthMM, y: 0 };
-      case "c2": return { x: this.widthMM, y: this.heightMM };
-      case "c3": return { x: 0, y: this.heightMM };
-      case "center": return { x: this.widthMM / 2, y: this.heightMM / 2 };
-      default: return null;
+      case "c0":
+        return { x: 0, y: 0 };
+      case "c1":
+        return { x: this.widthMM, y: 0 };
+      case "c2":
+        return { x: this.widthMM, y: this.heightMM };
+      case "c3":
+        return { x: 0, y: this.heightMM };
+      case "center":
+        return { x: this.widthMM / 2, y: this.heightMM / 2 };
+      default:
+        return null;
     }
   }
 
@@ -954,9 +1049,11 @@ export class RasterImageEntity extends Entity {
   /** Zero anywhere on the image (so a click anywhere selects it), else the
    *  distance to the rectangle — measured in the image's own (unrotated) frame. */
   override distanceTo(p: Vec2): number {
-    const dx = p.x - this.position.x, dy = p.y - this.position.y;
-    const c = Math.cos(this.angle), s = Math.sin(this.angle);
-    const lx = c * dx + s * dy;       // R(-angle) · (p - position)
+    const dx = p.x - this.position.x,
+      dy = p.y - this.position.y;
+    const c = Math.cos(this.angle),
+      s = Math.sin(this.angle);
+    const lx = c * dx + s * dy; // R(-angle) · (p - position)
     const ly = -s * dx + c * dy;
     const ddx = lx < 0 ? -lx : lx > this.widthMM ? lx - this.widthMM : 0;
     const ddy = ly < 0 ? -ly : ly > this.heightMM ? ly - this.heightMM : 0;
@@ -967,7 +1064,8 @@ export class RasterImageEntity extends Entity {
     return RasterImageEntity.LOCAL_KEYS.map((key) => ({
       pos: this.toWorld(this.localPoint(key)!),
       kind: key === "center" ? ("center" as const) : ("vertex" as const),
-      entityId: this.id, key,
+      entityId: this.id,
+      key,
     }));
   }
 
@@ -976,7 +1074,15 @@ export class RasterImageEntity extends Entity {
   }
 
   override duplicate(): RasterImageEntity {
-    const e = new RasterImageEntity(this.imageId, this.position, this.widthMM, this.heightMM, this.angle, this.flipX, this.flipY);
+    const e = new RasterImageEntity(
+      this.imageId,
+      this.position,
+      this.widthMM,
+      this.heightMM,
+      this.angle,
+      this.flipX,
+      this.flipY,
+    );
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
     e.aspectLocked = this.aspectLocked;
@@ -991,7 +1097,10 @@ export class RasterImageEntity extends Entity {
   // them by perturbing pos/w/h/angle (finite-difference Jacobian), so a constraint
   // on a corner reflows the image with no bespoke solver code.
   override pickablePoints(): DofPoint[] {
-    return RasterImageEntity.LOCAL_KEYS.map((key) => ({ key, pos: this.toWorld(this.localPoint(key)!) }));
+    return RasterImageEntity.LOCAL_KEYS.map((key) => ({
+      key,
+      pos: this.toWorld(this.localPoint(key)!),
+    }));
   }
   override getPoint(key: string): Vec2 {
     if (key === "pos") return clone(this.position);
@@ -1002,7 +1111,10 @@ export class RasterImageEntity extends Entity {
   override setPoint(key: string, v: Vec2): void {
     // Only the anchor is a real DOF; a corner/centre write repositions the whole
     // image so that derived point lands on v (keeps size/rotation).
-    if (key === "pos") { this.position = clone(v); return; }
+    if (key === "pos") {
+      this.position = clone(v);
+      return;
+    }
     const l = this.localPoint(key);
     if (l) this.position = add(this.position, sub(v, this.toWorld(l)));
   }
@@ -1010,7 +1122,11 @@ export class RasterImageEntity extends Entity {
   // rotate stay in the Properties panel / Transform. Constraint solves don't use
   // this (it only frees DOFs for a drag pin).
   override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
-    if (key === "pos" || this.localPoint(key)) return [{ key: "pos", axis: "x" }, { key: "pos", axis: "y" }];
+    if (key === "pos" || this.localPoint(key))
+      return [
+        { key: "pos", axis: "x" },
+        { key: "pos", axis: "y" },
+      ];
     return [];
   }
   // Size/rotation are scalar DOFs so formulas drive them through the solver like
@@ -1056,19 +1172,32 @@ export class PointEntity extends Entity {
   }
 
   bounds(): Bounds {
-    return { min: { x: this.pos.x - 0.5, y: this.pos.y - 0.5 }, max: { x: this.pos.x + 0.5, y: this.pos.y + 0.5 } };
+    return {
+      min: { x: this.pos.x - 0.5, y: this.pos.y - 0.5 },
+      max: { x: this.pos.x + 0.5, y: this.pos.y + 0.5 },
+    };
   }
-  distanceTo(p: Vec2): number { return dist(p, this.pos); }
+  distanceTo(p: Vec2): number {
+    return dist(p, this.pos);
+  }
   snapPoints(): SnapPoint[] {
     return [{ pos: { ...this.pos }, kind: "endpoint", entityId: this.id, key: "p" }];
   }
-  translate(d: Vec2): void { this.pos = add(this.pos, d); }
-  duplicate(): Entity { return new PointEntity({ ...this.pos }); }
+  translate(d: Vec2): void {
+    this.pos = add(this.pos, d);
+  }
+  duplicate(): Entity {
+    return new PointEntity({ ...this.pos });
+  }
 
-  override dofPoints(): DofPoint[] { return [{ key: "p", pos: { ...this.pos } }]; }
+  override dofPoints(): DofPoint[] {
+    return [{ key: "p", pos: { ...this.pos } }];
+  }
   override getPoint(key: string): Vec2 {
     if (key === "p") return { ...this.pos };
     throw new Error(`PointEntity has no point '${key}'`);
   }
-  override setPoint(key: string, v: Vec2): void { if (key === "p") this.pos = { ...v }; }
+  override setPoint(key: string, v: Vec2): void {
+    if (key === "p") this.pos = { ...v };
+  }
 }

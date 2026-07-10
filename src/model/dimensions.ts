@@ -33,7 +33,16 @@ import { type EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
 import type { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
-export type DimensionType = "distance" | "horizontal" | "vertical" | "radius" | "diameter" | "angle" | "arclength" | "line-distance" | "circle-gap";
+export type DimensionType =
+  | "distance"
+  | "horizontal"
+  | "vertical"
+  | "radius"
+  | "diameter"
+  | "angle"
+  | "arclength"
+  | "line-distance"
+  | "circle-gap";
 export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
@@ -64,7 +73,16 @@ export interface Dimension {
 
 export function makeDimension(
   type: DimensionType,
-  opts: { points?: PointRef[]; entities?: EntityId[]; value: number; offset: number; driving?: boolean; anchors?: [number, number]; expr?: string; hidden?: boolean },
+  opts: {
+    points?: PointRef[];
+    entities?: EntityId[];
+    value: number;
+    offset: number;
+    driving?: boolean;
+    anchors?: [number, number];
+    expr?: string;
+    hidden?: boolean;
+  },
 ): Dimension {
   return {
     id: nextId("dim"),
@@ -97,7 +115,10 @@ function readPoint(geo: Geo, ref: PointRef | undefined): Vec2 | null {
     if (!g) return null;
     const theta = parseFloat(ref.key.slice(5));
     if (!Number.isFinite(theta)) return null;
-    return { x: g.center.x + g.radius * Math.cos(theta), y: g.center.y + g.radius * Math.sin(theta) };
+    return {
+      x: g.center.x + g.radius * Math.cos(theta),
+      y: g.center.y + g.radius * Math.sin(theta),
+    };
   }
   try {
     return e.getPoint(ref.key);
@@ -128,8 +149,18 @@ function circularGeom(geo: Geo, id: EntityId | undefined): { center: Vec2; radiu
  * `nested` is true when one boundary lies inside the other (the concentric
  * inner/outer-offset case), in which case the measured gap is radial.
  */
-function gapGeom(geo: Geo, id1: EntityId | undefined, id2: EntityId | undefined):
-  { cInner: Vec2; rInner: number; cOuter: Vec2; rOuter: number; d: number; nested: boolean } | null {
+function gapGeom(
+  geo: Geo,
+  id1: EntityId | undefined,
+  id2: EntityId | undefined,
+): {
+  cInner: Vec2;
+  rInner: number;
+  cOuter: Vec2;
+  rOuter: number;
+  d: number;
+  nested: boolean;
+} | null {
   const a = circularGeom(geo, id1);
   const b = circularGeom(geo, id2);
   if (!a || !b) return null;
@@ -138,9 +169,12 @@ function gapGeom(geo: Geo, id1: EntityId | undefined, id2: EntityId | undefined)
   const d = dist(inner.center, outer.center);
   const nested = d <= outer.radius - inner.radius + 1e-6;
   return {
-    cInner: inner.center, rInner: inner.radius,
-    cOuter: outer.center, rOuter: outer.radius,
-    d, nested,
+    cInner: inner.center,
+    rInner: inner.radius,
+    cOuter: outer.center,
+    rOuter: outer.radius,
+    d,
+    nested,
   };
 }
 
@@ -151,11 +185,20 @@ function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
 }
 
 /** Compute the vertex and arm directions for an angle between two lines. */
-function linesAngleGeometry(l1: LineEntity, l2: LineEntity): { vertex: Vec2; d1: Vec2; d2: Vec2 } | null {
+function linesAngleGeometry(
+  l1: LineEntity,
+  l2: LineEntity,
+): { vertex: Vec2; d1: Vec2; d2: Vec2 } | null {
   const EPS = 1e-6;
   // Prefer a shared endpoint as the vertex.
-  const ends1 = [{ v: l1.a, far: l1.b }, { v: l1.b, far: l1.a }];
-  const ends2 = [{ v: l2.a, far: l2.b }, { v: l2.b, far: l2.a }];
+  const ends1 = [
+    { v: l1.a, far: l1.b },
+    { v: l1.b, far: l1.a },
+  ];
+  const ends2 = [
+    { v: l2.a, far: l2.b },
+    { v: l2.b, far: l2.a },
+  ];
   for (const e1 of ends1) {
     for (const e2 of ends2) {
       if (dist(e1.v, e2.v) < EPS) {
@@ -209,7 +252,7 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
     case "arclength": {
       const a = readArc(geo, dim.entities[0]);
       if (!a) return null;
-      const span = ((a.endAngle - a.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const span = (((a.endAngle - a.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       return a.radius * span;
     }
     case "angle": {
@@ -334,7 +377,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const isArcEnt = readArc(geo, dim.entities[0]) !== null;
     const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
     const edge = add(g.center, scale(u, g.radius));
-    const end  = add(g.center, scale(u, g.radius + LEADER_MM));
+    const end = add(g.center, scale(u, g.radius + LEADER_MM));
     if (dim.type === "radius") {
       return {
         // Arcs: short leader from arc surface only (circle: full center-to-label).
@@ -349,7 +392,10 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
       segments: isArcEnt ? [[edge, end]] : [[e2, end]],
       arrows: isArcEnt
         ? [{ tip: edge, dir: u }]
-        : [{ tip: edge, dir: u }, { tip: e2, dir: scale(u, -1) }],
+        : [
+            { tip: edge, dir: u },
+            { tip: e2, dir: scale(u, -1) },
+          ],
       textPos: end,
       label: `⌀${formatLengthWithUnit(displayVal, unit)}`,
     };
@@ -364,9 +410,12 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const end = add(g.cOuter, scale(u, g.rOuter + LEADER_MM));
     return {
       // Span the gap between the two boundaries, then lead out to the label.
-      segments: [[pInner, pOuter], [pOuter, end]],
+      segments: [
+        [pInner, pOuter],
+        [pOuter, end],
+      ],
       arrows: [
-        { tip: pInner, dir: u },           // points outward across the gap
+        { tip: pInner, dir: u }, // points outward across the gap
         { tip: pOuter, dir: scale(u, -1) }, // points inward across the gap
       ],
       textPos: end,
@@ -378,17 +427,17 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const a = readArc(geo, dim.entities[0]);
     if (!a) return null;
     const R = a.radius + Math.max(6, Math.min(40, dim.offset));
-    const span = ((a.endAngle - a.startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const span = (((a.endAngle - a.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     const midAngle = a.startAngle + span / 2;
     const d1: Vec2 = { x: Math.cos(a.startAngle), y: Math.sin(a.startAngle) };
-    const d2: Vec2 = { x: Math.cos(a.endAngle),   y: Math.sin(a.endAngle) };
+    const d2: Vec2 = { x: Math.cos(a.endAngle), y: Math.sin(a.endAngle) };
     // Tangential arrow directions (CCW tangent at each end, then negate for "inward").
-    const arrow1Dir: Vec2 = { x: -d1.y, y: d1.x };           // CCW tangent at start
-    const arrow2Dir: Vec2 = { x:  d2.y, y: -d2.x };          // reverse CCW tangent at end
+    const arrow1Dir: Vec2 = { x: -d1.y, y: d1.x }; // CCW tangent at start
+    const arrow2Dir: Vec2 = { x: d2.y, y: -d2.x }; // reverse CCW tangent at end
     return {
       segments: [
-        [add(a.center, scale(d1, a.radius)), add(a.center, scale(d1, R))],  // ext line start
-        [add(a.center, scale(d2, a.radius)), add(a.center, scale(d2, R))],  // ext line end
+        [add(a.center, scale(d1, a.radius)), add(a.center, scale(d1, R))], // ext line start
+        [add(a.center, scale(d2, a.radius)), add(a.center, scale(d2, R))], // ext line end
       ],
       arrows: [
         { tip: add(a.center, scale(d1, R)), dir: arrow1Dir },
@@ -436,7 +485,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   // linear
   let p: Vec2 | null = null;
   let q: Vec2 | null = null;
-  
+
   if (dim.type === "line-distance") {
     const l1 = readLine(geo, dim.entities[0]);
     const l2 = readLine(geo, dim.entities[1]);
@@ -447,7 +496,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     p = readPoint(geo, dim.points[0]);
     q = readPoint(geo, dim.points[1]);
   }
-  
+
   if (!p || !q) return null;
   const type = dim.type as LinearDimType;
 
@@ -499,4 +548,3 @@ export function dimensionHitDistance(dim: Dimension, geo: Geo, pt: Vec2, unit: U
   for (const [a, b] of layout.segments) d = Math.min(d, distToSegment(pt, a, b));
   return d;
 }
-

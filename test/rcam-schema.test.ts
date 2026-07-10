@@ -15,8 +15,14 @@ import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
 import { CADDocument } from "../src/model/document";
 import {
-  CircleEntity, PolylineEntity, LineEntity, RasterImageEntity,
-  RectEntity, ArcEntity, BezierEntity, TextEntity,
+  CircleEntity,
+  PolylineEntity,
+  LineEntity,
+  RasterImageEntity,
+  RectEntity,
+  ArcEntity,
+  BezierEntity,
+  TextEntity,
 } from "../src/model/entities";
 import { makeDimension } from "../src/model/dimensions";
 import { registerEmbeddedImage } from "../src/core/imageManager";
@@ -68,10 +74,15 @@ describe("rcam v2 schema", () => {
     const doc = minimalDoc();
     doc.variables = [{ id: "v", name: "n", expr: "3", value: 3 }];
     doc.entities.push({ type: "line", id: "l", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
-    doc.patterns = [{
-      id: "pat1", kind: "linear", sourceIds: ["l"], instanceIds: [["l-c1"], ["l-c2"]],
-      params: { countX: 3, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
-    }];
+    doc.patterns = [
+      {
+        id: "pat1",
+        kind: "linear",
+        sourceIds: ["l"],
+        instanceIds: [["l-c1"], ["l-c2"]],
+        params: { countX: 3, countY: 1, spacingX: 20, spacingY: 20, countXExpr: "n" },
+      },
+    ];
     const ok = validate(doc);
     if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
     expect(ok).toBe(true);
@@ -100,7 +111,8 @@ describe("rcam v2 schema", () => {
 
   it("accepts a dimension that omits the unused operand array", () => {
     const doc = minimalDoc();
-    doc.dimensions = [ // radius dim uses only entities — no `points`
+    doc.dimensions = [
+      // radius dim uses only entities — no `points`
       { id: "d1", type: "radius", entities: ["ent1"], value: 10, driving: true, offset: 5 },
     ];
     const ok = validate(doc);
@@ -114,9 +126,14 @@ describe("rcam v2 schema", () => {
   it("accepts the optional CAM fields (peck, coolant, finishPass/allowance, endPosition)", () => {
     const doc = minimalDoc();
     doc.endPosition = { x: 0, y: 0 };
-    doc.operations = [camOp({
-      peckDepth: 2, coolant: "flood", finishPass: true, finishAllowance: 0.2,
-    })];
+    doc.operations = [
+      camOp({
+        peckDepth: 2,
+        coolant: "flood",
+        finishPass: true,
+        finishAllowance: 0.2,
+      }),
+    ];
     const ok = validate(doc);
     if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
     expect(ok).toBe(true);
@@ -130,7 +147,16 @@ describe("rcam v2 schema", () => {
 
   it("accepts a chamfer operation with its fields", () => {
     const doc = minimalDoc();
-    doc.operations = [camOp({ type: "chamfer", toolType: "v-bit", vAngle: 60, chamferWidth: 3, chamferSide: "outside", sharpenCorners: true })];
+    doc.operations = [
+      camOp({
+        type: "chamfer",
+        toolType: "v-bit",
+        vAngle: 60,
+        chamferWidth: 3,
+        chamferSide: "outside",
+        sharpenCorners: true,
+      }),
+    ];
     const ok = validate(doc);
     if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2));
     expect(ok).toBe(true);
@@ -209,7 +235,9 @@ describe("rcam v2 loader tolerance", () => {
     const file = minimalDoc();
     file.entities.push({ type: "line", id: "ent2", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
     file.constraints = [{ id: "c1", type: "horizontal", entities: ["ent2"] }];
-    file.dimensions = [{ id: "d1", type: "radius", entities: ["ent1"], value: 10, driving: true, offset: 5 }];
+    file.dimensions = [
+      { id: "d1", type: "radius", entities: ["ent1"], value: 10, driving: true, offset: 5 },
+    ];
     const doc = new CADDocument({ width: 100, height: 100 });
     expect(() => applyFile(doc, file)).not.toThrow();
     expect(doc.constraints[0].points).toEqual([]);
@@ -224,53 +252,129 @@ describe("rcam v2 loader tolerance", () => {
 function kitchenSinkDoc(): CADDocument {
   const doc = new CADDocument({ width: 200, height: 200 });
   const circle = doc.add(new CircleEntity({ x: 50, y: 50 }, 10));
-  const outer = doc.add(new PolylineEntity(
-    [{ x: 10, y: 10 }, { x: 90, y: 10 }, { x: 90, y: 90 }, { x: 10, y: 90 }], true));
-  const island = doc.add(new PolylineEntity(
-    [{ x: 40, y: 40 }, { x: 60, y: 40 }, { x: 60, y: 60 }, { x: 40, y: 60 }], true));
+  const outer = doc.add(
+    new PolylineEntity(
+      [
+        { x: 10, y: 10 },
+        { x: 90, y: 10 },
+        { x: 90, y: 90 },
+        { x: 10, y: 90 },
+      ],
+      true,
+    ),
+  );
+  const island = doc.add(
+    new PolylineEntity(
+      [
+        { x: 40, y: 40 },
+        { x: 60, y: 40 },
+        { x: 60, y: 60 },
+        { x: 40, y: 60 },
+      ],
+      true,
+    ),
+  );
 
   // A library tool referenced by one op's toolId — exercises the tools array
   // (and the used-tools filter) in serializeDoc.
   const tool: ToolDef = {
-    id: "tool1", name: "6mm flat", toolType: "end-mill", diameter: 6,
-    vAngle: 60, tipDiameter: 0.5, tipAngle: 118,
-    feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5,
+    id: "tool1",
+    name: "6mm flat",
+    toolType: "end-mill",
+    diameter: 6,
+    vAngle: 60,
+    tipDiameter: 0.5,
+    tipAngle: 118,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
   };
   doc.tools.push(tool);
 
   const base = {
-    toolNumber: 1, diameter: 6, feedrate: 1000, plungeRate: 300,
-    spindleSpeed: 18000, safeZ: 5, depth: -5, stepdown: 1.5, stepover: 0.4,
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -5,
+    stepdown: 1.5,
+    stepover: 0.4,
   };
 
   const ops: CAMOperation[] = [
-    { // profile: side, toolId, coolant, finishPass/allowance, tabs, leads
-      id: "op-profile", name: "Profile", type: "profile", entityIds: [outer.id],
-      side: "outside", toolId: "tool1", toolType: "end-mill", ...base,
-      coolant: "flood", finishPass: true, finishAllowance: 0.3,
+    {
+      // profile: side, toolId, coolant, finishPass/allowance, tabs, leads
+      id: "op-profile",
+      name: "Profile",
+      type: "profile",
+      entityIds: [outer.id],
+      side: "outside",
+      toolId: "tool1",
+      toolType: "end-mill",
+      ...base,
+      coolant: "flood",
+      finishPass: true,
+      finishAllowance: 0.3,
       tabs: { enabled: true, count: 4, width: 5, height: 1 },
-      leadIn: { type: "arc", length: 4 }, leadOut: { type: "linear", length: 4 },
+      leadIn: { type: "arc", length: 4 },
+      leadOut: { type: "linear", length: 4 },
     },
-    { // engrave
-      id: "op-engrave", name: "Engrave", type: "engrave", entityIds: [outer.id],
-      side: "outside", toolType: "v-bit", vAngle: 30, ...base,
+    {
+      // engrave
+      id: "op-engrave",
+      name: "Engrave",
+      type: "engrave",
+      entityIds: [outer.id],
+      side: "outside",
+      toolType: "v-bit",
+      vAngle: 30,
+      ...base,
     },
-    { // drill: peckDepth, tipAngle, coolant
-      id: "op-drill", name: "Drill", type: "drill", entityIds: [circle.id],
-      side: "outside", toolType: "drill", tipAngle: 118, ...base,
-      peckDepth: 2, coolant: "mist",
+    {
+      // drill: peckDepth, tipAngle, coolant
+      id: "op-drill",
+      name: "Drill",
+      type: "drill",
+      entityIds: [circle.id],
+      side: "outside",
+      toolType: "drill",
+      tipAngle: 118,
+      ...base,
+      peckDepth: 2,
+      coolant: "mist",
     },
-    { // pocket: pocketStrategy, islandIds, regions
-      id: "op-pocket", name: "Pocket", type: "pocket", entityIds: [outer.id],
-      side: "inside", toolType: "end-mill", ...base,
-      pocketStrategy: "raster", islandIds: [island.id],
+    {
+      // pocket: pocketStrategy, islandIds, regions
+      id: "op-pocket",
+      name: "Pocket",
+      type: "pocket",
+      entityIds: [outer.id],
+      side: "inside",
+      toolType: "end-mill",
+      ...base,
+      pocketStrategy: "raster",
+      islandIds: [island.id],
       regions: [{ containingLoops: [[outer.id]] }],
-      finishPass: true, finishAllowance: 0.25,
+      finishPass: true,
+      finishAllowance: 0.25,
     },
-    { // chamfer: vAngle, tipDiameter, chamferWidth/Side, sharpenCorners
-      id: "op-chamfer", name: "Chamfer", type: "chamfer", entityIds: [outer.id],
-      side: "outside", toolType: "v-bit", vAngle: 60, tipDiameter: 0.5, ...base,
-      chamferWidth: 3, chamferSide: "inside", sharpenCorners: true,
+    {
+      // chamfer: vAngle, tipDiameter, chamferWidth/Side, sharpenCorners
+      id: "op-chamfer",
+      name: "Chamfer",
+      type: "chamfer",
+      entityIds: [outer.id],
+      side: "outside",
+      toolType: "v-bit",
+      vAngle: 60,
+      tipDiameter: 0.5,
+      ...base,
+      chamferWidth: 3,
+      chamferSide: "inside",
+      sharpenCorners: true,
     },
   ];
   doc.operations.push(...ops);
@@ -288,13 +392,24 @@ function allEntityTypesDoc(): CADDocument {
   const doc = new CADDocument({ width: 300, height: 300 });
   doc.layers.push({ id: "layer-1", name: "Cuts", color: "#ff3333", visible: true, locked: false });
   const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 20, y: 0 }));
-  line.isConstruction = true; line.layerId = "layer-1";
+  line.isConstruction = true;
+  line.layerId = "layer-1";
   doc.add(new CircleEntity({ x: 40, y: 40 }, 6));
   doc.add(new RectEntity({ x: 60, y: 60 }, { x: 90, y: 85 }));
   doc.add(new ArcEntity({ x: 120, y: 120 }, 10, 0, Math.PI / 2));
-  doc.add(new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 130 }, { x: 30, y: 130 }, { x: 40, y: 100 }));
+  doc.add(
+    new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 130 }, { x: 30, y: 130 }, { x: 40, y: 100 }),
+  );
   const poly = new PolylineEntity(
-    [{ x: 150, y: 150 }, { x: 174, y: 150 }, { x: 162, y: 171 }], true, undefined, ["va", "vb", "vc"]);
+    [
+      { x: 150, y: 150 },
+      { x: 174, y: 150 },
+      { x: 162, y: 171 },
+    ],
+    true,
+    undefined,
+    ["va", "vb", "vc"],
+  );
   poly.polygon = { sides: 3, center: { x: 162, y: 157 }, radius: 12, rotation: 0 };
   doc.add(poly);
   doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 200, y: 200 }, 0.2));
@@ -316,12 +431,27 @@ function parametricDoc(): CADDocument {
   doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "plateW/2", scale: 1 });
 
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 50, y: 0 }));
-  doc.dimensions.push(makeDimension("distance", {
-    points: [{ entityId: l.id, key: "a" }, { entityId: l.id, key: "b" }],
-    value: 50, offset: 0, driving: true, expr: "margin", hidden: true, // hidden driving dim
-  }));
+  doc.dimensions.push(
+    makeDimension("distance", {
+      points: [
+        { entityId: l.id, key: "a" },
+        { entityId: l.id, key: "b" },
+      ],
+      value: 50,
+      offset: 0,
+      driving: true,
+      expr: "margin",
+      hidden: true, // hidden driving dim
+    }),
+  );
 
-  registerEmbeddedImage({ id: "img-p", name: "p", width: 2, height: 2, data: btoa(String.fromCharCode(0, 255, 255, 0)) });
+  registerEmbeddedImage({
+    id: "img-p",
+    name: "p",
+    width: 2,
+    height: 2,
+    data: btoa(String.fromCharCode(0, 255, 255, 0)),
+  });
   const img = new RasterImageEntity("img-p", { x: 10, y: 10 }, 40, 20, 0.3, true, false);
   img.aspectLocked = true;
   doc.add(img);
@@ -337,9 +467,21 @@ function parametricDoc(): CADDocument {
 /** A schema-complete CAM operation with all required fields, plus `extra`. */
 function camOp(extra: Record<string, unknown>): any {
   return {
-    id: "op1", name: "Op", type: "profile", entityIds: ["ent1"], side: "outside",
-    toolType: "end-mill", toolNumber: 1, diameter: 6, feedrate: 900, plungeRate: 250,
-    spindleSpeed: 18000, safeZ: 5, depth: -3, stepdown: 1.5, stepover: 0.4,
+    id: "op1",
+    name: "Op",
+    type: "profile",
+    entityIds: ["ent1"],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 900,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
     ...extra,
   };
 }
@@ -351,9 +493,7 @@ function minimalDoc(): any {
     name: "Minimal",
     canvas: { width: 100, height: 100 },
     displayUnit: "mm",
-    entities: [
-      { type: "circle", id: "ent1", center: { x: 50, y: 50 }, radius: 10 },
-    ],
+    entities: [{ type: "circle", id: "ent1", center: { x: 50, y: 50 }, radius: 10 }],
     constraints: [],
     dimensions: [],
   };

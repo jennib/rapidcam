@@ -1,19 +1,43 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import {
-  LineEntity, CircleEntity, RectEntity, PolylineEntity, ArcEntity, BezierEntity, TextEntity, type Entity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+  BezierEntity,
+  TextEntity,
+  type Entity,
 } from "../src/model/entities";
 import { makeConstraint } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
 import { makeVariable } from "../src/model/variables";
-import { makeCircularPattern, computeSourceSnapshot, type CircularPatternParams } from "../src/model/patterns";
+import {
+  makeCircularPattern,
+  computeSourceSnapshot,
+  type CircularPatternParams,
+} from "../src/model/patterns";
 import { applyRotate } from "../src/core/transform";
-import { serializeDoc, applyFile, pushRecent, trySetItem, stripEmbeddedFonts, type RcamFile } from "../src/io/fileio";
+import {
+  serializeDoc,
+  applyFile,
+  pushRecent,
+  trySetItem,
+  stripEmbeddedFonts,
+  type RcamFile,
+} from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getFont, loadFromFile, registerEmbeddedFont, isFontResolvable, fsTypeAllowsEmbedding } from "../src/core/fontManager";
+import {
+  getFont,
+  loadFromFile,
+  registerEmbeddedFont,
+  isFontResolvable,
+  fsTypeAllowsEmbedding,
+} from "../src/core/fontManager";
 
 /**
  * Round-trip fidelity: a document exercising every persisted feature must
@@ -36,9 +60,20 @@ function buildKitchenSink(): CADDocument {
   const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 40, y: 0 }));
   const circle = doc.add(new CircleEntity({ x: 60, y: 30 }, 8));
   const rect = doc.add(new RectEntity({ x: 80, y: 20 }, { x: 120, y: 50 }));
-  const _poly = doc.add(new PolylineEntity([{ x: 0, y: 60 }, { x: 20, y: 60 }, { x: 20, y: 80 }], true));
+  const _poly = doc.add(
+    new PolylineEntity(
+      [
+        { x: 0, y: 60 },
+        { x: 20, y: 60 },
+        { x: 20, y: 80 },
+      ],
+      true,
+    ),
+  );
   const arc = doc.add(new ArcEntity({ x: 120, y: 100 }, 10, 0, Math.PI / 2));
-  doc.add(new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 110 }, { x: 20, y: 110 }, { x: 30, y: 100 }));
+  doc.add(
+    new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 110 }, { x: 20, y: 110 }, { x: 30, y: 100 }),
+  );
   const text = doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 140, y: 10 }, 0.25));
 
   // Entity flags that must persist.
@@ -47,16 +82,28 @@ function buildKitchenSink(): CADDocument {
 
   // Constraints covering points / entities / params.
   doc.addConstraint(makeConstraint("horizontal", { entities: [line.id] }));
-  doc.addConstraint(makeConstraint("fixedPoint", { points: [{ entityId: circle.id, key: "c" }], params: [60, 30] }));
+  doc.addConstraint(
+    makeConstraint("fixedPoint", { points: [{ entityId: circle.id, key: "c" }], params: [60, 30] }),
+  );
   doc.addConstraint(makeConstraint("equal", { entities: [circle.id, arc.id] }));
 
   // Dimensions: a plain one, a diameter, and a variable-driven (expr) reference dim.
-  doc.addDimension(makeDimension("distance", {
-    points: [{ entityId: line.id, key: "a" }, { entityId: line.id, key: "b" }],
-    value: 40, offset: 10,
-  }));
-  doc.addDimension(makeDimension("diameter", { entities: [circle.id], value: 16, offset: 1, expr: "dia" }));
-  doc.addDimension(makeDimension("radius", { entities: [arc.id], value: 10, offset: 0.5, driving: false }));
+  doc.addDimension(
+    makeDimension("distance", {
+      points: [
+        { entityId: line.id, key: "a" },
+        { entityId: line.id, key: "b" },
+      ],
+      value: 40,
+      offset: 10,
+    }),
+  );
+  doc.addDimension(
+    makeDimension("diameter", { entities: [circle.id], value: 16, offset: 1, expr: "dia" }),
+  );
+  doc.addDimension(
+    makeDimension("radius", { entities: [arc.id], value: 10, offset: 0.5, driving: false }),
+  );
 
   // Variables.
   doc.variables.push(makeVariable("dia", "16", "mm"));
@@ -73,25 +120,54 @@ function buildKitchenSink(): CADDocument {
     const copies: Entity[] = [circle.duplicate()];
     applyRotate(copies, params.cx, params.cy, k * step);
     const ids: string[] = [];
-    for (const c of copies) { doc.add(c); ids.push(c.id); }
+    for (const c of copies) {
+      doc.add(c);
+      ids.push(c.id);
+    }
     instanceIds.push(ids);
   }
-  doc.addPattern(makeCircularPattern([circle.id], instanceIds, params, computeSourceSnapshot(doc.entities, [circle.id])));
+  doc.addPattern(
+    makeCircularPattern(
+      [circle.id],
+      instanceIds,
+      params,
+      computeSourceSnapshot(doc.entities, [circle.id]),
+    ),
+  );
 
   // Embedded tool library + an operation that references it by toolId.
   doc.tools.push({
-    id: "tool-em-6", name: "6mm End Mill", toolType: "end-mill", diameter: 6,
-    feedrate: 900, plungeRate: 250, spindleSpeed: 18000, safeZ: 5,
+    id: "tool-em-6",
+    name: "6mm End Mill",
+    toolType: "end-mill",
+    diameter: 6,
+    feedrate: 900,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
   });
 
   // CAM operation with the nested optional shapes.
   const op: CAMOperation = {
-    id: "op1", name: "Profile", type: "profile", entityIds: [rect.id], side: "outside",
+    id: "op1",
+    name: "Profile",
+    type: "profile",
+    entityIds: [rect.id],
+    side: "outside",
     toolId: "tool-em-6",
-    toolType: "end-mill", toolNumber: 2, diameter: 6, feedrate: 900, plungeRate: 250,
-    spindleSpeed: 18000, safeZ: 5, depth: -12, stepdown: 2.5, stepover: 0.4,
+    toolType: "end-mill",
+    toolNumber: 2,
+    diameter: 6,
+    feedrate: 900,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -12,
+    stepdown: 2.5,
+    stepover: 0.4,
     tabs: { enabled: true, count: 4, width: 6, height: 2 },
-    leadIn: { type: "arc", length: 3 }, leadOut: { type: "arc", length: 3 },
+    leadIn: { type: "arc", length: 3 },
+    leadOut: { type: "arc", length: 3 },
   };
   doc.operations.push(op);
 
@@ -118,7 +194,8 @@ test("text in a non-bundled font embeds the font and reproduces it on load", asy
   const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
   const fakeFile = {
     name: "user-font.woff",
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File;
   const { id: fontId } = await loadFromFile(fakeFile);
   expect(fontId.startsWith("font-")).toBe(true);
@@ -159,26 +236,41 @@ test("isFontResolvable: bundled always, registered yes, unknown no", async () =>
   const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
   const { id } = await loadFromFile({
     name: "u.woff",
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File);
   expect(isFontResolvable(id)).toBe(true);
 });
 
 test("fsTypeAllowsEmbedding follows the OS/2 restricted-license bit", () => {
-  expect(fsTypeAllowsEmbedding(0x0000)).toBe(true);          // installable
-  expect(fsTypeAllowsEmbedding(0x0004)).toBe(true);          // preview & print
-  expect(fsTypeAllowsEmbedding(0x0008)).toBe(true);          // editable
-  expect(fsTypeAllowsEmbedding(0x0002)).toBe(false);         // restricted license
+  expect(fsTypeAllowsEmbedding(0x0000)).toBe(true); // installable
+  expect(fsTypeAllowsEmbedding(0x0004)).toBe(true); // preview & print
+  expect(fsTypeAllowsEmbedding(0x0008)).toBe(true); // editable
+  expect(fsTypeAllowsEmbedding(0x0002)).toBe(false); // restricted license
   expect(fsTypeAllowsEmbedding(0x0002 | 0x0004)).toBe(false); // restricted bit dominates
-  expect(fsTypeAllowsEmbedding(null)).toBe(true);            // no OS/2 table → no restriction
+  expect(fsTypeAllowsEmbedding(null)).toBe(true); // no OS/2 table → no restriction
   expect(fsTypeAllowsEmbedding(undefined)).toBe(true);
 });
 
 test("stripEmbeddedFonts drops fonts but keeps the rest of the file", () => {
   const file: RcamFile = {
-    version: 2, name: "F", canvas: { width: 1, height: 1 }, displayUnit: "mm",
-    entities: [{ type: "text", id: "t1", text: "Hi", fontId: "font-x", sizeMM: 5, position: { x: 0, y: 0 }, angle: 0 }],
-    constraints: [], dimensions: [],
+    version: 2,
+    name: "F",
+    canvas: { width: 1, height: 1 },
+    displayUnit: "mm",
+    entities: [
+      {
+        type: "text",
+        id: "t1",
+        text: "Hi",
+        fontId: "font-x",
+        sizeMM: 5,
+        position: { x: 0, y: 0 },
+        angle: 0,
+      },
+    ],
+    constraints: [],
+    dimensions: [],
     fonts: [{ id: "font-x", name: "X", format: "ttf", data: "AAAA" }],
   };
   const light = stripEmbeddedFonts(file);
@@ -193,16 +285,30 @@ test("localStorage writes never throw under quota pressure", () => {
   const fake = {
     getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => {
-      if (v.length > 100) { const e = new Error("quota"); e.name = "QuotaExceededError"; throw e; }
+      if (v.length > 100) {
+        const e = new Error("quota");
+        e.name = "QuotaExceededError";
+        throw e;
+      }
       store.set(k, v);
     },
-    removeItem: (k: string) => { store.delete(k); },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
   };
   (globalThis as { localStorage?: unknown }).localStorage = fake;
   try {
     expect(trySetItem("k", "x".repeat(50))).toBe(true);
     expect(trySetItem("k", "x".repeat(500))).toBe(false); // too big → false, no throw
-    const data = { version: 2, name: "Big", canvas: { width: 1, height: 1 }, displayUnit: "mm", entities: [], constraints: [], dimensions: [] } as unknown as RcamFile;
+    const data = {
+      version: 2,
+      name: "Big",
+      canvas: { width: 1, height: 1 },
+      displayUnit: "mm",
+      entities: [],
+      constraints: [],
+      dimensions: [],
+    } as unknown as RcamFile;
     // Oversized recent: pushRecent must shed it without throwing.
     expect(() => pushRecent({ name: "Big", savedAt: 0, data })).not.toThrow();
   } finally {

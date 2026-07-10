@@ -24,8 +24,15 @@
 import type { CADDocument } from "../model/document";
 import { ORIGIN_ENTITY_ID } from "../model/document";
 import {
-  LineEntity, CircleEntity, RectEntity, PolylineEntity,
-  ArcEntity, BezierEntity, TextEntity, PointEntity, RasterImageEntity,
+  LineEntity,
+  CircleEntity,
+  RectEntity,
+  PolylineEntity,
+  ArcEntity,
+  BezierEntity,
+  TextEntity,
+  PointEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "../cam/textOutlines";
 import { isFontResolvable } from "../core/fontManager";
@@ -42,31 +49,42 @@ function nv(v: number): string {
 
 /** Radians → DXF degrees in [0, 360). */
 function degNorm(rad: number): number {
-  return ((rad * 180 / Math.PI) % 360 + 360) % 360;
+  return ((((rad * 180) / Math.PI) % 360) + 360) % 360;
 }
 
 export function exportDxf(doc: CADDocument): DxfExportResult {
   const warnings: string[] = [];
   const out: (string | number)[] = [];
-  const tag = (code: number, value: string | number) => { out.push(code, value); };
+  const tag = (code: number, value: string | number) => {
+    out.push(code, value);
+  };
 
   // --- header ---------------------------------------------------------------
-  tag(0, "SECTION"); tag(2, "HEADER");
-  tag(9, "$ACADVER"); tag(1, "AC1015");
-  tag(9, "$INSUNITS"); tag(70, 4); // millimetres
+  tag(0, "SECTION");
+  tag(2, "HEADER");
+  tag(9, "$ACADVER");
+  tag(1, "AC1015");
+  tag(9, "$INSUNITS");
+  tag(70, 4); // millimetres
   tag(0, "ENDSEC");
 
   // --- entities ---------------------------------------------------------------
-  tag(0, "SECTION"); tag(2, "ENTITIES");
+  tag(0, "SECTION");
+  tag(2, "ENTITIES");
 
   const layerName = new Map(doc.layers.map((l) => [l.id, l.name || l.id]));
   const visible = new Set(doc.layers.filter((l) => l.visible).map((l) => l.id));
   let skippedImages = 0;
 
   const lwpolyline = (pts: { x: number; y: number }[], closed: boolean, layer: string) => {
-    tag(0, "LWPOLYLINE"); tag(8, layer);
-    tag(90, pts.length); tag(70, closed ? 1 : 0);
-    for (const p of pts) { tag(10, nv(p.x)); tag(20, nv(p.y)); }
+    tag(0, "LWPOLYLINE");
+    tag(8, layer);
+    tag(90, pts.length);
+    tag(70, closed ? 1 : 0);
+    for (const p of pts) {
+      tag(10, nv(p.x));
+      tag(20, nv(p.y));
+    }
   };
 
   for (const e of doc.entities) {
@@ -76,35 +94,60 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
     const layer = layerName.get(e.layerId || "layer-0") ?? "0";
 
     if (e instanceof LineEntity) {
-      tag(0, "LINE"); tag(8, layer);
-      tag(10, nv(e.a.x)); tag(20, nv(e.a.y));
-      tag(11, nv(e.b.x)); tag(21, nv(e.b.y));
+      tag(0, "LINE");
+      tag(8, layer);
+      tag(10, nv(e.a.x));
+      tag(20, nv(e.a.y));
+      tag(11, nv(e.b.x));
+      tag(21, nv(e.b.y));
     } else if (e instanceof CircleEntity) {
-      tag(0, "CIRCLE"); tag(8, layer);
-      tag(10, nv(e.center.x)); tag(20, nv(e.center.y)); tag(40, nv(e.radius));
+      tag(0, "CIRCLE");
+      tag(8, layer);
+      tag(10, nv(e.center.x));
+      tag(20, nv(e.center.y));
+      tag(40, nv(e.radius));
     } else if (e instanceof ArcEntity) {
       // Both conventions are CCW from start to end — only rad→deg conversion.
-      tag(0, "ARC"); tag(8, layer);
-      tag(10, nv(e.center.x)); tag(20, nv(e.center.y)); tag(40, nv(e.radius));
-      tag(50, nv(degNorm(e.startAngle))); tag(51, nv(degNorm(e.endAngle)));
+      tag(0, "ARC");
+      tag(8, layer);
+      tag(10, nv(e.center.x));
+      tag(20, nv(e.center.y));
+      tag(40, nv(e.radius));
+      tag(50, nv(degNorm(e.startAngle)));
+      tag(51, nv(degNorm(e.endAngle)));
     } else if (e instanceof PointEntity) {
-      tag(0, "POINT"); tag(8, layer);
-      tag(10, nv(e.pos.x)); tag(20, nv(e.pos.y));
+      tag(0, "POINT");
+      tag(8, layer);
+      tag(10, nv(e.pos.x));
+      tag(20, nv(e.pos.y));
     } else if (e instanceof RectEntity) {
       const { minPt, maxPt } = e;
-      lwpolyline([
-        { x: minPt.x, y: minPt.y }, { x: maxPt.x, y: minPt.y },
-        { x: maxPt.x, y: maxPt.y }, { x: minPt.x, y: maxPt.y },
-      ], true, layer);
+      lwpolyline(
+        [
+          { x: minPt.x, y: minPt.y },
+          { x: maxPt.x, y: minPt.y },
+          { x: maxPt.x, y: maxPt.y },
+          { x: minPt.x, y: maxPt.y },
+        ],
+        true,
+        layer,
+      );
     } else if (e instanceof PolylineEntity) {
       if (e.points.length >= 2) lwpolyline(e.points, e.closed, layer);
     } else if (e instanceof BezierEntity) {
       // A cubic Bézier is exactly a degree-3 NURBS with clamped knots.
-      tag(0, "SPLINE"); tag(8, layer);
+      tag(0, "SPLINE");
+      tag(8, layer);
       tag(70, 8); // planar
-      tag(71, 3); tag(72, 8); tag(73, 4); tag(74, 0);
+      tag(71, 3);
+      tag(72, 8);
+      tag(73, 4);
+      tag(74, 0);
       for (const k of [0, 0, 0, 0, 1, 1, 1, 1]) tag(40, k);
-      for (const p of [e.p0, e.p1, e.p2, e.p3]) { tag(10, nv(p.x)); tag(20, nv(p.y)); }
+      for (const p of [e.p0, e.p1, e.p2, e.p3]) {
+        tag(10, nv(p.x));
+        tag(20, nv(p.y));
+      }
     } else if (e instanceof TextEntity) {
       if (!e.text) continue;
       if (isFontResolvable(e.fontId)) {
@@ -116,11 +159,16 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
       } else {
         // No font to outline with — emit a DXF TEXT entity so the content at
         // least survives (the receiving app renders it in its own font).
-        tag(0, "TEXT"); tag(8, layer);
-        tag(10, nv(e.position.x)); tag(20, nv(e.position.y));
-        tag(40, nv(e.sizeMM)); tag(50, nv(degNorm(e.angle)));
+        tag(0, "TEXT");
+        tag(8, layer);
+        tag(10, nv(e.position.x));
+        tag(20, nv(e.position.y));
+        tag(40, nv(e.sizeMM));
+        tag(50, nv(degNorm(e.angle)));
         tag(1, e.text);
-        warnings.push(`text "${e.text}" exported as a TEXT entity (font not available for outlining)`);
+        warnings.push(
+          `text "${e.text}" exported as a TEXT entity (font not available for outlining)`,
+        );
       }
     } else if (e instanceof RasterImageEntity) {
       skippedImages++;
@@ -131,7 +179,9 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
   tag(0, "EOF");
 
   if (skippedImages > 0) {
-    warnings.push(`${skippedImages} image${skippedImages > 1 ? "s" : ""} skipped — DXF has no raster mapping`);
+    warnings.push(
+      `${skippedImages} image${skippedImages > 1 ? "s" : ""} skipped — DXF has no raster mapping`,
+    );
   }
   return { dxf: `${out.join("\n")}\n`, warnings };
 }
