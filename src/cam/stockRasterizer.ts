@@ -35,8 +35,20 @@ import { vcarveRegion, vcarveParamsForOp, groupContoursIntoRegions, type CarveRe
 import type { Entity } from "../model/entities";
 import { flattenBezier } from "../core/geom";
 
-/** Grid cells per millimetre. 2 = 0.5 mm/cell, sufficient for tool-diameter features. */
-const RES = 2;
+/**
+ * Grid cells per millimetre for the preview height field.
+ *
+ * Higher resolution = smaller raster steps, so cut walls read as clean slopes
+ * instead of a stair-stepped edge in the 3D preview. Memory and mesh size grow
+ * with RES², so `rasterizeStock` adapts it per job: it aims for TARGET_RES and
+ * only steps down (never below the historical 2) when a large stock would blow
+ * past the cell budget. Set once at the top of `rasterizeStock`, then read by
+ * the stamp helpers below — safe because rasterization is fully synchronous.
+ */
+let RES = 4;
+const TARGET_RES = 4; // 0.25 mm/cell — smooth walls for typical parts
+const MIN_RES = 2; // 0.5 mm/cell — historical floor, used only for huge stock
+const MAX_CELLS = 4_000_000; // caps the R32F texture + mesh at a safe size
 
 export interface HeightMap {
   /** Surface height above table at each cell (mm).  0 = through-cut, stockT = uncut. */
@@ -51,6 +63,11 @@ export interface HeightMap {
 export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap {
   const { width: stockW, height: stockH } = stockFootprint(doc);
   const stockT = doc.stockThickness;
+
+  // Pick the finest resolution that keeps the grid under the cell budget.
+  RES = TARGET_RES;
+  while (RES > MIN_RES && Math.ceil(stockW * RES) * Math.ceil(stockH * RES) > MAX_CELLS) RES--;
+
   const gridW  = Math.ceil(stockW * RES);
   const gridH  = Math.ceil(stockH * RES);
   const data   = new Float32Array(gridW * gridH).fill(stockT);

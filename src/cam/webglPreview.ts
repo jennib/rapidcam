@@ -35,166 +35,103 @@ uniform sampler2D uHeightMap;
 uniform vec2 uTexelSize;  // 1/gridW, 1/gridH
 uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
-uniform vec2 uStockXZ;
+uniform vec2 uStockXZ;    // stock width (X) and depth (Z) in mm
 
 in vec2 vUV;
 in float vHeight;
 
 out vec4 fragColor;
 
-// --- Procedural wood grain ---
+float hAt(vec2 uv) { return texture(uHeightMap, clamp(uv, vec2(0.0), vec2(1.0))).r; }
 
+// ---------------------------------------------------------------------------
+// Procedural wood grain — world-aligned (holds still while orbiting), subtle.
+// Grain lines run along X (board length) and wander across Z, like real stock.
+// ---------------------------------------------------------------------------
 float hash21(vec2 p) {
-  float h = dot(p, vec2(127.1, 311.7));
-  return fract(sin(h) * 43758.5453123);
+  p = fract(p * vec2(123.34, 345.45));
+  p += dot(p, p + 34.345);
+  return fract(p.x * p.y);
 }
-
-// 2D value noise
-float noise2D(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
-    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
-    f.y
-  );
+  float a = hash21(i),               b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
-
-// Fractal Brownian motion — multiple octaves of noise stacked
 float fbm(vec2 p) {
-  float v = 0.0;
-  float a = 0.5;
-  vec2 shift = vec2(100.0);
-  for (int i = 0; i < 5; i++) {
-    v += a * noise2D(p);
-    p = p * 2.0 + shift;
-    a *= 0.5;
-  }
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * vnoise(p); p *= 2.0; a *= 0.5; }
   return v;
 }
-
-// Returns 0..1 where higher = lighter grain line.
-// Produces realistic wood grain with growth rings, earlywood/latewood bands,
-// and subtle medullary ray flecks.
-float woodGrain(vec2 worldXZ) {
-  float x = worldXZ.x;
-  float z = worldXZ.y;
-
-  // ---- Primary growth rings (annual rings) ----
-  // Wide ring spacing: ~8-25mm per ring, wobbled with low-freq noise
-  float ringFreq = 0.28;
-  float ringWobble = fbm(vec2(x * 0.12, z * 0.35)) * 4.5;
-  float rings = sin(z * ringFreq + ringWobble) * 0.5 + 0.5;
-
-  // Add sub-ring banding: dense latewood / porous earlywood variation
-  float latewoodEdge = sin(z * ringFreq * 5.5 + ringWobble * 2.1) * 0.5 + 0.5;
-  latewoodEdge = smoothstep(0.48, 0.52, latewoodEdge);
-
-  // ---- Fine grain lines ----
-  // Lots of tight parallel lines that undulate across the board
-  float fineFreq = 2.8;
-  float fineWobble = fbm(vec2(x * 0.3, z * 0.8)) * 1.8;
-  float fineLines = sin(z * fineFreq + fineWobble) * 0.5 + 0.5;
-
-  // ---- Figure / curl along the length ----
-  // Wavy chatoyance running perpendicular to grain
-  float figure = sin(x * 0.55 + fbm(worldXZ * 0.38) * 3.0) * 0.5 + 0.5;
-
-  // ---- Medullary ray flecks ----
-  // Small bright speckles running radially (across the grain)
-  float rayNoise = fbm(vec2(x * 1.9, z * 0.22));
-  float rays = smoothstep(0.72, 0.78, rayNoise) * 0.35;
-
-  // ---- Cathedral arches (curved grain on quarter/rift sawn faces) ----
-  // Gentle arcs that bow the grain upward, like growth rings of the tree
-  float arch = sin(z * 0.35 + abs(x) * 0.06 + fbm(vec2(x * 0.08, z * 0.15)) * 2.5) * 0.5 + 0.5;
-  float archBlend = smoothstep(80.0, 200.0, abs(x)); // more arch near edges, flat in middle
-
-  // Blend flat grain with arched grain based on distance from centre
-  float ringPattern = mix(rings, arch, archBlend * 0.45);
-
-  // Composite: primary rings + fine lines + figure + rays
-  float result = ringPattern       * 0.50
-               + latewoodEdge      * 0.16
-               + fineLines         * 0.20
-               + figure            * 0.14
-               + rays              * 0.35;  // subtle bright speckles
-
-  return clamp(result, 0.0, 1.0);
+float woodTone(vec2 mm) {
+  float warp  = fbm(mm * 0.05) * 6.0;                                 // gentle wander
+  float rings = sin((mm.y + warp) * 0.45) * 0.5 + 0.5;               // broad growth bands
+  float fine  = sin((mm.y + fbm(mm * 0.2) * 2.0) * 2.6) * 0.5 + 0.5; // fine streaks
+  float mott  = fbm(vec2(mm.x * 0.05, mm.y * 0.5));                  // soft mottling
+  return clamp(rings * 0.55 + fine * 0.25 + mott * 0.20, 0.0, 1.0);
 }
 
 void main() {
-  // Finite-difference surface normal
-  float hL = texture(uHeightMap, vUV + vec2(-uTexelSize.x, 0.0)).r;
-  float hR = texture(uHeightMap, vUV + vec2( uTexelSize.x, 0.0)).r;
-  float hD = texture(uHeightMap, vUV + vec2(0.0, -uTexelSize.y)).r;
-  float hU = texture(uHeightMap, vUV + vec2(0.0,  uTexelSize.y)).r;
+  // --- Smoothed surface normal ---
+  // The height field is a raster, so a per-texel central difference makes cut
+  // walls stair-step into a bright zipper. A Sobel over a ~1.5-texel window
+  // (with linear texture filtering) averages that staircase into a clean slope.
+  vec2 e = uTexelSize * 1.5;
+  float h00 = hAt(vUV + vec2(-e.x, -e.y)), h10 = hAt(vUV + vec2(0.0, -e.y)), h20 = hAt(vUV + vec2(e.x, -e.y));
+  float h01 = hAt(vUV + vec2(-e.x,  0.0)),                                   h21 = hAt(vUV + vec2(e.x,  0.0));
+  float h02 = hAt(vUV + vec2(-e.x,  e.y)), h12 = hAt(vUV + vec2(0.0,  e.y)), h22 = hAt(vUV + vec2(e.x,  e.y));
 
-  float gradX = (hL - hR) / (2.0 * uCellMM.x);
-  // Z axis is flipped (wz = (0.5-UV.y)*H), so the Z gradient direction is negated.
-  float gradZ = (hU - hD) / (2.0 * uCellMM.y);
+  float sobelX = (h00 + 2.0 * h01 + h02) - (h20 + 2.0 * h21 + h22);
+  // Z axis is flipped (wz = (0.5-UV.y)*H), matching the +y/-y layout below.
+  float sobelZ = (h02 + 2.0 * h12 + h22) - (h00 + 2.0 * h10 + h20);
+  vec2 stepMM = 1.5 * uCellMM;                 // mm spanned by one Sobel step
+  float gradX = sobelX / (8.0 * stepMM.x);     // Sobel side-weight = 4, central diff = 2Δ
+  float gradZ = sobelZ / (8.0 * stepMM.y);
   vec3 normal = normalize(vec3(gradX, 1.0, gradZ));
 
-  // Color based on how much material was REMOVED from the top.
-  // depthFrac = 0 → uncut surface; depthFrac = 1 → cut all the way through.
+  // --- Albedo from how much material was removed (cuts read as fresh wood) ---
   float cutDepth  = uStockT - vHeight;
   float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
 
-  vec3 deep     = vec3(0.05, 0.025, 0.008); // dark shadow at base of deep cuts
-  vec3 machined = vec3(0.82, 0.63,  0.32);  // bright fresh-cut wood
-  vec3 uncut    = vec3(0.38, 0.24,  0.08);  // natural top surface
+  vec3 uncut    = vec3(0.42, 0.28, 0.12);  // planed top surface
+  vec3 machined = vec3(0.78, 0.60, 0.32);  // fresh-cut wood
+  vec3 deep     = vec3(0.06, 0.03, 0.012); // shadow at the base of deep cuts
 
-  vec3 baseColor;
-  if (depthFrac < 0.005) {
-    baseColor = uncut;
-  } else if (depthFrac < 0.08) {
-    baseColor = mix(uncut, machined, depthFrac / 0.08);
-  } else if (depthFrac < 0.80) {
-    baseColor = mix(machined, machined * 0.7, smoothstep(0.08, 0.80, depthFrac));
+  vec3 albedo;
+  if (depthFrac < 0.006) {
+    albedo = uncut;
+  } else if (depthFrac < 0.06) {
+    albedo = mix(uncut, machined, depthFrac / 0.06);
+  } else if (depthFrac < 0.82) {
+    albedo = mix(machined, machined * 0.72, smoothstep(0.06, 0.82, depthFrac));
   } else {
-    baseColor = mix(machined * 0.7, deep, smoothstep(0.80, 1.0, depthFrac));
+    albedo = mix(machined * 0.72, deep, smoothstep(0.82, 1.0, depthFrac));
   }
 
-  // Wood grain modulation — reconstruct world XZ from UV
+  // Wood grain modulation — reconstruct world XZ (mm) from UV.
   float wx = (vUV.x - 0.5) * uStockXZ.x;
   float wz = (0.5 - vUV.y) * uStockXZ.y;
-  float grain = woodGrain(vec2(wx, wz));
-  // Subtle tint: keep the base albedo, let grain darken/lighten it gently.
-  baseColor = baseColor * (0.86 + grain * 0.24);
+  albedo *= 0.86 + 0.22 * woodTone(vec2(wx, wz));
 
-  // Three-light rig with specular highlight
-  vec3 L1 = normalize(vec3( 0.6,  1.4,  0.8));  // key: upper-right-front
-  vec3 L2 = normalize(vec3(-0.8,  1.0, -0.5));  // fill: upper-left-back
-  vec3 L3 = normalize(vec3( 0.1,  1.0,  0.3));  // bounce: above
+  // --- Lighting: hemisphere ambient + key + fill + a soft, tight sheen ---
+  vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
+  vec3 fillDir = normalize(vec3(-0.7, 0.60, -0.40));
+  float key  = max(dot(normal, keyDir),  0.0);
+  float fill = max(dot(normal, fillDir), 0.0);
+  // Sky above is brighter than the ground bounce below.
+  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * normal.y);
 
-  float d1 = max(dot(normal, L1), 0.0);
-  float d2 = max(dot(normal, L2), 0.0);
-  float d3 = max(dot(normal, L3), 0.0);
+  vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
+  vec3 halfV   = normalize(keyDir + viewDir);
+  float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
 
-  // Blinn-Phong specular (view from above-front, typical orbit angle).
-  // Kept low and tight so it reads as a soft sheen, not a hard glint on the
-  // stair-stepped raster walls.
-  vec3 viewDir = normalize(vec3(0.35, 1.0, 0.55));
-  vec3 halfVec = normalize(L1 + viewDir);
-  float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
+  float diffuse = ambient + key * 0.85 + fill * 0.25;
+  vec3 col = albedo * diffuse + vec3(sheen);
 
-  float light = 0.24               // ambient
-              + d1 * 0.86          // key
-              + d2 * 0.28          // fill
-              + d3 * 0.18          // bounce
-              + spec * 0.12;       // specular
-
-  vec3 col = baseColor * light;
-
-  // Gamma correction: linear → sRGB
+  // Gamma correction: linear → sRGB.
   col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
-
-  // Edge highlight: cut walls catch warm rim light
-  float gradMag = length(vec2(gradX, gradZ));
-  float edge = smoothstep(0.6, 5.0, gradMag) * 0.38;
-  col = clamp(col + vec3(edge * 0.88, edge * 0.72, edge * 0.45), 0.0, 1.0);
-
   fragColor = vec4(col, 1.0);
 }`;
 
@@ -481,7 +418,9 @@ export class WebGLPreview {
     host.appendChild(this.resetBtn);
     host.appendChild(this.statusEl);
 
-    const gl = this.canvas.getContext("webgl2");
+    // antialias:true → MSAA on the default framebuffer, which cleans up the
+    // stepped silhouette where cut walls meet the floor.
+    const gl = this.canvas.getContext("webgl2", { antialias: true, depth: true });
     if (!gl) { this.showError("WebGL 2 not supported in this browser."); return; }
     this.gl = gl;
 
@@ -656,10 +595,14 @@ export class WebGLPreview {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     // 1×1 placeholder
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1, 1, 0, gl.RED, gl.FLOAT, new Float32Array([0]));
-    // NEAREST avoids the OES_texture_float_linear extension requirement for R32F.
-    // One texel = one height cell, so NEAREST is exact anyway.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    // Linear filtering smooths the raster's cell steps in BOTH the mesh vertex
+    // heights and the shaded normals, so cut walls read as clean slopes instead
+    // of a stair-stepped zipper. R32F linear needs OES_texture_float_linear;
+    // fall back to NEAREST (still correct, just crisper steps) if unavailable.
+    const linear = gl.getExtension("OES_texture_float_linear") != null;
+    const filter = linear ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;
