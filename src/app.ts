@@ -62,6 +62,7 @@ import { isModalOpen, closeAllModals } from "./ui/modal";
 import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
+import { defaultRotarySettings } from "./cam/klein";
 import { buildSideA, buildSideB, opFace } from "./cam/flip";
 import type { CAMOperation } from "./cam/types";
 import { laserPreviewPaths } from "./cam/lasergcode";
@@ -457,7 +458,16 @@ export class App {
       this.previewDebounceTimer = null;
       if (this.webglPreview && this.preview3DVisible) {
         const { ops, doc } = this.previewInput();
-        this.webglPreview.render(rasterizeStock(ops, doc));
+        // For a rotary job, wrap the preview onto the cylinder (diameter from the
+        // per-job rotary settings, or the stock-derived default before one is set).
+        const rotary =
+          doc.machineKind === "mill-rotary"
+            ? (() => {
+                const s = doc.rotary ?? defaultRotarySettings(doc);
+                return { diameter: s.diameter, wrapAxis: s.wrapAxis };
+              })()
+            : null;
+        this.webglPreview.render(rasterizeStock(ops, doc), rotary);
       }
     }, 250);
   }

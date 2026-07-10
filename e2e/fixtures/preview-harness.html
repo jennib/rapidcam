@@ -19,7 +19,13 @@
     // grid — the worst case for stair-stepping — so a regression that reintroduces
     // crenellation is plainly visible in the rendered frame.
     window.__renderPreview = (opts = {}) => {
+      window.__err = ""; // clear any prior error so each render reports its own
       const { stockW = 120, stockH = 80, stockT = 12, angleDeg = 25, RES = 4 } = opts;
+      // Rotary: wrap the same unrolled height map onto a cylinder. stockH is the
+      // circumference, so diameter = stockH/π makes it close into a full tube.
+      const rotary = opts.rotary
+        ? { diameter: stockH / Math.PI, wrapAxis: opts.wrapAxis || "y" }
+        : null;
       const gridW = Math.ceil(stockW * RES), gridH = Math.ceil(stockH * RES);
       const data = new Float32Array(gridW * gridH).fill(stockT);
       const cx = stockW / 2, cy = stockH / 2;
@@ -56,7 +62,7 @@
       host.querySelectorAll("canvas,button,.webgl-status").forEach((n) => n.remove());
       try {
         const p = new WebGLPreview(host);
-        p.render({ data, gridW, gridH, stockW, stockH, stockT });
+        p.render({ data, gridW, gridH, stockW, stockH, stockT }, rotary);
         // Grab the frame *synchronously*, in the same task as the draw, so the
         // WebGL drawing buffer is still intact (the context has no
         // preserveDrawingBuffer, so it is cleared once we yield). Screenshotting

@@ -411,6 +411,146 @@ void main() {
   fragColor = vec4(pow(clamp(base * d, 0.0, 1.0), vec3(1.0/2.2)), 1.0);
 }`;
 
+// ---------------------------------------------------------------------------
+// Cylinder shader — the SAME unrolled height-map grid, wrapped onto a cylinder
+// for a rotary (4th-axis) job. The rasterizer already produces the surface over
+// the unrolled cylinder (stockW = length, stockH = circumference = π·D), so this
+// is purely a vertex remap + a radial-normal fragment; no CPU geometry change.
+// ---------------------------------------------------------------------------
+
+/** Cylinder-preview parameters for a rotary job (null/omitted = flat stock). */
+export interface RotaryView {
+  diameter: number; // mm
+  wrapAxis: "x" | "y";
+}
+
+const VERT_CYL = `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uHeightMap;
+uniform float uStockT;    // radial wall / max cut depth (mm)
+uniform float uRadius;    // cylinder radius R = D/2 (mm)
+uniform float uAxialLen;  // stock length along the cylinder axis (mm)
+uniform float uCirc;      // circumference span mapped around (= 2πR) (mm)
+uniform int   uWrapX;     // 1 = X wraps (Y = length); 0 = Y wraps (X = length)
+uniform mat4  uMVP;
+
+layout(location = 0) in vec2 aUV;
+
+out vec2  vUV;
+out float vHeight;
+out float vTheta;
+out float vAxial;
+
+void main() {
+  float h = texture(uHeightMap, aUV).r;
+  vUV = aUV;
+  vHeight = h;
+
+  // Which UV axis runs along the length vs around the circumference.
+  float axialParam = (uWrapX == 1) ? aUV.y : aUV.x;
+  float wrapParam  = (uWrapX == 1) ? aUV.x : aUV.y;
+
+  float axial  = (axialParam - 0.5) * uAxialLen;   // along world X
+  float theta  = wrapParam * (uCirc / uRadius);     // = 2π·wrapParam
+  float radius = uRadius - (uStockT - h);           // cut eats into the radius
+
+  vTheta = theta;
+  vAxial = axial;
+  vec3 pos = vec3(axial, radius * cos(theta), radius * sin(theta));
+  gl_Position = uMVP * vec4(pos, 1.0);
+}`;
+
+const FRAG_CYL = `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uHeightMap;
+uniform vec2  uTexelSize;  // 1/gridW, 1/gridH
+uniform vec2  uCellMM;     // mm per texel in u and v
+uniform float uStockT;
+uniform float uRadius;
+uniform int   uWrapX;
+
+in vec2  vUV;
+in float vHeight;
+in float vTheta;
+in float vAxial;
+
+out vec4 fragColor;
+
+float hAt(vec2 uv) { return texture(uHeightMap, clamp(uv, vec2(0.0), vec2(1.0))).r; }
+
+// Wood grain (same helpers as the flat top-surface shader).
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i), b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * vnoise(p); p *= 2.0; a *= 0.5; } return v; }
+float woodTone(vec2 mm) {
+  float warp  = fbm(mm * 0.05) * 6.0;
+  float rings = sin((mm.y + warp) * 0.45) * 0.5 + 0.5;
+  float fine  = sin((mm.y + fbm(mm * 0.2) * 2.0) * 2.6) * 0.5 + 0.5;
+  float mott  = fbm(vec2(mm.x * 0.05, mm.y * 0.5));
+  return clamp(rings * 0.55 + fine * 0.25 + mott * 0.20, 0.0, 1.0);
+}
+
+void main() {
+  // Height gradient (Sobel over a ~1.5-texel window), in mm, along u and v.
+  vec2 e = uTexelSize * 1.5;
+  float h00 = hAt(vUV + vec2(-e.x, -e.y)), h10 = hAt(vUV + vec2(0.0, -e.y)), h20 = hAt(vUV + vec2(e.x, -e.y));
+  float h01 = hAt(vUV + vec2(-e.x,  0.0)),                                   h21 = hAt(vUV + vec2(e.x,  0.0));
+  float h02 = hAt(vUV + vec2(-e.x,  e.y)), h12 = hAt(vUV + vec2(0.0,  e.y)), h22 = hAt(vUV + vec2(e.x,  e.y));
+  float sobelU = (h20 + 2.0 * h21 + h22) - (h00 + 2.0 * h01 + h02); // +u
+  float sobelV = (h02 + 2.0 * h12 + h22) - (h00 + 2.0 * h10 + h20); // +v
+  vec2 stepMM = 1.5 * uCellMM;
+  float dHdU = sobelU / (8.0 * stepMM.x);
+  float dHdV = sobelV / (8.0 * stepMM.y);
+  // radius = R - stockT + h, so dR/d… = dH/d… ; assign to axial vs arc by wrap.
+  float dRdAxial = (uWrapX == 1) ? dHdV : dHdU;
+  float dRdArc   = (uWrapX == 1) ? dHdU : dHdV;
+
+  // Frame: radial base normal + axial/circumferential tangents (arc-length param).
+  float ct = cos(vTheta), st = sin(vTheta);
+  vec3 nRad   = vec3(0.0,  ct, st);
+  vec3 tAxial = vec3(1.0, 0.0, 0.0);
+  vec3 tCirc  = vec3(0.0, -st, ct);
+  vec3 normal = normalize(nRad - dRdAxial * tAxial - dRdArc * tCirc);
+
+  // Albedo from removed material (identical ramp to the flat top surface).
+  float cutDepth  = uStockT - vHeight;
+  float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
+  vec3 uncut    = vec3(0.42, 0.28, 0.12);
+  vec3 machined = vec3(0.78, 0.60, 0.32);
+  vec3 deep     = vec3(0.06, 0.03, 0.012);
+  vec3 albedo;
+  if (depthFrac < 0.006)      albedo = uncut;
+  else if (depthFrac < 0.06)  albedo = mix(uncut, machined, depthFrac / 0.06);
+  else if (depthFrac < 0.82)  albedo = mix(machined, machined * 0.72, smoothstep(0.06, 0.82, depthFrac));
+  else                        albedo = mix(machined * 0.72, deep, smoothstep(0.82, 1.0, depthFrac));
+  // Grain runs along the dowel: x = axial (length), y = arc length (θ·R).
+  albedo *= 0.86 + 0.22 * woodTone(vec2(vAxial, vTheta * uRadius));
+
+  // Lighting: hemisphere ambient + key + fill + soft sheen (same as flat).
+  vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
+  vec3 fillDir = normalize(vec3(-0.7, 0.60, -0.40));
+  float key  = max(dot(normal, keyDir),  0.0);
+  float fill = max(dot(normal, fillDir), 0.0);
+  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * normal.y);
+  vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
+  vec3 halfV   = normalize(keyDir + viewDir);
+  float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
+  float diffuse = ambient + key * 0.85 + fill * 0.25;
+  vec3 col = albedo * diffuse + vec3(sheen);
+  col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
+  fragColor = vec4(col, 1.0);
+}`;
+
 const DEFAULT_YAW = Math.PI / 4;
 const DEFAULT_PITCH = Math.atan(1 / Math.sqrt(2)); // ~35.26° isometric
 const DEFAULT_ZOOM = 1.0;
@@ -427,6 +567,14 @@ export class WebGLPreview {
   private boxProgram!: WebGLProgram;
   private boxVAO: WebGLVertexArrayObject | null = null;
   private boxIndexCount = 0;
+
+  // Cylinder (rotary) preview: same grid VAO, wrapped by a dedicated program.
+  // The box VAO is reused for the cylinder's end-cap disks in this mode.
+  private cylProgram!: WebGLProgram;
+  private rotary: RotaryView | null = null;
+  private rotaryRadius = 0;
+  /** Which solid the box VAO currently holds ("flat" box vs cylinder "caps"). */
+  private builtMode: "flat" | "cyl" | null = null;
 
   // Last rendered height map dimensions (for uniform upload)
   private gridW = 0;
@@ -476,6 +624,7 @@ export class WebGLPreview {
 
     this.program = this.buildProgram(VERT, FRAG);
     this.boxProgram = this.buildProgram(VERT_BOX, FRAG_BOX);
+    this.cylProgram = this.buildProgram(VERT_CYL, FRAG_CYL);
     this.heightTex = this.createHeightTexture();
     this.bindOrbitControls();
 
@@ -483,25 +632,36 @@ export class WebGLPreview {
     this.handleResize();
   }
 
-  render(hm: HeightMap): void {
+  render(hm: HeightMap, rotary: RotaryView | null = null): void {
     const gl = this.gl;
     if (!gl) return;
 
+    const mode: "flat" | "cyl" = rotary ? "cyl" : "flat";
     const needsMesh = this.indexCount === 0 || this.gridW !== hm.gridW || this.gridH !== hm.gridH;
-    const needsBox =
+    // The box VAO holds either the flat box or the cylinder end-caps; rebuild it
+    // when the solid kind, the stock size, or the cylinder radius changes.
+    const solidChanged =
+      this.builtMode !== mode ||
       this.boxVAO === null ||
       hm.stockW !== this.stockW ||
       hm.stockH !== this.stockH ||
-      hm.stockT !== this.stockT;
+      hm.stockT !== this.stockT ||
+      (rotary ? rotary.diameter / 2 !== this.rotaryRadius : false);
 
     this.gridW = hm.gridW;
     this.gridH = hm.gridH;
     this.stockW = hm.stockW;
     this.stockH = hm.stockH;
     this.stockT = hm.stockT;
+    this.rotary = rotary;
+    this.rotaryRadius = rotary ? rotary.diameter / 2 : 0;
 
     if (needsMesh) this.buildMesh(hm.gridW, hm.gridH);
-    if (needsBox) this.buildBoxMesh();
+    if (solidChanged) {
+      if (rotary) this.buildCapsMesh();
+      else this.buildBoxMesh();
+      this.builtMode = mode;
+    }
 
     // Upload height data as R32F texture
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
@@ -683,6 +843,63 @@ export class WebGLPreview {
     this.boxIndexCount = idx.length;
   }
 
+  /**
+   * Cylinder end caps: two disks (triangle fans) at the axial ends, radius R,
+   * facing ±X, so the wrapped tube reads as a solid dowel. Rendered with the box
+   * program (same interleaved pos+normal layout), so it reuses the box VAO — in
+   * rotary mode the flat box is never drawn.
+   */
+  private buildCapsMesh(): void {
+    const gl = this.gl;
+    const R = this.rotaryRadius;
+    const wrapX = this.rotary?.wrapAxis === "x";
+    const half = (wrapX ? this.stockH : this.stockW) / 2;
+    const SEG = 96;
+
+    const verts: number[] = [];
+    const idx: number[] = [];
+    const addCap = (x: number, nx: number) => {
+      const base = verts.length / 6;
+      verts.push(x, 0, 0, nx, 0, 0); // fan centre
+      for (let i = 0; i <= SEG; i++) {
+        const th = (i / SEG) * Math.PI * 2;
+        verts.push(x, R * Math.cos(th), R * Math.sin(th), nx, 0, 0);
+      }
+      for (let i = 1; i <= SEG; i++) {
+        const a = base + i;
+        const b = base + i + 1;
+        // Wind so the outward (±x) face is front.
+        if (nx > 0) idx.push(base, a, b);
+        else idx.push(base, b, a);
+      }
+    };
+    addCap(+half, +1);
+    addCap(-half, -1);
+
+    if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
+    this.boxVAO = gl.createVertexArray()!;
+    gl.bindVertexArray(this.boxVAO);
+
+    const vbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+
+    const ebo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+
+    const stride = 6 * 4;
+    const aPos = gl.getAttribLocation(this.boxProgram, "aPos");
+    const aNorm = gl.getAttribLocation(this.boxProgram, "aNorm");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(aNorm);
+    gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, stride, 3 * 4);
+
+    gl.bindVertexArray(null);
+    this.boxIndexCount = idx.length;
+  }
+
   private createHeightTexture(): WebGLTexture {
     const gl = this.gl;
     const tex = gl.createTexture()!;
@@ -702,6 +919,22 @@ export class WebGLPreview {
     return tex;
   }
 
+  /**
+   * Camera framing: orbit distance basis (`diag`) and look-at target. Flat stock
+   * frames on the block centre (Y = half thickness); a rotary cylinder frames on
+   * the axis (origin) and sizes to its length × diameter. Shared by draw / zoom /
+   * pan so they never drift.
+   */
+  private viewMetrics(): { diag: number; target: [number, number, number] } {
+    if (this.rotary) {
+      const axialLen = this.rotary.wrapAxis === "x" ? this.stockH : this.stockW;
+      const dia = this.rotaryRadius * 2;
+      return { diag: Math.hypot(axialLen, dia), target: [this.panX, this.panY, this.panZ] };
+    }
+    const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+    return { diag, target: [this.panX, this.stockT * 0.5 + this.panY, this.panZ] };
+  }
+
   private draw(): void {
     const gl = this.gl;
     if (!gl || this.indexCount === 0 || this.stockW === 0) return;
@@ -710,13 +943,9 @@ export class WebGLPreview {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    gl.useProgram(this.program);
-
     // Camera
-    const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-    const baseDist = diag * 1.4;
-    const dist = baseDist / this.zoom;
-    const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
+    const { diag, target } = this.viewMetrics();
+    const dist = (diag * 1.4) / this.zoom;
     const eye = [
       target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
       target[1] + dist * Math.sin(this.pitch),
@@ -731,19 +960,8 @@ export class WebGLPreview {
     const MVP = mat4();
     mul4(MVP, P, V);
 
-    const set = (name: string, ...v: number[]) => {
-      const loc = gl.getUniformLocation(this.program, name);
-      if (v.length === 1) gl.uniform1f(loc, v[0]);
-      else if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
-      else if (v.length === 3) gl.uniform3f(loc, v[0], v[1], v[2]);
-    };
-    gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "uMVP"), false, MVP);
-    set("uStockXZ", this.stockW, this.stockH);
-    set("uStockT", this.stockT);
-    set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
-    set("uCellMM", this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
-
-    // Draw stock box (bottom + 4 sides) first so depth test closes the solid
+    // Draw the solid underneath first so the depth test closes it: the flat
+    // stock box (bottom + 4 sides), or the cylinder's two end-cap disks.
     if (this.boxVAO && this.boxIndexCount > 0) {
       gl.useProgram(this.boxProgram);
       gl.uniformMatrix4fv(gl.getUniformLocation(this.boxProgram, "uMVP"), false, MVP);
@@ -754,16 +972,31 @@ export class WebGLPreview {
       gl.bindVertexArray(null);
     }
 
-    // Draw height-map surface (top face with cuts)
-    gl.useProgram(this.program);
-    gl.uniformMatrix4fv(gl.getUniformLocation(this.program, "uMVP"), false, MVP);
-    set("uStockXZ", this.stockW, this.stockH);
+    // Draw the height-map surface: the flat grid, or the same grid wrapped onto
+    // the cylinder for a rotary job.
+    const surf = this.rotary ? this.cylProgram : this.program;
+    gl.useProgram(surf);
+    const set = (name: string, ...v: number[]) => {
+      const loc = gl.getUniformLocation(surf, name);
+      if (v.length === 1) gl.uniform1f(loc, v[0]);
+      else if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
+    };
+    gl.uniformMatrix4fv(gl.getUniformLocation(surf, "uMVP"), false, MVP);
     set("uStockT", this.stockT);
     set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
     set("uCellMM", this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
+    if (this.rotary) {
+      const wrapX = this.rotary.wrapAxis === "x";
+      set("uRadius", this.rotaryRadius);
+      set("uAxialLen", wrapX ? this.stockH : this.stockW);
+      set("uCirc", wrapX ? this.stockW : this.stockH);
+      gl.uniform1i(gl.getUniformLocation(surf, "uWrapX"), wrapX ? 1 : 0);
+    } else {
+      set("uStockXZ", this.stockW, this.stockH);
+    }
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
-    gl.uniform1i(gl.getUniformLocation(this.program, "uHeightMap"), 0);
+    gl.uniform1i(gl.getUniformLocation(surf, "uHeightMap"), 0);
 
     gl.bindVertexArray(this.vao);
     gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
@@ -802,8 +1035,7 @@ export class WebGLPreview {
         // Pan: translate target in camera right/up directions.
         // right = (cos(yaw), 0, -sin(yaw))
         // up    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch))
-        const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
-        const dist = (diag * 1.4) / this.zoom;
+        const dist = (this.viewMetrics().diag * 1.4) / this.zoom;
         const speed = dist / (this.canvas.height || 1);
         const ry = this.yaw,
           rp = this.pitch;
@@ -841,11 +1073,18 @@ export class WebGLPreview {
         const newZoom = Math.max(0.15, Math.min(8, this.zoom * factor));
         if (newZoom === this.zoom) return;
 
+        // A cylinder has no flat top plane to unproject onto, so just zoom
+        // (centred) rather than toward the cursor.
+        if (this.rotary) {
+          this.zoom = newZoom;
+          this.draw();
+          return;
+        }
+
         // Zoom toward the point under the cursor on the stock top face (Y = stockT).
         // Build the current MVP before applying the zoom change.
-        const diag = Math.sqrt(this.stockW ** 2 + this.stockH ** 2 + this.stockT ** 2);
+        const { diag, target } = this.viewMetrics();
         const dist = (diag * 1.4) / this.zoom;
-        const target = [this.panX, this.stockT * 0.5 + this.panY, this.panZ];
         const eye = [
           target[0] + dist * Math.cos(this.pitch) * Math.sin(this.yaw),
           target[1] + dist * Math.sin(this.pitch),
