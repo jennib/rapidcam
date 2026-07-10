@@ -502,7 +502,15 @@ export class SettingsBar {
     }
     this.originXSelect.value = this.doc.origin.x;
     this.originYSelect.value = this.doc.origin.y;
-    this.originZSelect.value = this.doc.origin.z;
+    // A rotary cylinder is always surface-zeroed on its top (no bed) — lock the
+    // Z-origin to "top" and disable the select so "Bed" can't be picked. The
+    // export ignores a stray bed on a cylinder anyway (see resolveOrigin).
+    const isRotary = this.doc.machineKind === "mill-rotary";
+    this.originZSelect.disabled = isRotary;
+    this.originZSelect.title = isRotary
+      ? "Rotary jobs zero Z on the top of the cylinder surface."
+      : "";
+    this.originZSelect.value = isRotary ? "top" : this.doc.origin.z;
     const ep = this.doc.endPosition;
     this.endReturnCheck.checked = !!ep;
     this.endXInput.disabled = !ep;

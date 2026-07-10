@@ -329,8 +329,15 @@ function rotaryBanner(doc: CADDocument, s: RotarySettings): string {
   return [
     `; === Rotary / cylindrical wrap ===`,
     `; Stock: cylinder ⌀${n(s.diameter)}mm  (circumference ${n(c)}mm = 360° on ${s.axisWord})`,
+    // Machine-readable diameter (mm) for rotary visualizers. gSender parses this
+    // "Cylinder Dia:" token (Visualize.worker.ts) and, since our program is
+    // surface-zeroed (Z0 on the stock top, no Y moves), adds the radius to place
+    // the toolpath on the cylinder — but only when its Config ▸ Rotary ▸
+    // "Visualize non-center zeros" toggle is on. Keep the token exactly this shape.
+    `; Cylinder Dia: ${n(s.diameter)}  (mm — for rotary visualizers; in gSender enable Config > Rotary > "Visualize non-center zeros")`,
     `; The design's ${s.wrapAxis.toUpperCase()} is wrapped around the cylinder; ${lengthAxis} runs along its length.`,
-    `; ${s.axisWord}0 is at the ${s.wrapAxis.toUpperCase()} work origin; touch Z off on the TOP of the cylinder (cuts at top-dead-centre).`,
+    `; Z0 is the TOP of the cylinder surface (surface-zeroed, not centre-zeroed): touch the tool off on the stock top; cuts go negative from there, at top-dead-centre.`,
+    `; ${s.axisWord}0 is at the ${s.wrapAxis.toUpperCase()} work origin.`,
     `; Design ${s.wrapAxis.toUpperCase()} span ${n(span)}mm → ${n(wrapAngleDeg(span, s))}° of rotation.`,
     `; Feeds use inverse-time mode (G93): each move's F = surface-feed ÷ path-length; G94 (feed/min) is restored at the end.`,
   ].join("\n");

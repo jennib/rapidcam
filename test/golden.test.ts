@@ -89,9 +89,12 @@ function laserGcode(): string {
 }
 
 // Baseline captured 2026-07-08 before repointing any consumer at doc.stock.
+// `rotary` re-baselined 2026-07-10: the rotary banner gained a gSender-parseable
+// "Cylinder Dia:" token + a surface-zero note (klein.ts rotaryBanner). Banner-only
+// change — the wrapped motion is unchanged; see the klein.test.ts token test.
 const GOLDEN = {
   enclosure: "85f1724a4b9f293747ecc9baad964c66f11db46caff21c11ddf101997e06b938",
-  rotary: "bf90f91c331927a4bcf232e2dc3b864ae358a2c0895ff8e6cf6e290bb5fbd213",
+  rotary: "db8f37caa1804fd72e15417aee89948c0ee8887647fde7b189c7c0cd1989d5d4",
   laser: "3fa20c36c4f7380c21ea923b6c73ef959e8b47e49b0c1499a540456d25e6ff5e",
   centerBed: "1c20474a673e1e05e9469261c2dc4ff68b6676d909926a4247f7524e1f04959f",
 };

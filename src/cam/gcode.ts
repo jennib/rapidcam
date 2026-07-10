@@ -1621,8 +1621,10 @@ export function generateGCode(
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
-  const zLabel =
-    doc.origin.z === "top" ? "Top of stock" : `Bed (top at Z=${n(doc.stockThickness)}mm)`;
+  // A cylinder is always surface-zeroed (no bed) — mirror resolveOrigin so the
+  // header label and the inter-op safe-Z retract don't apply a bed offset to it.
+  const bedZero = doc.origin.z === "bed" && doc.stock.kind !== "cylinder";
+  const zLabel = bedZero ? `Bed (top at Z=${n(doc.stockThickness)}mm)` : "Top of stock";
 
   const toolsSeen = new Map<number, CAMOperation>();
   for (const op of ops) {
@@ -1687,7 +1689,7 @@ export function generateGCode(
 
     if (toolChanged || isFirst) {
       if (!isFirst) {
-        lines.push(`G0 Z${n(op.safeZ + (doc.origin.z === "bed" ? doc.stockThickness : 0))}`);
+        lines.push(`G0 Z${n(op.safeZ + (bedZero ? doc.stockThickness : 0))}`);
         if (currentCoolant !== "off") {
           lines.push("M9 ; coolant off");
           currentCoolant = "off";

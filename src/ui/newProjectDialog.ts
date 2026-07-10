@@ -241,9 +241,13 @@ export function openNewProjectDialog(
     fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcChk.disabled = laser;
     coolantChk.disabled = laser;
-    // A laser has no Z, so the Z-origin choice is meaningless — gray it out.
-    ozSel.disabled = laser;
-    for (const r of [tcRow, coolantRow, ozRow]) r.style.opacity = laser ? "0.45" : "";
+    // A laser has no Z; a rotary cylinder is always surface-zeroed on its top
+    // (no bed) — in both cases the Z-origin choice is fixed, so lock the select.
+    const noZChoice = laser || rotary;
+    ozSel.disabled = noZChoice;
+    if (rotary) ozSel.value = "top";
+    for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
+    ozRow.style.opacity = noZChoice ? "0.45" : "";
     // A rotary job's stock is a cylinder: Length (along the axis) × Diameter, with
     // the wall/depth as the radial cut allowance. The circumference (π·diameter)
     // becomes the wrapped canvas dimension at creation.
@@ -328,7 +332,8 @@ export function openNewProjectDialog(
       origin: {
         x: oxSel.value as OriginX,
         y: oySel.value as OriginY,
-        z: ozSel.value as OriginZ,
+        // A rotary cylinder is always surface-zeroed on its top (no bed).
+        z: rotary ? "top" : (ozSel.value as OriginZ),
       },
       hasToolChanger: tcChk.checked,
       postProcessor: ppSel.value,

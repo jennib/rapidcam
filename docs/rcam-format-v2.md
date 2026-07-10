@@ -169,6 +169,17 @@ Mill-only; not combinable with `flip`. `null`/omitted = flat work. See
 `examples/rotary-spiral-dowel.rcam` — a straight line across the wrapped axis
 becomes a ring, a diagonal becomes a helix.
 
+**Zeroing (important for setup and preview).** The wrapped program is
+**surface-zeroed**: `Z0` is the **top of the cylinder** — touch the tool off on
+the stock's top surface, and cuts run negative from there (the tool cuts at
+top-dead-centre as the part rotates under it). This is the easy zero to set
+physically, but note it is *not* the centre-of-rotation zero that some rotary
+previewers assume. To let those previewers place the toolpath on the cylinder,
+the wrap's G-code header carries a machine-readable diameter comment,
+`; Cylinder Dia: <mm>`, which they read and offset by the radius. In **gSender**
+specifically, turn on **Config ▸ Rotary ▸ "Visualize non-center zeros"** so it
+applies that offset; otherwise its visualizer draws the A-axis moves flat.
+
 `metadata` is optional informational job data — `job`, `revision`, and `notes`,
 all optional strings. It affects no geometry or toolpaths; non-empty fields are
 written as comments in the G-code header (`; Job: …`, `; Revision: …`,

@@ -145,6 +145,60 @@ test("generateRotaryProgram wraps a real circle profile: banner, no arcs, resolv
   expect(Math.max(...aVals)).toBeLessThanOrEqual(360.001);
 });
 
+test("banner emits a diameter token that gSender's rotary parser matches", () => {
+  // gSender (Visualize.worker.ts) reads the cylinder diameter from a comment to
+  // wrap the preview. If our token drifts out of its accepted shape, gSender
+  // silently falls back to a flat view. This locks our output to gSender's real
+  // regexes (copied verbatim from that file) so a reword can't break it unnoticed.
+  const GSENDER_PATTERNS = [
+    /Cylinder\s*Dia\s*:\s*([0-9.+-]+)/i,
+    /Cylinder\s*Dia(?:meter)?\s*[=:]\s*([0-9]+[.,][0-9]+|[0-9]+)/i,
+    /(?:Cylinder\s+)?Dia(?:meter)?\s*[=:]\s*([0-9]+[.,][0-9]+|[0-9]+)/i,
+  ];
+  const doc = new CADDocument({ width: 200, height: 100 });
+  doc.stockThickness = 20;
+  const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 30));
+  doc.operations = [profileOp("p", [c.id], { side: "outside", depth: -5 })];
+  doc.rotary = { axisWord: "A", diameter: 63.5, wrapAxis: "y" }; // 2.5" — a decimal ⌀
+
+  const { program } = generateRotaryProgram(doc);
+  // The first gSender pattern to hit must recover our real diameter (63.5mm).
+  let parsed: number | null = null;
+  for (const re of GSENDER_PATTERNS) {
+    const m = program.match(re);
+    if (m) {
+      parsed = Number(m[1].replace(",", "."));
+      break;
+    }
+  }
+  expect(parsed).toBeCloseTo(63.5, 3);
+});
+
+test("a rotary job is surface-zeroed even if origin.z is 'bed' (no radial-wall Z shift)", () => {
+  // A cylinder has no bed. An errant bed Z-origin (old file / saved default) must
+  // NOT shift Z by the wall — that would post cuts high and cut air, while the
+  // banner still promises "Z0 = top". resolveOrigin forces surface-zero here.
+  const mk = (z: "top" | "bed") => {
+    const doc = new CADDocument({ width: 200, height: 100 });
+    doc.machineKind = "mill-rotary";
+    doc.stockThickness = 20; // radial wall
+    doc.origin = { x: "left", y: "front", z };
+    doc.rotary = { axisWord: "A", diameter: 100, wrapAxis: "y" };
+    const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 25));
+    doc.operations = [profileOp("p", [c.id], { side: "outside", depth: -4, stepdown: 2 })];
+    return generateRotaryProgram(doc).program;
+  };
+  const bed = mk("bed");
+  // Z words are identical to the top-zeroed program (no +20 wall offset)…
+  const zOf = (g: string) => [...g.matchAll(/\bZ(-?[\d.]+)/g)].map((m) => m[1]);
+  expect(zOf(bed)).toEqual(zOf(mk("top")));
+  // …the deepest cut is the authored depth, not depth+wall…
+  expect(Math.min(...zOf(bed).map(Number))).toBeCloseTo(-4, 6);
+  // …and the header stays honest about surface zero.
+  expect(bed).toMatch(/Z0 is the TOP of the cylinder/);
+  expect(bed).not.toMatch(/Bed \(top at Z=/);
+});
+
 test("generateRotaryProgram falls back to default settings when doc.rotary is null", () => {
   // A rotary machine (machineKind) with no per-job cylinder yet — the new-project
   // path — must still wrap, using a stock-derived default diameter.

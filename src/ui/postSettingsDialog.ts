@@ -241,6 +241,9 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
       doc.hasToolChanger = tcCheck.checked;
       doc.machineKind = kind;
       doc.rotary = newRotary;
+      // A rotary cylinder has no bed — it's always surface-zeroed (see cam/klein.ts).
+      // Normalise an errant bed Z-origin so the saved file stays honest.
+      if (kind === "mill-rotary") doc.origin.z = "top";
       if (wrapKey !== null) doc.canvas[wrapKey] = lockedWrap!;
     }
     // Machine-wide preferences.

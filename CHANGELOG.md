@@ -16,8 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Send to gSender** — post the generated program straight to a running [gSender](https://sienci.com/gsender/) over its local API instead of downloading a file (configure the URL once in settings). A two-sided flip job sends **side A**, waits for you to flip onto the pins, then sends **side B**.
 - **Three new bundled examples** — a **V-Carve Sign** (v-carve + chamfer sharing one v-bit through the tool library, tabbed profile cut), a **Laser Coaster** (ring engraves, fill-engraved lettering with overscan, kerf-compensated cut), and a **Rotary Spiral Dowel** (rings, helical flutes, and axial text on the unrolled cylinder). The format guide gains the missing `vcarve`/`score` rows and rotary/`circle-gap` documentation, and every bundled example is now also **behaviourally tested** (loads, solver converges, posts G-code) on top of schema validation.
 
+- **Rotary G-code carries a diameter comment for visualizers** — the wrapped program's header now emits a machine-readable `; Cylinder Dia: <mm>` token (the DeskProto convention). Rotary senders such as **gSender** read it to wrap the toolpath preview around the cylinder instead of drawing the A-axis moves flat — in gSender, enable **Config ▸ Rotary ▸ "Visualize non-center zeros"** so it also offsets our surface-zeroed path onto the cylinder. The banner also spells out the surface-zero convention (Z0 = top of the cylinder).
+
 ### Fixed
 - **Rotary `.rcam` files validate against the published schema** — the schema's `machineKind` enum was missing `"mill-rotary"`, so a saved rotary project failed validation against `rapidcam.app/schema/rcam-v2.schema.json` even though it loaded fine.
+- **A rotary job can no longer be zeroed to a nonexistent "bed"** — a cylinder has no bed, but the Z-origin picker still offered "Bed" for a rotary machine. Choosing it shifted every Z by the radial wall thickness, so cuts posted high and the tool cut air while the header still claimed "Z0 = top". Rotary jobs are now always surface-zeroed on the cylinder top: the export ignores a stray bed origin on a cylinder (so old/hand-edited files are safe too), and the Z-origin control is locked to "Top of stock" for a rotary machine in both New Project and the settings panel.
 
 ## [1.3.0] — 2026-07-04
 

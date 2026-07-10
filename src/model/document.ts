@@ -159,7 +159,11 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
   const oy =
     doc.origin.y === "front" ? sy : doc.origin.y === "back" ? sy + height : sy + height / 2;
 
-  const zOffset = doc.origin.z === "top" ? 0 : thickness;
+  // A cylinder has no bed — the wrap is always surface-zeroed (Z0 on the stock
+  // top; see cam/klein.ts). Ignore an errant `origin.z === "bed"` (from a saved
+  // default, an old file, or a UI that offered it) so Z can't shift by the wall
+  // and cut air, and so the rotary banner's "Z0 = top" claim always holds.
+  const zOffset = s.kind === "cylinder" || doc.origin.z === "top" ? 0 : thickness;
 
   return { ox, oy, zOffset };
 }
