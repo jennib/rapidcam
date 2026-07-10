@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/c4c5327a-c474-4d0b-95a6-56a732f8f3a5
 
 - **Runs anywhere** — it's a web app. Open it on any machine, no setup.
 - **Truly parametric** — a Levenberg-Marquardt constraint solver with driving dimensions and variables. Type a variable formula straight into a property field (a circle's radius, a line's length, an image's size/angle…), reference variables from other variables, and constrain engrave images to the geometry around them — so edits stay consistent (not just a drawing program).
-- **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview; **laser** cut/engrave output (including **photo/greyscale raster engraving**) with a flat path preview; and **CNC relief carving** that turns a greyscale image into 2.5-D depth.
+- **From sketch to G-code in one place** — profile, pocket, engrave, drill, and V-carve toolpaths with a 3D cut preview; **laser** cut/engrave output (including **photo/greyscale raster engraving**) with a flat path preview; **CNC relief carving** that turns a greyscale image into 2.5-D depth; and a **rotary 4th-axis** machine type that wraps any milling job around a cylinder.
 - **Private by default** — all processing is local; your files stay on your machine. Analytics is opt-in only.
 - **Open source** — AGPL-3.0, with a commercial license available.
 
@@ -110,9 +110,13 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Drill | Plunge at points / circle centres; optional G83-style peck retract |
 | Tabs / bridges | Automatic tab insertion on profile cuts |
 | Two-sided (flip) | Machine both faces from one drawing: tag each toolpath **Top** or **Bottom**, then export a **side-A** program (top ops, ending with **registration dowel-pin holes** bored through the stock into the spoilboard) and a **side-B** program whose geometry is mirrored about the flip axis so features line up through the part after you flip the stock onto the pins. Mirroring is done at the entity level, so leads/tabs/dogbones/climb come out correct on the reverse, and bottom-face text engraves mirror-imaged. Guards asymmetric pins, an unsuitable boring tool, and a through-cut that would free the part before the flip. Preview either face with an A/B toggle in the 3D view |
+| Rotary / 4th axis | Switch the machine type to **CNC Mill — Rotary / 4th axis** to machine around a cylinder (spoil rods, columns, rolling pins, pens). The canvas becomes the **unrolled cylinder surface** — set the stock as Length × Diameter and the wrapped dimension locks to π·diameter, so a straight line across the wrap cuts a **ring** and a diagonal cuts a **helix**. Every toolpath type works unchanged; at export the flat program is wrapped, posting the wrapped axis as **A/B rotary degrees** with **G93 inverse-time feed** so combined linear+rotary moves hold the commanded surface speed |
+| Stock & workholding | Place the stock blank anywhere inside a larger machine work area (the WCS origin follows the blank), and flag layers as **fixtures**: closed shapes on a fixture layer are clamps — drawn amber-dashed, never machined, with an optional clamp height — and the pre-flight check flags any move that would hit one |
 | Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
-| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation) and vector **engrave**, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear) and **greyscale raster engrave** of an imported image (sweeps the photo as scan rows, modulating beam power per pixel — darker = more power — with invert and overscan). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Per-op air assist (M8/M9). A built-in **Material Test** generator sweeps power × speed across a labelled grid so you can dial in settings for a new material. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
+| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation), vector **engrave**, and low-power **score/fold** lines, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear) and **greyscale raster engrave** of an imported image (sweeps the photo as scan rows, modulating beam power per pixel — darker = more power — with invert and overscan). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Per-op air assist (M8/M9). A built-in **Material Test** generator sweeps power × speed across a labelled grid so you can dial in settings for a new material. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later |
 | G-code export | GRBL and LinuxCNC post-processors (mill) / selectable laser controllers (laser); post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
+| Pre-flight checks | Every export or send lints the posted program first and confirms before writing anything: rapids travelling sideways below the stock top, moves outside the stock while engaged, cuts below the stock bottom, straight plunges at cutting feed, a manual tool change with no pause, and fixture/clamp collisions |
+| Send to gSender | Post the program straight to a running **gSender** over its local API instead of downloading — including both sides of a two-sided job in sequence |
 | Toolpath preview | 3D WebGL stock simulation of the cut (profile, pocket, engrave, v-carve, chamfer, drill, image relief + relief roughing — showing the true tool-envelope); laser documents instead show a flat on-canvas preview of the beam cut paths |
 
 > **Open vs. closed geometry:** Engrave cuts follow any path on its centreline, including standalone arcs and beziers (emitted as native `G2`/`G3` arcs where possible). Profile and pocket operations require *closed* geometry — a lone arc, line, open polyline, or bezier is skipped with an explanatory `; NOTE:` in the G-code rather than silently dropped. Combine segments into a closed loop (or use a closed polyline / region pick) to profile or pocket them.
@@ -194,6 +198,10 @@ src/
 │   ├── gcode.ts        # G-code builder (mill; dispatches to laser by machineKind)
 │   ├── lasergcode.ts   # Laser/fixed-Z beam G-code + flat preview paths
 │   ├── laserposts/     # Per-controller laser post-processors (GRBL M4/M3, Marlin, Smoothie, LinuxCNC)
+│   ├── klein.ts        # Rotary/4th-axis wrap (flat program → A/B degrees, G93)
+│   ├── flip.ts         # Two-sided machining (mirrored side-B program, dowel pins)
+│   ├── lint.ts         # Pre-flight G-code checks (gates export)
+│   ├── fixtures.ts     # Fixture-layer footprints for the clamp-collision check
 │   ├── stockRasterizer.ts # Height-field stock sim for the 3D preview
 │   ├── toolLibrary.ts
 │   └── postprocessors/ # GRBL, LinuxCNC
@@ -204,6 +212,8 @@ src/
     ├── svgExport.ts
     ├── dxfImport.ts    # ASCII DXF parser (bulges → true arcs, blocks, NURBS splines)
     ├── dxfExport.ts    # Minimal AC1015 writer (arcs, splines, text outlines)
+    ├── gsender.ts      # "Send to gSender" handoff (POST to its local API)
+    ├── examples.ts     # Bundled example projects (inlined from examples/)
     └── projectManager.ts
 ```
 

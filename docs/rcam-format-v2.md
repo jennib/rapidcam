@@ -321,6 +321,7 @@ to equal `value` (acting as a constraint). `value` is mm, or **radians** for
 | `arclength` | `entities[1]` arc | arc length |
 | `angle` | `entities[2]` lines | angle between (radians) |
 | `line-distance` | `entities[2]` lines | perpendicular gap between lines |
+| `circle-gap` | `entities[2]` circles/arcs | edge-to-edge gap: radii difference when one lies inside the other (a ring's wall, even off-centre), otherwise the clearance between the edges |
 
 Optional: `anchors` (`[t1, t2]`, for `line-distance` extension lines) and `expr`
 (a formula string driving `value`, e.g. `"width * 2"`, evaluated against
@@ -447,6 +448,8 @@ mirrored about the flip axis. It is ignored when `flip` is absent.
 | `engrave` | follows geometry at depth |
 | `pocket` | clears an area; `pocketStrategy` (`"offset"`/`"raster"`), and `regions`. Optional `finishPass`/`finishAllowance` leave a wall skin during roughing and clean it in a final full-depth lap (round pockets clear with smooth G2 arcs + a helical entry) |
 | `chamfer` | bevels an edge with a **v-bit**: traces the (optionally offset) contour at a depth derived from `chamferWidth` and the bit's `vAngle`. `chamferSide` (`"on"`/`"outside"`/`"inside"`) places the bevel relative to the edge; optional `sharpenCorners` pulls the tip up into sharp inside corners (tapering the bevel to the surface at the corner vertex) so they come to a point instead of a fillet. Used e.g. to chamfer a Shaker-pocket edge after clearing it with a pocket op |
+| `vcarve` | **v-carves** a region at variable depth with a **v-bit**: the area (text glyphs, or a flood-fill region with islands) is offset-peeled inward and each peel ring is cut at the depth where the bit's flanks touch both walls — so strokes taper to a sharp spine, and areas wider than the bit bottom out flat at \|`depth`\| (the max/floor depth). `vStep` (mm, default 0.4) is the radial pitch between peel passes — smaller = smoother floor, more passes. Optional `vHopClearance` (mm above the stock) hops between a region's contours at that low height instead of retracting to `safeZ` each time; leave it unset/0 (the safe default) if a clamp stands above the stock inside the carve footprint |
+| `score` | **laser only** (`machineKind: "laser"`): traces the geometry centreline with **no kerf offset** at low power — a fold/crease line rather than a cut (the UI's "Score / Fold", defaulting to 15% power). On a mill there is no score; use `engrave`. Mill-only op types (`drill`, `pocket`, `chamfer`, `vcarve`, `relief-rough`) are conversely skipped with a G-code note on a laser |
 | `relief-rough` | **Roughs** a greyscale **image** relief in flat Z-levels with a coarse flat / bull-nose tool: resamples the image at the tool's `stepover` (× diameter), and clears the bulk down to `finishAllowance` mm above the final relief surface in `stepdown` planes, leaving that allowance for the ball-nose relief **finish** pass (an `engrave` op on the same image) to carve. Runs the raster boustrophedon, **ramping into each cut** and hopping over uncut areas at a low clearance above the stock. Set its `depth` / `stepdown` / `stepover` / `reliefGamma` / `rasterInvert` to match the finish op, and order it **before** the finish op (a tool change between them). The editor warns if a roughing op's depth (less its allowance) would cut past the finish op's surface — a gouge |
 
 `regions` (pocket) is the subtle one. A pocket clears one or more **enclosed
@@ -482,6 +485,20 @@ loop, e.g. `{ "containingLoops": [ ["circle-7"] ] }`.
   "leadIn": { "type": "arc", "length": 3 },
   "leadOut":{ "type": "arc", "length": 3 } }
 ```
+
+Three optional cut-control fields apply across operation types:
+
+- `cutDirection` (`"climb"` | `"conventional"`, profile only) — the cut direction
+  relative to a standard M3 (clockwise) spindle: `"climb"` (CW around an outside
+  profile / CCW inside) finishes cleanly on rigid machines, `"conventional"` is
+  the reverse. Omitted = the raw offset winding is left untouched.
+- `cornerStyle` (`"none"` | `"dogbone"`, inside profiles and pockets) — corner
+  relief: `"dogbone"` adds a diagonal overcut at each convex inside corner so a
+  mating square part seats instead of hitting the tool-radius fillet. Default
+  `"none"`.
+- `rampAngle` (degrees off horizontal, clamped 0.5–45) — entry angle for
+  operations that descend into the cut gradually (the pocket helical/linear
+  entry, the relief-rough ramp). Omitted = each mechanism's built-in default.
 
 > **Feeds & speeds are not a recipe.** Any numbers you emit are starting points
 > only and must be tuned for the actual material, tool, and machine. Always verify
