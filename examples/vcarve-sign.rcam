@@ -1,0 +1,234 @@
+{
+  "version": 2,
+  "name": "V-Carve Sign",
+  "canvas": {
+    "width": 220,
+    "height": 120
+  },
+  "displayUnit": "mm",
+  "stockThickness": 18,
+  "hasToolChanger": false,
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
+  "postProcessor": "grbl",
+  "groups": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
+  "entities": [
+    {
+      "type": "rectangle",
+      "id": "ent1",
+      "p0": {
+        "x": 30,
+        "y": 30
+      },
+      "p1": {
+        "x": 190,
+        "y": 90
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "text",
+      "id": "ent2",
+      "text": "SHOP",
+      "fontId": "roboto-bold",
+      "sizeMM": 28,
+      "position": {
+        "x": 72.8,
+        "y": 50
+      },
+      "angle": 0,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixedPoint",
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        }
+      ],
+      "entities": [],
+      "params": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "con2",
+      "type": "fixedPoint",
+      "points": [
+        {
+          "entityId": "ent2",
+          "key": "pos"
+        }
+      ],
+      "entities": [],
+      "params": [
+        72.8,
+        50
+      ]
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "dim1",
+      "type": "horizontal",
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        }
+      ],
+      "entities": [],
+      "value": 160,
+      "driving": true,
+      "offset": -14
+    },
+    {
+      "id": "dim2",
+      "type": "vertical",
+      "points": [
+        {
+          "entityId": "ent1",
+          "key": "bl"
+        },
+        {
+          "entityId": "ent1",
+          "key": "tl"
+        }
+      ],
+      "entities": [],
+      "value": 60,
+      "driving": true,
+      "offset": -14
+    }
+  ],
+  "variables": [],
+  "patterns": [],
+  "operations": [
+    {
+      "id": "op1",
+      "name": "V-carve lettering",
+      "type": "vcarve",
+      "entityIds": [
+        "ent2"
+      ],
+      "side": "outside",
+      "toolId": "tool-vbit-60",
+      "toolType": "v-bit",
+      "toolNumber": 1,
+      "diameter": 12,
+      "vAngle": 60,
+      "feedrate": 1200,
+      "plungeRate": 300,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -5,
+      "stepdown": 5,
+      "stepover": 0.4,
+      "vStep": 0.4
+    },
+    {
+      "id": "op2",
+      "name": "Chamfer border",
+      "type": "chamfer",
+      "entityIds": [
+        "ent1"
+      ],
+      "side": "outside",
+      "toolId": "tool-vbit-60",
+      "toolType": "v-bit",
+      "toolNumber": 1,
+      "diameter": 12,
+      "vAngle": 60,
+      "feedrate": 1200,
+      "plungeRate": 300,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -3.5,
+      "stepdown": 3.5,
+      "stepover": 0.4,
+      "chamferWidth": 2,
+      "chamferSide": "inside"
+    },
+    {
+      "id": "op3",
+      "name": "Cut out board",
+      "type": "profile",
+      "entityIds": [
+        "ent1"
+      ],
+      "side": "outside",
+      "toolId": "tool-em-6",
+      "toolType": "end-mill",
+      "toolNumber": 2,
+      "diameter": 6,
+      "feedrate": 900,
+      "plungeRate": 250,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -19,
+      "stepdown": 3,
+      "stepover": 0.4,
+      "tabs": {
+        "enabled": true,
+        "count": 4,
+        "width": 8,
+        "height": 3
+      },
+      "leadIn": {
+        "type": "arc",
+        "length": 3
+      },
+      "leadOut": {
+        "type": "arc",
+        "length": 3
+      }
+    }
+  ],
+  "tools": [
+    {
+      "id": "tool-vbit-60",
+      "name": "60° V-Bit",
+      "toolType": "v-bit",
+      "diameter": 12,
+      "vAngle": 60,
+      "feedrate": 1200,
+      "plungeRate": 300,
+      "spindleSpeed": 18000,
+      "safeZ": 5
+    },
+    {
+      "id": "tool-em-6",
+      "name": "6mm End Mill",
+      "toolType": "end-mill",
+      "diameter": 6,
+      "feedrate": 900,
+      "plungeRate": 250,
+      "spindleSpeed": 18000,
+      "safeZ": 5
+    }
+  ]
+}

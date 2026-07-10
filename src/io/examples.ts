@@ -29,6 +29,9 @@ const ORDER = [
   "mounting-plate-cam.rcam", // Tier 3 — full CAM pipeline
   "enclosure-lid.rcam",
   "box-joint-tab-slot.rcam",
+  "vcarve-sign.rcam",
+  "laser-coaster.rcam", // Tier 4 — other machine kinds
+  "rotary-spiral-dowel.rcam",
 ];
 
 let cache: ExampleEntry[] | null = null;

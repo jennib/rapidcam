@@ -65,7 +65,7 @@ vocabularies is unchanged.
   "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
   "postProcessor": "linuxcnc",                  // mill: "linuxcnc" | "grbl"; laser: see below
-  "machineKind": "mill",                         // "mill" | "laser", default "mill"
+  "machineKind": "mill",                         // "mill" | "laser" | "mill-rotary", default "mill"
   "endPosition": null,                          // optional park position; see below
   "metadata": { "job": "", "revision": "", "notes": "" }, // optional job info; see below
   "groups": [],
@@ -110,7 +110,9 @@ Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → fal
 `machineKind` selects the output path: `"mill"` (the default) posts spindle +
 Z-axis G-code; `"laser"` posts fixed-Z beam G-code (beam on/off, power + passes,
 no Z) and the operations use the laser fields instead — see
-[CAM operations](#cam-operations).
+[CAM operations](#cam-operations). `"mill-rotary"` behaves like `"mill"`
+everywhere except export, which wraps the finished flat program around the
+cylinder described by the top-level `rotary` block (see below).
 
 `postProcessor` names the controller. For a **mill** it's `"linuxcnc"` or
 `"grbl"`. For a **laser** it's one of the laser controllers, each a separate
@@ -150,6 +152,22 @@ spoilboard at the end of the top-side program, `"none"` leaves realignment to th
 operator), `pinDiameter` and `pinDepth` (mm), and `pins` (an array of `{ "x", "y" }`
 hole centres in world mm; must be invariant under the mirror). Mill-only.
 `null`/omitted = single-sided.
+
+`rotary` is the optional cylindrical / 4th-axis wrap setup, used with
+`machineKind: "mill-rotary"`. The drawing canvas is the **unrolled cylinder
+surface**: one axis runs along the cylinder length and the perpendicular one
+spans the circumference, so `canvas` should be authored as length × π·`diameter`
+(360° of rotation = π·diameter of surface travel). At export the finished flat
+program is wrapped: the wrapped coordinate is emitted as rotary-axis degrees and
+arcs are flattened to G1 chords. Z is depth below the **top of the cylinder**
+(touch off the stock top); `stockThickness` is the radial wall / max cut depth.
+Fields: `axisWord` (`"A"` rotates about machine X and pairs with `wrapAxis`
+`"y"`; `"B"` about Y pairs with `"x"`), `diameter` (mm), `wrapAxis` (`"y"` =
+Y wraps to rotation and X runs along the length — the default pairing; `"x"` =
+swapped), and optional `arcTolerance` (chord tolerance in mm, default 0.1).
+Mill-only; not combinable with `flip`. `null`/omitted = flat work. See
+`examples/rotary-spiral-dowel.rcam` — a straight line across the wrapped axis
+becomes a ring, a diagonal becomes a helix.
 
 `metadata` is optional informational job data — `job`, `revision`, and `notes`,
 all optional strings. It affects no geometry or toolpaths; non-empty fields are
@@ -571,3 +589,6 @@ canonical, tested references:
 - `bolt-circle.rcam` — `variables` + a circular `pattern`.
 - `mounting-plate-cam.rcam` — drill + tabbed profile `operations`.
 - `enclosure-lid.rcam` — pocket with parametric region `containingLoops` and an island.
+- `vcarve-sign.rcam` — `vcarve` + `chamfer` operations sharing one v-bit via the `tools` library.
+- `laser-coaster.rcam` — `machineKind: "laser"` with outline/fill engraves and a kerf-compensated cut.
+- `rotary-spiral-dowel.rcam` — `machineKind: "mill-rotary"` + the `rotary` cylinder block.

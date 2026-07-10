@@ -37,6 +37,14 @@ at the top and work down.
 | [mounting-plate-cam.rcam](mounting-plate-cam.rcam) | The mounting plate with two ready-to-run toolpaths — drill the holes, profile-cut the outline with tabs. |
 | [enclosure-lid.rcam](enclosure-lid.rcam) | A pocketed lid: an **adaptive contour-parallel pocket** that clears a recess around a central boss (island), then a tabbed profile cut of the outline. Showcases flood-fill region picking and island handling. |
 | [box-joint-tab-slot.rcam](box-joint-tab-slot.rcam) | A **box-joint (finger-joint) panel**: a single closed polyline whose top edge alternates tabs and slots, with a tabbed profile cut ready to run. Shows how interlocking tab/slot geometry is represented — the fingers are explicit polyline vertices (a `.rcam` file is a static snapshot, so the count is fixed; to vary it, draw one finger and use the **Linear Pattern** tool, or edit the points). |
+| [vcarve-sign.rcam](vcarve-sign.rcam) | A carved wooden sign: **V-carve** lettering (offset-peeled with a 60° v-bit), a v-bit **chamfer** around the board edge, and a tabbed profile cut. The v-carve and chamfer ops share one v-bit through the file's **tool library** (`tools` + `toolId`), so retuning the bit's feeds in one place updates both. |
+
+### Tier 4 — other machine kinds (laser & rotary)
+
+| File | What it shows |
+|------|---------------|
+| [laser-coaster.rcam](laser-coaster.rcam) | A drink coaster for a **laser** (`machineKind: "laser"`): two decorative rings traced as outline engraves, **area-fill** lettering (`laserFill` with overscan so edges don't over-burn), and a final through-cut with **kerf compensation** and air assist. Engraves run before the cut so the part can't shift mid-job. |
+| [rotary-spiral-dowel.rcam](rotary-spiral-dowel.rcam) | A Ø30 × 150 mm dowel on a **rotary 4th axis** (`machineKind: "mill-rotary"`). The canvas is the *unrolled* cylinder surface (150 × π·30 mm): the two straight lines spanning the full wrapped height become **rings** around the dowel, the diagonals become one-turn **helical flutes**, and the text engraves along the axis. At export the flat program wraps — Y is posted as A-axis degrees. Touch Z off the **top of the cylinder**. |
 
 ## mounting-plate.rcam — guided tour
 

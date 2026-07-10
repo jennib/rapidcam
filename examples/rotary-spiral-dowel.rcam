@@ -1,0 +1,206 @@
+{
+  "version": 2,
+  "name": "Rotary Spiral Dowel",
+  "canvas": {
+    "width": 150,
+    "height": 94.2478
+  },
+  "displayUnit": "mm",
+  "stockThickness": 12,
+  "hasToolChanger": false,
+  "origin": {
+    "x": "left",
+    "y": "front",
+    "z": "top"
+  },
+  "postProcessor": "linuxcnc",
+  "machineKind": "mill-rotary",
+  "rotary": {
+    "axisWord": "A",
+    "diameter": 30,
+    "wrapAxis": "y"
+  },
+  "groups": [],
+  "layers": [
+    {
+      "id": "layer-0",
+      "name": "Default",
+      "color": "#cdd2da",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "activeLayerId": "layer-0",
+  "entities": [
+    {
+      "type": "line",
+      "id": "ent1",
+      "a": {
+        "x": 10,
+        "y": 0
+      },
+      "b": {
+        "x": 10,
+        "y": 94.2478
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "ent2",
+      "a": {
+        "x": 140,
+        "y": 0
+      },
+      "b": {
+        "x": 140,
+        "y": 94.2478
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "ent3",
+      "a": {
+        "x": 18,
+        "y": 0
+      },
+      "b": {
+        "x": 50,
+        "y": 94.2478
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "line",
+      "id": "ent4",
+      "a": {
+        "x": 100,
+        "y": 0
+      },
+      "b": {
+        "x": 132,
+        "y": 94.2478
+      },
+      "isConstruction": false,
+      "layerId": "layer-0"
+    },
+    {
+      "type": "text",
+      "id": "ent5",
+      "text": "RAPIDCAM",
+      "fontId": "roboto-regular",
+      "sizeMM": 8,
+      "position": {
+        "x": 55,
+        "y": 44.3
+      },
+      "angle": 0,
+      "isConstruction": false,
+      "layerId": "layer-0"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con1",
+      "type": "fixed",
+      "points": [],
+      "entities": [
+        "ent1",
+        "ent2",
+        "ent3",
+        "ent4"
+      ]
+    },
+    {
+      "id": "con2",
+      "type": "fixedPoint",
+      "points": [
+        {
+          "entityId": "ent5",
+          "key": "pos"
+        }
+      ],
+      "entities": [],
+      "params": [
+        55,
+        44.3
+      ]
+    }
+  ],
+  "dimensions": [],
+  "variables": [],
+  "patterns": [],
+  "operations": [
+    {
+      "id": "op1",
+      "name": "Rings & spiral flutes",
+      "type": "engrave",
+      "entityIds": [
+        "ent1",
+        "ent2",
+        "ent3",
+        "ent4"
+      ],
+      "side": "outside",
+      "toolId": "tool-bn-3",
+      "toolType": "ball-nose",
+      "toolNumber": 1,
+      "diameter": 3,
+      "feedrate": 800,
+      "plungeRate": 250,
+      "spindleSpeed": 12000,
+      "safeZ": 5,
+      "depth": -1.5,
+      "stepdown": 0.75,
+      "stepover": 0.4
+    },
+    {
+      "id": "op2",
+      "name": "Engrave name",
+      "type": "engrave",
+      "entityIds": [
+        "ent5"
+      ],
+      "side": "outside",
+      "toolId": "tool-vb-30",
+      "toolType": "v-bit",
+      "toolNumber": 2,
+      "diameter": 6,
+      "vAngle": 30,
+      "feedrate": 1000,
+      "plungeRate": 300,
+      "spindleSpeed": 18000,
+      "safeZ": 5,
+      "depth": -0.6,
+      "stepdown": 0.6,
+      "stepover": 0.4
+    }
+  ],
+  "tools": [
+    {
+      "id": "tool-bn-3",
+      "name": "3mm Ball Nose",
+      "toolType": "ball-nose",
+      "diameter": 3,
+      "feedrate": 800,
+      "plungeRate": 250,
+      "spindleSpeed": 12000,
+      "safeZ": 5
+    },
+    {
+      "id": "tool-vb-30",
+      "name": "30° V-Bit",
+      "toolType": "v-bit",
+      "diameter": 6,
+      "vAngle": 30,
+      "feedrate": 1000,
+      "plungeRate": 300,
+      "spindleSpeed": 18000,
+      "safeZ": 5
+    }
+  ]
+}

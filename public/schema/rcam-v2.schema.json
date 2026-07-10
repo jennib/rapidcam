@@ -60,8 +60,8 @@
       "description": "Post-processor id. For a mill (machineKind \"mill\"): \"linuxcnc\" | \"grbl\" (default \"linuxcnc\"). For a laser (machineKind \"laser\"): a laser controller — \"grbl-dynamic\" (M4, default), \"grbl-constant\" (M3), \"marlin\" (0–255), \"smoothie\" (inline S 0–1), or \"linuxcnc-laser\" (PWM spindle). Legacy laser files may store \"grbl\", which maps to grbl-dynamic."
     },
     "machineKind": {
-      "enum": ["mill", "laser"],
-      "description": "Machine the document outputs for. Default \"mill\" (spindle + Z). \"laser\" routes export through the fixed-Z beam generator (beam on/off, power + passes, no Z) and the operations use the laser fields (laserPower/laserPasses/kerfWidth/laserFill)."
+      "enum": ["mill", "laser", "mill-rotary"],
+      "description": "Machine the document outputs for. Default \"mill\" (spindle + Z). \"laser\" routes export through the fixed-Z beam generator (beam on/off, power + passes, no Z) and the operations use the laser fields (laserPower/laserPasses/kerfWidth/laserFill). \"mill-rotary\" behaves like \"mill\" everywhere except export, which wraps the finished flat program around the cylinder described by the top-level \"rotary\" block (required for this kind) — one work axis stays linear, the wrapped one is emitted as rotary-axis degrees."
     },
     "endPosition": {
       "oneOf": [
