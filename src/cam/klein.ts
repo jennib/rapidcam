@@ -185,6 +185,12 @@ export function wrapGCode(
   const wrapX = settings.wrapAxis === "x";
   const keep = wrapX ? "Y" : "X"; // the linear axis we leave alone
   const A = settings.axisWord;
+  // Centre-zeroing: the flat program is authored with Z0 on the stock top (cuts
+  // negative). To re-reference Z to the rotary axis we lift every emitted Z by the
+  // radius, so the surface lands at Z = radius and a cut to depth d lands at
+  // Z = radius − d. A constant shift leaves every Z *difference* — and therefore
+  // the inverse-time path lengths — untouched, so only the emitted words change.
+  const zOffset = settings.zero === "center" ? settings.diameter / 2 : 0;
 
   // Current tool position in work coords (needed to reconstruct arcs); modal feed
   // carried across moves so a G1 that omits F still knows its surface feed.
@@ -218,7 +224,7 @@ export function wrapGCode(
     const linCoord = wrapX ? y : x; // the axis kept linear
     const rotCoord = wrapX ? x : y; // the axis rolled to rotation
     let s = `G1 ${keep}${n(linCoord)} ${A}${n(ang(rotCoord))}`;
-    if (z !== undefined) s += ` Z${n(z)}`;
+    if (z !== undefined) s += ` Z${n(z + zOffset)}`;
     if (f !== undefined) s += ` F${n(f)}`;
     return s;
   };
@@ -292,7 +298,7 @@ export function wrapGCode(
       const parts: string[] = [];
       if (mv.x !== undefined) parts.push(wrapX ? `${A}${n(ang(mv.x))}` : `X${n(mv.x)}`);
       if (mv.y !== undefined) parts.push(wrapX ? `Y${n(mv.y)}` : `${A}${n(ang(mv.y))}`);
-      if (mv.z !== undefined) parts.push(`Z${n(mv.z)}`);
+      if (mv.z !== undefined) parts.push(`Z${n(mv.z + zOffset)}`);
       if (inverseTime && mv.g === 1) {
         emitG93();
         const f = invF(Math.hypot(nx - cx, ny - cy, nz - cz), curFeed);
@@ -326,21 +332,35 @@ function rotaryBanner(doc: CADDocument, s: RotarySettings): string {
   const lengthAxis = s.wrapAxis === "y" ? "X" : "Y";
   const foot = stockFootprint(doc);
   const span = s.wrapAxis === "y" ? foot.height : foot.width;
-  return [
+  const wrapU = s.wrapAxis.toUpperCase();
+  const center = s.zero === "center";
+  const zLine = center
+    ? // Centre-zeroed: Z0 is the rotary axis, so the surface sits at Z = radius and
+      // cuts land at Z = radius − depth. This is the native rotary convention, which
+      // gSender and most controllers visualize on the cylinder with no extra toggle.
+      `; Z0 is the ROTARY CENTRE (the axis of rotation): the cylinder surface is at Z${n(s.diameter / 2)} (radius), cuts go below that. Touch the tool off on the stock top and set Z to the radius ${n(s.diameter / 2)}mm.`
+    : `; Z0 is the TOP of the cylinder surface (surface-zeroed, not centre-zeroed): touch the tool off on the stock top; cuts go negative from there, at top-dead-centre.`;
+  const lines = [
     `; === Rotary / cylindrical wrap ===`,
     `; Stock: cylinder ⌀${n(s.diameter)}mm  (circumference ${n(c)}mm = 360° on ${s.axisWord})`,
-    // Machine-readable diameter (mm) for rotary visualizers. gSender parses this
-    // "Cylinder Dia:" token (Visualize.worker.ts) and, since our program is
-    // surface-zeroed (Z0 on the stock top, no Y moves), adds the radius to place
-    // the toolpath on the cylinder — but only when its Config ▸ Rotary ▸
-    // "Visualize non-center zeros" toggle is on. Keep the token exactly this shape.
-    `; Cylinder Dia: ${n(s.diameter)}  (mm — for rotary visualizers; in gSender enable Config > Rotary > "Visualize non-center zeros")`,
-    `; The design's ${s.wrapAxis.toUpperCase()} is wrapped around the cylinder; ${lengthAxis} runs along its length.`,
-    `; Z0 is the TOP of the cylinder surface (surface-zeroed, not centre-zeroed): touch the tool off on the stock top; cuts go negative from there, at top-dead-centre.`,
-    `; ${s.axisWord}0 is at the ${s.wrapAxis.toUpperCase()} work origin.`,
-    `; Design ${s.wrapAxis.toUpperCase()} span ${n(span)}mm → ${n(wrapAngleDeg(span, s))}° of rotation.`,
+  ];
+  // Surface-zeroed programs need a hint for rotary visualizers: gSender parses this
+  // "Cylinder Dia:" token (Visualize.worker.ts) and adds the radius to lift the
+  // surface-zeroed path onto the cylinder — but only with its Config ▸ Rotary ▸
+  // "Visualize non-center zeros" toggle on. A centre-zeroed program is already in
+  // the axis frame the visualizer expects, so the token/toggle are unnecessary.
+  if (!center)
+    lines.push(
+      `; Cylinder Dia: ${n(s.diameter)}  (mm — for rotary visualizers; in gSender enable Config > Rotary > "Visualize non-center zeros")`,
+    );
+  lines.push(
+    `; The design's ${wrapU} is wrapped around the cylinder; ${lengthAxis} runs along its length.`,
+    zLine,
+    `; ${s.axisWord}0 is at the ${wrapU} work origin.`,
+    `; Design ${wrapU} span ${n(span)}mm → ${n(wrapAngleDeg(span, s))}° of rotation.`,
     `; Feeds use inverse-time mode (G93): each move's F = surface-feed ÷ path-length; G94 (feed/min) is restored at the end.`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 /**

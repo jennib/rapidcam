@@ -96,6 +96,16 @@ export interface RotarySettings {
   wrapAxis: "x" | "y";
   /** Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1. */
   arcTolerance?: number;
+  /**
+   * Where Z0 sits. `"surface"` (default): Z0 is the top of the cylinder surface —
+   * the operator touches off on the stock top, cuts go negative. gSender only
+   * visualizes this correctly with its "Visualize non-center zeros" toggle on
+   * (helped by the "Cylinder Dia:" banner token). `"center"`: Z0 is the rotary
+   * axis (cylinder centreline) — the native rotary convention gSender and most
+   * controllers visualize with no extra toggle. Emitted Z is shifted up by the
+   * radius (surface sits at Z = radius). Omitted = `"surface"` (back-compat).
+   */
+  zero?: "surface" | "center";
 }
 
 /**

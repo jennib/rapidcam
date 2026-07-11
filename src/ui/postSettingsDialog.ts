@@ -111,6 +111,13 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     rbase.axisWord,
   );
   const diaInput = smallNumber(rbase.diameter, "0.5");
+  const zeroSelect = smallSelect(
+    [
+      ["surface", "Stock surface (top)"],
+      ["center", "Rotary centre (axis)"],
+    ],
+    rbase.zero ?? "surface",
+  );
   const tolInput = smallNumber(rbase.arcTolerance ?? ARC_TOL_DEFAULT, "0.01");
   const rotaryInfo = document.createElement("div");
   rotaryInfo.className = "post-settings-note";
@@ -118,13 +125,14 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   rotaryNote.className = "post-settings-note";
   rotaryNote.innerHTML =
     "The canvas is the unrolled cylinder surface, so the diameter <b>is</b> the stock: the wrapped stock " +
-    "dimension stays locked to the circumference (π·⌀). Touch <b>Z</b> off on the <b>top</b> of the cylinder; " +
-    "the rotary word (A/B, degrees) replaces the wrapped axis and arcs are flattened into the wrap.";
+    "dimension stays locked to the circumference (π·⌀). The rotary word (A/B, degrees) replaces the wrapped " +
+    "axis and arcs are flattened into the wrap. Set <b>Z0</b> per the reference chosen above.";
   const rotarySection = document.createElement("div");
   rotarySection.append(
     labeledRow("Wrap axis", wrapSelect),
     labeledRow("Rotary axis word", rWordSelect),
     labeledRow("Cylinder diameter (mm)", diaInput),
+    labeledRow("Zero reference (Z0)", zeroSelect),
     labeledRow("Arc tolerance (mm)", tolInput),
     rotaryInfo,
     rotaryNote,
@@ -134,21 +142,27 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     axisWord: rWordSelect.value as "A" | "B",
     diameter: Math.max(0.1, Number(diaInput.value) || rbase.diameter),
     wrapAxis: wrapSelect.value as "x" | "y",
+    zero: zeroSelect.value as "surface" | "center",
     arcTolerance: Math.max(0.001, Number(tolInput.value) || ARC_TOL_DEFAULT),
   });
   const updateRotaryInfo = (): void => {
     const s = readRotary();
     const length = s.wrapAxis === "y" ? doc.canvas.width : doc.canvas.height;
+    const zeroNote =
+      s.zero === "center"
+        ? `Z0 = rotary <b>centre</b>: surface at Z${(s.diameter / 2).toFixed(1)} (radius); gSender visualizes natively.`
+        : `Z0 = stock <b>surface</b>: touch off on top. gSender needs its "Visualize non-center zeros" toggle.`;
     rotaryInfo.innerHTML =
       `⌀${s.diameter} → circumference <b>${circumference(s).toFixed(1)}mm</b> = 360° on ${s.axisWord} ` +
-      `(the wrapped stock dimension). Cylinder length ${length.toFixed(1)}mm on ${s.wrapAxis === "y" ? "X" : "Y"}.`;
+      `(the wrapped stock dimension). Cylinder length ${length.toFixed(1)}mm on ${s.wrapAxis === "y" ? "X" : "Y"}.<br>` +
+      zeroNote;
   };
   // Pair the rotary word with the wrap axis the usual way.
   wrapSelect.addEventListener("change", () => {
     rWordSelect.value = wrapSelect.value === "y" ? "A" : "B";
     updateRotaryInfo();
   });
-  for (const el of [wrapSelect, rWordSelect, diaInput, tolInput])
+  for (const el of [wrapSelect, rWordSelect, diaInput, zeroSelect, tolInput])
     el.addEventListener("input", updateRotaryInfo);
 
   // Remember each machine type's post pick so toggling doesn't lose it.

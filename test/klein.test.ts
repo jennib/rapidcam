@@ -199,6 +199,48 @@ test("a rotary job is surface-zeroed even if origin.z is 'bed' (no radial-wall Z
   expect(bed).not.toMatch(/Bed \(top at Z=/);
 });
 
+test("centre-zeroing lifts every emitted Z by the radius, leaving X/A/F untouched", () => {
+  const s: RotarySettings = { axisWord: "A", diameter: 100, wrapAxis: "y", zero: "center" };
+  const flat = ["G0 Z5", "G0 X10 Y20", "G1 Z-2 F300", "G1 X30 Y20 F1000"].join("\n");
+  const out = wrapGCode(flat, s);
+  // radius = 50: the retract 5 → 55, the plunge -2 → 48.
+  expect(out).toContain("G0 Z55");
+  expect(out).toContain("Z48");
+  // Only Z changes vs a surface wrap — the wrapped word, linear axis and feeds match.
+  const surf = wrapGCode(flat, { ...s, zero: "surface" });
+  const stripZ = (g: string) => g.replace(/ ?Z-?[\d.]+/g, "");
+  expect(stripZ(out)).toBe(stripZ(surf));
+});
+
+test("centre-zeroed program: Z0 at rotary centre, cuts lifted by R, no gSender toggle token", () => {
+  const mk = (zero: "surface" | "center") => {
+    const doc = new CADDocument({ width: 200, height: 100 });
+    doc.machineKind = "mill-rotary";
+    doc.rotary = { axisWord: "A", diameter: 100, wrapAxis: "y", zero };
+    const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 25));
+    doc.operations = [profileOp("p", [c.id], { side: "outside", depth: -4, stepdown: 2 })];
+    return generateRotaryProgram(doc).program;
+  };
+  const center = mk("center");
+  const surface = mk("surface");
+  // The banner reflects the centre reference and drops the surface-zero visualizer hint.
+  expect(center).toMatch(/Z0 is the ROTARY CENTRE/);
+  expect(center).not.toMatch(/Cylinder Dia:/);
+  expect(center).not.toMatch(/Visualize non-center zeros/);
+  expect(surface).toMatch(/Cylinder Dia:/);
+  // Every cut Z is lifted by the radius (50): deepest cut -4 → 46. (Motion lines
+  // only — the banner's "Z0 is the …" comment must not count.)
+  const zMin = (g: string) =>
+    Math.min(
+      ...g
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith(";"))
+        .flatMap((l) => [...l.matchAll(/\bZ(-?[\d.]+)/g)].map((m) => Number(m[1]))),
+    );
+  expect(zMin(surface)).toBeCloseTo(-4, 6);
+  expect(zMin(center)).toBeCloseTo(46, 6);
+});
+
 test("generateRotaryProgram falls back to default settings when doc.rotary is null", () => {
   // A rotary machine (machineKind) with no per-job cylinder yet — the new-project
   // path — must still wrap, using a stock-derived default diameter.

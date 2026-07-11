@@ -41,6 +41,7 @@ export interface RcamFile {
     axisWord: "A" | "B";
     diameter: number;
     wrapAxis: "x" | "y";
+    zero?: "surface" | "center";
     arcTolerance?: number;
   } | null;
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */

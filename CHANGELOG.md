@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-11
+
+Rotary jobs can zero to the cylinder centre, so the posted program lines up with
+gSender's native rotary preview with no extra setup.
+
+### Added
+- **Rotary zero reference (surface or centre)** — a rotary (4th-axis) job can now choose where **Z0** sits: **Stock surface (top)** — the existing convention (touch off the cylinder top, cuts run negative) — or **Rotary centre (axis)**, the native rotary convention where Z0 is the axis of rotation, the surface sits at `Z = radius`, and cuts run toward the centre. Pick it in **Machine Settings** or **New Project** (shown for a rotary machine). Centre-zeroing matters for **gSender**: a centre-zeroed program renders correctly on the cylinder with **no** "Visualize non-center zeros" toggle, so the header's `; Cylinder Dia:` hint is omitted for that mode (surface-zeroed exports still emit it and still need the toggle). Whichever you choose flows through to both file export and **Send to gSender**. Adds an optional `zero` field to the `.rcam` `rotary` block (omitted = `"surface"`, so existing files are unchanged).
+
 ## [1.4.0] — 2026-07-10
 
 Rotary (4th-axis) machining lands end to end — model on the unrolled cylinder,

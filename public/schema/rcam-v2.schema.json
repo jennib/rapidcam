@@ -636,6 +636,7 @@
         "axisWord": { "enum": ["A", "B"], "description": "Rotary axis word for the wrapped coordinate. \"A\" (about machine X) pairs with wrapAxis \"y\"; \"B\" (about Y) pairs with \"x\"." },
         "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Cylinder stock diameter, mm. 360° of rotation = π·diameter of surface travel." },
         "wrapAxis": { "enum": ["x", "y"], "description": "Which work axis rolls around the cylinder. \"y\" (default): Y wraps to rotation, X runs along the length. \"x\": swapped." },
+        "zero": { "enum": ["surface", "center"], "description": "Where Z0 sits. \"surface\" (default): Z0 = top of the cylinder surface, cuts negative; gSender needs its \"Visualize non-center zeros\" toggle to visualize it. \"center\": Z0 = rotary axis (centreline), surface at Z = radius — the native rotary convention gSender visualizes with no toggle. Omitted = \"surface\"." },
         "arcTolerance": { "type": "number", "exclusiveMinimum": 0, "description": "Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1." }
       }
     },

@@ -164,21 +164,30 @@ arcs are flattened to G1 chords. Z is depth below the **top of the cylinder**
 Fields: `axisWord` (`"A"` rotates about machine X and pairs with `wrapAxis`
 `"y"`; `"B"` about Y pairs with `"x"`), `diameter` (mm), `wrapAxis` (`"y"` =
 Y wraps to rotation and X runs along the length — the default pairing; `"x"` =
-swapped), and optional `arcTolerance` (chord tolerance in mm, default 0.1).
+swapped), optional `zero` (`"surface"` (default) or `"center"` — see Zeroing
+below), and optional `arcTolerance` (chord tolerance in mm, default 0.1).
 Mill-only; not combinable with `flip`. `null`/omitted = flat work. See
 `examples/rotary-spiral-dowel.rcam` — a straight line across the wrapped axis
 becomes a ring, a diagonal becomes a helix.
 
-**Zeroing (important for setup and preview).** The wrapped program is
-**surface-zeroed**: `Z0` is the **top of the cylinder** — touch the tool off on
-the stock's top surface, and cuts run negative from there (the tool cuts at
-top-dead-centre as the part rotates under it). This is the easy zero to set
-physically, but note it is *not* the centre-of-rotation zero that some rotary
-previewers assume. To let those previewers place the toolpath on the cylinder,
-the wrap's G-code header carries a machine-readable diameter comment,
-`; Cylinder Dia: <mm>`, which they read and offset by the radius. In **gSender**
-specifically, turn on **Config ▸ Rotary ▸ "Visualize non-center zeros"** so it
-applies that offset; otherwise its visualizer draws the A-axis moves flat.
+**Zeroing (important for setup and preview).** The `zero` field picks where `Z0`
+sits:
+
+- **`"surface"` (default).** `Z0` is the **top of the cylinder** — touch the tool
+  off on the stock's top surface, and cuts run negative from there (the tool cuts
+  at top-dead-centre as the part rotates under it). This is the easy zero to set
+  physically, but note it is *not* the centre-of-rotation zero that some rotary
+  previewers assume. To let those previewers place the toolpath on the cylinder,
+  the wrap's G-code header carries a machine-readable diameter comment,
+  `; Cylinder Dia: <mm>`, which they read and offset by the radius. In **gSender**
+  specifically, turn on **Config ▸ Rotary ▸ "Visualize non-center zeros"** so it
+  applies that offset; otherwise its visualizer draws the A-axis moves flat.
+- **`"center"`.** `Z0` is the **rotary axis** (the cylinder centreline) — the
+  native rotary convention. Every emitted `Z` is shifted up by the radius, so the
+  surface sits at `Z = radius` and a cut to depth `d` lands at `Z = radius − d`.
+  Set this zero by touching off on the stock top and entering the radius as the
+  Z work offset. gSender and most controllers visualize this on the cylinder with
+  **no** toggle, so the `; Cylinder Dia:` hint is omitted for this mode.
 
 `metadata` is optional informational job data — `job`, `revision`, and `notes`,
 all optional strings. It affects no geometry or toolpaths; non-empty fields are

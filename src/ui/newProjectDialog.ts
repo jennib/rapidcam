@@ -180,6 +180,16 @@ export function openNewProjectDialog(
   originSec.appendChild(row("Y", oySel));
   const ozRow = row("Z", ozSel);
   originSec.appendChild(ozRow);
+  // Rotary-only: where Z0 sits on the cylinder. "surface" = stock top (needs
+  // gSender's "Visualize non-center zeros" toggle); "center" = rotary axis (native,
+  // no toggle — every Z lifted by the radius). See RotarySettings.zero / cam/klein.ts.
+  const zeroSel = sel([
+    ["surface", "Stock surface (top)"],
+    ["center", "Rotary centre (axis)"],
+  ]);
+  zeroSel.value = initial.rotary?.zero ?? defaults.rotary?.zero ?? "surface";
+  const zeroRow = row("Rotary Z0", zeroSel);
+  originSec.appendChild(zeroRow);
   body.appendChild(originSec);
 
   // -- machine --
@@ -248,6 +258,8 @@ export function openNewProjectDialog(
     if (rotary) ozSel.value = "top";
     for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
     ozRow.style.opacity = noZChoice ? "0.45" : "";
+    // The surface-vs-axis Z0 choice only applies to a rotary cylinder.
+    zeroRow.style.display = rotary ? "" : "none";
     // A rotary job's stock is a cylinder: Length (along the axis) × Diameter, with
     // the wall/depth as the radial cut allowance. The circumference (π·diameter)
     // becomes the wrapped canvas dimension at creation.
@@ -307,7 +319,12 @@ export function openNewProjectDialog(
       }
       width = len;
       height = Math.PI * dia;
-      rotarySettings = { axisWord: "A", diameter: dia, wrapAxis: "y" };
+      rotarySettings = {
+        axisWord: "A",
+        diameter: dia,
+        wrapAxis: "y",
+        zero: zeroSel.value as "surface" | "center",
+      };
     } else {
       const w = parseLength(wInp.value, unit);
       const h = parseLength(hInp.value, unit);
