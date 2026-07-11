@@ -31,7 +31,7 @@ export class SettingsBar {
   private notesInput!: HTMLTextAreaElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
-  private isCollapsed = false;
+  private isCollapsed = true;
   private panelWidth = 200;
 
   constructor(
@@ -40,6 +40,7 @@ export class SettingsBar {
     private pushHistory: () => void,
   ) {
     this.build();
+    this.host.classList.add("collapsed");
     this.doc.onChange(() => this.refresh());
     this.refresh();
   }
