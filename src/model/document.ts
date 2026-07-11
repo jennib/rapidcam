@@ -541,7 +541,7 @@ export class CADDocument {
   }
 
   // --- entity management ---------------------------------------------------
-  add(e: Entity): Entity {
+  add<T extends Entity>(e: T): T {
     if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
       e.layerId = this.activeLayerId;
     }
@@ -663,7 +663,7 @@ export class CADDocument {
   }
 
   // --- patterns ------------------------------------------------------------
-  addPattern(p: PatternDef): PatternDef {
+  addPattern<T extends PatternDef>(p: T): T {
     this.patterns.push(p);
     this.emitChange();
     return p;

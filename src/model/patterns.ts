@@ -49,12 +49,16 @@ export interface PatternDef {
   sourceSnapshot?: number;
 }
 
+/** PatternDef narrowed to one variant, so `params` needs no cast at call sites. */
+export type LinearPatternDef = PatternDef & { kind: "linear"; params: LinearPatternParams };
+export type CircularPatternDef = PatternDef & { kind: "circular"; params: CircularPatternParams };
+
 export function makeLinearPattern(
   sourceIds: EntityId[],
   instanceIds: EntityId[][],
   params: LinearPatternParams,
   sourceSnapshot?: number,
-): PatternDef {
+): LinearPatternDef {
   return { id: nextId("pat"), kind: "linear", sourceIds, instanceIds, params, sourceSnapshot };
 }
 
@@ -63,7 +67,7 @@ export function makeCircularPattern(
   instanceIds: EntityId[][],
   params: CircularPatternParams,
   sourceSnapshot?: number,
-): PatternDef {
+): CircularPatternDef {
   return { id: nextId("pat"), kind: "circular", sourceIds, instanceIds, params, sourceSnapshot };
 }
 

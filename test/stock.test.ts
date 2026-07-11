@@ -85,7 +85,7 @@ test("stockRect round-trips through .rcam serialize/apply; absent stays null", (
   expect(doc2.stockRect).toEqual({ x: 20, y: 15, width: 120, height: 80 });
 
   const flat = new CADDocument({ width: 200, height: 100 });
-  const flatFile = serializeDoc(flat, "flat") as Record<string, unknown>;
+  const flatFile = serializeDoc(flat, "flat") as unknown as Record<string, unknown>;
   expect("stockRect" in flatFile).toBe(false); // omitted when unset
   const flat2 = new CADDocument({ width: 10, height: 10 });
   applyFile(flat2, flatFile as never);

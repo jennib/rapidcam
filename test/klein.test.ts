@@ -371,6 +371,6 @@ test("rotary settings round-trip through .rcam serialize/apply", () => {
 
 test("a flat document serializes without a rotary key", () => {
   const doc = new CADDocument({ width: 200, height: 100 });
-  const file = serializeDoc(doc, "flat") as Record<string, unknown>;
+  const file = serializeDoc(doc, "flat") as unknown as Record<string, unknown>;
   expect("rotary" in file).toBe(false);
 });

@@ -2,6 +2,13 @@ import "./style.css";
 import { showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
 
+declare global {
+  interface Window {
+    /** Dev-only inspection hook for automated UI verification (absent in prod builds). */
+    __app?: App;
+  }
+}
+
 function wireRightPanelTabs(): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>(".rtab");
   const panels = document.querySelectorAll<HTMLElement>(".rtab-content");
@@ -99,7 +106,7 @@ function bootApp(): void {
   showConsentBannerIfNeeded();
   // Dev-only inspection hook for automated UI verification (stripped from prod builds).
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
-    (window as unknown as { __app: unknown }).__app = app;
+    window.__app = app;
   }
 }
 

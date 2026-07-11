@@ -14,7 +14,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
     "useDefineForClassFields": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

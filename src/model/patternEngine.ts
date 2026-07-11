@@ -18,6 +18,8 @@ import { varMap } from "./variables";
 import { evalExpr } from "../core/expr";
 import {
   type PatternDef,
+  type LinearPatternDef,
+  type CircularPatternDef,
   type LinearPatternParams,
   type CircularPatternParams,
   makeLinearPattern,
@@ -69,7 +71,7 @@ export function createLinearPattern(
   doc: CADDocument,
   sourceIds: EntityId[],
   params: LinearPatternParams,
-): PatternDef {
+): LinearPatternDef {
   const p = resolveLinearParams(doc, params);
   const sources = resolveSources(doc, sourceIds);
   const instanceIds = linearSteps(sources, p).map((s) => addCopies(doc, s.copies));
@@ -95,7 +97,7 @@ export function createCircularPattern(
   doc: CADDocument,
   sourceIds: EntityId[],
   params: CircularPatternParams,
-): PatternDef {
+): CircularPatternDef {
   const p = resolveCircularParams(doc, params);
   const sources = resolveSources(doc, sourceIds);
   const instanceIds = circularSteps(sources, p).map((s) => addCopies(doc, s.copies));

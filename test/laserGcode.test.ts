@@ -27,6 +27,7 @@ function baseOp(over: Partial<CAMOperation>): CAMOperation {
     type: "engrave",
     entityIds: [],
     side: "outside",
+    toolType: "end-mill",
     toolNumber: 1,
     diameter: 0,
     feedrate: 1200,

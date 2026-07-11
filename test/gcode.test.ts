@@ -29,8 +29,10 @@ const OP: CAMOperation = {
   type: "engrave",
   entityIds: [],
   side: "outside",
+  toolType: "end-mill",
   toolNumber: 1,
   diameter: 3,
+  stepover: 0.4,
   feedrate: 1000,
   plungeRate: 300,
   spindleSpeed: 18000,
@@ -130,7 +132,7 @@ const p3 = { x: 100, y: 104 };
   check("safeZ retract includes zOff", lines[0] === `G0 Z${n(OP.safeZ + 10)}`, lines[0]);
   // first cut depth = -1.5 + 10 = 8.5
   const plunge = lines.find((l) => l.startsWith("G1 Z"));
-  check("plunge depth includes zOff", plunge?.includes(`Z${n(-1.5 + 10)}`), plunge ?? "");
+  check("plunge depth includes zOff", plunge?.includes(`Z${n(-1.5 + 10)}`) ?? false, plunge ?? "");
 }
 
 // 6) Single depth pass when stepdown >= |depth| --------------------------------
@@ -143,7 +145,7 @@ const p3 = { x: 100, y: 104 };
   const plunge = lines.find((l) => l.startsWith("G1 Z"));
 
   check("one G5 command", g5Lines.length === 1, `got ${g5Lines.length}`);
-  check("plunges to full depth -1", plunge?.includes("Z-1"), plunge ?? "");
+  check("plunges to full depth -1", plunge?.includes("Z-1") ?? false, plunge ?? "");
 }
 
 // 7) GRBL uses G1 lines, not G5 -----------------------------------------------
