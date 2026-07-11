@@ -1,7 +1,7 @@
 import { getRecents, type RecentEntry } from "../io/fileio";
 import { getExamples, type ExampleEntry } from "../io/examples";
 import { renderThumbnailSvg } from "./entityThumbnail";
-import { StorageKeys } from "../core/storageKeys";
+import { getDraftMeta } from "../io/draftStore";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -30,15 +30,7 @@ export function showWelcomeScreen(
   const recents = getRecents();
   const examples = getExamples();
 
-  const draftRaw = localStorage.getItem(StorageKeys.autosaveDraft);
-  let draft: { name: string; savedAt: number } | null = null;
-  try {
-    if (draftRaw) {
-      draft = JSON.parse(draftRaw);
-    }
-  } catch (_e) {
-    // Ignore parse errors
-  }
+  const draft = getDraftMeta();
 
   const backdrop = document.createElement("div");
   backdrop.className = "welcome-backdrop";

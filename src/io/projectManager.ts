@@ -1,14 +1,6 @@
 import { type CADDocument, type DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
 import { History } from "../model/history";
-import {
-  openFile,
-  saveFile,
-  applyFile,
-  serializeDoc,
-  pushRecent,
-  trySetItem,
-  stripEmbeddedFonts,
-} from "./fileio";
+import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
 import { importDxf } from "./dxfImport";
@@ -29,11 +21,11 @@ import { openImageAdjustDialog } from "../ui/imageAdjustDialog";
 import { isFontResolvable } from "../core/fontManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
+import { saveDraft, loadDraftData, clearDraft as dropDraft, getDraftMeta } from "./draftStore";
 import { copyToClipboard } from "../ui/clipboard";
 import { toast } from "../ui/toast";
 import { confirmDialog } from "../ui/modal";
 import { track } from "../analytics";
-import { StorageKeys } from "../core/storageKeys";
 
 export interface ProjectManagerCallbacks {
   onDocumentChange: () => void;
@@ -127,7 +119,7 @@ export class ProjectManager {
         this.doc.rotary = cfg.rotary ?? null;
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
-        localStorage.removeItem(StorageKeys.autosaveDraft);
+        dropDraft();
         this.doc.emitChange();
         this.cb.onFitView();
         this.isDocumentLoading = false;
@@ -167,7 +159,7 @@ export class ProjectManager {
         try {
           const data = await this.writeToHandle(this.currentFileHandle);
           pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-          localStorage.removeItem(StorageKeys.autosaveDraft);
+          dropDraft();
           this.markClean();
           track("project_saved");
           return;
@@ -192,7 +184,7 @@ export class ProjectManager {
         this.currentFileName = handle.name.replace(/\.rcam$/i, "");
         const data = await this.writeToHandle(handle);
         pushRecent({ name: this.currentFileName, savedAt: Date.now(), data });
-        localStorage.removeItem(StorageKeys.autosaveDraft);
+        dropDraft();
         this.markClean();
         track("project_saved");
         return;
@@ -206,7 +198,7 @@ export class ProjectManager {
     this.currentFileName = name || "Untitled";
     this.currentFileHandle = null;
     saveFile(this.doc, this.currentFileName);
-    localStorage.removeItem(StorageKeys.autosaveDraft);
+    dropDraft();
     this.markClean();
     track("project_saved");
   }
@@ -252,7 +244,7 @@ export class ProjectManager {
     applyFile(this.doc, file);
     this.currentFileName = name;
     this.currentFileHandle = handle;
-    if (clearDraft) localStorage.removeItem(StorageKeys.autosaveDraft);
+    if (clearDraft) dropDraft();
     this.cb.onSolve();
     this.cb.onFitView();
     this.isDocumentLoading = false;
@@ -303,14 +295,7 @@ export class ProjectManager {
     if (this.currentFileHandle) {
       try {
         const data = await this.writeToHandle(this.currentFileHandle);
-        trySetItem(
-          StorageKeys.autosaveDraft,
-          JSON.stringify({
-            name: this.currentFileName,
-            savedAt: Date.now(),
-            data: stripEmbeddedFonts(data),
-          }),
-        );
+        await saveDraft(this.currentFileName, data);
         return;
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
@@ -318,14 +303,7 @@ export class ProjectManager {
     }
 
     const data = serializeDoc(this.doc, this.currentFileName);
-    trySetItem(
-      StorageKeys.autosaveDraft,
-      JSON.stringify({
-        name: this.currentFileName,
-        savedAt: Date.now(),
-        data: stripEmbeddedFonts(data),
-      }),
-    );
+    await saveDraft(this.currentFileName, data);
   }
 
   async imageImport(): Promise<void> {
@@ -551,16 +529,15 @@ export class ProjectManager {
     );
   }
 
-  restoreDraft(): void {
-    const raw = localStorage.getItem(StorageKeys.autosaveDraft);
-    if (!raw) return;
+  async restoreDraft(): Promise<void> {
+    const data = await loadDraftData();
+    if (!data) return;
     try {
-      const draft = JSON.parse(raw);
       this.isDocumentLoading = true;
       this.history = new History<DocSnapshot>();
       this.cb.onCloseEditors();
-      applyFile(this.doc, draft.data);
-      this.currentFileName = draft.name;
+      applyFile(this.doc, data);
+      this.currentFileName = getDraftMeta()?.name ?? this.currentFileName;
       this.currentFileHandle = null;
       this.cb.onSolve();
       this.cb.onFitView();
@@ -569,6 +546,7 @@ export class ProjectManager {
       this.warnMissingFonts();
     } catch (e) {
       console.error("Failed to restore draft:", e);
+      this.isDocumentLoading = false;
     }
   }
 }
