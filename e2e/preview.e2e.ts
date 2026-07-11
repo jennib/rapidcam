@@ -18,7 +18,9 @@ declare global {
   interface Window {
     __harnessReady?: boolean;
     __err?: string;
-    __renderPreview?: (opts?: Record<string, number>) => boolean;
+    __renderPreview?: (opts?: Record<string, unknown>) => boolean;
+    /** Mean-free frame pixels (RGBA) captured on the last render, for pixel checks. */
+    __px?: Uint8ClampedArray | null;
   }
 }
 
@@ -54,23 +56,37 @@ test("rotary 3D preview wraps the height map onto a cylinder", async ({ page }) 
 
   await expect.poll(() => page.evaluate(() => window.__harnessReady === true)).toBe(true);
 
-  // Same synthetic scene, rendered through the cylinder (rotary) path — so a
-  // shader compile/link failure in VERT_CYL/FRAG_CYL, or a broken wrap, is caught.
+  // Render through the cylinder (rotary) path — catches a shader compile/link
+  // failure in VERT_CYL/FRAG_CYL.
   const ok = await page.evaluate(() => window.__renderPreview?.({ rotary: true }) === true);
   const err = await page.evaluate(() => window.__err ?? "");
   expect(err, "cylinder shader must compile and link").toBe("");
   expect(ok, "rotary preview must render without throwing").toBe(true);
+  await expect(page.locator("#preview-shot")).toBeVisible();
 
-  const shot = page.locator("#preview-shot");
-  await expect(shot).toBeVisible();
-  await expect(shot).toHaveScreenshot("preview-cylinder.png", {
-    maxDiffPixelRatio: 0.004,
-    animations: "disabled",
+  // Mirror-orientation guard, baseline-free (so it needs no per-GPU/OS snapshot).
+  // A shallow cut placed at HIGH v wraps — correctly — onto the visible top of the
+  // cylinder. We render it, and a plain uncut cylinder, and count pixels that
+  // differ: the cut is a big visible change (~5% of the frame). If the wrap
+  // regresses to a mirror image (v not flipped), that cut lands on the hidden
+  // underside and the two frames are nearly identical (<0.5%). Comparing two live
+  // renders on the same GPU avoids any stored baseline. Threshold 2% sits well
+  // between the measured correct (~5%) and mirrored (~0.4%) cases.
+  const diffFrac = await page.evaluate(() => {
+    const w = window;
+    w.__renderPreview?.({ rotary: true, mark: true });
+    const A = w.__px?.slice();
+    w.__renderPreview?.({ rotary: true, noCuts: true });
+    const B = w.__px;
+    if (!A || !B) return -1;
+    let diff = 0;
+    for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) > 25) diff++;
+    return diff / (A.length / 4);
   });
+  expect(diffFrac, "a high-v cut must be visible on the cylinder top (not mirrored under)").toBeGreaterThan(0.02);
 
   // The swapped wrap axis (X wraps, Y = length) exercises the mirrored JS
-  // branches (viewMetrics, caps, uniforms) and the uWrapX shader path. Assert it
-  // renders without error (no separate screenshot baseline needed).
+  // branches (viewMetrics, caps, uniforms) and the uWrapX shader path.
   const okX = await page.evaluate(
     () => window.__renderPreview?.({ rotary: true, wrapAxis: "x" }) === true,
   );

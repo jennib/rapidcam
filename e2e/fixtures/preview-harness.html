@@ -45,20 +45,39 @@
           }
         }
       };
-      carve(34, 19, 6); // main pocket
-      for (let r = 0; r < gridH; r++) {
-        for (let c = 0; c < gridW; c++) {
-          const x = c / (gridW - 1) * stockW - cx;
-          const y = r / (gridH - 1) * stockH - cy;
-          const lx = x * ca + y * sa, ly = -x * sa + y * ca;
-          if (Math.abs(ly) < 15 && Math.abs(((lx + 60) % 12) - 6) < 1.2) {
-            const i = r * gridW + c;
-            data[i] = Math.min(data[i], stockT - 9); // engraved grooves
+      if (opts.noCuts) {
+        // Leave the stock uncut — a plain cylinder, used as the brightness
+        // baseline for the mirror-orientation check below.
+      } else if (opts.mark) {
+        // A single shallow (machined-bright) pocket at HIGH v — a band around
+        // the circumference that, wrapped correctly, lands on the visible top of
+        // the cylinder (θ ≈ 0). If the wrap is mirrored (v not flipped) it goes to
+        // the hidden underside instead. So "is the cut visible from the default
+        // view" distinguishes a correct wrap from a mirrored one — no screenshot
+        // baseline needed (see preview.e2e.ts).
+        for (let r = 0; r < gridH; r++) {
+          for (let c = 0; c < gridW; c++) {
+            const u = c / (gridW - 1), v = r / (gridH - 1);
+            if (u >= 0.25 && u <= 0.75 && v >= 0.75 && v <= 0.95) data[r * gridW + c] = stockT - 3;
+          }
+        }
+      } else {
+        carve(34, 19, 6); // main pocket
+        for (let r = 0; r < gridH; r++) {
+          for (let c = 0; c < gridW; c++) {
+            const x = c / (gridW - 1) * stockW - cx;
+            const y = r / (gridH - 1) * stockH - cy;
+            const lx = x * ca + y * sa, ly = -x * sa + y * ca;
+            if (Math.abs(ly) < 15 && Math.abs(((lx + 60) % 12) - 6) < 1.2) {
+              const i = r * gridW + c;
+              data[i] = Math.min(data[i], stockT - 9); // engraved grooves
+            }
           }
         }
       }
 
       const host = document.getElementById("host");
+      host.style.display = ""; // re-show if a prior render hid it (multi-render tests)
       host.querySelectorAll("canvas,button,.webgl-status").forEach((n) => n.remove());
       try {
         const p = new WebGLPreview(host);
@@ -69,6 +88,15 @@
         // this static <img> is deterministic and immune to compositor timing.
         const canvas = host.querySelector("canvas");
         const url = canvas.toDataURL("image/png");
+        // Mean red channel of the frame — a baseline-free brightness metric the
+        // mirror-orientation test reads (a visible machined cut lifts it).
+        try {
+          const m = document.createElement("canvas");
+          m.width = canvas.width; m.height = canvas.height;
+          const mctx = m.getContext("2d");
+          mctx.drawImage(canvas, 0, 0);
+          window.__px = mctx.getImageData(0, 0, m.width, m.height).data;
+        } catch (_e) { window.__px = null; }
         let img = document.getElementById("preview-shot");
         if (!img) {
           img = document.createElement("img");

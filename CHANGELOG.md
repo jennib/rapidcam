@@ -28,6 +28,7 @@ checks, and a Send-to-gSender handoff.
 ### Fixed
 - **Rotary `.rcam` files validate against the published schema** — the schema's `machineKind` enum was missing `"mill-rotary"`, so a saved rotary project failed validation against `rapidcam.app/schema/rcam-v2.schema.json` even though it loaded fine.
 - **A rotary job can no longer be zeroed to a nonexistent "bed"** — a cylinder has no bed, but the Z-origin picker still offered "Bed" for a rotary machine. Choosing it shifted every Z by the radial wall thickness, so cuts posted high and the tool cut air while the header still claimed "Z0 = top". Rotary jobs are now always surface-zeroed on the cylinder top: the export ignores a stray bed origin on a cylinder (so old/hand-edited files are safe too), and the Z-origin control is locked to "Top of stock" for a rotary machine in both New Project and the settings panel.
+- **Rotary cylinder preview no longer mirror-images the design** — the 3D cylinder preview wrapped the surface with the wrong handedness, so engraved text read reflected (most visibly on the underside). Preview-only — the G-code was always correct. The wrap now matches the flat preview's orientation. (No effect on any exported program.)
 
 ## [1.3.0] — 2026-07-04
 

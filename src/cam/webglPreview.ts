@@ -448,9 +448,12 @@ void main() {
   vUV = aUV;
   vHeight = h;
 
-  // Which UV axis runs along the length vs around the circumference.
+  // Which UV axis runs along the length vs around the circumference. The wrap
+  // param is flipped (1 - v) so the surface curls the same way the flat preview
+  // lays it out (which uses 0.5 - v for Z) — otherwise the outer surface is a
+  // mirror image and text reads reflected. See the flat VERT's wz mapping.
   float axialParam = (uWrapX == 1) ? aUV.y : aUV.x;
-  float wrapParam  = (uWrapX == 1) ? aUV.x : aUV.y;
+  float wrapParam  = 1.0 - ((uWrapX == 1) ? aUV.x : aUV.y);
 
   float axial  = (axialParam - 0.5) * uAxialLen;   // along world X
   float theta  = wrapParam * (uCirc / uRadius);     // = 2π·wrapParam
