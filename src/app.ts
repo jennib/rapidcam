@@ -19,7 +19,13 @@ import { SnapEngine, type SnapResult } from "./input/snapping";
 import { solve, type PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, type ToolPointerEvent } from "./tools/tool";
 import { TOOL_SHORTCUTS, TOOL_HINTS } from "./tools/shortcuts";
-import { SelectTool, pickConstraintAt, computeTransformBox } from "./tools/selectTool";
+import {
+  SelectTool,
+  pickConstraintAt,
+  computeTransformBox,
+  selectionSnapPositions,
+  meanDeviation,
+} from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
 import { RectTool } from "./tools/rectTool";
 import { CircleTool } from "./tools/circleTool";
@@ -1106,12 +1112,24 @@ export class App {
     if (firstPress) this.project.pushHistory();
     const isFixed = (id: string) =>
       this.doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
+    const before = selectionSnapPositions(this.doc);
     const pins: PinMap = new Map();
     for (const e of this.doc.selected) {
       if (!isFixed(e.id)) e.translate({ x: dx, y: dy });
       for (const p of e.dofPoints()) pins.set(`${e.id}:${p.key}`, p.pos);
     }
     this.runSolve(pins);
+    // Same resistance check as an entity drag: when constraints anchored to
+    // unselected geometry pull the nudge back, say so instead of staying mute.
+    const req = Math.hypot(dx, dy);
+    if (
+      before.length > 0 &&
+      meanDeviation(before, { x: dx, y: dy }, selectionSnapPositions(this.doc)) > 0.4 * req
+    ) {
+      this.statusBar.flash(
+        "Constraints resisted the move — double-click selects connected geometry",
+      );
+    }
     this.doc.emitChange();
   }
 

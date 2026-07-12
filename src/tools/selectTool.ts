@@ -85,6 +85,9 @@ export class SelectTool implements Tool {
   private dragSnapPoints: Vec2[] = [];
   private dragExclude = new Set<string>();
   private dragSnapTarget: SnapPoint | null = null;
+  /** True when the last drag move landed far from where the cursor asked —
+   *  constraints anchored elsewhere fought the move. Reported on pointer-up. */
+  private dragResisted = false;
 
   // Repeated-click cycling through overlapping entity bodies. When several
   // entities sit under the cursor, clicking the same spot again advances to the
@@ -341,16 +344,7 @@ export class SelectTool implements Tool {
       // Capture the selection's snap points (in the snapshot frame the drag
       // re-applies deltas to) so the move can click onto other geometry.
       this.dragExclude = new Set(ctx.doc.selected.map((s) => s.id));
-      this.dragSnapPoints = [];
-      const MAX_DRAG_SNAP_POINTS = 40;
-      for (const s of ctx.doc.selected) {
-        if (isEntityFixed(ctx.doc, s.id)) continue; // won't move, can't snap
-        for (const sp of s.snapPoints()) {
-          this.dragSnapPoints.push(clone(sp.pos));
-          if (this.dragSnapPoints.length >= MAX_DRAG_SNAP_POINTS) break;
-        }
-        if (this.dragSnapPoints.length >= MAX_DRAG_SNAP_POINTS) break;
-      }
+      this.dragSnapPoints = selectionSnapPositions(ctx.doc);
     } else if (
       this.mode === "maybeDragDimLabel" &&
       dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX
@@ -458,6 +452,15 @@ export class SelectTool implements Tool {
             if (!isEntityFixed(ctx.doc, ent.id)) ent.translate(d);
           }
           ctx.solve(pinsForSelected(ctx.doc));
+          // Detect the solver fighting the move: when constraints anchored to
+          // unselected geometry pull the selection back, the points land far
+          // from where the cursor asked. The final move's verdict is reported
+          // on pointer-up so the user learns why the geometry "stuck".
+          const req = Math.hypot(d.x, d.y);
+          if (req * ctx.view.scale > 15 && this.dragSnapPoints.length > 0) {
+            this.dragResisted =
+              meanDeviation(this.dragSnapPoints, d, selectionSnapPositions(ctx.doc)) > 0.4 * req;
+          }
         }
       }
     } else if (this.mode === "marquee") {
@@ -664,6 +667,10 @@ export class SelectTool implements Tool {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
 
+    if (this.mode === "dragEntity" && this.dragResisted) {
+      ctx.notify("Constraints resisted the move — double-click selects connected geometry");
+    }
+
     this.mode = "idle";
     this.dragPoint = null;
     this.dragSnapshot = null;
@@ -675,6 +682,7 @@ export class SelectTool implements Tool {
     this.dragSnapPoints = [];
     this.dragExclude.clear();
     this.dragSnapTarget = null;
+    this.dragResisted = false;
     ctx.requestRender();
   }
 
@@ -712,6 +720,7 @@ export class SelectTool implements Tool {
     this.dragSnapPoints = [];
     this.dragExclude.clear();
     this.dragSnapTarget = null;
+    this.dragResisted = false;
     ctx.requestRender();
   }
 
@@ -809,6 +818,39 @@ export function computeTransformBox(doc: CADDocument, view: Viewport): Transform
   ];
 
   return { bounds, handles };
+}
+
+/**
+ * Snap-point positions of the movable (non-fixed) selection, in stable
+ * iteration order and capped — the same sample set is captured before a
+ * drag/nudge and re-collected after the solve, so the two line up index-for-
+ * index for deviation measurement (and feed drag snapping).
+ */
+export function selectionSnapPositions(doc: CADDocument, cap = 40): Vec2[] {
+  const out: Vec2[] = [];
+  for (const s of doc.selected) {
+    if (isEntityFixed(doc, s.id)) continue; // won't move
+    for (const sp of s.snapPoints()) {
+      out.push(clone(sp.pos));
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Mean distance between where a move asked each sampled point to land
+ * (`start + d`) and where the solver actually put it. Near zero for a free
+ * move; approaches |d| when constraints anchored elsewhere resist it.
+ */
+export function meanDeviation(start: Vec2[], d: Vec2, actual: Vec2[]): number {
+  const n = Math.min(start.length, actual.length);
+  if (n === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += Math.hypot(actual[i].x - (start[i].x + d.x), actual[i].y - (start[i].y + d.y));
+  }
+  return sum / n;
 }
 
 function pinsForSelected(doc: CADDocument): PinMap {
