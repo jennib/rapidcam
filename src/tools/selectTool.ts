@@ -447,6 +447,15 @@ export class SelectTool implements Tool {
           d = r.delta;
           this.dragSnapTarget = r.snap;
         }
+        // Teach the modifier at the moment it matters: while a snap has hold
+        // of the drag, the hint line says how to break free.
+        ctx.setHint(
+          this.dragSnapTarget
+            ? `Snapped to ${this.dragSnapTarget.kind} · hold Ctrl to disable snapping`
+            : e.ctrlKey
+              ? "Snapping disabled"
+              : null,
+        );
         if (d.x !== 0 || d.y !== 0) {
           for (const ent of ctx.doc.selected) {
             if (!isEntityFixed(ctx.doc, ent.id)) ent.translate(d);
@@ -667,8 +676,11 @@ export class SelectTool implements Tool {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
 
-    if (this.mode === "dragEntity" && this.dragResisted) {
-      ctx.notify("Constraints resisted the move — double-click selects connected geometry");
+    if (this.mode === "dragEntity") {
+      ctx.setHint(null); // restore the tool's default hint after the drag
+      if (this.dragResisted) {
+        ctx.notify("Constraints resisted the move — double-click selects connected geometry");
+      }
     }
 
     this.mode = "idle";
@@ -710,6 +722,7 @@ export class SelectTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
+    if (this.mode === "dragEntity") ctx.setHint(null);
     this.mode = "idle";
     this.dragPoint = null;
     this.dragSnapshot = null;

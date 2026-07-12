@@ -39,6 +39,7 @@ function makeCtx(doc: CADDocument): { ctx: ToolContext; notified: string[] } {
     notify(msg) {
       notified.push(msg);
     },
+    setHint() {},
     snap,
   };
   return { ctx, notified };

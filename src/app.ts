@@ -214,6 +214,8 @@ export class App {
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
         notify: (msg) => this.statusBar.flash(msg),
+        setHint: (text) =>
+          this.statusBar.setHint(text ?? TOOL_HINTS[this.tools.active.id] ?? ""),
       },
       [
         new SelectTool(),

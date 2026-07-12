@@ -34,7 +34,7 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
  */
 export const TOOL_HINTS: Record<string, string> = {
   select:
-    "Drag = move · handles = scale/rotate · Ctrl+click = pick points · double-click = chain select",
+    "Drag = move · Shift+drag = marquee · Ctrl+click = pick points · double-click = chain select",
   line: "Click start, then end · Shift = ortho · Esc cancels",
   rect: "Click two opposite corners",
   circle: "Click the centre, then a point on the circle",

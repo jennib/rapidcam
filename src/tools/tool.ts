@@ -27,6 +27,10 @@ export interface ToolContext {
   /** Show a transient status-bar message — use whenever an interaction is
    *  refused or silently alters its effect, so the user learns why. */
   notify(msg: string): void;
+  /** Override the status-bar hint line during a modal interaction (e.g. the
+   *  modifiers that apply mid-drag); pass null to restore the active tool's
+   *  default hint. */
+  setHint(text: string | null): void;
   /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
    *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
    *  If `onTab` is provided, Tab calls it instead of moving browser focus. */

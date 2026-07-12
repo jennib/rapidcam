@@ -54,16 +54,24 @@ export class StatusBar {
     spacer.className = "status-spacer";
     this.host.appendChild(spacer);
 
-    this.gridToggle = this.toggle("Grid snap", () => {
-      this.snap.gridEnabled = !this.snap.gridEnabled;
-      this.refreshToggles();
-      this.onToggle();
-    });
-    this.osnapToggle = this.toggle("Object snap", () => {
-      this.snap.objectSnapEnabled = !this.snap.objectSnapEnabled;
-      this.refreshToggles();
-      this.onToggle();
-    });
+    this.gridToggle = this.toggle(
+      "Grid snap",
+      () => {
+        this.snap.gridEnabled = !this.snap.gridEnabled;
+        this.refreshToggles();
+        this.onToggle();
+      },
+      "Drawing clicks and moved geometry land on the grid",
+    );
+    this.osnapToggle = this.toggle(
+      "Object snap",
+      () => {
+        this.snap.objectSnapEnabled = !this.snap.objectSnapEnabled;
+        this.refreshToggles();
+        this.onToggle();
+      },
+      "Endpoints, midpoints and centres attract the cursor and moved geometry — hold Ctrl during a drag to skip once",
+    );
     this.host.appendChild(this.gridToggle);
     this.host.appendChild(this.osnapToggle);
     this.refreshToggles();
@@ -130,10 +138,11 @@ export class StatusBar {
     }
   }
 
-  private toggle(label: string, onClick: () => void): HTMLElement {
+  private toggle(label: string, onClick: () => void, tooltip?: string): HTMLElement {
     const e = document.createElement("div");
     e.className = "status-toggle";
     e.textContent = label;
+    if (tooltip) e.title = tooltip;
     e.addEventListener("click", onClick);
     return e;
   }

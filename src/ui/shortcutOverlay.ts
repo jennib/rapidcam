@@ -18,6 +18,8 @@ const EDITING_KEYS: [string, string][] = [
   ["Ctrl+G / Ctrl+Shift+G", "Group / ungroup"],
   ["Ctrl+J / Ctrl+Shift+J", "Join / explode"],
   ["X", "Toggle construction geometry"],
+  ["Ctrl while dragging", "Disable snapping for that move"],
+  ["Shift + drag", "Marquee select, even starting over objects"],
   ["Space + drag / middle drag", "Pan"],
   ["Escape", "Cancel tool · clear selection"],
 ];

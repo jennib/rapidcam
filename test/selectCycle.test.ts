@@ -29,6 +29,7 @@ function makeCtx(doc: CADDocument): ToolContext {
     openValueEditor() {},
     closeValueEditor() {},
     notify() {},
+    setHint() {},
     snap: new SnapEngine(),
   };
 }
