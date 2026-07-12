@@ -21,6 +21,7 @@ import {
   bezierBounds,
 } from "../core/geom";
 import { nextId } from "./ids";
+import { getTextInkBox } from "../core/fontManager";
 
 export type EntityId = string;
 export type EntityType =
@@ -900,16 +901,30 @@ export class TextEntity extends Entity {
     this.angle = angle;
   }
 
+  /**
+   * Ink box in the local text frame (baseline-left origin, x along the reading
+   * direction, y up). Real glyph extents when the font is loaded — so hit-tests
+   * and the selection box match the rendered outlines — else the historical
+   * 0.6-em-per-character estimate.
+   */
+  localBox(): Bounds {
+    const ink = getTextInkBox(this.fontId, this.text, this.sizeMM);
+    if (ink) return ink;
+    return {
+      min: { x: 0, y: 0 },
+      max: { x: this.sizeMM * 0.6 * Math.max(this.text.length, 1), y: this.sizeMM * 1.2 },
+    };
+  }
+
   override bounds(): Bounds {
-    const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
-    const h = this.sizeMM * 1.2;
+    const b = this.localBox();
     const c = Math.cos(this.angle),
       s = Math.sin(this.angle);
     const corners = [
-      { x: 0, y: 0 },
-      { x: w, y: 0 },
-      { x: w, y: h },
-      { x: 0, y: h },
+      { x: b.min.x, y: b.min.y },
+      { x: b.max.x, y: b.min.y },
+      { x: b.max.x, y: b.max.y },
+      { x: b.min.x, y: b.max.y },
     ].map((p) => ({
       x: this.position.x + p.x * c - p.y * s,
       y: this.position.y + p.x * s + p.y * c,
@@ -927,10 +942,9 @@ export class TextEntity extends Entity {
       s = Math.sin(-this.angle);
     const lx = dx * c - dy * s;
     const ly = dx * s + dy * c;
-    const w = this.sizeMM * 0.6 * Math.max(this.text.length, 1);
-    const h = this.sizeMM * 1.2;
-    const ddx = lx < 0 ? -lx : lx > w ? lx - w : 0;
-    const ddy = ly < 0 ? -ly : ly > h ? ly - h : 0;
+    const b = this.localBox();
+    const ddx = lx < b.min.x ? b.min.x - lx : lx > b.max.x ? lx - b.max.x : 0;
+    const ddy = ly < b.min.y ? b.min.y - ly : ly > b.max.y ? ly - b.max.y : 0;
     return Math.sqrt(ddx * ddx + ddy * ddy);
   }
 

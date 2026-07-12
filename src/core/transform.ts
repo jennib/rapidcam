@@ -7,6 +7,7 @@ import {
   ArcEntity,
   BezierEntity,
   RasterImageEntity,
+  TextEntity,
 } from "../model/entities";
 import type { Bounds } from "../model/entities";
 import { type Vec2, dist } from "./vec2";
@@ -83,6 +84,14 @@ export function applyScale(
       scalePt(e.position);
       e.widthMM *= Math.abs(sx);
       e.heightMM *= Math.abs(sy);
+    } else if (e instanceof TextEntity) {
+      if (Math.abs(sx - sy) > 1e-6) {
+        console.warn(
+          "[transform] Non-uniform scale applied to TextEntity — glyphs scale uniformly (stretch not supported)",
+        );
+      }
+      scalePt(e.position);
+      e.sizeMM *= Math.abs(sx);
     }
   }
 }
@@ -121,6 +130,10 @@ export function applyRotate(
       // Rigid-rotate the image: spin its anchor about the pivot and add the angle
       // to its own orientation. The raster/relief generators sweep in the image's
       // local frame and lift each point through this angle, so the engrave follows.
+      rotPt(e.position);
+      e.angle += angle;
+    } else if (e instanceof TextEntity) {
+      // Rigid-rotate like an image: spin the baseline anchor, add to orientation.
       rotPt(e.position);
       e.angle += angle;
     } else if (e instanceof ArcEntity) {
@@ -221,6 +234,12 @@ export function applyFlipH(entities: Entity[], cx: number): void {
       const offX = (e.widthMM / 2) * Math.cos(e.angle) - (e.heightMM / 2) * Math.sin(e.angle);
       e.position.x = 2 * cx - e.position.x - 2 * offX;
       e.flipX = !e.flipX;
+    } else if (e instanceof TextEntity) {
+      // AutoCAD MIRRTEXT=0 convention: text stays readable (glyphs are never
+      // mirrored — mirrored engraving is a CAM-side concern, see cam/flip.ts);
+      // its footprint moves to the mirrored slot so it tracks the selection.
+      const b = e.bounds();
+      e.position.x += 2 * cx - (b.min.x + b.max.x);
     }
   }
 }
@@ -261,6 +280,10 @@ export function applyFlipV(entities: Entity[], cy: number): void {
       const offY = (e.widthMM / 2) * Math.sin(e.angle) + (e.heightMM / 2) * Math.cos(e.angle);
       e.position.y = 2 * cy - e.position.y - 2 * offY;
       e.flipY = !e.flipY;
+    } else if (e instanceof TextEntity) {
+      // MIRRTEXT=0: keep readable, reflect the footprint (see applyFlipH).
+      const b = e.bounds();
+      e.position.y += 2 * cy - (b.min.y + b.max.y);
     }
   }
 }

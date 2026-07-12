@@ -16,6 +16,7 @@ import {
   PolylineEntity,
   BezierEntity,
   RectEntity,
+  TextEntity,
 } from "../model/entities";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { ICONS } from "./icons";
@@ -80,6 +81,16 @@ function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
     const pts = [...ent.corners()].reverse().map(r);
     const e = new PolylineEntity(pts, true);
     e.isConstruction = ent.isConstruction;
+    return e;
+  }
+  if (ent instanceof TextEntity) {
+    // AutoCAD MIRRTEXT=0 convention: the copy stays readable (glyphs are never
+    // mirrored in the editor); its footprint centre is reflected across the axis.
+    const b = ent.bounds();
+    const c = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+    const rc = r(c);
+    const e = ent.duplicate();
+    e.translate({ x: rc.x - c.x, y: rc.y - c.y });
     return e;
   }
   return null;

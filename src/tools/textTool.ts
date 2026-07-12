@@ -3,7 +3,7 @@ import { TextEntity } from "../model/entities";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { openTextDialog } from "../ui/textEditDialog";
-import { defaultFontId } from "../core/fontManager";
+import { defaultFontId, getTextInkBox } from "../core/fontManager";
 
 export class TextTool implements Tool {
   readonly id = "text";
@@ -80,15 +80,23 @@ export class TextTool implements Tool {
   getOverlay(): ToolOverlay {
     if (!this.pendingText || !this.hoverPos) return { previews: [], selectionRect: null };
     const pos = this.hoverPos;
-    const w = this.pendingSizeMM * 0.6 * Math.max(this.pendingText.length, 1);
-    const h = this.pendingSizeMM * 1.2;
+    // Real ink extents when the font is loaded so the stamped text lands
+    // exactly inside the preview box; estimate otherwise.
+    const ink = getTextInkBox(this.pendingFontId, this.pendingText, this.pendingSizeMM);
+    const box = ink ?? {
+      min: { x: 0, y: 0 },
+      max: {
+        x: this.pendingSizeMM * 0.6 * Math.max(this.pendingText.length, 1),
+        y: this.pendingSizeMM * 1.2,
+      },
+    };
     const cos = Math.cos(this.pendingAngle),
       sin = Math.sin(this.pendingAngle);
     const corners = [
-      { x: 0, y: 0 },
-      { x: w, y: 0 },
-      { x: w, y: h },
-      { x: 0, y: h },
+      { x: box.min.x, y: box.min.y },
+      { x: box.max.x, y: box.min.y },
+      { x: box.max.x, y: box.max.y },
+      { x: box.min.x, y: box.max.y },
     ].map((p) => ({
       x: pos.x + p.x * cos - p.y * sin,
       y: pos.y + p.x * sin + p.y * cos,

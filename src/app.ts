@@ -4,11 +4,12 @@
  * browser event system — everything below it works in clean model/view terms.
  */
 
-import { CADDocument } from "./model/document";
+import { CADDocument, ORIGIN_ENTITY_ID } from "./model/document";
 import { nextId } from "./model/ids";
 import type { Vec2 } from "./core/vec2";
 import { ProjectManager } from "./io/projectManager";
-import type { Bounds, EntityId } from "./model/entities";
+import type { Bounds, Entity, EntityId } from "./model/entities";
+import { selectionBounds } from "./core/transform";
 import type { Geo } from "./model/constraints";
 import { type Dimension, dimensionLayout } from "./model/dimensions";
 import { Viewport } from "./view/viewport";
@@ -70,6 +71,8 @@ import { initBundledFonts } from "./core/fontManager";
 import { track } from "./analytics";
 
 const HOVER_TOLERANCE_PX = 8;
+/** Offset applied to pasted/duplicated copies so they don't hide the original. */
+const PASTE_OFFSET_MM = 5;
 
 export class App {
   private doc: CADDocument;
@@ -90,6 +93,12 @@ export class App {
   /** Flip (double-sided) preview (flip axis + registration pins), if any. */
   private flipPreview: FlipPreview | null = null;
   private renderScheduled = false;
+
+  /** In-app clipboard: detached entity clones plus the group structure among
+   *  them (index lists into `clipboard`). Constraints/dimensions don't travel —
+   *  copies come in unconstrained, like pattern instances. */
+  private clipboard: Entity[] = [];
+  private clipboardGroups: number[][] = [];
 
   private project: ProjectManager;
 
@@ -228,6 +237,11 @@ export class App {
         onExportSvg: () => this.project.svgExport(),
       },
       edit: {
+        onCopy: () => this.copySelected(),
+        onCut: () => this.cutSelected(),
+        onPaste: () => this.paste(),
+        onDuplicate: () => this.duplicateSelected(),
+        onSelectAll: () => this.selectAll(),
         onDelete: () => this.deleteSelected(),
         onJoin: () => this.joinSelectedEntities(),
         onExplode: () => this.explodeSelectedEntities(),
@@ -907,6 +921,109 @@ export class App {
     }
   }
 
+  // --- clipboard -----------------------------------------------------------
+
+  /** Detached clones of the selection plus its fully-contained groups
+   *  (as index lists into the clone array), or null when nothing is selected. */
+  private snapshotSelection(): { clones: Entity[]; groups: number[][] } | null {
+    const sel = this.doc.selected;
+    if (sel.length === 0) return null;
+    const idToIdx = new Map(sel.map((e, i) => [e.id, i]));
+    return {
+      clones: sel.map((e) => e.duplicate()),
+      groups: this.doc.groups
+        .filter((g) => g.entityIds.every((id) => idToIdx.has(id)))
+        .map((g) => g.entityIds.map((id) => idToIdx.get(id)!)),
+    };
+  }
+
+  /** Add clones to the document as the new selection, recreating groups. */
+  private insertClones(clones: Entity[], groups: number[][]): void {
+    this.doc.clearSelection();
+    for (const c of clones) {
+      this.doc.entities.push(c);
+      c.selected = true;
+    }
+    for (const idxs of groups) {
+      this.doc.groups.push({ id: nextId("grp"), name: "", entityIds: idxs.map((i) => clones[i].id) });
+    }
+    this.runSolve();
+    this.doc.emitChange();
+  }
+
+  private copySelected(): void {
+    const snap = this.snapshotSelection();
+    if (!snap) return;
+    this.clipboard = snap.clones;
+    this.clipboardGroups = snap.groups;
+  }
+
+  private cutSelected(): void {
+    const snap = this.snapshotSelection();
+    if (!snap) return;
+    this.clipboard = snap.clones;
+    this.clipboardGroups = snap.groups;
+    this.project.pushHistory();
+    this.doc.removeSelected();
+    this.runSolve();
+  }
+
+  /** Paste at `at` (clipboard bounds centred on it) or, without a target,
+   *  offset from the source — cascading, so repeat pastes don't stack. */
+  private paste(at?: Vec2): void {
+    if (this.clipboard.length === 0) return;
+    this.project.pushHistory();
+    if (!at) {
+      for (const c of this.clipboard) c.translate({ x: PASTE_OFFSET_MM, y: -PASTE_OFFSET_MM });
+    }
+    const clones = this.clipboard.map((c) => c.duplicate());
+    if (at) {
+      const b = selectionBounds(clones);
+      if (b) {
+        const d = { x: at.x - (b.min.x + b.max.x) / 2, y: at.y - (b.min.y + b.max.y) / 2 };
+        for (const c of clones) c.translate(d);
+      }
+    }
+    this.insertClones(clones, this.clipboardGroups);
+  }
+
+  private duplicateSelected(): void {
+    const snap = this.snapshotSelection();
+    if (!snap) return;
+    this.project.pushHistory();
+    for (const c of snap.clones) c.translate({ x: PASTE_OFFSET_MM, y: -PASTE_OFFSET_MM });
+    this.insertClones(snap.clones, snap.groups);
+  }
+
+  private selectAll(): void {
+    let changed = false;
+    for (const e of this.doc.entities) {
+      if (e.id === ORIGIN_ENTITY_ID || e.selected) continue;
+      const layer = this.doc.layers.find((l) => l.id === e.layerId) || this.doc.layers[0];
+      if (!layer.visible || layer.locked) continue;
+      e.selected = true;
+      changed = true;
+    }
+    if (changed) this.doc.emitChange();
+  }
+
+  /** Move the selection by (dx, dy) mm from the arrow keys, through the solver
+   *  so constrained geometry follows, exactly like an entity-body drag. */
+  private nudgeSelected(dx: number, dy: number, firstPress: boolean): void {
+    if (this.doc.selected.length === 0) return;
+    if (this.currentDof() <= 0) return;
+    if (firstPress) this.project.pushHistory();
+    const isFixed = (id: string) =>
+      this.doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
+    const pins: PinMap = new Map();
+    for (const e of this.doc.selected) {
+      if (!isFixed(e.id)) e.translate({ x: dx, y: dy });
+      for (const p of e.dofPoints()) pins.set(`${e.id}:${p.key}`, p.pos);
+    }
+    this.runSolve(pins);
+    this.doc.emitChange();
+  }
+
   // --- context menu --------------------------------------------------------
   private onContextMenu(ev: MouseEvent): void {
     // For drawing tools, right-click cancels/finishes the current operation
@@ -943,6 +1060,19 @@ export class App {
 
     const sel = this.doc.selected;
     const entries: ContextMenuEntry[] = [];
+
+    if (sel.length > 0) {
+      entries.push({ label: "Copy", shortcut: "^C", onClick: () => this.copySelected() });
+      entries.push({ label: "Cut", shortcut: "^X", onClick: () => this.cutSelected() });
+      entries.push({ label: "Duplicate", shortcut: "^D", onClick: () => this.duplicateSelected() });
+    }
+    entries.push({
+      label: "Paste",
+      shortcut: "^V",
+      enabled: this.clipboard.length > 0,
+      onClick: () => this.paste(world),
+    });
+    entries.push("sep");
 
     if (sel.length > 0) {
       const allConstruction = sel.every((e) => e.isConstruction);
@@ -1088,6 +1218,51 @@ export class App {
           this.doc.emitChange();
         }
       }
+      return;
+    }
+
+    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey) {
+      const k = ev.key.toLowerCase();
+      if (k === "a") {
+        this.selectAll();
+        ev.preventDefault();
+        return;
+      }
+      if (k === "c") {
+        this.copySelected();
+        ev.preventDefault();
+        return;
+      }
+      if (k === "x") {
+        this.cutSelected();
+        ev.preventDefault();
+        return;
+      }
+      if (k === "v") {
+        this.paste();
+        ev.preventDefault();
+        return;
+      }
+      if (k === "d") {
+        this.duplicateSelected();
+        ev.preventDefault();
+        return;
+      }
+    }
+
+    // Arrow-key nudge: 1 mm, Shift = 10 mm, Alt = 0.1 mm. Runs through the
+    // solver like a drag, so constrained geometry follows or resists.
+    const NUDGE: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, 1],
+      ArrowDown: [0, -1],
+    };
+    const dir = NUDGE[ev.key];
+    if (dir && !ev.ctrlKey && !ev.metaKey && this.doc.selected.length > 0) {
+      const step = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      this.nudgeSelected(dir[0] * step, dir[1] * step, !ev.repeat);
+      ev.preventDefault();
       return;
     }
 

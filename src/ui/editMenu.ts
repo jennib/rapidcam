@@ -1,4 +1,9 @@
 export interface EditMenuCallbacks {
+  onCopy: () => void;
+  onCut: () => void;
+  onPaste: () => void;
+  onDuplicate: () => void;
+  onSelectAll: () => void;
   onDelete: () => void;
   onJoin: () => void;
   onExplode: () => void;
@@ -60,6 +65,27 @@ export class EditMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
+    this.item("Copy", "^C", () => {
+      this.close();
+      this.cb.onCopy();
+    });
+    this.item("Cut", "^X", () => {
+      this.close();
+      this.cb.onCut();
+    });
+    this.item("Paste", "^V", () => {
+      this.close();
+      this.cb.onPaste();
+    });
+    this.item("Duplicate", "^D", () => {
+      this.close();
+      this.cb.onDuplicate();
+    });
+    this.item("Select All", "^A", () => {
+      this.close();
+      this.cb.onSelectAll();
+    });
+    this.sep();
     this.item("Delete Selected", "Del", () => {
       this.close();
       this.cb.onDelete();

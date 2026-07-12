@@ -119,17 +119,20 @@ export function cloneDoc(doc: CADDocument): CADDocument {
 
 /**
  * A clone of the document with all geometry mirrored about the flip axis — the
- * frame the bottom-side program is generated in. The WCS origin point and any
- * text (which the flip helpers leave untouched) stay put; see {@link validateFlip}.
+ * frame the bottom-side program is generated in. The WCS origin point stays
+ * put; see {@link validateFlip}.
  */
 export function mirrorDocForFlip(doc: CADDocument, axis: "h" | "v"): CADDocument {
   const c = cloneDoc(doc);
   const center = axis === "h" ? c.canvas.width / 2 : c.canvas.height / 2;
-  if (axis === "h") applyFlipH(c.entities, center);
-  else applyFlipV(c.entities, center);
-  // applyFlipH/V don't transform text; flag each TextEntity so textToContours
-  // reflects its glyph outlines about the same axis (mirror-image, so the
-  // engrave reads correctly from the flipped face).
+  // Text is excluded from the editor-level flip: applyFlipH/V keep text
+  // readable and only relocate its footprint (MIRRTEXT=0 convention), but the
+  // reverse side needs a TRUE mirror image. The `mirror` flag makes
+  // textToContours reflect the glyph outlines — position included — about the
+  // axis, so the engrave reads correctly from the flipped face.
+  const nonText = c.entities.filter((e) => !(e instanceof TextEntity));
+  if (axis === "h") applyFlipH(nonText, center);
+  else applyFlipV(nonText, center);
   for (const e of c.entities) {
     if (e instanceof TextEntity) e.mirror = { axis, c: center };
   }
