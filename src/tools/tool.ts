@@ -7,10 +7,13 @@ import type { Dimension } from "../model/dimensions";
 import type { Viewport } from "../view/viewport";
 import type { PreviewShape, TransformBox } from "../view/overlay";
 import type { PinMap } from "../solver/solver";
+import type { SnapEngine } from "../input/snapping";
 
 export interface ToolContext {
   doc: CADDocument;
   view: Viewport;
+  /** The app's snap engine (object/grid snap state + drag snapping). */
+  snap: SnapEngine;
   /** Ask the app to re-render (for live previews that don't mutate the doc). */
   requestRender(): void;
   /** Run the constraint solver, optionally pinning point DOFs to targets, then render. */
@@ -21,6 +24,9 @@ export interface ToolContext {
   openDimEditor(dim: Dimension): void;
   /** Returns variables − equations from the last non-drag solve (≥ 0 means free DOFs remain; 0 = fully constrained). */
   currentDof(): number;
+  /** Show a transient status-bar message — use whenever an interaction is
+   *  refused or silently alters its effect, so the user learns why. */
+  notify(msg: string): void;
   /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
    *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
    *  If `onTab` is provided, Tab calls it instead of moving browser focus. */
@@ -54,6 +60,9 @@ export interface ToolOverlay {
   previews: PreviewShape[];
   selectionRect: { a: Vec2; b: Vec2; crossing: boolean } | null;
   transformBox?: TransformBox | null;
+  /** Snap marker contributed by the tool (e.g. drag snapping); wins over the
+   *  cursor snap when present. */
+  snap?: SnapPoint | null;
 }
 
 const EMPTY_OVERLAY: ToolOverlay = { previews: [], selectionRect: null };
@@ -72,7 +81,7 @@ export interface Tool {
   onDoubleClick?(e: ToolPointerEvent, ctx: ToolContext): void;
   onKeyDown?(e: KeyboardEvent, ctx: ToolContext): void;
   /** Transient visuals contributed by the tool. */
-  getOverlay?(): ToolOverlay;
+  getOverlay?(ctx: ToolContext): ToolOverlay;
   /** Abandon any in-progress operation. */
   cancel?(ctx: ToolContext): void;
 }
@@ -134,6 +143,6 @@ export class ToolManager {
     this.ctx.requestRender();
   }
   overlay(): ToolOverlay {
-    return this.active.getOverlay?.() ?? EMPTY_OVERLAY;
+    return this.active.getOverlay?.(this.ctx) ?? EMPTY_OVERLAY;
   }
 }

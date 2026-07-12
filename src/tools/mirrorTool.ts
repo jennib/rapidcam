@@ -17,6 +17,7 @@ import {
   BezierEntity,
   RectEntity,
   TextEntity,
+  RasterImageEntity,
 } from "../model/entities";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { ICONS } from "./icons";
@@ -34,7 +35,8 @@ function reflectAngle(theta: number, axisAngle: number): number {
   return 2 * axisAngle - theta;
 }
 
-function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
+/** Reflected copy of `ent` across the A→B axis, or null if unsupported. Exported for tests. */
+export function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
   const rx = B.x - A.x,
     ry = B.y - A.y;
   const len = Math.sqrt(rx * rx + ry * ry);
@@ -93,6 +95,18 @@ function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
     e.translate({ x: rc.x - c.x, y: rc.y - c.y });
     return e;
   }
+  if (ent instanceof RasterImageEntity) {
+    // The mirrored image occupies the reflection of the original footprint.
+    // With angle′ = 2φ − θ the local x-axis lands on the reflected direction,
+    // and — reflection reversing handedness — the reflected TOP-left corner
+    // becomes the new bottom-left anchor while the content flips vertically.
+    const e = ent.duplicate();
+    const p = r(ent.corners()[3]);
+    e.position = { x: p.x, y: p.y };
+    e.angle = 2 * axisAngle - ent.angle;
+    e.flipY = !e.flipY;
+    return e;
+  }
   return null;
 }
 
@@ -117,9 +131,14 @@ export class MirrorTool implements Tool {
         dy = B.y - A.y;
       if (dx * dx + dy * dy > 1e-10 && ctx.doc.selected.length > 0) {
         ctx.pushHistory();
+        let skipped = 0;
         for (const ent of ctx.doc.selected) {
           const m = mirrorEntity(ent, A, B);
           if (m) ctx.doc.add(m);
+          else skipped++;
+        }
+        if (skipped > 0) {
+          ctx.notify(`${skipped} object${skipped === 1 ? "" : "s"} can't be mirrored — skipped`);
         }
         ctx.doc.emitChange();
       }

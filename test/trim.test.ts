@@ -4,6 +4,7 @@ import { LineEntity, CircleEntity, ArcEntity } from "../src/model/entities";
 import { CADDocument } from "../src/model/document";
 import { TrimTool } from "../src/tools/trimTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import { SnapEngine } from "../src/input/snapping";
 import type { Vec2 } from "../src/core/vec2";
 
 // --- geometry helpers -------------------------------------------------------
@@ -73,6 +74,8 @@ function makeCtx(doc: CADDocument): ToolContext {
     currentDof: () => 0,
     openValueEditor() {},
     closeValueEditor() {},
+    notify() {},
+    snap: new SnapEngine(),
   };
 }
 

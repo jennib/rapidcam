@@ -6,7 +6,7 @@
 
 import { CADDocument, ORIGIN_ENTITY_ID } from "./model/document";
 import { nextId } from "./model/ids";
-import type { Vec2 } from "./core/vec2";
+import { type Vec2, dist } from "./core/vec2";
 import { ProjectManager } from "./io/projectManager";
 import type { Bounds, Entity, EntityId } from "./model/entities";
 import { selectionBounds } from "./core/transform";
@@ -18,8 +18,8 @@ import type { Overlay, DiagnosticMarker, StitchPreview, FlipPreview } from "./vi
 import { SnapEngine, type SnapResult } from "./input/snapping";
 import { solve, type PinMap, computeEntityDofStatus } from "./solver/solver";
 import { ToolManager, type ToolPointerEvent } from "./tools/tool";
-import { TOOL_SHORTCUTS } from "./tools/shortcuts";
-import { SelectTool, pickConstraintAt } from "./tools/selectTool";
+import { TOOL_SHORTCUTS, TOOL_HINTS } from "./tools/shortcuts";
+import { SelectTool, pickConstraintAt, computeTransformBox } from "./tools/selectTool";
 import { LineTool } from "./tools/lineTool";
 import { RectTool } from "./tools/rectTool";
 import { CircleTool } from "./tools/circleTool";
@@ -60,6 +60,7 @@ import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
 import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
 import { isModalOpen, closeAllModals } from "./ui/modal";
+import { showShortcutOverlay } from "./ui/shortcutOverlay";
 import { consumeSharedDesign } from "./io/shareLink";
 import { WebGLPreview } from "./cam/webglPreview";
 import { rasterizeStock } from "./cam/stockRasterizer";
@@ -73,6 +74,29 @@ import { track } from "./analytics";
 const HOVER_TOLERANCE_PX = 8;
 /** Offset applied to pasted/duplicated copies so they don't hide the original. */
 const PASTE_OFFSET_MM = 5;
+
+/** Directional resize cursors for the transform-box scale handles. */
+const RESIZE_CURSORS: Record<string, string> = {
+  nw: "nwse-resize",
+  se: "nwse-resize",
+  ne: "nesw-resize",
+  sw: "nesw-resize",
+  n: "ns-resize",
+  s: "ns-resize",
+  e: "ew-resize",
+  w: "ew-resize",
+};
+
+/** Circular-arrow cursor for the rotate handle (CSS has no native one). White
+ *  under-stroke keeps it legible on the dark canvas; crosshair is the fallback. */
+const ROTATE_CURSOR =
+  `url("data:image/svg+xml,` +
+  `%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E` +
+  `%3Cpath d='M4.7 6.5A5 5 0 1 1 4.7 11.5' fill='none' stroke='%23fff' stroke-width='4'/%3E` +
+  `%3Cpolygon points='6.2,10.5 1.4,10.2 4.9,15.2' fill='%23fff'/%3E` +
+  `%3Cpath d='M4.7 6.5A5 5 0 1 1 4.7 11.5' fill='none' stroke='%23000' stroke-width='2'/%3E` +
+  `%3Cpolygon points='5.6,11 2.6,10.8 4.8,13.9' fill='%23000'/%3E` +
+  `%3C/svg%3E") 9 9, crosshair`;
 
 export class App {
   private doc: CADDocument;
@@ -99,6 +123,14 @@ export class App {
    *  copies come in unconstrained, like pattern instances. */
   private clipboard: Entity[] = [];
   private clipboardGroups: number[][] = [];
+
+  /** Last pointer position on the canvas (CSS px), for cursor feedback. */
+  private lastScreen: Vec2 | null = null;
+  /** True between pointerdown and pointerup on the canvas. */
+  private pointerActive = false;
+  /** The affordance cursor computed at press time, held for the whole drag so
+   *  a scale/rotate drag keeps its cursor even as the pointer leaves the handle. */
+  private pressCursor: string | null = null;
 
   private project: ProjectManager;
 
@@ -166,6 +198,7 @@ export class App {
         doc: this.doc,
         view: this.view,
         requestRender: this.requestRender,
+        snap: this.snapEngine,
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.project.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
@@ -174,6 +207,7 @@ export class App {
         },
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
+        notify: (msg) => this.statusBar.flash(msg),
       },
       [
         new SelectTool(),
@@ -204,10 +238,11 @@ export class App {
     );
 
     this.tools.onActiveChange(() => {
-      canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
+      this.updateCursor();
+      this.statusBar.setHint(TOOL_HINTS[this.tools.active.id] ?? "");
       track("tool_activated", { tool: this.tools.active.id });
     });
-    canvas.style.cursor = this.tools.active.id === "select" ? "default" : "crosshair";
+    this.updateCursor();
 
     new ToolPalette(dom.palette, this.tools);
     new TopBar(dom.topbar, this.doc, {
@@ -274,6 +309,7 @@ export class App {
       (dim, v, expr) => this.commitDimValue(dim, v, expr),
     );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
+    this.statusBar.setHint(TOOL_HINTS[this.tools.active.id] ?? "");
     new ConstraintBar(
       dom.constraintbar,
       this.doc,
@@ -613,7 +649,7 @@ export class App {
     const overlay: Overlay = {
       previews: to.previews,
       selectionRect: to.selectionRect,
-      snap: this.currentSnap,
+      snap: to.snap ?? this.currentSnap,
       hover: this.currentHover,
       hoverConstraint: this.currentHoverConstraint,
       transformBox: to.transformBox,
@@ -702,14 +738,53 @@ export class App {
     };
   }
 
+  // --- cursor feedback ------------------------------------------------------
+
+  private updateCursor(): void {
+    this.canvas.style.cursor = this.computeCursor();
+  }
+
+  /** What a click at the current pointer position would act on, as a cursor:
+   *  resize/rotate over transform handles, pointer over grabbable points,
+   *  move/grabbing over entity bodies, grab(bing) for panning. */
+  private computeCursor(): string {
+    if (this.panning) return "grabbing";
+    if (this.spaceDown) return "grab";
+    if (this.tools.active.id !== "select") return "crosshair";
+    if (this.pointerActive && this.pressCursor) {
+      return this.pressCursor === "move" ? "grabbing" : this.pressCursor;
+    }
+    const screen = this.lastScreen;
+    if (!screen) return "default";
+
+    const box = computeTransformBox(this.doc, this.view);
+    if (box) {
+      for (const h of box.handles) {
+        if (dist(screen, this.view.worldToScreen(h.pos)) <= 10) {
+          return h.type === "rotate" ? ROTATE_CURSOR : (RESIZE_CURSORS[h.id] ?? "default");
+        }
+      }
+    }
+    for (const ent of this.doc.entities) {
+      if (!ent.selected || this.doc.groupOf(ent.id)) continue;
+      for (const p of ent.dofPoints()) {
+        if (dist(screen, this.view.worldToScreen(p.pos)) < 10) return "pointer";
+      }
+    }
+    if (this.currentHover) return "move";
+    return "default";
+  }
+
   // --- pointer -------------------------------------------------------------
   private onPointerDown = (ev: PointerEvent): void => {
     const screen = this.screenOf(ev);
+    this.lastScreen = screen;
     const isPan = ev.button === 1 || (ev.button === 0 && this.spaceDown);
     if (isPan) {
       this.panning = true;
       this.panLast = screen;
       this.canvas.setPointerCapture(ev.pointerId);
+      this.updateCursor();
       ev.preventDefault();
       return;
     }
@@ -719,13 +794,21 @@ export class App {
         return;
       }
     }
+    // Freeze the affordance cursor for the duration of the drag.
+    if (ev.button === 0) {
+      this.pointerActive = true;
+      const c = this.computeCursor();
+      this.pressCursor = c === "default" ? null : c;
+    }
     this.canvas.setPointerCapture(ev.pointerId);
     this.tools.pointerDown(this.toolEvent(ev, screen));
+    this.updateCursor();
     this.requestRender();
   };
 
   private onPointerMove = (ev: PointerEvent): void => {
     const screen = this.screenOf(ev);
+    this.lastScreen = screen;
     if (this.panning) {
       this.view.panBy(screen.x - this.panLast.x, screen.y - this.panLast.y);
       this.panLast = screen;
@@ -747,6 +830,7 @@ export class App {
 
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);
+    this.updateCursor();
     this.requestRender();
   };
 
@@ -754,11 +838,15 @@ export class App {
     if (this.panning) {
       this.panning = false;
       this.canvas.releasePointerCapture(ev.pointerId);
+      this.updateCursor();
       return;
     }
     const screen = this.screenOf(ev);
     this.tools.pointerUp(this.toolEvent(ev, screen));
     this.canvas.releasePointerCapture(ev.pointerId);
+    this.pointerActive = false;
+    this.pressCursor = null;
+    this.updateCursor();
     this.requestRender();
   };
 
@@ -1011,7 +1099,10 @@ export class App {
    *  so constrained geometry follows, exactly like an entity-body drag. */
   private nudgeSelected(dx: number, dy: number, firstPress: boolean): void {
     if (this.doc.selected.length === 0) return;
-    if (this.currentDof() <= 0) return;
+    if (this.currentDof() <= 0) {
+      this.statusBar.flash("Fully constrained — edit a dimension or remove a constraint to move this");
+      return;
+    }
     if (firstPress) this.project.pushHistory();
     const isFixed = (id: string) =>
       this.doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
@@ -1149,6 +1240,7 @@ export class App {
 
     if (ev.key === " ") {
       this.spaceDown = true;
+      this.updateCursor();
       ev.preventDefault();
       return;
     }
@@ -1250,8 +1342,9 @@ export class App {
       }
     }
 
-    // Arrow-key nudge: 1 mm, Shift = 10 mm, Alt = 0.1 mm. Runs through the
-    // solver like a drag, so constrained geometry follows or resists.
+    // Arrow-key nudge: 1 mm (0.05 in), Shift = ×10, Alt = ÷10 — in the
+    // document's display unit. Runs through the solver like a drag, so
+    // constrained geometry follows or resists.
     const NUDGE: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0],
       ArrowRight: [1, 0],
@@ -1260,8 +1353,15 @@ export class App {
     };
     const dir = NUDGE[ev.key];
     if (dir && !ev.ctrlKey && !ev.metaKey && this.doc.selected.length > 0) {
-      const step = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      const base = this.doc.displayUnit === "in" ? 1.27 : 1; // 0.05 in
+      const step = ev.shiftKey ? base * 10 : ev.altKey ? base / 10 : base;
       this.nudgeSelected(dir[0] * step, dir[1] * step, !ev.repeat);
+      ev.preventDefault();
+      return;
+    }
+
+    if (ev.key === "?") {
+      showShortcutOverlay();
       ev.preventDefault();
       return;
     }
@@ -1271,6 +1371,17 @@ export class App {
 
     if (ev.key === "Escape") {
       this.tools.cancelActive();
+      // In select mode Escape also clears the selection (universal convention).
+      if (
+        this.tools.active.id === "select" &&
+        (this.doc.selected.length > 0 ||
+          this.doc.selectedPoints.length > 0 ||
+          this.doc.selectedConstraintId !== null ||
+          this.doc.selectedDimensionId !== null)
+      ) {
+        this.doc.clearSelection();
+        this.doc.emitChange();
+      }
       return;
     }
 
@@ -1294,7 +1405,10 @@ export class App {
   };
 
   private onKeyUp = (ev: KeyboardEvent): void => {
-    if (ev.key === " ") this.spaceDown = false;
+    if (ev.key === " ") {
+      this.spaceDown = false;
+      this.updateCursor();
+    }
   };
 }
 

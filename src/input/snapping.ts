@@ -76,6 +76,55 @@ export class SnapEngine {
     return { world: rawWorld, snap: null };
   }
 
+  /**
+   * Snap an entity-drag delta. `movedPoints` are the dragged selection's snap
+   * points captured at drag start; each is tested at `point + delta` against
+   * the other entities' snap points (same priority and pixel tolerance as
+   * {@link resolve}), falling back to quantising the first moved point to the
+   * grid. Returns the corrected delta plus the matched target for the marker.
+   */
+  resolveDrag(
+    delta: Vec2,
+    movedPoints: Vec2[],
+    view: Viewport,
+    doc: CADDocument,
+    exclude: Set<EntityId>,
+  ): { delta: Vec2; snap: SnapPoint | null } {
+    let bestCorr: Vec2 | null = null;
+    let bestPx = this.pixelTolerance;
+    let bestSnap: SnapPoint | null = null;
+
+    if (this.objectSnapEnabled) {
+      const targets = doc.snapPoints(exclude);
+      for (const mp of movedPoints) {
+        const cx = mp.x + delta.x;
+        const cy = mp.y + delta.y;
+        for (const t of targets) {
+          const px = Math.hypot(t.pos.x - cx, t.pos.y - cy) * view.scale;
+          if (px <= bestPx) {
+            bestPx = px;
+            bestCorr = { x: t.pos.x - cx, y: t.pos.y - cy };
+            bestSnap = t;
+          }
+        }
+      }
+    }
+
+    if (!bestCorr && this.gridEnabled && movedPoints.length > 0) {
+      const step = computeGrid(view.scale, doc.displayUnit).minorMM;
+      const cx = movedPoints[0].x + delta.x;
+      const cy = movedPoints[0].y + delta.y;
+      bestCorr = {
+        x: Math.round(cx / step) * step - cx,
+        y: Math.round(cy / step) * step - cy,
+      };
+    }
+
+    return bestCorr
+      ? { delta: { x: delta.x + bestCorr.x, y: delta.y + bestCorr.y }, snap: bestSnap }
+      : { delta, snap: null };
+  }
+
   /** Entities eligible for intersection snapping: visible layers, not excluded. */
   private snappableEntities(doc: CADDocument, exclude?: Set<EntityId>) {
     return doc.entities.filter((e) => {

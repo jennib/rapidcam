@@ -1,5 +1,11 @@
-import { type Vec2, dist, sub } from "../core/vec2";
-import { type Bounds, type LineEntity, TextEntity, PolylineEntity } from "../model/entities";
+import { type Vec2, clone, dist, sub } from "../core/vec2";
+import {
+  type Bounds,
+  type LineEntity,
+  type SnapPoint,
+  TextEntity,
+  PolylineEntity,
+} from "../model/entities";
 import {
   type PointRef,
   pointRefKey,
@@ -70,6 +76,15 @@ export class SelectTool implements Tool {
   private activeHandleId: string | null = null;
   private dragDimLabelId: string | null = null;
   private pickedEntId: string | null = null;
+  /** One "scales uniformly" notice per scale drag, not one per pointer move. */
+  private scaleWarned = false;
+
+  // Drag snapping: the selection's snap points captured at drag start (the
+  // snapshot frame the drag re-applies deltas to), the ids to exclude from
+  // targets, and the currently matched target for the on-screen marker.
+  private dragSnapPoints: Vec2[] = [];
+  private dragExclude = new Set<string>();
+  private dragSnapTarget: SnapPoint | null = null;
 
   // Repeated-click cycling through overlapping entity bodies. When several
   // entities sit under the cursor, clicking the same spot again advances to the
@@ -189,7 +204,7 @@ export class SelectTool implements Tool {
       const labelScreenDist = dist(e.screen, ctx.view.worldToScreen(layout.textPos));
       if (labelScreenDist < 12 && !hitLabelDim) hitLabelDim = dim;
       const d = dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit) * ctx.view.scale;
-      if (d < 15 && d < dimDist) {
+      if (d < 10 && d < dimDist) {
         hitDim = dim;
         dimDist = d;
       }
@@ -203,19 +218,23 @@ export class SelectTool implements Tool {
       this.mode = "maybeDragDimLabel";
       return;
     }
-    if (hitDim) {
+
+    // 2) Entity bodies. Gather every entity under the cursor (nearest first) so
+    //    that repeated clicks on the same spot can cycle through a stack.
+    const candidateHits = ctx.doc.entities
+      .map((ent) => ({ id: ent.id, px: ent.distanceTo(e.worldRaw) * ctx.view.scale }))
+      .filter((c) => c.px < 10)
+      .sort((a, b) => a.px - b.px);
+    const candidates = candidateHits.map((c) => c.id);
+
+    // A dimension line only wins when it is genuinely the nearest thing —
+    // entity bodies are no longer shadowed by a looser dimension tolerance.
+    const bestEntityPx = candidateHits.length > 0 ? candidateHits[0].px : Infinity;
+    if (hitDim && dimDist < bestEntityPx) {
       ctx.doc.selectedDimensionId = hitDim.id;
       ctx.doc.emitChange();
       return;
     }
-
-    // 2) Entity bodies. Gather every entity under the cursor (nearest first) so
-    //    that repeated clicks on the same spot can cycle through a stack.
-    const candidates = ctx.doc.entities
-      .map((ent) => ({ id: ent.id, px: ent.distanceTo(e.worldRaw) * ctx.view.scale }))
-      .filter((c) => c.px < 10)
-      .sort((a, b) => a.px - b.px)
-      .map((c) => c.id);
 
     let hitEntId: string | null = null;
     if (candidates.length > 0) {
@@ -270,7 +289,25 @@ export class SelectTool implements Tool {
       return;
     }
 
-    // 3) Marquee.
+    // 3) Inside the selection's bounds but not on any outline: a drag moves the
+    //    selection (Illustrator convention — closed shapes stay grabbable off
+    //    their stroke), a plain click still clears it like empty space would.
+    if (ctx.doc.selected.length > 0 && !e.shiftKey) {
+      const b = selectionBounds(ctx.doc.selected);
+      if (
+        b &&
+        e.worldRaw.x >= b.min.x &&
+        e.worldRaw.x <= b.max.x &&
+        e.worldRaw.y >= b.min.y &&
+        e.worldRaw.y <= b.max.y
+      ) {
+        this.mode = "maybeDragEntity";
+        this.pickedEntId = null; // click (no drag) → deselect on pointer-up
+        return;
+      }
+    }
+
+    // 4) Marquee.
     if (!e.shiftKey) ctx.doc.clearSelection();
     this.mode = "marquee";
     this.marqueeStart = e.worldRaw;
@@ -281,6 +318,7 @@ export class SelectTool implements Tool {
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.mode === "maybeDragPoint" && dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX) {
       if (ctx.currentDof() <= 0) {
+        ctx.notify("Fully constrained — edit a dimension or remove a constraint to move this");
         this.mode = "idle";
         return;
       }
@@ -292,6 +330,7 @@ export class SelectTool implements Tool {
       dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX
     ) {
       if (ctx.currentDof() <= 0) {
+        ctx.notify("Fully constrained — edit a dimension or remove a constraint to move this");
         this.mode = "idle";
         return;
       }
@@ -299,6 +338,19 @@ export class SelectTool implements Tool {
       this.mode = "dragEntity";
       this.dragSnapshot = ctx.doc.snapshot();
       this.originalBounds = selectionBounds(ctx.doc.selected);
+      // Capture the selection's snap points (in the snapshot frame the drag
+      // re-applies deltas to) so the move can click onto other geometry.
+      this.dragExclude = new Set(ctx.doc.selected.map((s) => s.id));
+      this.dragSnapPoints = [];
+      const MAX_DRAG_SNAP_POINTS = 40;
+      for (const s of ctx.doc.selected) {
+        if (isEntityFixed(ctx.doc, s.id)) continue; // won't move, can't snap
+        for (const sp of s.snapPoints()) {
+          this.dragSnapPoints.push(clone(sp.pos));
+          if (this.dragSnapPoints.length >= MAX_DRAG_SNAP_POINTS) break;
+        }
+        if (this.dragSnapPoints.length >= MAX_DRAG_SNAP_POINTS) break;
+      }
     } else if (
       this.mode === "maybeDragDimLabel" &&
       dist(e.screen, this.downScreen) > DRAG_THRESHOLD_PX
@@ -392,7 +444,15 @@ export class SelectTool implements Tool {
         });
         ctx.solve();
       } else {
-        const d = sub(e.worldRaw, this.dragStartWorld);
+        let d = sub(e.worldRaw, this.dragStartWorld);
+        // Snap the move against other geometry / the grid (Ctrl suppresses;
+        // Alt is taken by the rotate gesture above).
+        this.dragSnapTarget = null;
+        if (!e.ctrlKey) {
+          const r = ctx.snap.resolveDrag(d, this.dragSnapPoints, ctx.view, ctx.doc, this.dragExclude);
+          d = r.delta;
+          this.dragSnapTarget = r.snap;
+        }
         if (d.x !== 0 || d.y !== 0) {
           for (const ent of ctx.doc.selected) {
             if (!isEntityFixed(ctx.doc, ent.id)) ent.translate(d);
@@ -441,9 +501,14 @@ export class SelectTool implements Tool {
       if (id === "e" || id === "w") sy = 1;
 
       if (e.shiftKey) {
-        const maxAbs = Math.max(Math.abs(sx), Math.abs(sy));
-        if (id === "n" || id === "s") sx = maxAbs * Math.sign(sx); // wait, for N/S shift shouldn't constrain width if it's 1
-        if (id !== "n" && id !== "s" && id !== "e" && id !== "w") {
+        // Uniform scale: edge handles copy the dragged axis's magnitude to the
+        // other axis (grow AND shrink); corners equalise to the larger one.
+        if (id === "n" || id === "s") {
+          sx = Math.abs(sy);
+        } else if (id === "e" || id === "w") {
+          sy = Math.abs(sx);
+        } else {
+          const maxAbs = Math.max(Math.abs(sx), Math.abs(sy));
           sx = maxAbs * Math.sign(sx);
           sy = maxAbs * Math.sign(sy);
         }
@@ -451,6 +516,14 @@ export class SelectTool implements Tool {
 
       if (Math.abs(sx) > 0.001 || Math.abs(sy) > 0.001) {
         const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
+        if (
+          !this.scaleWarned &&
+          Math.abs(sx - sy) > 1e-6 &&
+          unfixedSelected.some((x) => x.type === "circle" || x.type === "arc" || x.type === "text")
+        ) {
+          ctx.notify("Circles, arcs and text scale uniformly — stretch not applied to them");
+          this.scaleWarned = true;
+        }
         applyScale(unfixedSelected, cx, cy, sx, sy);
       }
 
@@ -582,6 +655,11 @@ export class SelectTool implements Tool {
         }
         ctx.doc.emitChange();
       }
+    } else if (this.mode === "maybeDragEntity" && !this.pickedEntId) {
+      // Press inside the selection bounds that never became a drag: treat it
+      // like an empty-space click and clear the selection.
+      ctx.doc.clearSelection();
+      ctx.doc.emitChange();
     } else if (this.mode === "dragScale" || this.mode === "dragRotate") {
       ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
     }
@@ -593,10 +671,14 @@ export class SelectTool implements Tool {
     this.activeHandleId = null;
     this.dragDimLabelId = null;
     this.pickedEntId = null;
+    this.scaleWarned = false;
+    this.dragSnapPoints = [];
+    this.dragExclude.clear();
+    this.dragSnapTarget = null;
     ctx.requestRender();
   }
 
-  getOverlay(ctx?: ToolContext): ToolOverlay {
+  getOverlay(ctx: ToolContext): ToolOverlay {
     if (this.mode === "marquee") {
       const crossing = this.marqueeEnd.x < this.marqueeStart.x;
       return {
@@ -605,12 +687,16 @@ export class SelectTool implements Tool {
       };
     }
     if (
-      ctx &&
       ctx.doc.selected.length > 0 &&
       this.mode !== "dragPoint" &&
       this.mode !== "maybeDragPoint"
     ) {
-      return { previews: [], selectionRect: null, transformBox: this.getTransformBox(ctx) };
+      return {
+        previews: [],
+        selectionRect: null,
+        transformBox: this.getTransformBox(ctx),
+        snap: this.mode === "dragEntity" ? this.dragSnapTarget : null,
+      };
     }
     return { previews: [], selectionRect: null };
   }
@@ -622,6 +708,10 @@ export class SelectTool implements Tool {
     this.originalBounds = null;
     this.activeHandleId = null;
     this.dragDimLabelId = null;
+    this.scaleWarned = false;
+    this.dragSnapPoints = [];
+    this.dragExclude.clear();
+    this.dragSnapTarget = null;
     ctx.requestRender();
   }
 
@@ -691,28 +781,34 @@ export class SelectTool implements Tool {
   }
 
   private getTransformBox(ctx: ToolContext): TransformBox | null {
-    if (ctx.doc.selected.length === 0) return null;
-    const bounds = selectionBounds(ctx.doc.selected);
-    if (!bounds) return null;
-
-    const { min, max } = bounds;
-    const cx = (min.x + max.x) / 2;
-    const cy = (min.y + max.y) / 2;
-
-    const handles: TransformHandle[] = [
-      { id: "nw", type: "scale", pos: { x: min.x, y: max.y } },
-      { id: "n", type: "scale", pos: { x: cx, y: max.y } },
-      { id: "ne", type: "scale", pos: { x: max.x, y: max.y } },
-      { id: "e", type: "scale", pos: { x: max.x, y: cy } },
-      { id: "se", type: "scale", pos: { x: max.x, y: min.y } },
-      { id: "s", type: "scale", pos: { x: cx, y: min.y } },
-      { id: "sw", type: "scale", pos: { x: min.x, y: min.y } },
-      { id: "w", type: "scale", pos: { x: min.x, y: cy } },
-      { id: "rot", type: "rotate", stem: true, pos: { x: cx, y: max.y + ctx.view.toWorldLen(24) } },
-    ];
-
-    return { bounds, handles };
+    return computeTransformBox(ctx.doc, ctx.view);
   }
+}
+
+/** The selection's transform box + handle layout. Shared by SelectTool (hit
+ *  tests + overlay) and the app's cursor feedback, so they can't disagree. */
+export function computeTransformBox(doc: CADDocument, view: Viewport): TransformBox | null {
+  if (doc.selected.length === 0) return null;
+  const bounds = selectionBounds(doc.selected);
+  if (!bounds) return null;
+
+  const { min, max } = bounds;
+  const cx = (min.x + max.x) / 2;
+  const cy = (min.y + max.y) / 2;
+
+  const handles: TransformHandle[] = [
+    { id: "nw", type: "scale", pos: { x: min.x, y: max.y } },
+    { id: "n", type: "scale", pos: { x: cx, y: max.y } },
+    { id: "ne", type: "scale", pos: { x: max.x, y: max.y } },
+    { id: "e", type: "scale", pos: { x: max.x, y: cy } },
+    { id: "se", type: "scale", pos: { x: max.x, y: min.y } },
+    { id: "s", type: "scale", pos: { x: cx, y: min.y } },
+    { id: "sw", type: "scale", pos: { x: min.x, y: min.y } },
+    { id: "w", type: "scale", pos: { x: min.x, y: cy } },
+    { id: "rot", type: "rotate", stem: true, pos: { x: cx, y: max.y + view.toWorldLen(24) } },
+  ];
+
+  return { bounds, handles };
 }
 
 function pinsForSelected(doc: CADDocument): PinMap {

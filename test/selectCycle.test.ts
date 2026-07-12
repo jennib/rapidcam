@@ -10,6 +10,7 @@ import { CADDocument } from "../src/model/document";
 import { LineEntity, RectEntity } from "../src/model/entities";
 import { SelectTool } from "../src/tools/selectTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import { SnapEngine } from "../src/input/snapping";
 import type { Vec2 } from "../src/core/vec2";
 
 function makeCtx(doc: CADDocument): ToolContext {
@@ -27,6 +28,8 @@ function makeCtx(doc: CADDocument): ToolContext {
     currentDof: () => 0,
     openValueEditor() {},
     closeValueEditor() {},
+    notify() {},
+    snap: new SnapEngine(),
   };
 }
 

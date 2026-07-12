@@ -11,6 +11,9 @@ export class StatusBar {
   private zoomEl!: HTMLElement;
   private solveEl!: HTMLElement;
   private patternEl!: HTMLElement;
+  private flashEl!: HTMLElement;
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
+  private hintEl!: HTMLElement;
   private gridToggle!: HTMLElement;
   private osnapToggle!: HTMLElement;
 
@@ -39,6 +42,13 @@ export class StatusBar {
     this.patternEl = statusItem("");
     this.patternEl.style.color = "var(--warn, #c8982a)";
     this.host.appendChild(this.patternEl);
+
+    this.flashEl = statusItem("");
+    this.host.appendChild(this.flashEl);
+
+    this.hintEl = statusItem("");
+    this.hintEl.style.opacity = "0.55";
+    this.host.appendChild(this.hintEl);
 
     const spacer = document.createElement("div");
     spacer.className = "status-spacer";
@@ -69,6 +79,23 @@ export class StatusBar {
     const x = fromMM(world.x, u).toFixed(u === "in" ? 3 : 2);
     const y = fromMM(world.y, u).toFixed(u === "in" ? 3 : 2);
     this.coordEl.innerHTML = `X <b>${x}</b>  Y <b>${y}</b>  ${u}`;
+  }
+
+  /** Persistent usage hint for the active tool ("" hides it). */
+  setHint(text: string): void {
+    this.hintEl.textContent = text;
+  }
+
+  /** Transient message (why an interaction was refused, what a tool did).
+   *  Auto-clears after a short delay; a new flash replaces the previous one. */
+  flash(msg: string, tone: "warn" | "info" = "warn"): void {
+    this.flashEl.textContent = msg;
+    this.flashEl.style.color = tone === "warn" ? "var(--warn, #c8982a)" : "";
+    if (this.flashTimer) clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => {
+      this.flashEl.textContent = "";
+      this.flashTimer = null;
+    }, 2500);
   }
 
   setZoom(scale: number): void {

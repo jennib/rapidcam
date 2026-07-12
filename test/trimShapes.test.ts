@@ -10,6 +10,7 @@ import {
 } from "../src/model/entities";
 import { TrimTool } from "../src/tools/trimTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+import { SnapEngine } from "../src/input/snapping";
 import { evalBezier, splitBezier } from "../src/core/geom";
 import type { Vec2 } from "../src/core/vec2";
 
@@ -24,6 +25,8 @@ function makeCtx(doc: CADDocument): ToolContext {
     currentDof: () => 0,
     openValueEditor() {},
     closeValueEditor() {},
+    notify() {},
+    snap: new SnapEngine(),
   };
 }
 

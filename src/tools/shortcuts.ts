@@ -27,6 +27,35 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
   n: "polygon",
 };
 
+/**
+ * One-line status-bar hint per tool: what to click next and the modifiers worth
+ * knowing. Kept deliberately static (no per-state machinery) and honest — each
+ * line matches the tool's actual first-interaction flow.
+ */
+export const TOOL_HINTS: Record<string, string> = {
+  select:
+    "Drag = move · handles = scale/rotate · Ctrl+click = pick points · double-click = chain select",
+  line: "Click start, then end · Shift = ortho · Esc cancels",
+  rect: "Click two opposite corners",
+  circle: "Click the centre, then a point on the circle",
+  arc: "Click centre → start → end · Tab flips direction",
+  polyline: "Click vertices · Esc or double-click finishes",
+  dimension: "Click two points (or a circle), then place the dimension",
+  measure: "Click two points to measure",
+  offset: "Click an entity, then click the side to offset to",
+  bezier: "Click start and end, then the two curve handles",
+  rotate: "Select objects first, then drag to rotate them",
+  scale: "Select objects first, then drag to scale them",
+  text: "Set the text in the dialog, then click the canvas to stamp it",
+  fillet: "Click two lines that meet (or a polyline corner) to round",
+  chamfer: "Click two lines that meet (or a polyline corner) to bevel",
+  trim: "Click the segment you want removed",
+  extend: "Click near an entity's end to extend it to the next boundary",
+  mirror: "Select objects first · click two points to define the mirror axis",
+  slot: "Click the two slot centres, then set the width",
+  polygon: "Click the centre, then a vertex",
+};
+
 const byTool: Record<string, string> = Object.fromEntries(
   Object.entries(TOOL_SHORTCUTS).map(([key, id]) => [id, key.toUpperCase()]),
 );
