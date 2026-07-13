@@ -1,0 +1,29 @@
+# RapidCAM
+
+> RapidCAM (https://rapidcam.app) is a free, browser-based parametric 2D CAD +
+> CAM application for CNC mills, rotary (4th-axis) machines, and lasers. Its
+> project format, `.rcam`, is plain JSON with a published JSON Schema, and is
+> explicitly designed so that automated tools — including LLMs — can author
+> valid design files.
+
+## File format (.rcam)
+
+- [Format guide](https://rapidcam.app/docs/rcam-format-v2.md): the human- and
+  AI-readable authoring guide — point-key vocabulary, constraint semantics,
+  CAM operations, and gotchas the schema can't express
+- [JSON Schema, draft 2020-12](https://rapidcam.app/schema/rcam-v2.schema.json):
+  the machine-readable contract (this URL is also the schema's `$id`)
+- [Examples index](https://rapidcam.app/examples/index.json): bundled golden
+  example projects, each validated against the schema on every commit; fetch
+  any listed file at `https://rapidcam.app/examples/<name>`
+
+## Authoring tips for LLMs
+
+- All lengths are millimetres and all angles are radians (CCW), regardless of
+  the file's `displayUnit`. The world frame is Y-up.
+- You do not need exact coordinates: emit rough positions plus constraints and
+  dimensions, and RapidCAM's parametric solver snaps the geometry exact.
+- Declare `"version": 2` and validate your output against the schema before
+  presenting it to a user.
+- Opening a file in RapidCAM reports schema, solver, and CAM lint problems;
+  iterate on that feedback rather than aiming for a perfect first attempt.

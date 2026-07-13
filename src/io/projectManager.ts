@@ -224,6 +224,14 @@ export class ProjectManager {
     this.loadDocument(entry.data, entry.name);
   }
 
+  /** Load an already-parsed file (AI Assistant paste-import). */
+  async importChecked(file: RcamFile, name: string): Promise<boolean> {
+    if (!(await this.confirmDiscard(`import "${name}"`))) return false;
+    track("ai_import_loaded");
+    this.loadDocument(file, name);
+    return true;
+  }
+
   async loadExample(entry: ExampleEntry): Promise<void> {
     if (!(await this.confirmDiscard(`open example "${entry.name}"`))) return;
     track("example_opened", { name: entry.name });

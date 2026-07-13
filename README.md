@@ -268,6 +268,39 @@ Both are kept honest by a drift-guard test that validates every bundled
 
 ---
 
+## AI integration
+
+The `.rcam` format is designed so LLMs can author designs, and RapidCAM meets
+them at every level:
+
+- **In the app** — **File ▸ AI Assistant** copies a self-contained prompt
+  (your machine, stock, tool library, and the full format guide) into any AI
+  chat, then validates the pasted result: schema, loader, dangling references,
+  constraint-solver convergence, and work-area bounds. Failures become a
+  one-click **error report** you paste back to the AI so it can fix its own
+  file — the loop matters more than the first attempt.
+- **For web-connected AIs** — [`https://rapidcam.app/llms.txt`](public/llms.txt)
+  links the format guide, schema, and bundled examples at stable URLs.
+- **Headless CLI** — validate, post, and render `.rcam` files from a script or
+  agent, no browser window needed:
+
+  ```bash
+  npm run cli -- validate part.rcam            # schema + load + solve checks
+  npm run cli -- post part.rcam -o out/        # G-code (.nc) + Apollo pre-flight lint
+  npm run cli -- render part.rcam -o part.png  # PNG via headless Chromium
+  ```
+
+- **MCP server** — gives MCP clients (Claude Code, Claude Desktop, …) the full
+  author → validate → post → *look at a render* loop as tools
+  (`validate_rcam`, `post_gcode`, `render_preview`, `get_format_guide`,
+  `list_examples`, `get_example`):
+
+  ```bash
+  claude mcp add rapidcam -- npx tsx mcp/server.ts   # from this repo's directory
+  ```
+
+---
+
 ## Privacy & analytics
 
 RapidCAM can collect anonymous usage analytics (via PostHog) to help guide development, but **only with your explicit consent**:

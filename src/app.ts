@@ -54,6 +54,7 @@ import { computeSourceSnapshot } from "./model/patterns";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
+import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
 import { SettingsBar } from "./ui/settingsBar";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { StatusBar } from "./ui/statusBar";
@@ -138,7 +139,8 @@ export class App {
    *  a scale/rotate drag keeps its cursor even as the pointer leaves the handle. */
   private pressCursor: string | null = null;
 
-  private project: ProjectManager;
+  /** Public for the `window.__app` dev hook (CDP verification, CLI render). */
+  readonly project: ProjectManager;
 
   // pan state
   private panning = false;
@@ -273,6 +275,10 @@ export class App {
         },
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
+        onAiAssistant: () =>
+          showAiAssistantDialog(this.doc, this.project.currentFileName, {
+            onImport: (file, name) => this.project.importChecked(file, name),
+          }),
         onImportSvg: () => this.project.svgImport(),
         onImportDxf: () => this.project.dxfImport(),
         onExportDxf: () => this.project.dxfExport(),

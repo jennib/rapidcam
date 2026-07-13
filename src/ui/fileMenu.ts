@@ -11,6 +11,7 @@ export interface FileMenuCallbacks {
   onShareLink: () => void;
   onOpenRecent: (entry: RecentEntry) => void;
   onOpenExample: (entry: ExampleEntry) => void;
+  onAiAssistant: () => void;
   onImportSvg: () => void;
   onImportDxf: () => void;
   onImportImage: () => void;
@@ -89,6 +90,11 @@ export class FileMenu {
     this.item("Copy Share Link", "", () => {
       this.close();
       this.cb.onShareLink();
+    });
+    this.sep();
+    this.item("AI Assistant…", "", () => {
+      this.close();
+      this.cb.onAiAssistant();
     });
     this.sep();
     this.item("Import SVG", "", () => {
