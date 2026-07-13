@@ -43,12 +43,9 @@ describe("TextEntity derived centre point", () => {
     expect(rot.getPoint("center").x).toBeCloseTo(-cy, 6);
     expect(rot.getPoint("center").y).toBeCloseTo(cx, 6);
 
-    expect(
-      t
-        .pickablePoints()
-        .map((p) => p.key)
-        .sort(),
-    ).toEqual(["center", "pos"]);
+    const keys = t.pickablePoints().map((p) => p.key);
+    expect(keys).toContain("pos");
+    expect(keys).toContain("center");
     expect(t.snapPoints().some((s) => s.key === "center" && s.kind === "center")).toBe(true);
   });
 

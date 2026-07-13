@@ -948,25 +948,76 @@ export class TextEntity extends Entity {
     return Math.sqrt(ddx * ddx + ddy * ddy);
   }
 
-  /** World-space centre of the ink box — the anchor used for centring/aligning
-   *  constraints. Derived from position + the (rotated) ink extents, so it moves
-   *  relative to `position` whenever the text/font/size changes; a constraint on
-   *  it therefore keeps the text centred live as you edit it (the solver reflows
-   *  `position`). */
-  centerWorld(): Vec2 {
+  // The text BOX is the (rotated) ink box. Its corners `bl/br/tr/tl`, edge
+  // midpoints `mid_b/mid_r/mid_t/mid_l` and `center` are DERIVED points — you can
+  // hang dimensions on them (measure the block, or drive its placement off nearby
+  // geometry) and constrain them, exactly like a rectangle's. They are NOT dof
+  // points: the size lives in the text/font, not the solver, so every box point is
+  // reached by perturbing `pos` — writing one translates the whole text (rigid),
+  // and the solver reflows `pos` to keep it satisfied. See dofsAffectedBy/setPoint.
+  private static readonly BOX_KEYS = [
+    "bl",
+    "br",
+    "tr",
+    "tl",
+    "mid_b",
+    "mid_r",
+    "mid_t",
+    "mid_l",
+    "center",
+  ] as const;
+
+  /** A box point in the text's local (unrotated) frame, or null for an unknown key. */
+  private localBoxPoint(key: string): Vec2 | null {
     const b = this.localBox();
-    const lx = (b.min.x + b.max.x) / 2;
-    const ly = (b.min.y + b.max.y) / 2;
+    const cx = (b.min.x + b.max.x) / 2;
+    const cy = (b.min.y + b.max.y) / 2;
+    switch (key) {
+      case "bl":
+        return { x: b.min.x, y: b.min.y };
+      case "br":
+        return { x: b.max.x, y: b.min.y };
+      case "tr":
+        return { x: b.max.x, y: b.max.y };
+      case "tl":
+        return { x: b.min.x, y: b.max.y };
+      case "mid_b":
+        return { x: cx, y: b.min.y };
+      case "mid_r":
+        return { x: b.max.x, y: cy };
+      case "mid_t":
+        return { x: cx, y: b.max.y };
+      case "mid_l":
+        return { x: b.min.x, y: cy };
+      case "center":
+        return { x: cx, y: cy };
+      default:
+        return null;
+    }
+  }
+
+  /** Map a point in the local (unrotated) frame to world space. */
+  private toWorld(l: Vec2): Vec2 {
     const c = Math.cos(this.angle),
       s = Math.sin(this.angle);
-    return { x: this.position.x + lx * c - ly * s, y: this.position.y + lx * s + ly * c };
+    return { x: this.position.x + l.x * c - l.y * s, y: this.position.y + l.x * s + l.y * c };
+  }
+
+  /** World-space centre of the ink box (kept for readers that want it directly). */
+  centerWorld(): Vec2 {
+    return this.toWorld(this.localBoxPoint("center")!);
   }
 
   override snapPoints(): SnapPoint[] {
-    return [
+    const pts: SnapPoint[] = [
       { pos: clone(this.position), kind: "endpoint", entityId: this.id, key: "pos" },
-      { pos: this.centerWorld(), kind: "center", entityId: this.id, key: "center" },
     ];
+    for (const key of TextEntity.BOX_KEYS) {
+      const kind: SnapKind =
+        key === "center" ? "center" : key.startsWith("mid_") ? "midpoint" : "endpoint";
+      pts.push({ pos: this.toWorld(this.localBoxPoint(key)!), kind, entityId: this.id, key });
+    }
+    return pts;
   }
 
   override translate(d: Vec2): void {
@@ -983,18 +1034,15 @@ export class TextEntity extends Entity {
   override dofPoints(): DofPoint[] {
     return [{ key: "pos", pos: clone(this.position) }];
   }
-  // `center` is a DERIVED point (from pos + ink extents) — constrainable and
-  // pickable like an image's centre. It is NOT a dof point; the solver reaches it
-  // by perturbing `pos`, so a constraint on it reflows the text with no bespoke
-  // solver code (see dofsAffectedBy / setPoint below).
   override pickablePoints(): DofPoint[] {
     return [
       { key: "pos", pos: clone(this.position) },
-      { key: "center", pos: this.centerWorld() },
+      ...TextEntity.BOX_KEYS.map((key) => ({ key, pos: this.toWorld(this.localBoxPoint(key)!) })),
     ];
   }
   override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
-    if (key === "center")
+    // Every derived box point moves only by translating `pos`.
+    if (this.localBoxPoint(key))
       return [
         { key: "pos", axis: "x" },
         { key: "pos", axis: "y" },
@@ -1007,18 +1055,20 @@ export class TextEntity extends Entity {
 
   override getPoint(key: string): Vec2 {
     if (key === "pos") return clone(this.position);
-    if (key === "center") return this.centerWorld();
+    const l = this.localBoxPoint(key);
+    if (l) return this.toWorld(l);
     return super.getPoint(key);
   }
 
   override setPoint(key: string, v: Vec2): void {
-    // Only the anchor is a real DOF; writing `center` translates the whole text
-    // so its centre lands on v (keeps the string/size/rotation).
+    // Only the anchor is a real DOF; writing a box point translates the whole text
+    // so that point lands on v (keeps the string/size/rotation).
     if (key === "pos") {
       this.position = clone(v);
       return;
     }
-    if (key === "center") this.position = add(this.position, sub(v, this.centerWorld()));
+    const l = this.localBoxPoint(key);
+    if (l) this.position = add(this.position, sub(v, this.toWorld(l)));
   }
 }
 
