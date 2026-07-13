@@ -92,11 +92,18 @@ function laserGcode(): string {
 // `rotary` re-baselined 2026-07-10: the rotary banner gained a gSender-parseable
 // "Cylinder Dia:" token + a surface-zero note (klein.ts rotaryBanner). Banner-only
 // change — the wrapped motion is unchanged; see the klein.test.ts token test.
+// ALL re-baselined 2026-07-12 for two deliberate output changes:
+//   1. comments are transliterated to ASCII (⌀→"dia ", ×→x, °→deg, …) via
+//      toAsciiGcode — motion words were already ASCII, so rotary/laser/centerBed
+//      differ in comments only;
+//   2. tabbed passes re-issue the cutting feed after each tab lift/descend
+//      (previously the lap silently continued at plungeRate) — this adds F words
+//      to `enclosure`'s motion; the behavior is pinned by test/tab-feed.test.ts.
 const GOLDEN = {
-  enclosure: "85f1724a4b9f293747ecc9baad964c66f11db46caff21c11ddf101997e06b938",
-  rotary: "db8f37caa1804fd72e15417aee89948c0ee8887647fde7b189c7c0cd1989d5d4",
-  laser: "3fa20c36c4f7380c21ea923b6c73ef959e8b47e49b0c1499a540456d25e6ff5e",
-  centerBed: "1c20474a673e1e05e9469261c2dc4ff68b6676d909926a4247f7524e1f04959f",
+  enclosure: "9bf1734f6f723146914d9fdcc1b67795c652b4e510522f02f1714488e5fbe1fb",
+  rotary: "381bf3d14ac438600f9d28cd47bbc99fdf714d507c4fe2171f272c0310c76344",
+  laser: "f3e5f9507f27537af3aed24b87a86529e246937d36e48327912626e00a29c51a",
+  centerBed: "fed6641e9377ccfe0b60fc74211753cda30ebbaae5f2b0e0531f89918d906326",
 };
 
 test("golden: flat-mill (Enclosure Lid) G-code is byte-stable", () => {

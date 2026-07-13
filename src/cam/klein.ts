@@ -32,7 +32,7 @@ import {
   type RotarySettings,
 } from "../model/document";
 import { generateGCode, type GCodeOptions } from "./gcode";
-import { n } from "./postprocessors/base";
+import { n, toAsciiGcode } from "./postprocessors/base";
 
 export type { RotarySettings, RotaryAxisWord } from "../model/document";
 
@@ -408,6 +408,8 @@ export function generateRotaryProgram(doc: CADDocument, opts: GCodeOptions = {})
   // so the wrap sees work coordinates — A0 at the wrapped-axis origin.
   void resolveOrigin(doc);
   const flat = generateGCode(doc.operations, doc, opts);
-  const program = `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s, { inverseTimeFeed: true })}`;
+  const program = toAsciiGcode(
+    `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s, { inverseTimeFeed: true })}`,
+  );
   return { program, warnings };
 }

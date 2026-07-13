@@ -26,6 +26,7 @@ import { CADDocument, type FlipSettings } from "../model/document";
 import { CircleEntity, TextEntity } from "../model/entities";
 import { applyFlipH, applyFlipV } from "../core/transform";
 import { generateGCode, type GCodeOptions } from "./gcode";
+import { toAsciiGcode } from "./postprocessors/base";
 import { DEFAULTS, resolveOpTool, type CAMOperation } from "./types";
 import { nextId } from "../model/ids";
 
@@ -370,9 +371,9 @@ export function generateFlipPrograms(doc: CADDocument, opts: GCodeOptions = {}):
   const warnings = validateFlip(doc);
   const { sideA, sideB, hasPins } = flipSides(doc);
 
-  const a = `${sideBanner("A", doc, flip)}\n${generateGCode(sideA.ops, sideA.doc, opts)}`;
+  const a = toAsciiGcode(`${sideBanner("A", doc, flip)}\n${generateGCode(sideA.ops, sideA.doc, opts)}`);
   const b = sideB
-    ? `${sideBanner("B", doc, flip)}\n${generateGCode(sideB.ops, sideB.doc, opts)}`
+    ? toAsciiGcode(`${sideBanner("B", doc, flip)}\n${generateGCode(sideB.ops, sideB.doc, opts)}`)
     : "";
 
   return { sideA: a, sideB: b, hasBottom: sideB !== null, hasPins, warnings };

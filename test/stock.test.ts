@@ -73,7 +73,7 @@ test("G-code coordinates shift so they're relative to the positioned stock", () 
   const g = generateGCode(doc.operations, doc);
   // outside profile of a 6mm tool → offset out 3mm, so the near corner is (7,7).
   expect(g).toMatch(/X7 Y7\b/);
-  expect(g).toMatch(/; Stock: 120 × 80 × 10mm/); // header reports the blank, not the canvas
+  expect(g).toMatch(/; Stock: 120 x 80 x 10mm/); // header reports the blank, not the canvas
 });
 
 test("stockRect round-trips through .rcam serialize/apply; absent stays null", () => {

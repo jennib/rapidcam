@@ -7,6 +7,11 @@ format. A `.rcam` file is plain JSON. The machine-readable contract lives in
 the parts a schema can't — the vocabulary of point keys, what each constraint
 means, and the gotchas.
 
+This guide is published at
+**`https://rapidcam.app/docs/rcam-format-v2.md`**, and the bundled example
+projects are listed at **`https://rapidcam.app/examples/index.json`** (see also
+[`/llms.txt`](https://rapidcam.app/llms.txt)).
+
 The schema's canonical published URL is
 **`https://rapidcam.app/schema/rcam-v2.schema.json`** (this is also its `$id`).
 In the repository it lives at
@@ -441,7 +446,10 @@ it does not generate geometry on load.
 
 Each operation is a toolpath over some `entityIds`. Required fields cover the tool
 and cut; several are type-specific and optional. `depth` is mm below the surface
-and is **negative** for cuts. `stepover` is a fraction of tool diameter (0–1).
+and is **negative** for cuts. `side` (`"outside"`/`"inside"`) is required only on
+`profile` ops and should be omitted elsewhere — a drill has no side. `stepdown`
+(mm per depth pass, default 1.5) and `stepover` (fraction of tool diameter 0–1,
+default 0.4) are optional; omit them where the op type ignores them.
 Optional `coolant` (`"off"` | `"mist"` | `"flood"`, default `"off"`) emits `M7`/`M8`
 around the operation and `M9` when it changes / at program end — but only if the
 machine is flagged as having coolant (a machine-wide app preference); otherwise

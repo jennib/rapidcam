@@ -1,6 +1,7 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
 import {
+  type Entity,
   LineEntity,
   CircleEntity,
   RectEntity,
@@ -38,10 +39,18 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
 import { contourParallelClear } from "./clearing";
-import { n, X, Y, Z, depthPasses, type PostProcessor } from "./postprocessors/base";
+import {
+  n,
+  X,
+  Y,
+  Z,
+  depthPasses,
+  toAsciiGcode,
+  type PostProcessor,
+} from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
+import { chainLinesIntoPolygons, chainOpenCurvesIntoLoops, collectClosedLoops } from "./loops";
 import { resolveRegion } from "./regions";
 import {
   vcarveRegion,
@@ -235,6 +244,10 @@ function profilePolygon(
           if (currentZ !== tabZOff) {
             lines.push(`G1 Z${Z(tabZOff, zOff)} F${n(op.plungeRate)}`);
             currentZ = tabZOff;
+            // The lift left plungeRate as the modal feed — the next lateral
+            // cut must re-issue the cutting feed or the whole rest of the lap
+            // silently runs at plunge speed.
+            first = true;
           }
           const feedStr = first ? ` F${n(op.feedrate)}` : "";
           lines.push(`G1 X${X(segs[i].p1.x, ox)} Y${Y(segs[i].p1.y, oy)}${feedStr}`);
@@ -249,6 +262,7 @@ function profilePolygon(
           if (currentZ !== z) {
             lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
             currentZ = z;
+            first = true; // same: restore the cutting feed after the descent
           }
           first = emitRun(runPts, first);
         }
@@ -1395,31 +1409,37 @@ function toolpathBody(
     lines.push(`; islands: ${islands.length} polygon(s) from ${islandSet.size} entity id(s)`);
   }
 
-  // For profile/pocket/chamfer ops, chain any selected LineEntity instances into closed polygons.
-  const lineSegIds = new Set<string>();
+  // For profile/pocket/chamfer ops, chain the selected open curves (lines,
+  // arcs, beziers, open polylines) into closed loops and cut each loop as one
+  // contour — so a rounded-rectangle outline authored as 4 lines + 4 fillet
+  // arcs profiles as a single closed shape. Loose lines never cut alone and
+  // are noted; other unchained open curves fall through to the per-entity
+  // handling below (e.g. chamfer's open-edge bevel).
+  const chainedIds = new Set<string>();
   if (op.type === "profile" || op.type === "pocket" || op.type === "chamfer") {
-    const lineEnts = op.entityIds
+    const candidates = op.entityIds
       .filter((id) => !islandSet.has(id))
       .map((id) => entityMap.get(id))
-      .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (lineEnts.length > 0) {
-      const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
-      for (const { verts } of polygons) {
-        if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
-        else if (op.type === "chamfer") lines.push(...chamferPolygon(verts, op, ox, oy, zOff));
-        else lines.push(...profilePolygon(verts, op, ox, oy, zOff, doc.stockThickness));
-      }
-      if (leftover.length > 0)
-        lines.push(
-          `; NOTE: ${leftover.length} selected line(s) do not form a closed polygon — skipped`,
-        );
-      for (const e of lineEnts) lineSegIds.add(e.id);
+      .filter((e): e is Entity => !!e && !e.isConstruction);
+    const { loops, leftover } = chainOpenCurvesIntoLoops(candidates);
+    for (const { verts, ids } of loops) {
+      if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
+      else if (op.type === "chamfer") lines.push(...chamferPolygon(verts, op, ox, oy, zOff));
+      else lines.push(...profilePolygon(verts, op, ox, oy, zOff, doc.stockThickness));
+      for (const id of ids) chainedIds.add(id);
+    }
+    const looseLines = leftover.filter((e): e is LineEntity => e instanceof LineEntity);
+    if (looseLines.length > 0) {
+      lines.push(
+        `; NOTE: ${looseLines.length} selected line(s) do not form a closed polygon — skipped`,
+      );
+      for (const e of looseLines) chainedIds.add(e.id);
     }
   }
 
   let firstDrill = true;
   for (const id of op.entityIds) {
-    if (lineSegIds.has(id) || islandSet.has(id)) continue;
+    if (chainedIds.has(id) || islandSet.has(id)) continue;
     const ent = entityMap.get(id);
     if (!ent || ent.isConstruction) continue;
 
@@ -1783,5 +1803,5 @@ export function generateGCode(
   }
 
   lines.push("M30 ; end program");
-  return lines.join("\n");
+  return toAsciiGcode(lines.join("\n"));
 }

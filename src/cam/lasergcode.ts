@@ -37,12 +37,12 @@ import { getImageGrid } from "../core/imageManager";
 import type { CAMOperation } from "./types";
 import { DEFAULTS } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
-import { chainLinesIntoPolygons } from "./loops";
+import { chainOpenCurvesIntoLoops } from "./loops";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { groupContoursIntoRegions } from "./vcarve";
 import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
-import { n, X, Y } from "./postprocessors/base";
+import { n, toAsciiGcode, X, Y } from "./postprocessors/base";
 import { type LaserPost, getLaserPost } from "./laserposts";
 import { AIR_ON_DEFAULT, AIR_OFF_DEFAULT } from "./laserposts/base";
 
@@ -350,26 +350,32 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
     return items;
   }
 
-  // Chain selected line segments into closed polygons (profile only).
-  const lineSegIds = new Set<string>();
+  // Chain selected open curves (lines, arcs, beziers, open polylines) into
+  // closed loops (profile only) — so a rounded-rectangle outline of lines +
+  // fillet arcs cuts as one closed shape. Loose lines are noted; other
+  // unchained open curves fall through to the per-entity notes below.
+  const chainedIds = new Set<string>();
   if (profile) {
-    const lineEnts = op.entityIds
+    const candidates = op.entityIds
       .map((id) => entityMap.get(id))
-      .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (lineEnts.length > 0) {
-      const { polygons, leftover } = chainLinesIntoPolygons(lineEnts);
-      for (const { verts } of polygons) pushClosedProfile(items, verts, op, post);
-      if (leftover.length > 0)
-        items.push({
-          kind: "note",
-          text: `${leftover.length} selected line(s) do not form a closed polygon — skipped`,
-        });
-      for (const e of lineEnts) lineSegIds.add(e.id);
+      .filter((e): e is Entity => !!e && !e.isConstruction);
+    const { loops, leftover } = chainOpenCurvesIntoLoops(candidates);
+    for (const { verts, ids } of loops) {
+      pushClosedProfile(items, verts, op, post);
+      for (const id of ids) chainedIds.add(id);
+    }
+    const looseLines = leftover.filter((e): e is LineEntity => e instanceof LineEntity);
+    if (looseLines.length > 0) {
+      items.push({
+        kind: "note",
+        text: `${looseLines.length} selected line(s) do not form a closed polygon — skipped`,
+      });
+      for (const e of looseLines) chainedIds.add(e.id);
     }
   }
 
   for (const id of op.entityIds) {
-    if (lineSegIds.has(id)) continue;
+    if (chainedIds.has(id)) continue;
     const ent = entityMap.get(id);
     if (!ent || ent.isConstruction) continue;
 
@@ -778,5 +784,5 @@ export function generateLaserGCode(
   if (endLines.length > 0) lines.push("; --- custom end ---", ...endLines);
 
   lines.push("M30 ; end program");
-  return lines.join("\n");
+  return toAsciiGcode(lines.join("\n"));
 }

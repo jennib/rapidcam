@@ -294,3 +294,30 @@ export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
   }
   return loops;
 }
+
+/**
+ * Chain a selection's open curves (lines, arcs, beziers, open polylines) into
+ * closed loops — e.g. a rectangle outline whose corners were filleted into
+ * arcs — for the profile/pocket/chamfer generators. Entities that aren't open
+ * curves are ignored (never returned); open curves that belong to no closed
+ * chain come back in `leftover` so the caller's per-entity handling still
+ * applies to them.
+ */
+export function chainOpenCurvesIntoLoops(entities: Iterable<Entity>): {
+  loops: RegionLoop[];
+  leftover: Entity[];
+} {
+  const bySeg = new Map<OpenSeg, Entity>();
+  for (const e of entities) {
+    const s = openSegOf(e);
+    if (s) bySeg.set(s, e);
+  }
+  const chains = groupSegsIntoClosedChains([...bySeg.keys()]);
+  const used = new Set(chains.flat());
+  return {
+    loops: chains
+      .map((c) => ({ verts: chainSegsToPolygon(c), ids: c.map((s) => s.id) }))
+      .filter((l) => l.verts.length >= 3),
+    leftover: [...bySeg.entries()].filter(([s]) => !used.has(s)).map(([, e]) => e),
+  };
+}

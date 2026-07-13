@@ -6,6 +6,27 @@ export function n(v: number): string {
   return parseFloat(v.toFixed(3)).toString();
 }
 
+/**
+ * Transliterate the non-ASCII glyphs our comments use (⌀ ° × — → · … ≈) to
+ * ASCII. Comments are the only place they occur — motion words are ASCII by
+ * construction — but many senders and editors are ASCII/ANSI-only and render
+ * them as mojibake. User-supplied text (op names) is left as typed. Every
+ * generator applies this to its finished program.
+ */
+export function toAsciiGcode(g: string): string {
+  return g
+    .replace(/⌀/g, "dia ")
+    .replace(/°/g, "deg")
+    .replace(/×/g, "x")
+    .replace(/[—–]/g, "-")
+    .replace(/→/g, "->")
+    .replace(/·/g, "*")
+    .replace(/…/g, "...")
+    .replace(/≈/g, "~")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+}
+
 export function X(v: number, ox: number): string {
   return n(v - ox);
 }

@@ -9,6 +9,7 @@ import {
 } from "../core/imageManager";
 import { StorageKeys } from "../core/storageKeys";
 import { reconcileLoadedPatterns } from "../model/patternEngine";
+import { DEFAULTS } from "../cam/types";
 
 export const RCAM_VERSION = 2 as const;
 
@@ -240,6 +241,22 @@ export function saveFile(doc: CADDocument, name: string): void {
   pushRecent({ name, savedAt: Date.now(), data: file });
 }
 
+/**
+ * Fill the schema-optional per-operation fields (`side`, `stepdown`,
+ * `stepover`) with the same defaults the UI uses, so a hand- or AI-authored
+ * file may omit what its op type ignores (a drill needs no `side`) and the
+ * generators downstream never see undefined. App-written files carry all
+ * three, so this is a no-op for them.
+ */
+function normalizeOperations(ops: unknown[] | undefined): unknown[] {
+  return (ops ?? []).map((raw) => ({
+    side: "outside",
+    stepdown: DEFAULTS.stepdown,
+    stepover: DEFAULTS.stepover,
+    ...(raw as Record<string, unknown>),
+  }));
+}
+
 export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
   // Tolerate legacy v1 files arriving via recents/autosave drafts.
   const file = normalizeRcam(fileIn);
@@ -257,7 +274,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     variables: file.variables as DocSnapshot["variables"],
     bindings: file.bindings as DocSnapshot["bindings"],
     patterns: file.patterns as DocSnapshot["patterns"],
-    operations: file.operations as DocSnapshot["operations"],
+    operations: normalizeOperations(file.operations) as DocSnapshot["operations"],
     tools: file.tools as DocSnapshot["tools"],
     groups: file.groups as DocSnapshot["groups"],
     layers: file.layers as DocSnapshot["layers"],

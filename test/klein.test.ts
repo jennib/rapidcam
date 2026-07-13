@@ -137,7 +137,7 @@ test("generateRotaryProgram wraps a real circle profile: banner, no arcs, resolv
 
   const { program } = generateRotaryProgram(doc);
   expect(program).toMatch(/Rotary \/ cylindrical wrap/);
-  expect(program).toMatch(/⌀100mm/);
+  expect(program).toMatch(/dia 100mm/);
   expect(program).not.toMatch(/\bG[23]\b/); // the circle's G2 arcs are all linearised
   // The A words are real numbers within a full turn's worth of degrees.
   const aVals = [...program.matchAll(/A(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
