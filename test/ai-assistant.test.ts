@@ -156,9 +156,7 @@ describe("checkRcamText", () => {
     expect(r.issues.some((i) => i.check === "refs" && i.message.includes('"ghost"'))).toBe(true);
     expect(r.issues.some((i) => i.check === "refs" && i.message.includes('"phantom"'))).toBe(true);
     expect(
-      r.issues.some(
-        (i) => i.severity === "warning" && i.message.includes("no-such-tool"),
-      ),
+      r.issues.some((i) => i.severity === "warning" && i.message.includes("no-such-tool")),
     ).toBe(true);
   });
 
@@ -185,11 +183,17 @@ describe("checkRcamText", () => {
     expect(r.issues.some((i) => i.check === "bounds" && i.message.includes("ent2"))).toBe(true);
   });
 
-  it("validates every bundled example clean (no errors, no warnings)", () => {
+  it("validates every bundled example clean (pre-flight lint advisories allowed)", () => {
     const dir = join(repoRoot, "examples");
     for (const f of readdirSync(dir).filter((f) => f.endsWith(".rcam"))) {
       const r = checkRcamText(readFileSync(join(dir, f), "utf8"), validator);
-      expect(r.issues, `${f}: ${JSON.stringify(r.issues)}`).toEqual([]);
+      // Some examples legitimately trip Apollo advisories (edge profile,
+      // spoilboard overshoot, sender-paused tool changes) — those surface as
+      // "lint" warnings now and are pinned message-by-message in
+      // cli-core.test.ts. Everything else must be spotless, and ok stays true.
+      const unexpected = r.issues.filter((i) => i.check !== "lint");
+      expect(unexpected, `${f}: ${JSON.stringify(r.issues)}`).toEqual([]);
+      expect(r.ok, f).toBe(true);
     }
   });
 });
@@ -209,13 +213,41 @@ describe("field-test regressions (Gemini, 2026-07-12)", () => {
     stockThickness: 19.05,
     entities: [
       { id: "line_b", type: "line", a: { x: 105, y: 120 }, b: { x: 195, y: 120 } },
-      { id: "arc_br", type: "arc", center: { x: 195, y: 125 }, radius: 5, startAngle: 3 * q, endAngle: 4 * q },
+      {
+        id: "arc_br",
+        type: "arc",
+        center: { x: 195, y: 125 },
+        radius: 5,
+        startAngle: 3 * q,
+        endAngle: 4 * q,
+      },
       { id: "line_r", type: "line", a: { x: 200, y: 125 }, b: { x: 200, y: 175 } },
-      { id: "arc_tr", type: "arc", center: { x: 195, y: 175 }, radius: 5, startAngle: 0, endAngle: q },
+      {
+        id: "arc_tr",
+        type: "arc",
+        center: { x: 195, y: 175 },
+        radius: 5,
+        startAngle: 0,
+        endAngle: q,
+      },
       { id: "line_t", type: "line", a: { x: 195, y: 180 }, b: { x: 105, y: 180 } },
-      { id: "arc_tl", type: "arc", center: { x: 105, y: 175 }, radius: 5, startAngle: q, endAngle: 2 * q },
+      {
+        id: "arc_tl",
+        type: "arc",
+        center: { x: 105, y: 175 },
+        radius: 5,
+        startAngle: q,
+        endAngle: 2 * q,
+      },
       { id: "line_l", type: "line", a: { x: 100, y: 175 }, b: { x: 100, y: 125 } },
-      { id: "arc_bl", type: "arc", center: { x: 105, y: 125 }, radius: 5, startAngle: 2 * q, endAngle: 3 * q },
+      {
+        id: "arc_bl",
+        type: "arc",
+        center: { x: 105, y: 125 },
+        radius: 5,
+        startAngle: 2 * q,
+        endAngle: 3 * q,
+      },
       { id: "hole_bl", type: "circle", center: { x: 108, y: 128 }, radius: 2.75 },
     ],
     constraints: [],
@@ -289,6 +321,63 @@ describe("field-test regressions (Gemini, 2026-07-12)", () => {
     const schemaErr = r.issues.find((i) => i.check === "schema");
     expect(schemaErr?.message).toContain('"outside"');
     expect(schemaErr?.message).toContain('"inside"');
+  });
+});
+
+describe("pre-flight lint in the import check", () => {
+  /** A mill file whose only geometry is a 4-line rectangle spanning (x0,y0)–(x1,y1),
+   *  cut as an outside profile — at the stock corner the tool centre must swing
+   *  a radius off the stock; comfortably inside it must lint clean. */
+  const millFile = (x0: number, y0: number, x1: number, y1: number) =>
+    JSON.stringify({
+      version: 2,
+      name: "Lint check",
+      canvas: { width: 100, height: 100 },
+      displayUnit: "mm",
+      stockThickness: 10,
+      machineKind: "mill",
+      entities: [
+        { id: "e_b", type: "line", a: { x: x0, y: y0 }, b: { x: x1, y: y0 } },
+        { id: "e_r", type: "line", a: { x: x1, y: y0 }, b: { x: x1, y: y1 } },
+        { id: "e_t", type: "line", a: { x: x1, y: y1 }, b: { x: x0, y: y1 } },
+        { id: "e_l", type: "line", a: { x: x0, y: y1 }, b: { x: x0, y: y0 } },
+      ],
+      constraints: [],
+      dimensions: [],
+      operations: [
+        {
+          id: "op_profile",
+          name: "Profile",
+          type: "profile",
+          entityIds: ["e_b", "e_r", "e_t", "e_l"],
+          side: "outside",
+          toolType: "end-mill",
+          toolNumber: 1,
+          diameter: 6,
+          feedrate: 900,
+          plungeRate: 300,
+          spindleSpeed: 18000,
+          safeZ: 5,
+          depth: -5,
+          stepdown: 3,
+        },
+      ],
+    });
+
+  it("an outside profile on the stock corner surfaces the export lint as a warning", () => {
+    const r = checkRcamText(millFile(0, 0, 30, 30), validator);
+    expect(r.ok).toBe(true); // machinability findings must never block import
+    const lint = r.issues.filter((i) => i.check === "lint");
+    expect(lint.length).toBeGreaterThan(0);
+    expect(lint.every((i) => i.severity === "warning")).toBe(true);
+    // The lint's own severity stays visible in the message prefix.
+    expect(lint.some((i) => /^error: .*outside the stock/.test(i.message))).toBe(true);
+  });
+
+  it("a comfortably-inside design yields no lint issues", () => {
+    const r = checkRcamText(millFile(30, 30, 70, 70), validator);
+    expect(r.ok).toBe(true);
+    expect(r.issues.filter((i) => i.check === "lint")).toEqual([]);
   });
 });
 

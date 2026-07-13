@@ -8,6 +8,7 @@
  *   validate_rcam      schema + load + reference + constraint-solve checks
  *   post_gcode         generate machine program(s) + Apollo pre-flight lint
  *   render_preview     render the design to a PNG the agent can actually see
+ *   read_share_link    decode a share link (File ▸ Copy Share Link) to .rcam JSON
  *   open_in_app        open a validated design in the user's browser (share link)
  *
  * Run it with `npm run mcp`, or hook it into Claude Code with:
@@ -144,6 +145,25 @@ server.registerTool(
       };
     } catch (e) {
       return text(`render failed: ${(e as Error).message}`);
+    }
+  },
+);
+
+server.registerTool(
+  "read_share_link",
+  {
+    description:
+      "Read a RapidCAM design from a share link. To modify the user's current design, ask them to use File ▸ Copy Share Link and paste the link to you; then author changes, validate_rcam, and hand back with open_in_app. Returns the design's complete .rcam JSON.",
+    inputSchema: {
+      url: z.string().describe("The share link (…#d=…) the user copied, or its d=… payload"),
+    },
+  },
+  async ({ url }) => {
+    try {
+      const { decodeShareUrl } = await import("../cli/decode");
+      return text(await decodeShareUrl(url));
+    } catch (e) {
+      return text(`could not read the share link: ${(e as Error).message}`);
     }
   },
 );

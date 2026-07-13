@@ -3,9 +3,10 @@
  * text, and a paste-back error report for the AI that wrote it.
  *
  * The pipeline runs the same machinery a real open does — parse, (optionally)
- * schema-validate, load into a scratch CADDocument, solve — plus reference
- * checks the tolerant loader won't complain about, and reports everything as
- * a flat issue list instead of throwing at the first problem. Used by the AI
+ * schema-validate, load into a scratch CADDocument, solve, dry-run the machine
+ * program(s) and Apollo pre-flight lint them — plus reference checks the
+ * tolerant loader won't complain about, and reports everything as a flat
+ * issue list instead of throwing at the first problem. Used by the AI
  * Assistant paste-import dialog and the headless CLI.
  *
  * Schema validation is injected: the browser lazy-loads ajv + fetches the
@@ -13,7 +14,7 @@
  * disk, and tests can pass a stub.
  */
 
-import { generateGCode } from "../cam/gcode";
+import { postPrograms } from "../cam/postPrograms";
 import { CADDocument } from "../model/document";
 import { RasterImageEntity } from "../model/entities";
 import { solve } from "../solver/solver";
@@ -21,7 +22,7 @@ import { applyFile, normalizeRcam, type RcamFile } from "./fileio";
 
 export interface AiIssue {
   severity: "error" | "warning";
-  /** Which check produced it: "json" | "schema" | "load" | "refs" | "solver" | "bounds". */
+  /** Which check produced it: "json" | "schema" | "load" | "refs" | "solver" | "bounds" | "toolpath" | "lint". */
   check: string;
   message: string;
 }
@@ -185,11 +186,22 @@ function boundsIssues(doc: CADDocument): AiIssue[] {
 }
 
 /**
- * Dry-run the G-code generators and surface every `; NOTE:` skip they emit —
- * the field test showed a file can pass every structural check while its main
- * operation silently produces zero cutting moves (e.g. geometry the profile
- * chainer couldn't close). Skipped when an op targets a raster image, whose
- * relief/raster generation can emit 100k+ lines.
+ * Dry-run the real machine program(s) — routed by machine kind exactly as the
+ * export button routes (mill / laser / rotary wrap / double-sided flip) — and
+ * surface two kinds of findings:
+ *
+ * - every `; NOTE:` skip the generators emit (check "toolpath") — the field
+ *   test showed a file can pass every structural check while its main
+ *   operation silently produces zero cutting moves (e.g. geometry the profile
+ *   chainer couldn't close);
+ * - every Apollo pre-flight lint finding over each generated program (check
+ *   "lint") — out-of-bounds toolpaths, over-deep cuts, fast plunges, missing
+ *   tool-change pauses. These are ALWAYS reported as warnings (prefixed with
+ *   the lint's own severity) so a machinability advisory never blocks an
+ *   import the app itself would allow to export.
+ *
+ * Skipped entirely when an op targets a raster image, whose relief/raster
+ * generation can emit 100k+ lines.
  */
 function toolpathIssues(doc: CADDocument): AiIssue[] {
   if (doc.operations.length === 0) return [];
@@ -198,20 +210,33 @@ function toolpathIssues(doc: CADDocument): AiIssue[] {
   );
   if (doc.operations.some((op) => op.entityIds.some((id) => imageIds.has(id)))) return [];
   try {
-    const gcode = generateGCode(doc.operations, doc);
-    const notes = [
-      ...new Set(
-        gcode
-          .split("\n")
-          .filter((l) => l.startsWith("; NOTE:"))
-          .map((l) => l.slice("; NOTE:".length).trim()),
-      ),
+    const { programs } = postPrograms(doc, "check");
+    const notes = new Set<string>();
+    const lintKeys = new Set<string>();
+    const lintIssues: AiIssue[] = [];
+    for (const p of programs) {
+      for (const line of p.gcode.split("\n")) {
+        if (line.startsWith("; NOTE:")) notes.add(line.slice("; NOTE:".length).trim());
+      }
+      for (const f of p.lint) {
+        const key = `${f.code}|${f.message}`;
+        if (lintKeys.has(key)) continue;
+        lintKeys.add(key);
+        lintIssues.push({
+          severity: "warning",
+          check: "lint",
+          message: `${f.severity}: ${f.message}`,
+        });
+      }
+    }
+    return [
+      ...[...notes].map((n) => ({
+        severity: "warning" as const,
+        check: "toolpath",
+        message: `the G-code generator skipped work: ${n}`,
+      })),
+      ...lintIssues,
     ];
-    return notes.map((n) => ({
-      severity: "warning" as const,
-      check: "toolpath",
-      message: `the G-code generator skipped work: ${n}`,
-    }));
   } catch (e) {
     return [
       {
@@ -236,7 +261,11 @@ export function checkRcamText(text: string, validateSchema?: SchemaValidator): A
   try {
     raw = JSON.parse(text);
   } catch (e) {
-    issues.push({ severity: "error", check: "json", message: `not valid JSON: ${(e as Error).message}` });
+    issues.push({
+      severity: "error",
+      check: "json",
+      message: `not valid JSON: ${(e as Error).message}`,
+    });
     return fail();
   }
 

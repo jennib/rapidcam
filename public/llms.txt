@@ -36,7 +36,8 @@ integration guide, inlined as one plain-text document.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;
   iterate on that feedback rather than aiming for a perfect first attempt.
 - Agents on the user's machine with a RapidCAM checkout can run those same
-  checks headlessly (CLI: `npm run cli -- validate|post|render|open`) or as
-  MCP tools (`npm run mcp`), including `open` — which delivers a validated
-  design straight into the user's browser via a share-link URL. See the
-  AI integration guide above.
+  checks headlessly (CLI: `npm run cli -- validate|post|render|open|decode`)
+  or as MCP tools (`npm run mcp`), including `open` — which delivers a
+  validated design straight into the user's browser via a share-link URL —
+  and `decode`, which turns a copied share link back into .rcam JSON. See
+  the AI integration guide above.

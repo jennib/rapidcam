@@ -57,10 +57,14 @@ Every pasted file passes through, in order:
 | Solver | contradictory constraint systems that don't converge |
 | Bounds | geometry outside the work area |
 | Toolpath dry-run | operations that would silently produce **no cutting moves** (e.g. a profile over geometry that doesn't close) |
+| Lint | Apollo pre-flight findings over the dry-run program(s) — toolpaths outside the stock, over-deep cuts, fast plunges, missing tool-change pauses — reported as **warnings**, so machinability advice never blocks an import |
 
-The last one matters most: it is entirely possible to write a file that is
+The dry-run matters most: it is entirely possible to write a file that is
 schema-valid, loads, and solves — and cuts air. The dry-run generates the
-actual G-code and surfaces every skip the generator would emit.
+actual machine program(s) — routed by machine kind exactly as export does
+(mill, laser, rotary wrap, double-sided flip) — and surfaces every skip the
+generator would emit, then pre-flights the result so the import check says
+what the export lint would say.
 
 The same pipeline also reviews every `.rcam` opened from disk (**File ▸
 Open**): the file opens immediately, then a dialog lists any issues found,
@@ -96,6 +100,7 @@ npm run cli -- validate part.rcam            # the full checking pipeline above
 npm run cli -- post part.rcam -o out/        # G-code (.nc) + Apollo pre-flight lint
 npm run cli -- render part.rcam -o part.png  # PNG of the design via headless Chromium
 npm run cli -- open part.rcam                # validate, then open in the user's browser
+npm run cli -- decode "<share-url>"          # share link → .rcam JSON (quote the URL!)
 ```
 
 - **`validate`** exits 0 on success (warnings allowed), 1 when any check
@@ -115,6 +120,11 @@ npm run cli -- open part.rcam                # validate, then open in the user's
   opens with the design loaded as a fresh document. `--url http://localhost:5173/`
   targets a dev server instead of rapidcam.app. Designs too large for a URL
   (typically image-bearing reliefs) are refused with a save-the-file hint.
+- **`decode`** is `open` in reverse: it turns a share link — the user copies
+  one with **File ▸ Copy Share Link** — back into pretty-printed `.rcam` JSON
+  (to stdout, or `-o out.rcam`). That makes "modify my current design" a
+  loop: decode the user's link, edit, `validate`, hand back with `open`.
+  Quote the URL so the shell doesn't eat the `#…` fragment.
 
 ---
 
@@ -137,6 +147,7 @@ npm run mcp                                        # or run it directly (stdio)
 | `validate_rcam` | the full checking pipeline; returns a fix-it report |
 | `post_gcode` | machine program(s) + Apollo pre-flight lint findings |
 | `render_preview` | a PNG **image** of the design — the agent can look at what it made and catch geometry that validates but is wrong |
+| `read_share_link` | the reverse hand-off: decode a share link (**File ▸ Copy Share Link**) back into `.rcam` JSON, so the agent can read the user's current design |
 | `open_in_app` | the hand-off: validate, then open the design in the **user's** browser via a share-link URL (client-side only; refuses invalid designs) |
 
 `render_preview` boots a headless browser on first call (~10 s) and reuses it
@@ -144,7 +155,10 @@ afterwards.
 
 An effective agent loop: `get_format_guide` → author → `validate_rcam` →
 fix until clean → `render_preview` → eyeball → `post_gcode` → review lint →
-`open_in_app` to hand the finished design to the user.
+`open_in_app` to hand the finished design to the user. To **modify** the
+user's current design, start the loop with their share link: ask for
+**File ▸ Copy Share Link**, read it with `read_share_link`, then author the
+changes and hand back as above.
 
 ---
 

@@ -15,13 +15,37 @@ const here = dirname(fileURLToPath(import.meta.url));
 const examplesDir = join(here, "..", "examples");
 const examples = readdirSync(examplesDir).filter((f) => f.endsWith(".rcam"));
 
+/**
+ * validate now dry-runs the real machine program(s) and surfaces the Apollo
+ * pre-flight lint as warnings — the import check says what the export says.
+ * These examples legitimately trip advisories the app itself shows at export:
+ * box-joint cuts a profile on the stock edge, the through-cut examples kiss
+ * 2 mm into the spoilboard, the multi-tool jobs rely on the sender pausing on
+ * the tool-change comment, and the rotary job plunges at its cutting feed.
+ * Pinned 1:1 so a NEW finding on any example still fails the build.
+ */
+const knownLint: Record<string, RegExp[]> = {
+  "box-joint-tab-slot.rcam": [/outside the stock/],
+  "enclosure-lid.rcam": [/below the stock bottom/],
+  "mounting-plate-cam.rcam": [/below the stock bottom/, /manual tool change/],
+  "rotary-spiral-dowel.rcam": [/plunge/, /manual tool change/],
+  "vcarve-sign.rcam": [/manual tool change/],
+};
+
 describe("headless core over the bundled examples", () => {
   for (const f of examples) {
     const text = readFileSync(join(examplesDir, f), "utf8");
 
-    it(`validate ${f} — clean`, () => {
+    it(`validate ${f} — clean apart from known pre-flight advisories`, () => {
       const r = validateRcamText(text);
-      expect(r.issues, JSON.stringify(r.issues)).toEqual([]);
+      expect(r.ok, JSON.stringify(r.issues)).toBe(true);
+      const expected = knownLint[f] ?? [];
+      // Every issue must be a known lint warning, matched 1:1 and in order.
+      expect(
+        r.issues.map((i) => `${i.check}/${i.severity}`),
+        JSON.stringify(r.issues),
+      ).toEqual(expected.map(() => "lint/warning"));
+      for (const [i, re] of expected.entries()) expect(r.issues[i].message, f).toMatch(re);
     });
 
     const hasOps = ((JSON.parse(text).operations as unknown[]) ?? []).length > 0;

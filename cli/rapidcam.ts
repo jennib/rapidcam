@@ -6,6 +6,7 @@
  *   npm run cli -- post <file.rcam> [-o <dir>]
  *   npm run cli -- render <file.rcam> [-o <out.png>]
  *   npm run cli -- open <file.rcam> [--url <base>]
+ *   npm run cli -- decode "<share-url>" [-o <out.rcam>]
  *
  * Exit codes: 0 success (warnings allowed), 1 findings/errors, 2 usage.
  */
@@ -23,6 +24,10 @@ Usage:
   rapidcam render <file.rcam> [-o <png>]   render the design to a PNG (headless Chromium)
   rapidcam open <file.rcam> [--url <base>] validate, then open the design in the browser
                                            (share-link URL; default base https://rapidcam.app/)
+  rapidcam decode "<share-url>" [-o <out.rcam>]
+                                           turn a share link (File > Copy Share Link) back into
+                                           .rcam JSON — quote the URL so the shell keeps the #…
+                                           fragment; prints to stdout unless -o is given
 
 The published authoring contract for .rcam files:
   guide   https://rapidcam.app/docs/rcam-format-v2.md
@@ -122,6 +127,26 @@ async function main(): Promise<number> {
         `opened "${baseNameOf(target)}" in the browser (${url.length}-char link; the design stays client-side).`,
       );
       for (const i of result.issues) console.log(`  ⚠ [${i.check}] ${i.message}`);
+      return 0;
+    }
+
+    case "decode": {
+      const { decodeShareUrl } = await import("./decode");
+      let json: string;
+      try {
+        json = await decodeShareUrl(target);
+      } catch (e) {
+        console.error(`decode failed: ${(e as Error).message}`);
+        return 1;
+      }
+      const out = argValue(rest, "-o");
+      if (out) {
+        const outPath = resolve(out);
+        writeFileSync(outPath, json);
+        console.error(`wrote ${outPath}`); // stderr: stdout stays JSON-only
+      } else {
+        console.log(json);
+      }
       return 0;
     }
 
