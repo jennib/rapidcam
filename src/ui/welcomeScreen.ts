@@ -284,6 +284,16 @@ export function showWelcomeScreen(
   bmc.innerHTML = `<img src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" alt="☕"> Buy me a coffee`;
   footer.appendChild(bmc);
 
+  // Deliberately visible (not display:none): screenshot-driven agents can only
+  // discover what a human can see. Kept dim so humans skim past it.
+  const aiHint = document.createElement("a");
+  aiHint.className = "welcome-ai-hint";
+  aiHint.href = "/llms.txt";
+  aiHint.target = "_blank";
+  aiHint.rel = "noopener noreferrer";
+  aiHint.textContent = "AI agents: docs at rapidcam.app/llms.txt";
+  footer.appendChild(aiHint);
+
   container.appendChild(logo);
   container.appendChild(content);
   container.appendChild(welcome);

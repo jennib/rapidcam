@@ -1,6 +1,37 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
+
+const repoRoot = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * /llms-full.txt — the llms.txt convention's single-fetch variant: the index
+ * plus every document it links, inlined into one plain-text file. Field
+ * testing showed some AI fetch tools may only open URLs the user handed them
+ * (no second hop to links found in a fetched page); this one URL carries the
+ * whole authoring contract. Exported for the tripwire test.
+ */
+export function llmsFullText(): string {
+  const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8").trimEnd();
+  const banner = (title: string, url: string) =>
+    `\n\n${"=".repeat(78)}\nSECTION: ${title}\nCanonical URL: ${url}\n${"=".repeat(78)}\n\n`;
+  return (
+    read("public/llms.txt") +
+    banner(".rcam format guide", "https://rapidcam.app/docs/rcam-format-v2.md") +
+    read("docs/rcam-format-v2.md") +
+    banner(
+      ".rcam JSON Schema (draft 2020-12)",
+      "https://rapidcam.app/schema/rcam-v2.schema.json",
+    ) +
+    "```json\n" +
+    read("public/schema/rcam-v2.schema.json") +
+    "\n```" +
+    banner("AI integration guide", "https://rapidcam.app/docs/ai-integration.md") +
+    read("docs/ai-integration.md") +
+    "\n"
+  );
+}
 
 /**
  * Publishes the .rcam authoring contract for external tools (including LLMs)
@@ -27,6 +58,11 @@ function aiDocsPlugin(): Plugin {
         type: "text/markdown; charset=utf-8",
         body: () => readFileSync(join("docs", f)),
       })),
+      {
+        route: "/llms-full.txt",
+        type: "text/plain; charset=utf-8",
+        body: () => Buffer.from(llmsFullText()),
+      },
       {
         route: "/examples/index.json",
         type: "application/json",

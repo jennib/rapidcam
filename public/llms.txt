@@ -6,6 +6,11 @@
 > explicitly designed so that automated tools — including LLMs — can author
 > valid design files.
 
+**Can you only fetch a single URL?** Some AI tools cannot follow links found
+in a fetched page. Fetch [the single-file bundle](https://rapidcam.app/llms-full.txt)
+instead — this index plus the full format guide, the JSON Schema, and the AI
+integration guide, inlined as one plain-text document.
+
 ## File format (.rcam)
 
 - [Format guide](https://rapidcam.app/docs/rcam-format-v2.md): the human- and

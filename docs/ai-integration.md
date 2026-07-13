@@ -72,6 +72,7 @@ indexed by [`/llms.txt`](https://rapidcam.app/llms.txt):
 | URL | Contents |
 |-----|----------|
 | `https://rapidcam.app/llms.txt` | index of all of the below |
+| `https://rapidcam.app/llms-full.txt` | **single-fetch bundle**: the index, format guide, JSON Schema, and this guide inlined in one file — for fetch tools that cannot follow links out of a fetched page |
 | `https://rapidcam.app/docs/rcam-format-v2.md` | the authoring guide: entity/constraint/dimension vocabulary, CAM operations, gotchas |
 | `https://rapidcam.app/schema/rcam-v2.schema.json` | machine-readable JSON Schema (draft 2020-12; this URL is its `$id`) |
 | `https://rapidcam.app/docs/ai-integration.md` | this document |
