@@ -16,6 +16,9 @@
 - [Examples index](https://rapidcam.app/examples/index.json): bundled golden
   example projects, each validated against the schema on every commit; fetch
   any listed file at `https://rapidcam.app/examples/<name>`
+- [AI integration guide](https://rapidcam.app/docs/ai-integration.md): every
+  way an AI can work with RapidCAM — the in-app assistant loop, this index,
+  the headless CLI, and the MCP server — plus authoring tips
 
 ## Authoring tips for LLMs
 

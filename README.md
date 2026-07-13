@@ -270,34 +270,25 @@ Both are kept honest by a drift-guard test that validates every bundled
 
 ## AI integration
 
-The `.rcam` format is designed so LLMs can author designs, and RapidCAM meets
-them at every level:
+The `.rcam` format is designed so LLMs can author real, machinable designs,
+and RapidCAM meets them at every level — full details, tool references, and
+authoring tips in **[docs/ai-integration.md](docs/ai-integration.md)**:
 
 - **In the app** — **File ▸ AI Assistant** copies a self-contained prompt
   (your machine, stock, tool library, and the full format guide) into any AI
-  chat, then validates the pasted result: schema, loader, dangling references,
-  constraint-solver convergence, and work-area bounds. Failures become a
-  one-click **error report** you paste back to the AI so it can fix its own
-  file — the loop matters more than the first attempt.
+  chat, then checks the pasted result end-to-end — schema, loader, references,
+  constraint solve, work-area bounds, and a G-code dry-run that catches
+  operations that would cut nothing. Failures become a one-click **error
+  report** you paste back so the AI fixes its own file; a successful import is
+  undoable (Ctrl+Z).
 - **For web-connected AIs** — [`https://rapidcam.app/llms.txt`](public/llms.txt)
-  links the format guide, schema, and bundled examples at stable URLs.
-- **Headless CLI** — validate, post, and render `.rcam` files from a script or
-  agent, no browser window needed:
-
-  ```bash
-  npm run cli -- validate part.rcam            # schema + load + solve checks
-  npm run cli -- post part.rcam -o out/        # G-code (.nc) + Apollo pre-flight lint
-  npm run cli -- render part.rcam -o part.png  # PNG via headless Chromium
-  ```
-
-- **MCP server** — gives MCP clients (Claude Code, Claude Desktop, …) the full
-  author → validate → post → *look at a render* loop as tools
-  (`validate_rcam`, `post_gcode`, `render_preview`, `get_format_guide`,
-  `list_examples`, `get_example`):
-
-  ```bash
-  claude mcp add rapidcam -- npx tsx mcp/server.ts   # from this repo's directory
-  ```
+  indexes the format guide, schema, examples, and AI guide at stable URLs.
+- **Headless CLI** — `npm run cli -- validate|post|render <file.rcam>` runs
+  the same pipeline from a script or agent, including PNG rendering via
+  headless Chromium.
+- **MCP server** — `claude mcp add rapidcam -- npx tsx mcp/server.ts` gives
+  MCP clients (Claude Code, Claude Desktop, …) the full author → validate →
+  post → *look at a render* loop as tools.
 
 ---
 

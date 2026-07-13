@@ -224,11 +224,37 @@ export class ProjectManager {
     this.loadDocument(entry.data, entry.name);
   }
 
-  /** Load an already-parsed file (AI Assistant paste-import). */
+  /**
+   * Load an already-parsed file (AI Assistant paste-import). Unlike a file
+   * open, this is usually an AI's *modification of the current design*, so it
+   * behaves like an edit, not a load: the pre-import state is pushed onto the
+   * undo history (Ctrl+Z reverts a bad import) and the document stays dirty.
+   */
   async importChecked(file: RcamFile, name: string): Promise<boolean> {
-    if (!(await this.confirmDiscard(`import "${name}"`))) return false;
+    const hasWork = this.doc.entities.some((e) => e.id !== ORIGIN_ENTITY_ID);
+    if (hasWork) {
+      const proceed = await confirmDialog({
+        title: "Replace current drawing?",
+        message: `This will replace the current drawing with "${name}".\nYou can undo the import afterwards (Ctrl+Z).`,
+        confirmLabel: "Replace",
+      });
+      if (!proceed) return false;
+    }
     track("ai_import_loaded");
-    this.loadDocument(file, name);
+    this.pushHistory();
+    this.isDocumentLoading = true;
+    this.cb.onCloseEditors();
+    applyFile(this.doc, file);
+    this.currentFileName = name;
+    // No file handle: a later Save prompts rather than overwriting whatever
+    // file the pre-import design came from.
+    this.currentFileHandle = null;
+    this.cb.onSolve();
+    this.cb.onFitView();
+    this.isDocumentLoading = false;
+    this.markDirty();
+    this.updateTitle();
+    this.warnMissingFonts();
     return true;
   }
 

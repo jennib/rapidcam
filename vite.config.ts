@@ -6,7 +6,7 @@ import { defineConfig, type Plugin } from "vite";
  * Publishes the .rcam authoring contract for external tools (including LLMs)
  * at stable URLs, next to the schema already served from public/schema:
  *
- *   /docs/rcam-format-v2.md   ← docs/rcam-format-v2.md
+ *   /docs/<name>.md           ← docs/<name>.md (format guide, AI guide, …)
  *   /examples/index.json      ← generated list of bundled examples
  *   /examples/<name>.rcam     ← examples/<name>.rcam
  *
@@ -18,12 +18,15 @@ function aiDocsPlugin(): Plugin {
     const examples = readdirSync("examples")
       .filter((f) => f.endsWith(".rcam"))
       .sort();
+    const docs = readdirSync("docs")
+      .filter((f) => f.endsWith(".md"))
+      .sort();
     return [
-      {
-        route: "/docs/rcam-format-v2.md",
+      ...docs.map((f) => ({
+        route: `/docs/${f}`,
         type: "text/markdown; charset=utf-8",
-        body: () => readFileSync(join("docs", "rcam-format-v2.md")),
-      },
+        body: () => readFileSync(join("docs", f)),
+      })),
       {
         route: "/examples/index.json",
         type: "application/json",
