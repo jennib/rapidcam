@@ -53,9 +53,7 @@ function ev(pos: Vec2): ToolPointerEvent {
 describe("dimension vs entity-body priority", () => {
   function setup() {
     const doc = new CADDocument({ width: 200, height: 200 });
-    const line = doc.add(
-      new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 }),
-    ) as LineEntity;
+    const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
     const dim = makeDimension("distance", {
       points: [
         { entityId: line.id, key: "a" },

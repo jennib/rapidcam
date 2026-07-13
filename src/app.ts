@@ -216,8 +216,7 @@ export class App {
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
         notify: (msg) => this.statusBar.flash(msg),
-        setHint: (text) =>
-          this.statusBar.setHint(text ?? TOOL_HINTS[this.tools.active.id] ?? ""),
+        setHint: (text) => this.statusBar.setHint(text ?? TOOL_HINTS[this.tools.active.id] ?? ""),
       },
       [
         new SelectTool(),
@@ -1047,7 +1046,11 @@ export class App {
       c.selected = true;
     }
     for (const idxs of groups) {
-      this.doc.groups.push({ id: nextId("grp"), name: "", entityIds: idxs.map((i) => clones[i].id) });
+      this.doc.groups.push({
+        id: nextId("grp"),
+        name: "",
+        entityIds: idxs.map((i) => clones[i].id),
+      });
     }
     this.runSolve();
     this.doc.emitChange();
@@ -1114,7 +1117,9 @@ export class App {
   private nudgeSelected(dx: number, dy: number, firstPress: boolean): void {
     if (this.doc.selected.length === 0) return;
     if (this.currentDof() <= 0) {
-      this.statusBar.flash("Fully constrained — edit a dimension or remove a constraint to move this");
+      this.statusBar.flash(
+        "Fully constrained — edit a dimension or remove a constraint to move this",
+      );
       return;
     }
     if (firstPress) this.project.pushHistory();

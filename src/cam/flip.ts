@@ -371,7 +371,9 @@ export function generateFlipPrograms(doc: CADDocument, opts: GCodeOptions = {}):
   const warnings = validateFlip(doc);
   const { sideA, sideB, hasPins } = flipSides(doc);
 
-  const a = toAsciiGcode(`${sideBanner("A", doc, flip)}\n${generateGCode(sideA.ops, sideA.doc, opts)}`);
+  const a = toAsciiGcode(
+    `${sideBanner("A", doc, flip)}\n${generateGCode(sideA.ops, sideA.doc, opts)}`,
+  );
   const b = sideB
     ? toAsciiGcode(`${sideBanner("B", doc, flip)}\n${generateGCode(sideB.ops, sideB.doc, opts)}`)
     : "";

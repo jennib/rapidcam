@@ -39,15 +39,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
 import { contourParallelClear } from "./clearing";
-import {
-  n,
-  X,
-  Y,
-  Z,
-  depthPasses,
-  toAsciiGcode,
-  type PostProcessor,
-} from "./postprocessors/base";
+import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { chainLinesIntoPolygons, chainOpenCurvesIntoLoops, collectClosedLoops } from "./loops";

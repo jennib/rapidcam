@@ -443,7 +443,13 @@ export class SelectTool implements Tool {
         // Alt is taken by the rotate gesture above).
         this.dragSnapTarget = null;
         if (!e.ctrlKey) {
-          const r = ctx.snap.resolveDrag(d, this.dragSnapPoints, ctx.view, ctx.doc, this.dragExclude);
+          const r = ctx.snap.resolveDrag(
+            d,
+            this.dragSnapPoints,
+            ctx.view,
+            ctx.doc,
+            this.dragExclude,
+          );
           d = r.delta;
           this.dragSnapTarget = r.snap;
         }
