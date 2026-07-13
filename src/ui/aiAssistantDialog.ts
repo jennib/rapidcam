@@ -20,6 +20,9 @@ import { copyToClipboard } from "./clipboard";
 import { registerModal } from "./modal";
 import { toast } from "./toast";
 
+/** The single URL an autonomous agent needs — /llms.txt links everything else. */
+const AGENT_DOCS_URL = "https://rapidcam.app/llms.txt";
+
 export interface AiAssistantCallbacks {
   /**
    * Load a successfully checked file into the editor. Owns the discard-confirm;
@@ -255,11 +258,33 @@ export function showAiAssistantDialog(
     track("ai_error_report_copied");
   });
 
+  // Footer: the one-URL path for agents (Claude Code, Cursor, …) that can
+  // fetch the web themselves — no copy/paste loop needed.
+  const footer = document.createElement("p");
+  footer.style.cssText = `${hintCss}margin:14px 0 0 0;padding-top:10px;border-top:1px solid var(--border);`;
+  footer.append("Using an AI agent instead? Point it at ");
+  const agentUrl = document.createElement("code");
+  agentUrl.textContent = AGENT_DOCS_URL;
+  agentUrl.style.cssText = "user-select:all;";
+  footer.appendChild(agentUrl);
+  footer.append(" — it links the schema, format guide, examples, and integration guide. ");
+  const copyUrlBtn = document.createElement("button");
+  copyUrlBtn.className = "btn";
+  copyUrlBtn.textContent = "Copy URL";
+  copyUrlBtn.style.cssText = "font-size:11px;padding:1px 8px;margin-left:2px;";
+  copyUrlBtn.addEventListener("click", () => {
+    copyToClipboard(AGENT_DOCS_URL);
+    flashCopied(copyUrlBtn, "Copied");
+    track("ai_agent_url_copied");
+  });
+  footer.appendChild(copyUrlBtn);
+
   container.appendChild(closeBtn);
   container.appendChild(title);
   container.appendChild(intro);
   container.appendChild(s1);
   container.appendChild(s2);
+  container.appendChild(footer);
   backdrop.appendChild(container);
 
   backdrop.addEventListener("click", (e) => {

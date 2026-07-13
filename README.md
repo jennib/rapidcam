@@ -281,8 +281,10 @@ authoring tips in **[docs/ai-integration.md](docs/ai-integration.md)**:
   operations that would cut nothing. Failures become a one-click **error
   report** you paste back so the AI fixes its own file; a successful import is
   undoable (Ctrl+Z).
-- **For web-connected AIs** — [`https://rapidcam.app/llms.txt`](public/llms.txt)
-  indexes the format guide, schema, examples, and AI guide at stable URLs.
+- **For web-connected AIs** — hand any agent the single URL
+  [`https://rapidcam.app/llms.txt`](public/llms.txt): it indexes the format
+  guide, schema, examples, and AI guide at stable URLs. (The app homepage's
+  HTML also points AI readers there, so agents find it on their own.)
 - **Headless CLI** — `npm run cli -- validate|post|render <file.rcam>` runs
   the same pipeline from a script or agent, including PNG rendering via
   headless Chromium.
