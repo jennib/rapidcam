@@ -5,6 +5,7 @@
  *   npm run cli -- validate <file.rcam>
  *   npm run cli -- post <file.rcam> [-o <dir>]
  *   npm run cli -- render <file.rcam> [-o <out.png>]
+ *   npm run cli -- open <file.rcam> [--url <base>]
  *
  * Exit codes: 0 success (warnings allowed), 1 findings/errors, 2 usage.
  */
@@ -20,6 +21,8 @@ Usage:
   rapidcam validate <file.rcam>            schema + load + constraint-solve checks
   rapidcam post <file.rcam> [-o <dir>]     generate G-code (.nc) + Apollo pre-flight lint
   rapidcam render <file.rcam> [-o <png>]   render the design to a PNG (headless Chromium)
+  rapidcam open <file.rcam> [--url <base>] validate, then open the design in the browser
+                                           (share-link URL; default base https://rapidcam.app/)
 
 The published authoring contract for .rcam files:
   guide   https://rapidcam.app/docs/rcam-format-v2.md
@@ -101,6 +104,24 @@ async function main(): Promise<number> {
       const { renderRcam } = await import("./render");
       await renderRcam(resolve(target), out);
       console.log(`wrote ${out}`);
+      return 0;
+    }
+
+    case "open": {
+      const content = readInput(target);
+      const result = validateRcamText(content);
+      if (!result.ok) {
+        console.log(buildErrorReport(result, basename(target)));
+        console.error("\nrefusing to open an invalid design — fix the errors above first.");
+        return 1;
+      }
+      const { buildOpenUrl, launchBrowser } = await import("./open");
+      const url = await buildOpenUrl(content, argValue(rest, "--url") ?? undefined);
+      launchBrowser(url);
+      console.log(
+        `opened "${baseNameOf(target)}" in the browser (${url.length}-char link; the design stays client-side).`,
+      );
+      for (const i of result.issues) console.log(`  ⚠ [${i.check}] ${i.message}`);
       return 0;
     }
 

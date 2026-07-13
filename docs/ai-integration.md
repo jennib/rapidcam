@@ -62,6 +62,11 @@ The last one matters most: it is entirely possible to write a file that is
 schema-valid, loads, and solves — and cuts air. The dry-run generates the
 actual G-code and surfaces every skip the generator would emit.
 
+The same pipeline also reviews every `.rcam` opened from disk (**File ▸
+Open**): the file opens immediately, then a dialog lists any issues found,
+with the same one-click **Copy AI fix-it report**. Clean files open in
+silence — so an AI-authored file reaching the app by any route gets checked.
+
 ---
 
 ## Stable URLs for web-connected AIs
@@ -90,6 +95,7 @@ For scripts and agents working in a RapidCAM checkout (`git clone` +
 npm run cli -- validate part.rcam            # the full checking pipeline above
 npm run cli -- post part.rcam -o out/        # G-code (.nc) + Apollo pre-flight lint
 npm run cli -- render part.rcam -o part.png  # PNG of the design via headless Chromium
+npm run cli -- open part.rcam                # validate, then open in the user's browser
 ```
 
 - **`validate`** exits 0 on success (warnings allowed), 1 when any check
@@ -103,6 +109,12 @@ npm run cli -- render part.rcam -o part.png  # PNG of the design via headless Ch
 - **`render`** boots the real app on an ephemeral dev server and screenshots
   the drawing canvas — geometry, dimensions, and stock outline exactly as
   RapidCAM draws them. First call pays a ~10 s browser boot.
+- **`open`** is the hand-off: it validates (refusing on errors), encodes the
+  design into a share-link URL — the `#d=` fragment format, so the design
+  never touches a server — and launches the default browser at it. RapidCAM
+  opens with the design loaded as a fresh document. `--url http://localhost:5173/`
+  targets a dev server instead of rapidcam.app. Designs too large for a URL
+  (typically image-bearing reliefs) are refused with a save-the-file hint.
 
 ---
 
@@ -110,7 +122,8 @@ npm run cli -- render part.rcam -o part.png  # PNG of the design via headless Ch
 
 The [Model Context Protocol](https://modelcontextprotocol.io) server gives MCP
 clients — Claude Code, Claude Desktop, and others — the full **author →
-validate → post → look at a render** loop as tools. From a RapidCAM checkout:
+validate → post → look at a render → open in the user's browser** loop as
+tools. From a RapidCAM checkout:
 
 ```bash
 claude mcp add rapidcam -- npx tsx mcp/server.ts   # Claude Code
@@ -124,12 +137,14 @@ npm run mcp                                        # or run it directly (stdio)
 | `validate_rcam` | the full checking pipeline; returns a fix-it report |
 | `post_gcode` | machine program(s) + Apollo pre-flight lint findings |
 | `render_preview` | a PNG **image** of the design — the agent can look at what it made and catch geometry that validates but is wrong |
+| `open_in_app` | the hand-off: validate, then open the design in the **user's** browser via a share-link URL (client-side only; refuses invalid designs) |
 
 `render_preview` boots a headless browser on first call (~10 s) and reuses it
 afterwards.
 
 An effective agent loop: `get_format_guide` → author → `validate_rcam` →
-fix until clean → `render_preview` → eyeball → `post_gcode` → review lint.
+fix until clean → `render_preview` → eyeball → `post_gcode` → review lint →
+`open_in_app` to hand the finished design to the user.
 
 ---
 

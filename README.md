@@ -280,17 +280,19 @@ authoring tips in **[docs/ai-integration.md](docs/ai-integration.md)**:
   constraint solve, work-area bounds, and a G-code dry-run that catches
   operations that would cut nothing. Failures become a one-click **error
   report** you paste back so the AI fixes its own file; a successful import is
-  undoable (Ctrl+Z).
+  undoable (Ctrl+Z). Files opened from disk (**File ▸ Open**) get the same
+  review — issues appear in a dialog with the same copyable report.
 - **For web-connected AIs** — hand any agent the single URL
   [`https://rapidcam.app/llms.txt`](public/llms.txt): it indexes the format
   guide, schema, examples, and AI guide at stable URLs. (The app homepage's
   HTML also points AI readers there, so agents find it on their own.)
-- **Headless CLI** — `npm run cli -- validate|post|render <file.rcam>` runs
-  the same pipeline from a script or agent, including PNG rendering via
-  headless Chromium.
+- **Headless CLI** — `npm run cli -- validate|post|render|open <file.rcam>`
+  runs the same pipeline from a script or agent, including PNG rendering via
+  headless Chromium and `open`, which delivers a validated design straight
+  into the user's browser via a share link.
 - **MCP server** — `claude mcp add rapidcam -- npx tsx mcp/server.ts` gives
   MCP clients (Claude Code, Claude Desktop, …) the full author → validate →
-  post → *look at a render* loop as tools.
+  post → *look at a render* → *open in the user's browser* loop as tools.
 
 ---
 

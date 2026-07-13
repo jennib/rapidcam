@@ -56,7 +56,7 @@ async function gunzip(bytes: Uint8Array): Promise<string> {
 // --- encode / decode ---------------------------------------------------------
 
 /** Encode a file to a base64url payload: "g…" = gzip, "r…" = raw UTF-8 fallback. */
-async function encodeDesign(file: RcamFile): Promise<string> {
+export async function encodeDesign(file: RcamFile): Promise<string> {
   const json = JSON.stringify(file);
   if (typeof CompressionStream !== "undefined") {
     return `g${bytesToBase64Url(await gzip(json))}`;
@@ -64,7 +64,7 @@ async function encodeDesign(file: RcamFile): Promise<string> {
   return `r${bytesToBase64Url(new TextEncoder().encode(json))}`;
 }
 
-async function decodeDesign(payload: string): Promise<RcamFile> {
+export async function decodeDesign(payload: string): Promise<RcamFile> {
   const codec = payload[0];
   const bytes = base64UrlToBytes(payload.slice(1));
   let json: string;
@@ -76,14 +76,26 @@ async function decodeDesign(payload: string): Promise<RcamFile> {
 
 // --- public API --------------------------------------------------------------
 
+/**
+ * Build a share URL for an already-parsed file against an explicit app base —
+ * the headless variant of {@link buildDesignLink} for the CLI / MCP server,
+ * which have no `location`. Works in Node ≥18 (CompressionStream, btoa).
+ */
+export async function shareUrlForFile(file: RcamFile, base: string): Promise<string> {
+  const payload = await encodeDesign(file);
+  return `${base.replace(/\/+$/, "")}/#${HASH_KEY}=${payload}`;
+}
+
 /** Build a shareable link for the current document. `tooLong` warns callers to
  *  fall back to the .rcam file for designs that won't paste reliably. */
 export async function buildDesignLink(
   doc: CADDocument,
   name: string,
 ): Promise<{ url: string; tooLong: boolean }> {
-  const payload = await encodeDesign(serializeDoc(doc, name));
-  const url = `${location.origin}${location.pathname}#${HASH_KEY}=${payload}`;
+  const url = await shareUrlForFile(
+    serializeDoc(doc, name),
+    `${location.origin}${location.pathname}`,
+  );
   return { url, tooLong: url.length > MAX_LINK_LENGTH };
 }
 

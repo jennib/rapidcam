@@ -8,6 +8,7 @@
  *   validate_rcam      schema + load + reference + constraint-solve checks
  *   post_gcode         generate machine program(s) + Apollo pre-flight lint
  *   render_preview     render the design to a PNG the agent can actually see
+ *   open_in_app        open a validated design in the user's browser (share link)
  *
  * Run it with `npm run mcp`, or hook it into Claude Code with:
  *   claude mcp add rapidcam -- npx tsx mcp/server.ts
@@ -143,6 +144,42 @@ server.registerTool(
       };
     } catch (e) {
       return text(`render failed: ${(e as Error).message}`);
+    }
+  },
+);
+
+server.registerTool(
+  "open_in_app",
+  {
+    description:
+      "Open a finished .rcam design in the user's default browser — RapidCAM loads it from a share-link URL (the design travels in the URL fragment and never touches a server). Validates first and refuses to open a design with errors. Use this as the final hand-off after validate_rcam and render_preview pass.",
+    inputSchema: {
+      ...contentArg,
+      base: z
+        .string()
+        .optional()
+        .describe(
+          'App base URL. Default "https://rapidcam.app/"; use "http://localhost:5173/" against a local dev server.',
+        ),
+    },
+  },
+  async ({ content, base }) => {
+    const result = validateRcamText(content);
+    if (!result.ok) {
+      return text(`refusing to open an invalid design:\n\n${buildErrorReport(result)}`);
+    }
+    try {
+      const { buildOpenUrl, launchBrowser } = await import("../cli/open");
+      const url = await buildOpenUrl(content, base);
+      launchBrowser(url);
+      const warn = result.issues.length
+        ? ` ${result.issues.length} warning(s) noted — validate_rcam has details.`
+        : "";
+      return text(
+        `Opened in the user's browser (${url.length}-char share link; design stays client-side).${warn}`,
+      );
+    } catch (e) {
+      return text(`open failed: ${(e as Error).message}`);
     }
   },
 );
