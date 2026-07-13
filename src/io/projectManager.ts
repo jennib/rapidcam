@@ -136,6 +136,47 @@ export class ProjectManager {
     if (!result) return;
     track("project_opened");
     this.loadDocument(result.file, result.name, result.handle ?? null);
+    void this.reviewOpenedFile(result.file, result.name);
+  }
+
+  /**
+   * Post-open review: run the AI Assistant's check pipeline (schema, refs,
+   * solve, bounds, G-code dry-run) over a file just opened from disk and,
+   * when it finds problems, offer the same copyable fix-it report the
+   * paste-import shows. Runs after the document is already on screen —
+   * opening is never blocked — and stays silent for clean files, which every
+   * file RapidCAM itself saves should be. Disk files are the ones that arrive
+   * from outside (hand-edited, AI-generated), so only fileOpen reviews;
+   * recents/resume would re-nag every session for a known file.
+   */
+  private async reviewOpenedFile(file: RcamFile, name: string): Promise<void> {
+    try {
+      const [{ checkRcamText, buildErrorReport }, { loadSchemaValidator }] = await Promise.all([
+        import("./aiCheck"),
+        import("../ui/aiAssistantDialog"),
+      ]);
+      const validator = await loadSchemaValidator();
+      const result = checkRcamText(JSON.stringify(file), validator ?? undefined);
+      if (result.issues.length === 0) return;
+      track("open_check_issues", { issues: result.issues.length });
+      const shown = result.issues.slice(0, 8);
+      const lines = shown.map((i) => `[${i.check}] ${i.message}`);
+      if (result.issues.length > shown.length)
+        lines.push(`…and ${result.issues.length - shown.length} more`);
+      const n = result.issues.length;
+      const copy = await confirmDialog({
+        title: `"${name}" opened with ${n} issue${n === 1 ? "" : "s"}`,
+        message: lines.join("\n"),
+        confirmLabel: "Copy AI fix-it report",
+        cancelLabel: "Close",
+      });
+      if (copy) {
+        copyToClipboard(buildErrorReport(result, name));
+        toast("Report copied — paste it to the AI (or person) that made the file.");
+      }
+    } catch {
+      // Best-effort review; never let it interfere with opening.
+    }
   }
 
   /**

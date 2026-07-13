@@ -31,9 +31,12 @@ export interface AiAssistantCallbacks {
   onImport: (file: RcamFile, name: string) => Promise<boolean>;
 }
 
-/** The schema lives at a public URL; fetch + compile it once per session. */
+/**
+ * The schema lives at a public URL; fetch + compile it once per session.
+ * Also used by ProjectManager's post-open file review.
+ */
 let validatorPromise: Promise<SchemaValidator | null> | null = null;
-function loadSchemaValidator(): Promise<SchemaValidator | null> {
+export function loadSchemaValidator(): Promise<SchemaValidator | null> {
   validatorPromise ??= (async () => {
     try {
       const [{ default: Ajv2020 }, { formatSchemaIssue }, schema] = await Promise.all([
