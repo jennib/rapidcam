@@ -9,19 +9,19 @@
  * All coordinates are in document millimetres, in a Y-up world frame.
  */
 
-import { type Vec2, clone, add, mid, dist, sub } from "../core/vec2";
-import {
-  distToSegment,
-  distToCircle,
-  distToArc,
-  angleInArc,
-  clamp,
-  TAU,
-  flattenBezier,
-  bezierBounds,
-} from "../core/geom";
-import { nextId } from "./ids";
 import { getTextInkBox } from "../core/fontManager";
+import {
+  angleInArc,
+  bezierBounds,
+  clamp,
+  distToArc,
+  distToCircle,
+  distToSegment,
+  flattenBezier,
+  TAU,
+} from "../core/geom";
+import { add, clone, dist, mid, sub, type Vec2 } from "../core/vec2";
+import { nextId } from "./ids";
 
 export type EntityId = string;
 export type EntityType =
@@ -948,8 +948,25 @@ export class TextEntity extends Entity {
     return Math.sqrt(ddx * ddx + ddy * ddy);
   }
 
+  /** World-space centre of the ink box — the anchor used for centring/aligning
+   *  constraints. Derived from position + the (rotated) ink extents, so it moves
+   *  relative to `position` whenever the text/font/size changes; a constraint on
+   *  it therefore keeps the text centred live as you edit it (the solver reflows
+   *  `position`). */
+  centerWorld(): Vec2 {
+    const b = this.localBox();
+    const lx = (b.min.x + b.max.x) / 2;
+    const ly = (b.min.y + b.max.y) / 2;
+    const c = Math.cos(this.angle),
+      s = Math.sin(this.angle);
+    return { x: this.position.x + lx * c - ly * s, y: this.position.y + lx * s + ly * c };
+  }
+
   override snapPoints(): SnapPoint[] {
-    return [{ pos: clone(this.position), kind: "endpoint", entityId: this.id, key: "pos" }];
+    return [
+      { pos: clone(this.position), kind: "endpoint", entityId: this.id, key: "pos" },
+      { pos: this.centerWorld(), kind: "center", entityId: this.id, key: "center" },
+    ];
   }
 
   override translate(d: Vec2): void {
@@ -966,14 +983,42 @@ export class TextEntity extends Entity {
   override dofPoints(): DofPoint[] {
     return [{ key: "pos", pos: clone(this.position) }];
   }
+  // `center` is a DERIVED point (from pos + ink extents) — constrainable and
+  // pickable like an image's centre. It is NOT a dof point; the solver reaches it
+  // by perturbing `pos`, so a constraint on it reflows the text with no bespoke
+  // solver code (see dofsAffectedBy / setPoint below).
+  override pickablePoints(): DofPoint[] {
+    return [
+      { key: "pos", pos: clone(this.position) },
+      { key: "center", pos: this.centerWorld() },
+    ];
+  }
+  override dofsAffectedBy(key: string): { key: string; axis: "x" | "y" }[] {
+    if (key === "center")
+      return [
+        { key: "pos", axis: "x" },
+        { key: "pos", axis: "y" },
+      ];
+    return [
+      { key, axis: "x" },
+      { key, axis: "y" },
+    ];
+  }
 
   override getPoint(key: string): Vec2 {
     if (key === "pos") return clone(this.position);
+    if (key === "center") return this.centerWorld();
     return super.getPoint(key);
   }
 
   override setPoint(key: string, v: Vec2): void {
-    if (key === "pos") this.position = clone(v);
+    // Only the anchor is a real DOF; writing `center` translates the whole text
+    // so its centre lands on v (keeps the string/size/rotation).
+    if (key === "pos") {
+      this.position = clone(v);
+      return;
+    }
+    if (key === "center") this.position = add(this.position, sub(v, this.centerWorld()));
   }
 }
 

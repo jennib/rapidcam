@@ -1,36 +1,36 @@
-import { type Vec2, clone, dist, sub } from "../core/vec2";
+import { distToSegment } from "../core/geom";
+import { applyRotate, applyScale, selectionBounds } from "../core/transform";
+import { clone, dist, sub, type Vec2 } from "../core/vec2";
+import type { Geo } from "../model/constraints";
+import {
+  type Constraint,
+  type ConstraintType,
+  constraintAnchors,
+  type PointRef,
+  pointRefKey,
+  type SegmentRef,
+} from "../model/constraints";
+import {
+  type Dimension,
+  dimensionHitDistance,
+  dimensionLayout,
+  dimensionOffsetFromCursor,
+} from "../model/dimensions";
+import type { CADDocument, DocSnapshot } from "../model/document";
 import {
   type Bounds,
   type LineEntity,
+  PolylineEntity,
   type SnapPoint,
   TextEntity,
-  PolylineEntity,
 } from "../model/entities";
-import {
-  type PointRef,
-  pointRefKey,
-  type Constraint,
-  constraintAnchors,
-  type ConstraintType,
-  type SegmentRef,
-} from "../model/constraints";
-import type { CADDocument, DocSnapshot } from "../model/document";
-import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
-import type { Viewport } from "../view/viewport";
-import {
-  dimensionHitDistance,
-  dimensionOffsetFromCursor,
-  type Dimension,
-  dimensionLayout,
-} from "../model/dimensions";
-import type { Geo } from "../model/constraints";
-import { distToSegment } from "../core/geom";
 import type { PinMap } from "../solver/solver";
-import { selectionBounds, applyScale, applyRotate } from "../core/transform";
-import type { TransformBox, TransformHandle } from "../view/overlay";
-import { ICONS } from "./icons";
 import { buildConstraintsFor } from "../ui/constraintBar";
 import { openTextDialog } from "../ui/textEditDialog";
+import type { TransformBox, TransformHandle } from "../view/overlay";
+import type { Viewport } from "../view/viewport";
+import { ICONS } from "./icons";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 
 const CONSTRAINT_KEYS: Record<string, ConstraintType> = {
   h: "horizontal",
@@ -591,6 +591,9 @@ export class SelectTool implements Tool {
           hitEnt.fontId = p.fontId;
           hitEnt.sizeMM = p.sizeMM;
           hitEnt.angle = p.angle;
+          // Re-solve so any centring/alignment constraint on the text re-flows it
+          // to fit the new string/size (the ink extents changed).
+          ctx.solve();
           ctx.doc.emitChange();
         },
       );
