@@ -502,6 +502,13 @@ enclosing loop); in practice they're produced by region-picking in the toolpath
 dialog. A single closed entity (circle, rectangle, closed polyline) is a one-id
 loop, e.g. `{ "containingLoops": [ ["circle-7"] ] }`.
 
+When hand-authoring, **naming just the innermost boundary loop is enough**: a
+non-listed loop that fully contains the referenced area (e.g. the part outline
+around a recessed panel) is treated as an additional containing loop, not
+subtracted. Only loops that genuinely cut into the region (islands, overlapping
+shapes) affect it. The app's region picker records the complete containing set;
+both spellings resolve to the same face.
+
 ```jsonc
 { "id": "op1", "name": "Profile outline", "type": "profile",
   "entityIds": ["ent1"], "side": "outside",

@@ -1339,6 +1339,10 @@ function toolpathBody(
   if (op.type === "vcarve" && op.toolType !== "v-bit")
     return [`; NOTE: v-carve requires a V-bit tool — skipped`];
 
+  /** Human/AI-readable summary of a region ref for skip NOTEs. */
+  const describeRegionRef = (ref: { containingLoops: string[][] }): string =>
+    `[${ref.containingLoops.map((ids) => ids.join("+")).join(", ")}]`;
+
   // Region v-carves: resolve each parametric region against live geometry (its
   // enclosed loops become counters/holes) and peel-carve it. Mirrors region
   // pockets and supersedes any entity-based fallback for picked regions.
@@ -1348,7 +1352,7 @@ function toolpathBody(
       const region = resolveRegion(ref, loops);
       if (!region) {
         lines.push(
-          `; NOTE: a v-carve region could not be resolved — its boundary geometry changed or was removed — skipped`,
+          `; NOTE: v-carve region ${describeRegionRef(ref)} could not be resolved — its boundary ids must name existing geometry forming closed loop(s) — skipped`,
         );
         continue;
       }
@@ -1368,7 +1372,7 @@ function toolpathBody(
       const region = resolveRegion(ref, loops);
       if (!region) {
         lines.push(
-          `; NOTE: a pocket region could not be resolved — its boundary geometry changed or was removed — skipped`,
+          `; NOTE: pocket region ${describeRegionRef(ref)} could not be resolved — its boundary ids must name existing geometry forming closed loop(s) — skipped`,
         );
         continue;
       }
