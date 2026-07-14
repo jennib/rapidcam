@@ -79,17 +79,13 @@ export function dogbonePoint(
     const distFromCorner = toolR * (1 / s - 1);
     if (distFromCorner <= 1e-6) return null;
 
-    // u + w is the internal bisector (into the loop interior).
-    // For inside profiles, the true corner is outward, so the overcut runs the opposite way.
-    // For outside profiles, the true corner is inward, so the overcut runs into the loop interior.
+    // u + w is the internal bisector (pointing into the loop interior, away from the true corner).
+    // Moving in the -bis direction moves exactly into the true corner, regardless of whether
+    // it's an inside or outside profile.
     const bis = normalize({ x: u.x + w.x, y: u.y + w.y });
     if (len(bis) === 0) return null; // ~180°, no real corner
     
-    if (side === "inside") {
-      return { x: v.x - bis.x * distFromCorner, y: v.y - bis.y * distFromCorner };
-    } else {
-      return { x: v.x + bis.x * distFromCorner, y: v.y + bis.y * distFromCorner };
-    }
+    return { x: v.x - bis.x * distFromCorner, y: v.y - bis.y * distFromCorner };
   }
 }
 
