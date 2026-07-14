@@ -65,6 +65,8 @@ import { TrimTool } from "./tools/trimTool";
 import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
 import { AlignBar } from "./ui/alignBar";
 import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
+import { GENERATORS, findFeatureForEntities } from "./generators/index";
+import { openGeneratorDialog } from "./ui/generatorDialog";
 import { CamBar } from "./ui/camBar";
 import { ConstraintBar } from "./ui/constraintBar";
 import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
@@ -308,6 +310,25 @@ export class App {
         onRegeneratePatterns: () => this.doRegeneratePatterns(),
         onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
+        generators: Object.values(GENERATORS).map((g) => ({ id: g.id, name: g.name })),
+        onInsertGenerator: (id) =>
+          openGeneratorDialog(this.doc, this.project.pushHistory, GENERATORS[id]),
+        onEditFeature: () => {
+          const feat = findFeatureForEntities(
+            this.doc,
+            this.doc.selected.map((e) => e.id),
+          );
+          if (!feat) {
+            alert("Select a generated feature to edit.");
+            return;
+          }
+          openGeneratorDialog(
+            this.doc,
+            this.project.pushHistory,
+            GENERATORS[feat.generatorId],
+            feat.id,
+          );
+        },
       },
       view: {
         onFit: () => this.fitView(),

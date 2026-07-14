@@ -12,6 +12,12 @@ export interface EditMenuCallbacks {
   onRegeneratePatterns: () => void;
   onRectArray: () => void;
   onCircArray: () => void;
+  /** Available parametric generators, listed under the menu. */
+  generators: { id: string; name: string }[];
+  /** Insert a new feature from the generator with this id. */
+  onInsertGenerator: (id: string) => void;
+  /** Edit the generator feature the current selection belongs to. */
+  onEditFeature: () => void;
 }
 
 export class EditMenu {
@@ -120,6 +126,19 @@ export class EditMenu {
       this.close();
       this.cb.onCircArray();
     });
+    if (this.cb.generators.length > 0) {
+      this.sep();
+      for (const g of this.cb.generators) {
+        this.item(`${g.name}…`, "", () => {
+          this.close();
+          this.cb.onInsertGenerator(g.id);
+        });
+      }
+      this.item("Edit Feature…", "", () => {
+        this.close();
+        this.cb.onEditFeature();
+      });
+    }
   }
 
   private sep(): void {

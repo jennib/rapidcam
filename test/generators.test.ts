@@ -3,7 +3,12 @@ import { CADDocument } from "../src/model/document";
 import { ArcEntity, PolylineEntity } from "../src/model/entities";
 import { Sketch } from "../src/generators/sketch";
 import { boxJoint } from "../src/generators/boxJoint";
-import { GENERATORS, regenerateFeature, runGenerator } from "../src/generators/index";
+import {
+  GENERATORS,
+  findFeatureForEntities,
+  regenerateFeature,
+  runGenerator,
+} from "../src/generators/index";
 import { applyFile, serializeDoc } from "../src/io/fileio";
 
 test("Sketch takes angles in degrees and converts to internal radians", () => {
@@ -84,6 +89,15 @@ test("regenerateFeature rebuilds geometry in place, keeping feature identity", (
   expect(doc.entities.some((e) => e.id === firstEntityId)).toBe(false); // old geometry gone
   expect(again!.feature.params.fingers).toBe(8);
   expect(again!.feature.params.width).toBe(120); // untouched param preserved through merge
+});
+
+test("findFeatureForEntities maps a selected entity back to its feature", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const res = runGenerator(doc, GENERATORS["box-joint"], { fingers: 4 });
+  const memberId = res.group.entityIds[0];
+
+  expect(findFeatureForEntities(doc, [memberId])).toBe(res.feature);
+  expect(findFeatureForEntities(doc, ["not-a-real-id"])).toBeNull();
 });
 
 test("features survive a serialize → applyFile round-trip", () => {

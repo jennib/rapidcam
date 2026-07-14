@@ -31,6 +31,23 @@ export const GENERATORS: Record<string, Generator> = {
   [boxJoint.id]: boxJoint,
 };
 
+/**
+ * The feature (if any) whose group holds one of `entityIds` — i.e. the generated
+ * feature the current selection belongs to. Lets the UI offer "edit this feature"
+ * when a piece of generated geometry is selected. Returns the first match.
+ */
+export function findFeatureForEntities(
+  doc: CADDocument,
+  entityIds: readonly string[],
+): FeatureInstance | null {
+  const ids = new Set(entityIds);
+  for (const f of doc.features) {
+    const group = doc.groups.find((g) => g.id === f.groupId);
+    if (group && group.entityIds.some((id) => ids.has(id))) return f;
+  }
+  return null;
+}
+
 /** The outcome of committing a generator run onto a document. */
 export interface GeneratorResult {
   feature: FeatureInstance;
