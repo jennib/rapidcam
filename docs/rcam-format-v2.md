@@ -386,6 +386,8 @@ dependency order, so declaration order doesn't matter; a reference cycle (or a
 self-reference) leaves those variables at their last value rather than looping.
 Bare numbers inside a formula are millimetres (like dimension formulas).
 
+The global constant `stock` (or `$stock`) is always available to expressions and evaluates to the project's `stockThickness` in mm. This allows parametric designs (e.g. box joints) to automatically scale to the material thickness.
+
 ```json
 { "id": "var1", "name": "pcd", "expr": "60mm", "value": 60 }
 { "id": "var2", "name": "margin", "expr": "pcd * 0.1", "value": 6 }

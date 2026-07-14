@@ -178,6 +178,12 @@ highest-leverage habits:
   drill needs none of them.
 - **`depth` is negative for cuts** (mm below the stock surface). A through
   cut goes slightly past the stock thickness.
+- **`$stock` (or `stock`) is available in expressions.** It evaluates to the
+  global `stockThickness` in mm. If you want a parametric depth (e.g. for a box
+  joint), use `"expr": "stock"` or `"expr": "stock + 0.1"` rather than a hardcoded number.
+- **T-Bones and Dog-bones are supported.** Use `"cornerStyle": "tbone"` or `"dogbone"`
+  on `profile` and `pocket` operations if the tool needs to reach sharp inside
+  corners for mating parts.
 - **Closed shapes can be composite.** A rounded rectangle authored as 4 lines
   + 4 tangent fillet arcs profiles as one closed loop — endpoints just have
   to meet.
