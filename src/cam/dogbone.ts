@@ -70,7 +70,7 @@ export function dogbonePoint(
     const dir = dU > dW ? u : w; 
     const distFromCorner = toolR / Math.tan(ang / 2);
     if (distFromCorner <= 1e-6) return null;
-    return { x: v.x + dir.x * distFromCorner, y: v.y + dir.y * distFromCorner };
+    return { x: v.x - dir.x * distFromCorner, y: v.y - dir.y * distFromCorner };
   } else {
     // Dogbone: Move along the bisector.
     const s = Math.sin(ang / 2);

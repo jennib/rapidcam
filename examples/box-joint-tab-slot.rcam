@@ -7,7 +7,7 @@
   "postProcessor": "grbl",
   "variables": [
     { "id": "var-tabwidth",   "name": "tabWidth",   "expr": "20", "value": 20 },
-    { "id": "var-fingerdepth","name": "fingerDepth","expr": "10", "value": 10 }
+    { "id": "var-fingerdepth","name": "fingerDepth","expr": "stock", "value": 6 }
   ],
   "entities": [
     {
@@ -63,6 +63,7 @@
       "depth": -6.5,
       "stepdown": 2,
       "stepover": 0.4,
+      "cornerStyle": "tbone",
       "tabs": { "enabled": true, "count": 4, "width": 5, "height": 1.5 }
     }
   ]
