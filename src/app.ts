@@ -312,7 +312,9 @@ export class App {
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
         generators: Object.values(GENERATORS).map((g) => ({ id: g.id, name: g.name })),
         onInsertGenerator: (id) =>
-          openGeneratorDialog(this.doc, this.project.pushHistory, GENERATORS[id]),
+          openGeneratorDialog(this.doc, this.project.pushHistory, GENERATORS[id], undefined, () =>
+            this.fitView(),
+          ),
         onEditFeature: () => {
           const feat = findFeatureForEntities(
             this.doc,

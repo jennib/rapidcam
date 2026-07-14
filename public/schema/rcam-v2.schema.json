@@ -228,7 +228,14 @@
           "additionalProperties": { "type": "number" },
           "description": "Parameter name → value the feature was generated with (its re-run inputs)."
         },
-        "groupId": { "type": "string", "minLength": 1, "description": "Id of the group holding this feature's entities." }
+        "groupId": { "type": "string", "minLength": 1, "description": "Id of the group holding this feature's entities." },
+        "offset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+          "description": "Translation applied to the generator's origin-based output to place it in the work area; re-applied on regenerate."
+        }
       }
     },
 

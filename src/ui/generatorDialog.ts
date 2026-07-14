@@ -26,13 +26,16 @@ interface BackdropEl extends HTMLElement {
 /**
  * Open the dialog for `gen`. If `editFeatureId` is given, the dialog edits that
  * existing feature (fields seed from its stored params, Apply regenerates);
- * otherwise it inserts a new feature.
+ * otherwise it inserts a new feature. `onInserted` runs after a fresh insert
+ * commits (used to fit the view onto the new geometry) — not on edit, so
+ * tweaking a parameter doesn't re-zoom under the user.
  */
 export function openGeneratorDialog(
   doc: CADDocument,
   pushHistory: () => void,
   gen: Generator,
   editFeatureId?: string,
+  onInserted?: () => void,
 ): void {
   const editing = editFeatureId
     ? (doc.features.find((f) => f.id === editFeatureId) ?? null)
@@ -60,8 +63,12 @@ export function openGeneratorDialog(
       params[spec.name] = Number.isFinite(raw) ? raw : spec.def;
     }
     pushHistory();
-    if (editing) regenerateFeature(doc, editing.id, params);
-    else runGenerator(doc, gen, params);
+    if (editing) {
+      regenerateFeature(doc, editing.id, params);
+    } else {
+      runGenerator(doc, gen, params);
+      onInserted?.();
+    }
   });
 
   document.body.appendChild(backdrop);

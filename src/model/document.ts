@@ -245,6 +245,13 @@ export interface FeatureInstance {
   params: Record<string, number>;
   /** Id of the group holding this feature's entities. */
   groupId: string;
+  /**
+   * Translation applied to the generator's origin-based output to place it in the
+   * work area (generators draw around (0,0); the runner centres the part on
+   * insert). Persisted and re-applied on regenerate so editing a parameter
+   * rebuilds the feature *where it sits*, not back at the origin. Absent = none.
+   */
+  offset?: { x: number; y: number };
 }
 
 export interface LayerDef {
@@ -1087,7 +1094,11 @@ export class CADDocument {
       rotary: this.rotary ? { ...this.rotary } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map((g) => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
-      features: this.features.map((f) => ({ ...f, params: { ...f.params } })),
+      features: this.features.map((f) => ({
+        ...f,
+        params: { ...f.params },
+        ...(f.offset ? { offset: { ...f.offset } } : {}),
+      })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map((l) => ({ ...l })),
       activeLayerId: this.activeLayerId,
@@ -1237,7 +1248,11 @@ export class CADDocument {
       ? s.groups.map((g) => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] }))
       : [];
     this.features = s.features
-      ? s.features.map((f) => ({ ...f, params: { ...f.params } }))
+      ? s.features.map((f) => ({
+          ...f,
+          params: { ...f.params },
+          ...(f.offset ? { offset: { ...f.offset } } : {}),
+        }))
       : [];
     for (const f of this.features) updateCounter(f.id);
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];

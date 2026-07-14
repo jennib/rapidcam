@@ -73,6 +73,30 @@ test("runGenerator commits geometry as a single grouped feature", () => {
   expect(res.feature.params.fingers).toBe(4);
 });
 
+test("runGenerator centres the part in the work area (not at the WCS origin)", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const res = runGenerator(doc, GENERATORS["box-joint"], { width: 120, height: 50 });
+  const b = res.handles[0].entity.bounds();
+  const cx = (b.min.x + b.max.x) / 2;
+  const cy = (b.min.y + b.max.y) / 2;
+  expect(cx).toBeCloseTo(100); // 200/2
+  expect(cy).toBeCloseTo(100);
+  expect(res.feature.offset).toBeDefined();
+});
+
+test("regenerateFeature keeps the part where it sits (offset preserved)", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const first = runGenerator(doc, GENERATORS["box-joint"], { width: 120, height: 50, fingers: 4 });
+  const before = first.handles[0].entity.bounds();
+
+  const again = regenerateFeature(doc, first.feature.id, { fingers: 10 });
+  const after = again!.handles[0].entity.bounds();
+  // Same footprint (width/height unchanged) → same placement, not back at origin.
+  expect(after.min.x).toBeCloseTo(before.min.x);
+  expect(after.min.y).toBeCloseTo(before.min.y);
+  expect(again!.feature.offset).toEqual(first.feature.offset);
+});
+
 test("regenerateFeature rebuilds geometry in place, keeping feature identity", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const first = runGenerator(doc, GENERATORS["box-joint"], { width: 120, fingers: 4 });

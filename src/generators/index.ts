@@ -13,8 +13,9 @@
  */
 
 import type { CADDocument, FeatureInstance, GroupDef } from "../model/document";
+import type { Entity } from "../model/entities";
 import { nextId } from "../model/ids";
-import { type Handle, Sketch, type TextFlattener } from "./sketch";
+import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
 import { boxJoint } from "./boxJoint";
 
 export interface Generator {
@@ -62,6 +63,26 @@ function effectiveParams(sketch: Sketch): Record<string, number> {
   return Object.fromEntries(sketch.params.map((p) => [p.name, p.value]));
 }
 
+/** Offset that centres `entities`' combined bounding box on the work-area centre. */
+function centreOffset(doc: CADDocument, entities: Entity[]): Pt {
+  if (entities.length === 0) return { x: 0, y: 0 };
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const e of entities) {
+    const b = e.bounds();
+    minX = Math.min(minX, b.min.x);
+    minY = Math.min(minY, b.min.y);
+    maxX = Math.max(maxX, b.max.x);
+    maxY = Math.max(maxY, b.max.y);
+  }
+  return {
+    x: doc.canvas.width / 2 - (minX + maxX) / 2,
+    y: doc.canvas.height / 2 - (minY + maxY) / 2,
+  };
+}
+
 /**
  * Run `gen` with `params` and commit the result onto `doc` as a re-editable
  * feature: every emitted entity is added, its ids collected into a group, any
@@ -77,7 +98,13 @@ export function runGenerator(
   const sketch = new Sketch({ params, flatten: opts.flatten });
   const handles = gen.build(sketch);
 
-  for (const e of sketch.entities) doc.add(e);
+  // Generators draw around the origin; place the part in the middle of the work
+  // area so it lands where the user is looking, not jammed at the WCS corner.
+  const offset = centreOffset(doc, sketch.entities);
+  for (const e of sketch.entities) {
+    e.translate(offset);
+    doc.add(e);
+  }
   for (const v of sketch.variables) doc.addVariable(v);
 
   const group: GroupDef = {
@@ -92,6 +119,7 @@ export function runGenerator(
     generatorId: gen.id,
     params: effectiveParams(sketch),
     groupId: group.id,
+    offset,
   };
   doc.features.push(feature);
   doc.emitChange();
@@ -129,7 +157,12 @@ export function regenerateFeature(
   const merged = { ...feature.params, ...newParams };
   const sketch = new Sketch({ params: merged, flatten: opts.flatten });
   const handles = gen.build(sketch);
-  for (const e of sketch.entities) doc.add(e);
+  // Re-apply the feature's stored placement so it rebuilds where it sits.
+  const offset = feature.offset ?? { x: 0, y: 0 };
+  for (const e of sketch.entities) {
+    e.translate(offset);
+    doc.add(e);
+  }
   for (const v of sketch.variables) doc.addVariable(v);
 
   group.entityIds = sketch.entities.map((e) => e.id);
