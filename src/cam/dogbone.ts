@@ -25,22 +25,34 @@ import { signedArea } from "./offset";
 const MIN_ANGLE = (20 * Math.PI) / 180;
 
 /**
- * Return the dog-bone overcut point for the corner at `v` (with neighbours `p`
+ * Return the dog-bone or T-bone overcut point for the corner at `v` (with neighbours `p`
  * and `q` on a CCW loop), or `null` if the corner shouldn't be relieved
  * (reflex, straight, too acute, or degenerate).
  *
- * The loop is the tool path, inset from the finished wall by `toolR`. The point
- * sits on the outward bisector at distance `toolR·(1/sin(θ/2) − 1)` from `v`,
- * where θ is the corner's interior angle — placing the tool centre exactly
- * `toolR` from the true corner so its edge reaches the corner.
+ * The loop is the tool path, inset from the finished wall by `toolR`.
  */
-export function dogbonePoint(p: Vec2, v: Vec2, q: Vec2, toolR: number): Vec2 | null {
+export function dogbonePoint(
+  p: Vec2,
+  v: Vec2,
+  q: Vec2,
+  toolR: number,
+  side: "inside" | "outside" = "inside",
+  style: "dogbone" | "tbone" = "dogbone"
+): Vec2 | null {
   if (toolR <= 0) return null;
   const e1 = sub(v, p); // incoming edge direction
   const e2 = sub(q, v); // outgoing edge direction
-  // On a CCW loop, a left turn (cross > 0) is a convex corner — the only kind
-  // that leaves a fillet. Reflex/straight corners never need a dog-bone.
-  if (cross(e1, e2) <= 1e-9) return null;
+  const c = cross(e1, e2);
+  
+  if (side === "inside") {
+    // On a CCW loop, a left turn (cross > 0) is a convex corner — the only kind
+    // that leaves a fillet on an inside profile.
+    if (c <= 1e-9) return null;
+  } else {
+    // On a CCW loop, a right turn (cross < 0) is a concave corner — the only kind
+    // that leaves a fillet on an outside profile.
+    if (c >= -1e-9) return null;
+  }
 
   const u = normalize(sub(p, v)); // unit toward previous vertex
   const w = normalize(sub(q, v)); // unit toward next vertex
@@ -48,26 +60,51 @@ export function dogbonePoint(p: Vec2, v: Vec2, q: Vec2, toolR: number): Vec2 | n
 
   const ang = Math.acos(Math.max(-1, Math.min(1, dot(u, w)))); // interior angle
   if (ang < MIN_ANGLE) return null; // too acute to relieve
-  const s = Math.sin(ang / 2);
-  if (s < 1e-6) return null;
 
-  const distFromCorner = toolR * (1 / s - 1);
-  if (distFromCorner <= 1e-6) return null;
+  if (style === "tbone") {
+    // A T-bone relief extends parallel to one of the walls. To preserve the longer
+    // wall, we overcut the shorter wall. Moving along `u` overcuts the outgoing wall
+    // and preserves the incoming wall.
+    const dU = len(sub(v, p));
+    const dW = len(sub(q, v));
+    const dir = dU > dW ? u : w; 
+    const distFromCorner = toolR / Math.tan(ang / 2);
+    if (distFromCorner <= 1e-6) return null;
+    return { x: v.x + dir.x * distFromCorner, y: v.y + dir.y * distFromCorner };
+  } else {
+    // Dogbone: Move along the bisector.
+    const s = Math.sin(ang / 2);
+    if (s < 1e-6) return null;
 
-  // u + w is the internal bisector (into the loop interior); the true corner is
-  // outward, so the overcut runs the opposite way.
-  const bis = normalize({ x: u.x + w.x, y: u.y + w.y });
-  if (len(bis) === 0) return null; // ~180°, no real corner
-  return { x: v.x - bis.x * distFromCorner, y: v.y - bis.y * distFromCorner };
+    const distFromCorner = toolR * (1 / s - 1);
+    if (distFromCorner <= 1e-6) return null;
+
+    // u + w is the internal bisector (into the loop interior).
+    // For inside profiles, the true corner is outward, so the overcut runs the opposite way.
+    // For outside profiles, the true corner is inward, so the overcut runs into the loop interior.
+    const bis = normalize({ x: u.x + w.x, y: u.y + w.y });
+    if (len(bis) === 0) return null; // ~180°, no real corner
+    
+    if (side === "inside") {
+      return { x: v.x - bis.x * distFromCorner, y: v.y - bis.y * distFromCorner };
+    } else {
+      return { x: v.x + bis.x * distFromCorner, y: v.y + bis.y * distFromCorner };
+    }
+  }
 }
 
 /**
- * Insert dog-bone spurs into a closed wall loop (vertices in order, the closing
+ * Insert corner relief spurs into a closed wall loop (vertices in order, the closing
  * edge implied — no repeated first point, matching `offsetPolygon` output).
  * Returns a new loop; the input is unchanged. A no-op loop (nothing to relieve)
  * comes back with the same vertices.
  */
-export function addDogbones(loop: Vec2[], toolR: number): Vec2[] {
+export function addCornerReliefs(
+  loop: Vec2[],
+  toolR: number,
+  side: "inside" | "outside" = "inside",
+  style: "dogbone" | "tbone" = "dogbone"
+): Vec2[] {
   const n = loop.length;
   if (n < 3 || toolR <= 0) return loop;
   // Work CCW so `dogbonePoint`'s left-turn test identifies convex corners.
@@ -79,11 +116,11 @@ export function addDogbones(loop: Vec2[], toolR: number): Vec2[] {
     const p = ccw[(i - 1 + n) % n];
     const q = ccw[(i + 1) % n];
     out.push({ x: v.x, y: v.y });
-    const spur = dogbonePoint(p, v, q, toolR);
+    const spur = dogbonePoint(p, v, q, toolR, side, style);
     if (spur) {
       out.push(spur);
       out.push({ x: v.x, y: v.y }); // return to the corner before continuing
     }
   }
-  return out;
+  return signedArea(loop) >= 0 ? out : out.reverse();
 }

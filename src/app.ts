@@ -633,7 +633,7 @@ export class App {
   }
 
   private runSolve(pins?: PinMap): void {
-    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit);
+    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit, this.doc.stockThickness);
     const res = solve(this.doc, pins);
     if (!pins) {
       this.lastSolveResult = res;
@@ -905,7 +905,7 @@ export class App {
       container: this.canvas.parentElement!,
       screenPos: this.view.worldToScreen(layout.textPos),
       displayUnit: this.doc.displayUnit,
-      vars: varMap(this.doc.variables),
+      vars: varMap(this.doc.variables, this.doc.stockThickness),
       onCommit: (v, expr) => this.commitDimValue(dim, v, expr),
     });
   }

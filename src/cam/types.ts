@@ -169,13 +169,14 @@ export interface CAMOperation {
    */
   cutDirection?: "climb" | "conventional";
   /**
-   * Corner relief for female (inside) cuts. A round tool leaves a fillet in every
-   * inside corner of a pocket / inside profile, so a mating square part won't
+   * Corner relief for female corners. A round tool leaves a fillet in every
+   * concave corner of the material (e.g. inside corners of a pocket, or where tabs
+   * meet the body on an outside profile), so a mating square part won't
    * seat. `"dogbone"` adds a diagonal overcut at each such corner so the tool
-   * reaches the true corner. `"none"` (default) leaves the fillets. Only applies
-   * to pockets and inside profiles; ignored elsewhere.
+   * reaches the true corner. `"tbone"` adds a parallel overcut extending the longer
+   * wall. `"none"` (default) leaves the fillets.
    */
-  cornerStyle?: "none" | "dogbone";
+  cornerStyle?: "none" | "dogbone" | "tbone";
   /**
    * Radial stock (mm) left on the walls during roughing and removed by the
    * finishing pass. Only used when `finishPass` is true; default 0.2. Clamped

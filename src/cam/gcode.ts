@@ -23,7 +23,7 @@ import {
   resolveOpTool,
 } from "./types";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
-import { addDogbones } from "./dogbone";
+import { addCornerReliefs } from "./dogbone";
 
 /**
  * Reorient a profile toolpath loop so it travels in the requested cut direction,
@@ -274,12 +274,12 @@ function profilePolygon(
   };
 
   // Anchor the lead/plunge mid-edge only when a lead is used (otherwise leave the
-  // start at the natural corner — no silent change to plain profiles). Inside
   // profiles optionally get dog-bone corner relief first (a female feature that
-  // must seat a square part); outside profiles never need it.
-  const dogbone = op.side === "inside" && op.cornerStyle === "dogbone";
+  // must seat a square part); outside profiles optionally get it for tabs.
+  const dogbone = op.cornerStyle === "dogbone" || op.cornerStyle === "tbone";
+  const dogboneSide = op.type === "profile" && op.side === "outside" ? "outside" : "inside";
   const prep = (raw: Vec2[]): Vec2[] => {
-    const db = dogbone ? addDogbones(raw, toolR) : raw;
+    const db = dogbone ? addCornerReliefs(raw, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone") : raw;
     const dir = orientForCut(db, op);
     return useLead ? startAtLongestEdgeMid(dir) : dir;
   };
@@ -503,7 +503,7 @@ function pocketPolygon(
   // dog-bone request also needs the wall lap (that's where the corner relief is
   // cut), even without an explicit finishing pass.
   const cleared = lines.some((l) => /^G[0-3]\b/.test(l));
-  if ((op.finishPass || op.cornerStyle === "dogbone") && cleared)
+  if ((op.finishPass || op.cornerStyle === "dogbone" || op.cornerStyle === "tbone") && cleared)
     lines.push(...pocketWallFinish(verts, islands, op, ox, oy, zOff));
   return lines;
 }
@@ -527,8 +527,11 @@ function pocketWallFinish(
   if (walls.length === 0) return [];
 
   // Dog-bone corner relief lives on the region walls (not the islands): the
-  // inside corners of the pocket are what must seat a square part.
-  const wallLoops = op.cornerStyle === "dogbone" ? walls.map((w) => addDogbones(w, toolR)) : walls;
+  const dogboneSide = op.type === "profile" && op.side === "outside" ? "outside" : "inside";
+  const wallLoops =
+    op.cornerStyle === "dogbone" || op.cornerStyle === "tbone"
+      ? walls.map((w) => addCornerReliefs(w, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone"))
+      : walls;
 
   const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
   for (const w of wallLoops) lines.push(...finishContour(w, op.depth, op.depth, op, ox, oy, zOff));

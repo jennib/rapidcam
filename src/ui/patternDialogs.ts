@@ -269,7 +269,7 @@ function findPatternInSelection(doc: CADDocument, kind: "linear" | "circular"): 
 function resolveSpacing(raw: string, doc: CADDocument): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const vm = varMap(doc.variables);
+  const vm = varMap(doc.variables, doc.stockThickness);
   const exprVal = evalExpr(trimmed, vm);
   if (exprVal !== null && Number.isFinite(exprVal)) return exprVal;
   const num = parseFloat(trimmed);

@@ -24,9 +24,10 @@ export function makeVariable(name: string, expr: string, displayUnit: Unit): Var
 }
 
 /** Build a name→value map suitable for evalExpr(). */
-export function varMap(variables: Variable[]): Map<string, number> {
+export function varMap(variables: Variable[], stockThickness?: number): Map<string, number> {
   const m = new Map<string, number>();
   for (const v of variables) m.set(v.name, v.value);
+  if (stockThickness !== undefined) m.set("stock", stockThickness);
   return m;
 }
 
@@ -51,7 +52,7 @@ function referencedVars(expr: string, names: Set<string>): string[] {
  * dimension formulas). Variables caught in a reference cycle (incl. self-ref) are
  * left at their previous value — no infinite loop. O(V+E) Kahn's sort.
  */
-export function evaluateVariables(variables: Variable[], displayUnit: Unit): void {
+export function evaluateVariables(variables: Variable[], displayUnit: Unit, stockThickness?: number): void {
   const byName = new Map(variables.map((v) => [v.name, v]));
   const names = new Set(byName.keys());
 
@@ -73,6 +74,7 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit): voi
   const ready = variables.filter((v) => indeg.get(v.name) === 0).map((v) => v.name);
   const vm = new Map<string, number>();
   for (const v of variables) vm.set(v.name, v.value); // seed (cyclic vars keep these)
+  if (stockThickness !== undefined) vm.set("stock", stockThickness);
 
   while (ready.length) {
     const name = ready.shift()!;
@@ -94,13 +96,13 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit): voi
  * circle radius, image width/height/angle, etc. — are ScalarBindings resolved by
  * the solver, not here.)
  */
-export function evaluateAll(variables: Variable[], dims: Dimension[], displayUnit: Unit): void {
+export function evaluateAll(variables: Variable[], dims: Dimension[], displayUnit: Unit, stockThickness?: number): void {
   // Phase 1: evaluate variables in dependency order (supports variable-to-variable
   // references, e.g. margin = width * 0.1).
-  evaluateVariables(variables, displayUnit);
+  evaluateVariables(variables, displayUnit, stockThickness);
 
   // Phase 2: update dimension values from their expressions
-  const vm: VarMap = varMap(variables);
+  const vm: VarMap = varMap(variables, stockThickness);
   for (const d of dims) {
     if (!d.expr) continue;
     const v = evalExpr(d.expr, vm);

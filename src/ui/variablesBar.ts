@@ -106,7 +106,7 @@ export class VariablesBar {
       // Flag a formula that no longer resolves (e.g. references a deleted variable).
       if (
         parseLength(v.expr, this.doc.displayUnit) === null &&
-        evalExpr(v.expr, varMap(this.doc.variables)) === null
+        evalExpr(v.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null
       ) {
         valInput.style.borderColor = "var(--danger, #e05555)";
         valInput.title = "⚠ Formula error — unknown variable or invalid expression";

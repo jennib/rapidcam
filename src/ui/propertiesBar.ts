@@ -341,7 +341,7 @@ export class PropertiesBar {
           : formatLength(dim.value, this.doc.displayUnit);
     // Flag a driving dimension whose formula no longer evaluates (a deleted variable) —
     // it silently keeps its last value otherwise, which would post a wrong toolpath.
-    if (dim.expr && evalExpr(dim.expr, varMap(this.doc.variables)) === null)
+    if (dim.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null)
       inp.style.borderColor = "var(--danger, #e05555)";
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
@@ -352,7 +352,7 @@ export class PropertiesBar {
       } else {
         v = parseLength(raw, this.doc.displayUnit);
         if (v === null) {
-          const ev = evalExpr(raw, varMap(this.doc.variables));
+          const ev = evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness));
           if (ev !== null) {
             v = ev;
             expr = raw;
@@ -520,7 +520,7 @@ export class PropertiesBar {
     inp.value = binding ? binding.expr : currentValue.toFixed(decimals);
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
     // deleted) is flagged red — the value silently held its last number otherwise.
-    const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables)) === null;
+    const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
@@ -560,7 +560,7 @@ export class PropertiesBar {
         });
         return;
       }
-      const ev = evalExpr(raw, varMap(this.doc.variables));
+      const ev = evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness));
       if (ev === null) {
         this.flashInput(inp);
         reset();
@@ -630,7 +630,7 @@ export class PropertiesBar {
     inp.type = "text";
     inp.style.flex = "1";
     inp.value = dim?.expr ?? currentValue.toFixed(decimals);
-    const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables)) === null;
+    const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const d = findDim();
@@ -688,7 +688,7 @@ export class PropertiesBar {
         });
         return;
       }
-      if (evalExpr(raw, varMap(this.doc.variables)) === null) {
+      if (evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness)) === null) {
         this.flashInput(inp);
         reset();
         return;

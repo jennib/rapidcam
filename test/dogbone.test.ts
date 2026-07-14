@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { addDogbones, dogbonePoint } from "../src/cam/dogbone";
+import { addCornerReliefs, dogbonePoint } from "../src/cam/dogbone";
 import type { Vec2 } from "../src/core/vec2";
 
 // A CCW square wall loop of side 2·s centred at origin. This models the tool
@@ -17,7 +17,7 @@ const edgeToPoint = (c: Vec2, r: number, p: Vec2): number =>
 
 test("a square pocket gets exactly one spur per corner", () => {
   const loop = square(10);
-  const out = addDogbones(loop, 3);
+  const out = addCornerReliefs(loop, 3);
   // Each of the 4 corners expands from [v] to [v, spur, v]: +2 points each.
   expect(out.length).toBe(loop.length + 4 * 2);
 });
@@ -96,19 +96,19 @@ test("acute (but relievable) corners overcut further than right-angle ones", () 
 
 test("winding is normalised — a CW loop relieves the same corners", () => {
   const cw = square(10).slice().reverse(); // clockwise
-  const out = addDogbones(cw, 3);
+  const out = addCornerReliefs(cw, 3);
   expect(out.length).toBe(cw.length + 4 * 2);
 });
 
 test("zero / negative tool radius is a no-op", () => {
   const loop = square(10);
-  expect(addDogbones(loop, 0)).toBe(loop);
-  expect(addDogbones(loop, -1)).toBe(loop);
+  expect(addCornerReliefs(loop, 0)).toBe(loop);
+  expect(addCornerReliefs(loop, -1)).toBe(loop);
 });
 
-test("addDogbones does not mutate its input", () => {
+test("addCornerReliefs does not mutate its input", () => {
   const loop = square(10);
   const before = JSON.stringify(loop);
-  addDogbones(loop, 3);
+  addCornerReliefs(loop, 3);
   expect(JSON.stringify(loop)).toBe(before);
 });

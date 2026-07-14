@@ -49,7 +49,7 @@ function resolveExpr(
 }
 
 function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPatternParams {
-  const vm = varMap(doc.variables);
+  const vm = varMap(doc.variables, doc.stockThickness);
   return {
     ...p,
     countX: Math.max(1, Math.round(resolveExpr(p.countXExpr, p.countX, vm))),
@@ -60,7 +60,7 @@ function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPa
 }
 
 function resolveCircularParams(doc: CADDocument, p: CircularPatternParams): CircularPatternParams {
-  const vm = varMap(doc.variables);
+  const vm = varMap(doc.variables, doc.stockThickness);
   return { ...p, count: Math.max(2, Math.round(resolveExpr(p.countExpr, p.count, vm))) };
 }
 

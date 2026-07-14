@@ -95,7 +95,7 @@ interface OpState {
   tabWidth: number;
   tabHeight: number;
   stepover: number;
-  cornerStyle: "none" | "dogbone";
+  cornerStyle: "none" | "dogbone" | "tbone";
   cutDirection: "climb" | "conventional";
   /** Plunge ramp angle override (deg); undefined = per-context default. */
   rampAngle?: number;
@@ -1107,6 +1107,7 @@ export class CamBar {
     for (const [v, l] of [
       ["none", "None (leave fillet)"],
       ["dogbone", "Dog-bone"],
+      ["tbone", "T-bone"],
     ] as const) {
       const o = document.createElement("option");
       o.value = v;
@@ -1115,7 +1116,7 @@ export class CamBar {
     }
     cornerSelect.value = state.cornerStyle;
     cornerSelect.addEventListener("change", () => {
-      state.cornerStyle = cornerSelect.value as "none" | "dogbone";
+      state.cornerStyle = cornerSelect.value as "none" | "dogbone" | "tbone";
     });
     const cornerRow = this.dField("Corner overcut", cornerSelect);
     cutSec.appendChild(cornerRow);
@@ -1380,7 +1381,7 @@ export class CamBar {
       finishAllowRow.style.display =
         (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
       cornerRow.style.display =
-        state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
+        state.combo.startsWith("profile") || state.combo === "pocket" ? "" : "none";
       dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
       const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
       rampRow.style.display = showRamp ? "" : "none";
@@ -1504,11 +1505,11 @@ export class CamBar {
         peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
         finishPass:
           (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
-        // Dog-bone corner relief applies only to female features (inside profile / pocket).
+        // Dog-bone corner relief applies to female corners (inside pocket, or concave corners on outside profile).
         cornerStyle:
-          (state.combo === "profile-inside" || state.combo === "pocket") &&
-          state.cornerStyle === "dogbone"
-            ? "dogbone"
+          (state.combo.startsWith("profile") || state.combo === "pocket") &&
+          (state.cornerStyle === "dogbone" || state.cornerStyle === "tbone")
+            ? state.cornerStyle
             : undefined,
         // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
         rampAngle:
