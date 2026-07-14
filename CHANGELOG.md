@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Align / Center** — a new **Align** toolbar (and right-click entries) centres the selected item(s) inside a container in one click: **Center H**, **Center V**, or **Center** (both). Select the thing to move plus the shape to centre it in — a rectangle (including one drawn as four separate lines), a circle, or another block — and click. The relationship is **fully live but one-way**: the mover re-centres as you edit it *and* follows the container when the container is moved or resized, while the container itself never moves. Implemented as a directional `center` constraint (the solver snapshots the reference centre each solve, so it drives the mover without ever being dragged by it); a reference with no single centre point uses the midpoint of its two diagonal corners. Adds the `center` constraint type to the `.rcam` format and JSON Schema.
+- **Text is dimensionable** — a text entity now exposes its ink-box corners (`bl`/`br`/`tr`/`tl`), edge midpoints, and `centre` as snap/pick points, so you can dimension a text block's width/height or its distance from a nearby edge, and constrain those points like a rectangle's. The points are derived from the anchor plus the live glyph extents, so a constraint on one translates the (rigid) text and re-solves as the string is edited.
+
+### Fixed
+- Editing a text entity's string/font/size/angle from the Properties panel now re-solves, so a centring or alignment constraint re-flows to fit the change.
+- Text centred against the bundled default font now stays centred when a design is reopened (the solve waited for the async font to load).
+- A dimension drawn across a single text block's own box is created as a **reference** dimension (a text's size lives in its font, not the solver, so such a dimension can't drive it).
+
 ## [1.5.0] — 2026-07-11
 
 Rotary jobs can zero to the cylinder centre, so the posted program lines up with

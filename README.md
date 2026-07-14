@@ -73,6 +73,12 @@ Line-type constraints (horizontal, vertical, parallel, perpendicular, collinear,
 
 **Engrave images can be positioned by constraints** too — an image exposes its four corners and centre as snap/pick points, so you can make a corner *coincident* with a hole, centre it on a point, or put a corner *on* a line/circle, and the image reflows to follow. An unconstrained image is treated as a rigid body (a point constraint translates it; size and rotation are set in the Properties panel or by formulas), so positioning it never distorts it.
 
+**Text exposes its box** — the ink-box corners, edge midpoints and centre — as snap/pick points too, so you can dimension a text block's size or its distance from an edge. Editing the string keeps those relationships live.
+
+### Align / Center
+
+The **Align** toolbar (and the right-click menu) centres the selected item(s) inside a container in one click — **Center H**, **Center V**, or **Center** (both). Select the thing to move plus the shape to centre it in (a rectangle — including one drawn as four lines — a circle, or another block) and click. It's **fully live but one-way**: the mover re-centres as you edit it *and* follows the container if you move or resize it, while the container itself never moves. (Under the hood it's a directional `center` constraint; delete it to un-centre.)
+
 **DOF-based entity colouring:** After each solve, every entity is coloured by its constraint status — **blue** = under-defined (free DOFs remain), **normal** = fully defined, **red** = over-constrained or conflicting. The analysis uses RREF null-space decomposition so that mutual dependencies between entities are handled correctly.
 
 ### Driving dimensions vs. reference dimensions

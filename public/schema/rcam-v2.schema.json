@@ -439,7 +439,7 @@
             "coincident", "horizontal", "vertical", "parallel", "perpendicular",
             "equal", "concentric", "pointOnLine", "tangent", "pointOnArc",
             "pointOnCircle", "symmetric", "collinear", "midpoint", "angle",
-            "fixedPoint", "fixed"
+            "fixedPoint", "center", "fixed"
           ]
         },
         "points": {
@@ -455,7 +455,7 @@
         "params": {
           "type": "array",
           "items": { "type": "number" },
-          "description": "Type-specific numbers: angle→[radians]; fixedPoint→[x, y]."
+          "description": "Type-specific numbers: angle→[radians]; fixedPoint→[x, y]; center→optional [axis] (0=X-only, 1=Y-only; omit for both)."
         }
       }
     },

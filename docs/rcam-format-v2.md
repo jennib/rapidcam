@@ -229,7 +229,7 @@ these right is the single most important thing when authoring constraints.
 | `arc` | `center`, `radius`, `startAngle`, `endAngle` (rad, CCW) | `c` center; `start`, `end` (derived) | `r`, `sa`, `ea` |
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
 | `point` | `pos` (Vec2) | `p` | — |
-| `text` | `text`, `fontId`, `sizeMM`, `position`, `angle` (rad) | `pos` baseline-left anchor | — |
+| `text` | `text`, `fontId`, `sizeMM`, `position`, `angle` (rad) | `pos` baseline-left anchor; ink-box `bl` `br` `tr` `tl`, edge mids `mid_b` `mid_r` `mid_t` `mid_l`, `center` (all derived) | — |
 | `image` | `imageId`, `position` (bottom-left), `widthMM`, `heightMM`, `angle` (rad) | `pos` bottom-left anchor | — |
 
 Notes:
@@ -251,6 +251,14 @@ Notes:
 - `fontId` is either a bundled font (e.g. `"roboto-regular"`) or a `"font-XXXXXXXX"`
   id present in the top-level [`fonts`](#fonts) array. Text stays editable until CAM
   export, where it is expanded to glyph contours.
+- A **text** entity exposes its ink-box corners `bl`/`br`/`tr`/`tl`, edge midpoints
+  `mid_b`/`mid_r`/`mid_t`/`mid_l`, and `center` as derived point keys — dimension or
+  constrain them like a rectangle's. They are derived from the anchor plus the live
+  glyph extents (rotated by `angle`), so `position` (`pos`) is the only real DOF: a
+  constraint on a box point **translates** the whole text so that point lands on the
+  target (the string/size/rotation are unchanged), and it re-solves as the text is
+  edited. This is what the **Center** command (Align toolbar / right-click) uses via
+  the [`center`](#constraints) constraint.
 - An **`image`** entity is a placed raster picture for greyscale engraving — by a
   **laser** (modulating beam power) or a **mill** (carving a depth relief).
   Its `imageId` (`"img-XXXXXXXX"`) must appear in the top-level `images` array,
@@ -306,6 +314,7 @@ constraint references geometry through `points` (array of point refs) and/or
 | `midpoint` | `points[1]` + `entities[1]` line, **or** `points[3]` | point at line midpoint, or `points[0]` = midpoint of `points[1]`–`points[2]` |
 | `angle` | `entities[2]` lines + `params[0]` | fixed angle between lines, `params[0]` = target **radians** |
 | `fixedPoint` | `points[1]` + `params` | pin point to world position, `params` = `[x, y]` |
+| `center` | `points[0]` mover + `points[1]` (or `points[1..2]` → their midpoint) reference + optional `params[0]` axis | **one-way**: the mover's centre follows the reference centre — X if `params[0]`=`0`, Y if `1`, both if omitted. The reference is never moved; the mover re-centres live as it (or the reference) changes |
 | `fixed` | `entities[1+]` | lock all the entity's DOFs (no equation) |
 
 A constraint object is:
@@ -321,6 +330,14 @@ type that uses only one of them may omit the others entirely (e.g. a `horizontal
 constraint can be just `{ "id": "...", "type": "horizontal", "entities": ["line1"] }`).
 RapidCAM always writes the empty arrays out when saving, but you don't need to
 author them. The same applies to a dimension's `points`/`entities`.
+
+`center` is **directional** — unlike every other constraint it is not symmetric:
+the solver snapshots the reference centre each solve and moves only the mover
+toward it, so centring text in a box never nudges the box. It's normally produced
+by the **Center** command rather than hand-authored; to author one, put the
+mover's centre first (`points[0]`) and the reference last. A reference with no
+single centre point (e.g. a rectangle drawn as four lines) uses two diagonal
+corners in `points[1]`/`points[2]`, whose midpoint is the centre.
 
 > **Authoring caution.** A syntactically valid constraint set can still be
 > over-constrained, under-constrained, or fail to converge — and that can only be
