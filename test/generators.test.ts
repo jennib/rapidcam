@@ -3,7 +3,8 @@ import { CADDocument } from "../src/model/document";
 import { ArcEntity, PolylineEntity } from "../src/model/entities";
 import { Sketch } from "../src/generators/sketch";
 import { boxJoint } from "../src/generators/boxJoint";
-import { GENERATORS, runGenerator } from "../src/generators/index";
+import { GENERATORS, regenerateFeature, runGenerator } from "../src/generators/index";
+import { applyFile, serializeDoc } from "../src/io/fileio";
 
 test("Sketch takes angles in degrees and converts to internal radians", () => {
   const s = new Sketch();
@@ -60,4 +61,46 @@ test("runGenerator commits geometry as a single grouped feature", () => {
   expect(res.group.entityIds).toEqual([res.handles[0].id]);
   // The sketch's params are available for a host to build an editor / re-run.
   expect(res.sketch.params.find((p) => p.name === "fingers")?.value).toBe(4);
+  // A re-editable feature was recorded with its full parameter set.
+  expect(doc.features).toContain(res.feature);
+  expect(res.feature.generatorId).toBe("box-joint");
+  expect(res.feature.groupId).toBe(res.group.id);
+  expect(res.feature.params.fingers).toBe(4);
+});
+
+test("regenerateFeature rebuilds geometry in place, keeping feature identity", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const first = runGenerator(doc, GENERATORS["box-joint"], { width: 120, fingers: 4 });
+  const firstEntityId = first.group.entityIds[0];
+
+  const again = regenerateFeature(doc, first.feature.id, { fingers: 8 });
+  expect(again).not.toBeNull();
+
+  // Same feature + group records, fresh geometry.
+  expect(again!.feature.id).toBe(first.feature.id);
+  expect(again!.group.id).toBe(first.group.id);
+  expect(doc.features.length).toBe(1);
+  expect(doc.groups.length).toBe(1);
+  expect(doc.entities.some((e) => e.id === firstEntityId)).toBe(false); // old geometry gone
+  expect(again!.feature.params.fingers).toBe(8);
+  expect(again!.feature.params.width).toBe(120); // untouched param preserved through merge
+});
+
+test("features survive a serialize → applyFile round-trip", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const res = runGenerator(doc, GENERATORS["box-joint"], { fingers: 5 });
+
+  const file = serializeDoc(doc, "box");
+  const reloaded = new CADDocument({ width: 300, height: 300 });
+  applyFile(reloaded, file);
+
+  expect(reloaded.features).toHaveLength(1);
+  const f = reloaded.features[0];
+  expect(f.id).toBe(res.feature.id);
+  expect(f.generatorId).toBe("box-joint");
+  expect(f.params.fingers).toBe(5);
+  expect(f.groupId).toBe(res.group.id);
+  // And the feature can be regenerated after reload.
+  const regen = regenerateFeature(reloaded, f.id, { fingers: 3 });
+  expect(regen!.feature.params.fingers).toBe(3);
 });

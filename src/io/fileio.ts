@@ -48,6 +48,8 @@ export interface RcamFile {
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
   metadata?: { job?: string; revision?: string; notes?: string };
   groups?: unknown[];
+  /** Parametric generator features (re-editable). Omitted when none. */
+  features?: unknown[];
   layers?: unknown[];
   activeLayerId?: string;
   entities: unknown[];
@@ -214,6 +216,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     ...(doc.rotary ? { rotary: { ...doc.rotary } } : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
+    ...(snap.features && snap.features.length ? { features: snap.features as unknown[] } : {}),
     layers: snap.layers as unknown[],
     activeLayerId: snap.activeLayerId,
     entities: entities as unknown[],
@@ -277,6 +280,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     operations: normalizeOperations(file.operations) as DocSnapshot["operations"],
     tools: file.tools as DocSnapshot["tools"],
     groups: file.groups as DocSnapshot["groups"],
+    features: file.features as DocSnapshot["features"],
     layers: file.layers as DocSnapshot["layers"],
     activeLayerId: file.activeLayerId,
     canvas: file.canvas,

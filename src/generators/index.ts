@@ -12,7 +12,7 @@
  * Worker-safe. See sketch.ts.
  */
 
-import type { CADDocument, GroupDef } from "../model/document";
+import type { CADDocument, FeatureInstance, GroupDef } from "../model/document";
 import { nextId } from "../model/ids";
 import { type Handle, Sketch, type TextFlattener } from "./sketch";
 import { boxJoint } from "./boxJoint";
@@ -33,20 +33,23 @@ export const GENERATORS: Record<string, Generator> = {
 
 /** The outcome of committing a generator run onto a document. */
 export interface GeneratorResult {
+  feature: FeatureInstance;
   group: GroupDef;
   handles: Handle[];
   sketch: Sketch;
 }
 
+/** Effective parameter set (every declared param → its resolved value). Stored
+ *  on the feature so a re-run reproduces the geometry and exposes all knobs. */
+function effectiveParams(sketch: Sketch): Record<string, number> {
+  return Object.fromEntries(sketch.params.map((p) => [p.name, p.value]));
+}
+
 /**
- * Run `gen` with `params` and commit the result onto `doc`: every emitted entity
- * is added, its ids collected into a new group (the feature), and any declared
- * variables added to the document. Returns the group and the sketch (whose
- * `params` a host reads to build an editor for a later re-run).
- *
- * NOTE: this iteration commits geometry as a plain group; persisting the
- * generator id + parameter blob for in-place *editing* of the feature is the
- * next step and wants a small document field — deliberately out of scope here.
+ * Run `gen` with `params` and commit the result onto `doc` as a re-editable
+ * feature: every emitted entity is added, its ids collected into a group, any
+ * declared variables added, and a {@link FeatureInstance} recorded so the
+ * feature can later be regenerated in place (see {@link regenerateFeature}).
  */
 export function runGenerator(
   doc: CADDocument,
@@ -66,7 +69,55 @@ export function runGenerator(
     entityIds: sketch.entities.map((e) => e.id),
   };
   doc.groups.push(group);
+
+  const feature: FeatureInstance = {
+    id: nextId("feat"),
+    generatorId: gen.id,
+    params: effectiveParams(sketch),
+    groupId: group.id,
+  };
+  doc.features.push(feature);
   doc.emitChange();
 
-  return { group, handles, sketch };
+  return { feature, group, handles, sketch };
+}
+
+/**
+ * Regenerate an existing feature in place with `newParams` merged over the ones
+ * it was built with. The feature's old entities are removed, the generator is
+ * re-run, and the same group/feature records are updated to point at the fresh
+ * geometry — so a host can edit the box joint's finger count and see it rebuild
+ * without losing the feature's identity.
+ *
+ * Returns the updated result, or null if the feature or its generator is unknown.
+ * (Variables a generator declares are re-added on each run; a generator that
+ * declares variables should name them stably — the box joint declares none.)
+ */
+export function regenerateFeature(
+  doc: CADDocument,
+  featureId: string,
+  newParams: Record<string, number>,
+  opts: { flatten?: TextFlattener } = {},
+): GeneratorResult | null {
+  const feature = doc.features.find((f) => f.id === featureId);
+  if (!feature) return null;
+  const gen = GENERATORS[feature.generatorId];
+  if (!gen) return null;
+  const group = doc.groups.find((g) => g.id === feature.groupId);
+  if (!group) return null;
+
+  // Drop the old geometry, then re-run with the merged parameters.
+  for (const id of group.entityIds) doc.remove(id);
+
+  const merged = { ...feature.params, ...newParams };
+  const sketch = new Sketch({ params: merged, flatten: opts.flatten });
+  const handles = gen.build(sketch);
+  for (const e of sketch.entities) doc.add(e);
+  for (const v of sketch.variables) doc.addVariable(v);
+
+  group.entityIds = sketch.entities.map((e) => e.id);
+  feature.params = effectiveParams(sketch);
+  doc.emitChange();
+
+  return { feature, group, handles, sketch };
 }

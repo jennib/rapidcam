@@ -229,6 +229,24 @@ export interface GroupDef {
   entityIds: EntityId[];
 }
 
+/**
+ * A parametric feature: geometry that was produced by a generator (see
+ * generators/) and remains re-editable. It records which generator ran and with
+ * what parameters, plus the {@link GroupDef} holding its emitted entities, so the
+ * feature can be regenerated in place when its parameters change (see
+ * generators/index.ts `regenerateFeature`). Absent from files that use no
+ * generators.
+ */
+export interface FeatureInstance {
+  id: string;
+  /** Generator id (a key of GENERATORS) that produced this feature. */
+  generatorId: string;
+  /** Parameter overrides the feature was generated with — the re-run inputs. */
+  params: Record<string, number>;
+  /** Id of the group holding this feature's entities. */
+  groupId: string;
+}
+
 export interface LayerDef {
   id: string;
   name: string;
@@ -372,6 +390,7 @@ export interface DocSnapshot {
   rotary?: RotarySettings | null;
   metadata?: DocMetadata;
   groups?: GroupDef[];
+  features?: FeatureInstance[];
   layers?: LayerDef[];
   activeLayerId?: string;
 }
@@ -475,6 +494,7 @@ export class CADDocument {
 
   entities: Entity[] = [];
   groups: GroupDef[] = [];
+  features: FeatureInstance[] = [];
   patterns: PatternDef[] = [];
   layers: LayerDef[] = [
     { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
@@ -598,6 +618,7 @@ export class CADDocument {
     this.variables = [];
     this.bindings = [];
     this.groups = [];
+    this.features = [];
     this.patterns = [];
     this.layers = [
       { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
@@ -1066,6 +1087,7 @@ export class CADDocument {
       rotary: this.rotary ? { ...this.rotary } : null,
       metadata: { ...this.metadata },
       groups: this.groups.map((g) => ({ id: g.id, name: g.name, entityIds: [...g.entityIds] })),
+      features: this.features.map((f) => ({ ...f, params: { ...f.params } })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map((l) => ({ ...l })),
       activeLayerId: this.activeLayerId,
@@ -1214,6 +1236,10 @@ export class CADDocument {
     this.groups = s.groups
       ? s.groups.map((g) => ({ id: g.id, name: g.name ?? "", entityIds: [...g.entityIds] }))
       : [];
+    this.features = s.features
+      ? s.features.map((f) => ({ ...f, params: { ...f.params } }))
+      : [];
+    for (const f of this.features) updateCounter(f.id);
     this.patterns = s.patterns ? s.patterns.map(clonePatternDef) : [];
     for (const p of this.patterns) updateCounter(p.id);
     this.operations = s.operations
