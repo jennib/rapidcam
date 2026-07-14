@@ -17,6 +17,7 @@ import type { Entity } from "../model/entities";
 import { nextId } from "../model/ids";
 import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
 import { boxJoint } from "./boxJoint";
+import { gear } from "./gear";
 
 export interface Generator {
   /** Stable id (kebab-case), also the group name prefix. */
@@ -30,6 +31,7 @@ export interface Generator {
 /** Built-in first-party generators, keyed by id. */
 export const GENERATORS: Record<string, Generator> = {
   [boxJoint.id]: boxJoint,
+  [gear.id]: gear,
 };
 
 /**

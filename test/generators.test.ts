@@ -1,8 +1,9 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { ArcEntity, PolylineEntity } from "../src/model/entities";
+import { ArcEntity, CircleEntity, PolylineEntity } from "../src/model/entities";
 import { Sketch } from "../src/generators/sketch";
 import { boxJoint } from "../src/generators/boxJoint";
+import { gear } from "../src/generators/gear";
 import {
   GENERATORS,
   findFeatureForEntities,
@@ -53,6 +54,37 @@ test("box joint emits one closed outline with the right comb geometry", () => {
 
   // 6 fingers → 6 horizontal runs of 2 points each on the top profile.
   expect(poly.points.filter((p) => p.y >= 44).length).toBe(12);
+});
+
+test("spur gear emits an involute body + bore with correct pitch/tip/root radii", () => {
+  const s = new Sketch({ params: { teeth: 20, module: 2, pressureAngle: 20, bore: 6 } });
+  const [body, boreH] = gear.build(s);
+  const poly = body.entity as PolylineEntity;
+  expect(poly.closed).toBe(true);
+
+  const radii = poly.points.map((p) => Math.hypot(p.x, p.y));
+  expect(Math.max(...radii)).toBeCloseTo(22, 1); // addendum: rp+m = 20+2
+  expect(Math.min(...radii)).toBeCloseTo(17.5, 1); // dedendum: rp-1.25m = 20-2.5
+
+  // Tip-land points recur exactly once per tooth (rotational periodicity).
+  const tipPts = radii.filter((r) => Math.abs(r - 22) < 1e-6).length;
+  expect(tipPts).toBe(20 * 5);
+
+  const bore = boreH.entity as CircleEntity;
+  expect(bore.type).toBe("circle");
+  expect(bore.radius).toBeCloseTo(3);
+  expect(bore.center).toEqual({ x: 0, y: 0 });
+});
+
+test("runGenerator centres a multi-entity feature (gear body + bore) together", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const res = runGenerator(doc, GENERATORS["spur-gear"], { teeth: 12, module: 2, bore: 6 });
+  expect(res.handles.length).toBe(2);
+  // Gear is symmetric about its origin, so its centre lands on the work centre,
+  // and the bore stays concentric with the body.
+  const bore = res.handles[1].entity as CircleEntity;
+  expect(bore.center.x).toBeCloseTo(100);
+  expect(bore.center.y).toBeCloseTo(100);
 });
 
 test("runGenerator commits geometry as a single grouped feature", () => {
