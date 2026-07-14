@@ -230,14 +230,22 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // moves, and editing the mover can't drift the reference. The snapshot
   // refreshes every solve, so moving/resizing the reference re-centres the mover.
   const centerCons = doc.constraints.filter((c) => c.type === "center");
-  const centerTargets = centerCons.map((c) => {
-    const ref = c.points[1] ? byId.get(c.points[1].entityId) : undefined;
+  const readRefPoint = (ref: { entityId: string; key: string } | undefined): Vec2 | null => {
     if (!ref) return null;
+    const e = byId.get(ref.entityId);
+    if (!e) return null;
     try {
-      return ref.getPoint(c.points[1].key);
+      return e.getPoint(ref.key);
     } catch {
       return null;
     }
+  };
+  const centerTargets = centerCons.map((c) => {
+    const r1 = readRefPoint(c.points[1]);
+    if (!r1) return null;
+    // Reference centre = a single point, or the midpoint of two (line-container).
+    const r2 = c.points[2] ? readRefPoint(c.points[2]) : null;
+    return r2 ? { x: (r1.x + r2.x) / 2, y: (r1.y + r2.y) / 2 } : r1;
   });
 
   // Constraint + driving-dimension residuals define convergence and the reported DOF.

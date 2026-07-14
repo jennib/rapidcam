@@ -41,7 +41,7 @@ export type ConstraintType =
   | "midpoint" // points[1] + entities[1] (line) → point at midpoint of line; or points[3] → points[0] at midpoint of points[1]–points[2]
   | "angle" // entities[2] (lines) + params[0]=target radians → fixed angle
   | "fixedPoint" // points[1+] + params[0]=x, params[1]=y → pin point to world pos
-  | "center" // points[0]=mover centre, points[1]=reference centre (+optional params[0] axis: 0=X-only, 1=Y-only) → mover FOLLOWS reference one-way
+  | "center" // points[0]=mover centre, points[1](+optional points[2] → their midpoint)=reference centre (+optional params[0] axis: 0=X-only, 1=Y-only) → mover FOLLOWS reference one-way
   | "fixed"; // entities[1+]                   → lock all its DOFs (no equation)
 
 /** A reference to one specific point DOF inside an entity. */
@@ -315,12 +315,17 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       // the mover moves, and there's no drift when the mover is edited. The two
       // agree at convergence (the reference doesn't move during a solve).
       const m = readPoint(geo, c.points[0]);
-      const r = readPoint(geo, c.points[1]);
-      if (!m || !r) return [];
+      const r1 = readPoint(geo, c.points[1]);
+      if (!m || !r1) return [];
+      // Reference centre: a single centre point, or the MIDPOINT of two points
+      // (the diagonal corners of a container built from lines, e.g. a rectangle).
+      const r2 = c.points[2] ? readPoint(geo, c.points[2]) : null;
+      const rx = r2 ? (r1.x + r2.x) / 2 : r1.x;
+      const ry = r2 ? (r1.y + r2.y) / 2 : r1.y;
       const axis = c.params?.[0];
       const eqs: number[] = [];
-      if (axis !== 1) eqs.push(m.x - r.x);
-      if (axis !== 0) eqs.push(m.y - r.y);
+      if (axis !== 1) eqs.push(m.x - rx);
+      if (axis !== 0) eqs.push(m.y - ry);
       return eqs;
     }
     case "fixed":

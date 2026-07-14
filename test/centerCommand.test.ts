@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadFromFile } from "../src/core/fontManager";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity, RectEntity, TextEntity } from "../src/model/entities";
+import { CircleEntity, LineEntity, RectEntity, TextEntity } from "../src/model/entities";
 import { solve } from "../src/solver/solver";
 import { canCenter, centerKeyOf, planCenter } from "../src/tools/centerCommand";
 
@@ -130,6 +130,44 @@ describe("fully live", () => {
     expect(solve(doc).converged).toBe(true);
     expect(t.getPoint("center").x).toBeCloseTo(rectCx(rect), 3);
     expect(rectCx(rect)).toBeCloseTo(100, 6);
+  });
+});
+
+describe("container built from lines (the Rectangle tool emits 4 lines)", () => {
+  // Four lines forming a rectangle 0,0 → 120,60 (centre 60,30), like the tool.
+  const addLineRect = (doc: CADDocument, x0: number, y0: number, x1: number, y1: number) => [
+    doc.add(new LineEntity({ x: x0, y: y0 }, { x: x1, y: y0 })),
+    doc.add(new LineEntity({ x: x1, y: y0 }, { x: x1, y: y1 })),
+    doc.add(new LineEntity({ x: x1, y: y1 }, { x: x0, y: y1 })),
+    doc.add(new LineEntity({ x: x0, y: y1 }, { x: x0, y: y0 })),
+  ];
+
+  it("centres text inside a 4-line rectangle and doesn't move the lines", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const lines = addLineRect(doc, 0, 0, 120, 60);
+    const t = doc.add(new TextEntity("CUT ONCE", fontId, 10, { x: 10, y: 25 }));
+    for (const l of lines) l.selected = true;
+    t.selected = true;
+    expect(canCenter(doc)).toBe(true);
+
+    expect(applyCenter(doc, "h").converged).toBe(true);
+    expect(t.getPoint("center").x).toBeCloseTo(60, 3); // container centre-x
+    // Lines unmoved:
+    expect(lines[0].a.x).toBeCloseTo(0, 6);
+    expect(lines[1].b.x).toBeCloseTo(120, 6);
+  });
+
+  it("follows the box when the whole 4-line rectangle is moved", () => {
+    const doc = new CADDocument({ width: 300, height: 200 });
+    const lines = addLineRect(doc, 0, 0, 120, 60);
+    const t = doc.add(new TextEntity("CUT ONCE", fontId, 10, { x: 10, y: 25 }));
+    for (const l of lines) l.selected = true;
+    t.selected = true;
+    applyCenter(doc, "h");
+
+    for (const l of lines) l.translate({ x: 50, y: 0 }); // shove the box right
+    expect(solve(doc).converged).toBe(true);
+    expect(t.getPoint("center").x).toBeCloseTo(110, 3); // new centre 60+50
   });
 });
 
