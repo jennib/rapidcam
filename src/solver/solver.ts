@@ -14,13 +14,13 @@
  */
 
 import type { Vec2 } from "../core/vec2";
-import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
-import { type Entity, ArcEntity, RasterImageEntity } from "../model/entities";
-import { type Constraint, type Geo, constraintResiduals } from "../model/constraints";
+import { bindingResidualAt, bindingTarget } from "../model/bindings";
+import { type Constraint, constraintResiduals, type Geo } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { bindingTarget, bindingResidualAt } from "../model/bindings";
-import { solveLinearSystem, matrixRank, determinedVariables } from "./linalg";
+import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import type { EntityId } from "../model/entities";
+import { ArcEntity, type Entity, RasterImageEntity } from "../model/entities";
+import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
 export interface SolveResult {
   hasConstraints: boolean;
@@ -215,10 +215,30 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // gradient always dominates even after large displacements (see constant comments above).
   const anchorW = pins ? ANCHOR_DRAG : ANCHOR_DIM;
 
-  const active = doc.constraints.filter((c) => c.type !== "fixed");
+  // "center" (directional) constraints are handled separately below via a
+  // per-solve snapshot, so they're excluded from the generic residual loop.
+  const active = doc.constraints.filter((c) => c.type !== "fixed" && c.type !== "center");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const hasConstraints =
     doc.constraints.length > 0 || drivingDims.length > 0 || doc.bindings.length > 0;
+
+  // Directional CENTRE constraints: the mover's centre follows the reference's
+  // centre ONE-WAY. Snapshot the reference centre once, now (after pin seeding,
+  // so a dragged reference is captured at its new spot), and treat it as a
+  // CONSTANT target. Because the target is constant during the solve, the FD
+  // Jacobian never couples this residual back to the reference — only the mover
+  // moves, and editing the mover can't drift the reference. The snapshot
+  // refreshes every solve, so moving/resizing the reference re-centres the mover.
+  const centerCons = doc.constraints.filter((c) => c.type === "center");
+  const centerTargets = centerCons.map((c) => {
+    const ref = c.points[1] ? byId.get(c.points[1].entityId) : undefined;
+    if (!ref) return null;
+    try {
+      return ref.getPoint(c.points[1].key);
+    } catch {
+      return null;
+    }
+  });
 
   // Constraint + driving-dimension residuals define convergence and the reported DOF.
   const constraintVec = (): number[] => {
@@ -237,6 +257,22 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     doc.bindings.forEach((b, i) => {
       const r = bindingResidualAt(b, geo, bindingTargets[i]);
       for (const v of r) out.push(v);
+    });
+    // Directional centre constraints against their per-solve snapshot target.
+    centerCons.forEach((c, i) => {
+      const target = centerTargets[i];
+      if (!target) return;
+      const mover = byId.get(c.points[0].entityId);
+      if (!mover) return;
+      let m: Vec2;
+      try {
+        m = mover.getPoint(c.points[0].key);
+      } catch {
+        return;
+      }
+      const axis = c.params?.[0];
+      if (axis !== 1) out.push(m.x - target.x);
+      if (axis !== 0) out.push(m.y - target.y);
     });
     return out;
   };

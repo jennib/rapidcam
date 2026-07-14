@@ -8,6 +8,7 @@ import { dimensionMeasure, makeDimension } from "../src/model/dimensions";
 import { CADDocument } from "../src/model/document";
 import { RectEntity, TextEntity } from "../src/model/entities";
 import { solve } from "../src/solver/solver";
+import { measuresSingleTextBox } from "../src/tools/dimensionTool";
 
 // The text BOX (its rotated ink box) exposes corners + edge midpoints + centre as
 // derived points, so a dimension can hang off them — to measure the block, or to
@@ -124,5 +125,34 @@ describe("dimensioning the text box", () => {
     );
     expect(solve(doc).converged).toBe(true);
     expect(t.getPoint("mid_l").x).toBeCloseTo(30, 2); // text left edge now 30mm from x=0
+  });
+
+  it("recognises a dim across a single text's own box (so the tool makes it reference)", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const t = doc.add(new TextEntity("CUT ONCE", fontId, 10, { x: 20, y: 20 }));
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 120, y: 60 }));
+    const geo = geoOf(doc);
+
+    // Both anchors on the same text → can't drive (size lives in the font).
+    const widthDim = makeDimension("horizontal", {
+      points: [
+        { entityId: t.id, key: "bl" },
+        { entityId: t.id, key: "br" },
+      ],
+      value: 0,
+      offset: -8,
+    });
+    expect(measuresSingleTextBox(widthDim, geo)).toBe(true);
+
+    // Text edge → rectangle edge is a real placement dim → stays drivable.
+    const placeDim = makeDimension("horizontal", {
+      points: [
+        { entityId: rect.id, key: "bl" },
+        { entityId: t.id, key: "mid_l" },
+      ],
+      value: 0,
+      offset: -8,
+    });
+    expect(measuresSingleTextBox(placeDim, geo)).toBe(false);
   });
 });

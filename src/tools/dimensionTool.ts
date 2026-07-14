@@ -7,36 +7,52 @@
  * New dimensions are driving; double-click one (any tool) to edit its value.
  */
 
-import { type Vec2, dist, mid, normalize, sub, cross, dot } from "../core/vec2";
-import { distToSegment, angleInArc } from "../core/geom";
+import { angleInArc, distToSegment } from "../core/geom";
 import type { Unit } from "../core/units";
-import {
-  type Entity,
-  type LineEntity,
-  type RectEntity,
-  CircleEntity,
-  ArcEntity,
-} from "../model/entities";
-import type { CADDocument } from "../model/document";
+import { cross, dist, dot, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import type { Geo, PointRef } from "../model/constraints";
 import {
+  chooseLinearType,
   type Dimension,
   type DimensionType,
-  type LinearDimType,
-  makeDimension,
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
-  chooseLinearType,
+  type LinearDimType,
+  makeDimension,
 } from "../model/dimensions";
+import type { CADDocument } from "../model/document";
+import {
+  ArcEntity,
+  CircleEntity,
+  type Entity,
+  type LineEntity,
+  type RectEntity,
+  TextEntity,
+} from "../model/entities";
 
 /** True when an entity can carry a radius / gap dimension. */
 function isCircular(e: Entity | null): e is Entity {
   return !!e && (e.type === "circle" || e.type === "arc");
 }
-import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
+
+/**
+ * True when a linear dimension measures across a single TextEntity's own box —
+ * both anchors resolve to the same text. Such a dim can't drive: a text's size
+ * lives in its font, not the solver, so both points move together and the
+ * residual gradient is zero. Callers create these as reference (non-driving)
+ * dims so editing the value doesn't silently revert. Exported for testing.
+ */
+export function measuresSingleTextBox(dim: Dimension, geo: Geo): boolean {
+  if (dim.points.length !== 2) return false;
+  const [a, b] = dim.points;
+  if (a.entityId !== b.entityId) return false;
+  return geo(a.entityId) instanceof TextEntity;
+}
+
 import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
+import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 
 type Phase = "first" | "second" | "placeLinear" | "placeCircle" | "secondLine" | "placeAngle";
 const POINT_PICK_PX = 8;
@@ -502,6 +518,13 @@ export class DimensionTool implements Tool {
     const geo = geoOf(ctx.doc.entities);
     const dim = this.linearDim(ctx, this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
+    // A dim across a single text's own box can't drive (the size lives in the
+    // font, not the solver — both anchors translate together). Make it a
+    // reference dimension so editing its value doesn't silently revert.
+    if (measuresSingleTextBox(dim, geo)) {
+      dim.driving = false;
+      ctx.notify("Reference dimension — text size is set by its font/size, not driven");
+    }
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;

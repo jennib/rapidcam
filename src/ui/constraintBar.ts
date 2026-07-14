@@ -4,21 +4,21 @@
  * a solve. Buttons enable/disable based on whether the selection fits the type.
  */
 
-import type { CADDocument } from "../model/document";
+import { dist } from "../core/vec2";
 import {
+  CONSTRAINT_GLYPH,
   type Constraint,
   type ConstraintType,
   type Geo,
-  CONSTRAINT_GLYPH,
   makeConstraint,
   measureAngleBetweenLines,
-  tangentContactOutsideArcSweep,
-  segmentRef,
   resolveLineGeom,
+  segmentRef,
+  tangentContactOutsideArcSweep,
 } from "../model/constraints";
-import { type Entity, type LineEntity, type CircleEntity, PolylineEntity } from "../model/entities";
-import { dist } from "../core/vec2";
-import { type SolveResult, constraintJacobianRankChange } from "../solver/solver";
+import type { CADDocument } from "../model/document";
+import { type CircleEntity, type Entity, type LineEntity, PolylineEntity } from "../model/entities";
+import { constraintJacobianRankChange, type SolveResult } from "../solver/solver";
 
 interface ButtonSpec {
   type: ConstraintType;
@@ -198,6 +198,11 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
       return ents.length >= 1
         ? ok(ents.map((e) => makeConstraint("fixed", { entities: [e.id] })))
         : err("Select 1+ entities");
+
+    case "center":
+      // Not creatable from the Constraints bar — it's emitted by the Center /
+      // Align command (which knows the mover and reference). Kept for exhaustiveness.
+      return err("Use the Center command (right-click or Align tools)");
   }
 }
 

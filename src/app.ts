@@ -4,79 +4,86 @@
  * browser event system — everything below it works in clean model/view terms.
  */
 
-import { CADDocument, ORIGIN_ENTITY_ID } from "./model/document";
-import { nextId } from "./model/ids";
-import { type Vec2, dist } from "./core/vec2";
-import { ProjectManager } from "./io/projectManager";
-import type { Bounds, Entity, EntityId } from "./model/entities";
+import { track } from "./analytics";
+import { buildSideA, buildSideB, opFace } from "./cam/flip";
+import { defaultRotarySettings } from "./cam/klein";
+import { laserPreviewPaths } from "./cam/lasergcode";
+import { rasterizeStock } from "./cam/stockRasterizer";
+import type { CAMOperation } from "./cam/types";
+import { WebGLPreview } from "./cam/webglPreview";
+import { initBundledFonts } from "./core/fontManager";
 import { selectionBounds } from "./core/transform";
+import { dist, type Vec2 } from "./core/vec2";
+import { SnapEngine, type SnapResult } from "./input/snapping";
+import { ProjectManager } from "./io/projectManager";
+import { consumeSharedDesign } from "./io/shareLink";
 import type { Geo } from "./model/constraints";
 import { type Dimension, dimensionLayout } from "./model/dimensions";
-import { Viewport } from "./view/viewport";
-import { Renderer } from "./view/renderer";
-import type { Overlay, DiagnosticMarker, StitchPreview, FlipPreview } from "./view/overlay";
-import { SnapEngine, type SnapResult } from "./input/snapping";
-import { solve, type PinMap, computeEntityDofStatus } from "./solver/solver";
-import { ToolManager, type ToolPointerEvent } from "./tools/tool";
-import { TOOL_SHORTCUTS, TOOL_HINTS } from "./tools/shortcuts";
-import {
-  SelectTool,
-  pickConstraintAt,
-  computeTransformBox,
-  selectionSnapPositions,
-  meanDeviation,
-} from "./tools/selectTool";
-import { LineTool } from "./tools/lineTool";
-import { RectTool } from "./tools/rectTool";
-import { CircleTool } from "./tools/circleTool";
-import { PolylineTool } from "./tools/polylineTool";
-import { DimensionTool } from "./tools/dimensionTool";
-import { MeasureTool } from "./tools/measureTool";
-import { ArcTool } from "./tools/arcTool";
-import { SlotTool } from "./tools/slotTool";
-import { PolygonTool } from "./tools/polygonTool";
-import { OffsetTool } from "./tools/offsetTool";
-import { BezierTool } from "./tools/bezierTool";
-import { RotateTool } from "./tools/rotateTool";
-import { ScaleTool } from "./tools/scaleTool";
-import { TextTool } from "./tools/textTool";
-import { FilletTool } from "./tools/filletTool";
-import { ChamferTool } from "./tools/chamferTool";
-import { TrimTool } from "./tools/trimTool";
-import { ExtendTool } from "./tools/extendTool";
-import { MirrorTool } from "./tools/mirrorTool";
-import { joinSelected } from "./tools/joinCommand";
-import { explodeSelected } from "./tools/explodeCommand";
-import { openRectArrayDialog, openCircArrayDialog } from "./ui/arrayDialogs";
-import { openLinearPatternDialog, openCircularPatternDialog } from "./ui/patternDialogs";
+import { CADDocument, ORIGIN_ENTITY_ID } from "./model/document";
+import type { Bounds, Entity, EntityId } from "./model/entities";
+import { nextId } from "./model/ids";
 import { regenerateAllStalePatterns, regenerateStalePatterns } from "./model/patternEngine";
 import { computeSourceSnapshot } from "./model/patterns";
+import { evaluateAll, varMap } from "./model/variables";
+import {
+  computeEntityDofStatus,
+  constraintJacobianRankChange,
+  type PinMap,
+  solve,
+} from "./solver/solver";
+import { ArcTool } from "./tools/arcTool";
+import { BezierTool } from "./tools/bezierTool";
+import { type CenterAxis, canCenter, planCenter } from "./tools/centerCommand";
+import { ChamferTool } from "./tools/chamferTool";
+import { CircleTool } from "./tools/circleTool";
+import { DimensionTool } from "./tools/dimensionTool";
+import { explodeSelected } from "./tools/explodeCommand";
+import { ExtendTool } from "./tools/extendTool";
+import { FilletTool } from "./tools/filletTool";
+import { joinSelected } from "./tools/joinCommand";
+import { LineTool } from "./tools/lineTool";
+import { MeasureTool } from "./tools/measureTool";
+import { MirrorTool } from "./tools/mirrorTool";
+import { OffsetTool } from "./tools/offsetTool";
+import { PolygonTool } from "./tools/polygonTool";
+import { PolylineTool } from "./tools/polylineTool";
+import { RectTool } from "./tools/rectTool";
+import { RotateTool } from "./tools/rotateTool";
+import { ScaleTool } from "./tools/scaleTool";
+import {
+  computeTransformBox,
+  meanDeviation,
+  pickConstraintAt,
+  SelectTool,
+  selectionSnapPositions,
+} from "./tools/selectTool";
+import { TOOL_HINTS, TOOL_SHORTCUTS } from "./tools/shortcuts";
+import { SlotTool } from "./tools/slotTool";
+import { TextTool } from "./tools/textTool";
+import { ToolManager, type ToolPointerEvent } from "./tools/tool";
+import { TrimTool } from "./tools/trimTool";
+import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
+import { AlignBar } from "./ui/alignBar";
+import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
+import { CamBar } from "./ui/camBar";
+import { ConstraintBar } from "./ui/constraintBar";
+import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
+import { DimEditor } from "./ui/dimEditor";
+import { LayersBar } from "./ui/layersBar";
+import { closeAllModals, isModalOpen } from "./ui/modal";
+import { openCircularPatternDialog, openLinearPatternDialog } from "./ui/patternDialogs";
+import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
+import { PropertiesBar } from "./ui/propertiesBar";
+import { SettingsBar } from "./ui/settingsBar";
+import { showShortcutOverlay } from "./ui/shortcutOverlay";
+import { StatusBar } from "./ui/statusBar";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
-import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
-import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
-import { SettingsBar } from "./ui/settingsBar";
-import { PropertiesBar } from "./ui/propertiesBar";
-import { StatusBar } from "./ui/statusBar";
-import { ConstraintBar } from "./ui/constraintBar";
-import { LayersBar } from "./ui/layersBar";
-import { CamBar } from "./ui/camBar";
-import { DimEditor } from "./ui/dimEditor";
 import { VariablesBar } from "./ui/variablesBar";
-import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
-import { evaluateAll, varMap } from "./model/variables";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
-import { isModalOpen, closeAllModals } from "./ui/modal";
-import { showShortcutOverlay } from "./ui/shortcutOverlay";
-import { consumeSharedDesign } from "./io/shareLink";
-import { WebGLPreview } from "./cam/webglPreview";
-import { rasterizeStock } from "./cam/stockRasterizer";
-import { defaultRotarySettings } from "./cam/klein";
-import { buildSideA, buildSideB, opFace } from "./cam/flip";
-import type { CAMOperation } from "./cam/types";
-import { laserPreviewPaths } from "./cam/lasergcode";
-import { initBundledFonts } from "./core/fontManager";
-import { track } from "./analytics";
+import type { DiagnosticMarker, FlipPreview, Overlay, StitchPreview } from "./view/overlay";
+import { Renderer } from "./view/renderer";
+import { Viewport } from "./view/viewport";
 
 const HOVER_TOLERANCE_PX = 8;
 /** Offset applied to pasted/duplicated copies so they don't hide the original. */
@@ -171,6 +178,7 @@ export class App {
       propertiesbar: HTMLElement;
       cambar: HTMLElement;
       constraintbar: HTMLElement;
+      alignbar: HTMLElement;
       statusbar: HTMLElement;
       layersbar: HTMLElement;
       variablesbar: HTMLElement;
@@ -333,6 +341,7 @@ export class App {
       this.project.pushHistory,
       () => this.project.undoRedo("undo"),
     );
+    new AlignBar(dom.alignbar, this.doc, (axis) => this.centerSelection(axis));
     new CamBar(
       dom.cambar,
       this.doc,
@@ -362,8 +371,12 @@ export class App {
     this.handleResize();
     this.initialFit();
 
-    // Load bundled fonts in the background; re-render when they arrive
-    void initBundledFonts(() => this.requestRender());
+    // Load bundled fonts in the background; re-SOLVE when they arrive. A text
+    // entity's centre/box points derive from real ink extents, so any centring or
+    // dimension constraint solved against the pre-load 0.6-em estimate must be
+    // re-solved once the font lands (runSolve ends with a render). Bundled fonts
+    // aren't embedded in .rcam files, so this is the common open-a-file path.
+    void initBundledFonts(() => this.runSolve());
 
     // A shared-design link (#d=…) takes over startup; otherwise show the welcome
     // screen for a fresh empty project.
@@ -1006,6 +1019,42 @@ export class App {
     else this.runSolve();
   }
 
+  /** Centre the selected item(s) inside the largest selected shape by pinning
+   *  their centre coordinate (one-axis fixedPoint). Only the movers move; the
+   *  reference is untouched. Guards against over-constraining, like a constraint. */
+  private centerSelection(axis: CenterAxis): void {
+    const plan = planCenter(this.doc, axis);
+    if (!plan.ok) {
+      this.statusBar.flash(plan.reason);
+      return;
+    }
+    // Same rank-based guard the Constraints bar uses: reject a redundant or
+    // over-constraining add rather than fighting the solver / silently failing.
+    const { variables, rankWithout, rankWith } = constraintJacobianRankChange(
+      this.doc,
+      plan.constraints,
+    );
+    if (rankWith - rankWithout === 0) {
+      this.statusBar.flash("Already centred on that axis");
+      return;
+    }
+    if (rankWith - rankWithout > variables - rankWithout) {
+      this.statusBar.flash("Already positioned — remove a constraint to re-centre");
+      return;
+    }
+    this.project.pushHistory();
+    for (const c of plan.constraints) this.doc.addConstraint(c);
+    this.runSolve();
+    if (this.lastSolveResult && !this.lastSolveResult.converged) {
+      this.project.undoRedo("undo");
+      this.statusBar.flash("Couldn't centre — it conflicts with an existing constraint");
+      return;
+    }
+    this.statusBar.flash(
+      axis === "both" ? "Centred" : `Centred ${axis === "h" ? "horizontally" : "vertically"}`,
+    );
+  }
+
   private deleteSelected(): void {
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();
@@ -1215,6 +1264,15 @@ export class App {
         shortcut: "X",
         onClick: () => this.toggleConstruction(),
       });
+      if (canCenter(this.doc)) {
+        entries.push("sep");
+        entries.push({
+          label: "Center Horizontally",
+          onClick: () => this.centerSelection("h"),
+        });
+        entries.push({ label: "Center Vertically", onClick: () => this.centerSelection("v") });
+        entries.push({ label: "Center in Shape", onClick: () => this.centerSelection("both") });
+      }
       entries.push("sep");
       entries.push({
         label: "Linear Pattern…",

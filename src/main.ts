@@ -65,6 +65,7 @@ function bootApp(): void {
   const cambar = document.getElementById("cambar");
   const variablesbar = document.getElementById("variablesbar");
   const constraintbar = document.getElementById("constraintbar");
+  const alignbar = document.getElementById("alignbar");
   const statusbar = document.getElementById("statusbar");
   const canvasHost = document.getElementById("canvas-host");
   const webglHost = document.getElementById("webgl-host");
@@ -80,6 +81,7 @@ function bootApp(): void {
     !cambar ||
     !variablesbar ||
     !constraintbar ||
+    !alignbar ||
     !statusbar ||
     !canvasHost ||
     !webglHost ||
@@ -97,6 +99,7 @@ function bootApp(): void {
     cambar,
     variablesbar,
     constraintbar,
+    alignbar,
     statusbar,
     canvasHost,
     webglHost,

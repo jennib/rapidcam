@@ -12,16 +12,16 @@
  * numerical solver well-conditioned across mixed constraint types.
  */
 
-import { type Vec2, sub, dot, cross, len, normalize, mid } from "../core/vec2";
+import { angleInArc } from "../core/geom";
+import { cross, dot, len, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import {
+  ArcEntity,
+  CircleEntity,
   type Entity,
   type EntityId,
   LineEntity,
-  CircleEntity,
-  ArcEntity,
   PolylineEntity,
 } from "./entities";
-import { angleInArc } from "../core/geom";
 import { nextId } from "./ids";
 
 export type ConstraintType =
@@ -41,6 +41,7 @@ export type ConstraintType =
   | "midpoint" // points[1] + entities[1] (line) → point at midpoint of line; or points[3] → points[0] at midpoint of points[1]–points[2]
   | "angle" // entities[2] (lines) + params[0]=target radians → fixed angle
   | "fixedPoint" // points[1+] + params[0]=x, params[1]=y → pin point to world pos
+  | "center" // points[0]=mover centre, points[1]=reference centre (+optional params[0] axis: 0=X-only, 1=Y-only) → mover FOLLOWS reference one-way
   | "fixed"; // entities[1+]                   → lock all its DOFs (no equation)
 
 /** A reference to one specific point DOF inside an entity. */
@@ -306,6 +307,22 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       if (!p || !c.params) return [];
       return [p.x - c.params[0], p.y - c.params[1]];
     }
+    case "center": {
+      // Directional: the mover's centre (points[0]) follows the reference's
+      // centre (points[1]) on an axis. This LIVE residual is what the rank/DOF
+      // check reads. The SOLVER instead evaluates it against a per-solve SNAPSHOT
+      // of the reference (see solve()), so the reference is never pushed — only
+      // the mover moves, and there's no drift when the mover is edited. The two
+      // agree at convergence (the reference doesn't move during a solve).
+      const m = readPoint(geo, c.points[0]);
+      const r = readPoint(geo, c.points[1]);
+      if (!m || !r) return [];
+      const axis = c.params?.[0];
+      const eqs: number[] = [];
+      if (axis !== 1) eqs.push(m.x - r.x);
+      if (axis !== 0) eqs.push(m.y - r.y);
+      return eqs;
+    }
     case "fixed":
       return []; // enforced by removing DOFs, not by an equation
   }
@@ -401,6 +418,7 @@ export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
   midpoint: "M",
   angle: "∠",
   fixedPoint: "⊕",
+  center: "⌖",
   fixed: "⚓",
 };
 
@@ -463,7 +481,8 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
       break;
     }
     case "midpoint":
-    case "fixedPoint": {
+    case "fixedPoint":
+    case "center": {
       const p = readPoint(geo, c.points[0]);
       if (p) anchors.push({ ...p });
       break;

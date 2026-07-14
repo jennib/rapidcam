@@ -1,32 +1,32 @@
-import type { CADDocument, GroupDef } from "../model/document";
-import {
-  selectionBounds,
-  applyScale,
-  applyRotate,
-  applyFlipH,
-  applyFlipV,
-} from "../core/transform";
-import { nextId } from "../model/ids";
+import { evalExpr } from "../core/expr";
 import { listFonts } from "../core/fontManager";
+import { regularPolygonPoints } from "../core/geom";
 import { getImageEntry } from "../core/imageManager";
 import {
-  type Entity,
-  TextEntity,
-  CircleEntity,
+  applyFlipH,
+  applyFlipV,
+  applyRotate,
+  applyScale,
+  selectionBounds,
+} from "../core/transform";
+import { formatAngle, formatLength, parseAngle, parseLength } from "../core/units";
+import { findBinding } from "../model/bindings";
+import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
+import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
+import type { CADDocument, GroupDef } from "../model/document";
+import {
   ArcEntity,
+  type Bounds,
+  CircleEntity,
+  type Entity,
   LineEntity,
-  RectEntity,
   PolylineEntity,
   RasterImageEntity,
-  type Bounds,
+  RectEntity,
+  TextEntity,
 } from "../model/entities";
-import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
-import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
-import { parseLength, parseAngle, formatLength, formatAngle } from "../core/units";
-import { evalExpr } from "../core/expr";
+import { nextId } from "../model/ids";
 import { varMap } from "../model/variables";
-import { findBinding } from "../model/bindings";
-import { regularPolygonPoints } from "../core/geom";
 
 const DIM_LABELS: Record<DimensionType, string> = {
   distance: "Distance",
@@ -57,6 +57,7 @@ const CON_LABELS: Record<ConstraintType, string> = {
   midpoint: "Midpoint",
   angle: "Angle",
   fixedPoint: "Fixed Point",
+  center: "Center",
   fixed: "Fixed",
 };
 
@@ -775,9 +776,11 @@ export class PropertiesBar {
     textIn.value = entity.text;
     textIn.style.flex = "1";
     textIn.addEventListener("change", () => {
-      this.pushHistory();
-      entity.text = textIn.value;
-      this.doc.emitChange();
+      // applyEdit re-solves, so a centring/alignment constraint re-flows the text
+      // to fit the new string (its ink extents changed).
+      this.applyEdit(() => {
+        entity.text = textIn.value;
+      });
     });
     textRow.append(textLbl, textIn);
     sec.appendChild(textRow);
@@ -808,9 +811,9 @@ export class PropertiesBar {
       fontSel.appendChild(opt);
     }
     fontSel.addEventListener("change", () => {
-      this.pushHistory();
-      entity.fontId = fontSel.value;
-      this.doc.emitChange();
+      this.applyEdit(() => {
+        entity.fontId = fontSel.value;
+      });
     });
     fontRow.append(fontLbl, fontSel);
     sec.appendChild(fontRow);
@@ -828,9 +831,9 @@ export class PropertiesBar {
     sizeIn.addEventListener("change", () => {
       const v = parseFloat(sizeIn.value);
       if (Number.isNaN(v) || v <= 0) return;
-      this.pushHistory();
-      entity.sizeMM = v;
-      this.doc.emitChange();
+      this.applyEdit(() => {
+        entity.sizeMM = v;
+      });
     });
     sizeRow.append(sizeLbl, sizeIn, sizeUnit);
     sec.appendChild(sizeRow);
@@ -848,9 +851,9 @@ export class PropertiesBar {
     angleIn.addEventListener("change", () => {
       const v = parseFloat(angleIn.value);
       if (Number.isNaN(v)) return;
-      this.pushHistory();
-      entity.angle = (v * Math.PI) / 180;
-      this.doc.emitChange();
+      this.applyEdit(() => {
+        entity.angle = (v * Math.PI) / 180;
+      });
     });
     angleRow.append(angleLbl, angleIn, angleUnit);
     sec.appendChild(angleRow);
