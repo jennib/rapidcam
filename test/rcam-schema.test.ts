@@ -8,26 +8,27 @@
  * published schema.
  */
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020";
+import { describe, expect, it } from "vitest";
+import type { CAMOperation, ToolDef } from "../src/cam/types";
+import { registerEmbeddedImage } from "../src/core/imageManager";
+import { applyFile, serializeDoc } from "../src/io/fileio";
+import { CONSTRAINT_GLYPH } from "../src/model/constraints";
+import { makeDimension } from "../src/model/dimensions";
 import { CADDocument } from "../src/model/document";
 import {
-  CircleEntity,
-  PolylineEntity,
-  LineEntity,
-  RasterImageEntity,
-  RectEntity,
   ArcEntity,
   BezierEntity,
+  CircleEntity,
+  LineEntity,
+  PolylineEntity,
+  RasterImageEntity,
+  RectEntity,
   TextEntity,
 } from "../src/model/entities";
-import { makeDimension } from "../src/model/dimensions";
-import { registerEmbeddedImage } from "../src/core/imageManager";
-import { serializeDoc, applyFile } from "../src/io/fileio";
-import type { CAMOperation, ToolDef } from "../src/cam/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -43,6 +44,19 @@ const exampleFiles = readdirSync(examplesDir).filter((f) => f.endsWith(".rcam"))
 describe("rcam v2 schema", () => {
   it("finds the bundled examples", () => {
     expect(exampleFiles.length).toBeGreaterThan(0);
+  });
+
+  // Parity guard: every ConstraintType the code knows must be in the schema's
+  // constraint enum (else a file that uses it fails validation), and the schema
+  // must not enumerate a type the code doesn't implement. CONSTRAINT_GLYPH is a
+  // Record<ConstraintType, string>, so TypeScript keeps its keys exhaustive —
+  // it's the runtime source of truth for the full type list. (A missing `center`
+  // enum entry is exactly the drift this catches.)
+  it("constraint type enum matches ConstraintType in code (both directions)", () => {
+    const schemaTypes = new Set<string>(schema.$defs.constraint.properties.type.enum);
+    const codeTypes = new Set(Object.keys(CONSTRAINT_GLYPH));
+    expect([...codeTypes].filter((t) => !schemaTypes.has(t))).toEqual([]); // missing in schema
+    expect([...schemaTypes].filter((t) => !codeTypes.has(t))).toEqual([]); // stale in schema
   });
 
   for (const file of exampleFiles) {
