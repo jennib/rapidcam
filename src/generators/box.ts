@@ -1,26 +1,27 @@
 /**
- * Finger-jointed box generator — an open-top box (a tray/drawer): a bottom and
- * four walls, laid out FLAT as five closed polylines ready to cut. The four
- * vertical corners are box (finger) joints, and the bottom is captured by finger
- * joints along the lower edge of every wall.
+ * Drawer-style finger-jointed box — an open-top box (a tray/drawer), laid out
+ * FLAT as nine closed polylines: four walls, four bottom grooves, and the bottom
+ * panel.
  *
- * This is the first *coordinated multi-panel* generator: the whole point is that
- * mating edges are pre-phased so the parts actually assemble. The rules that make
- * that work:
- *  - Outer size is length (X) × width (Y) × height (Z); material thickness t.
- *  - Every joint edge is a square-finger comb of pitch ≈ fingerWidth, with the
- *    finger count forced ODD so the pattern is symmetric end-to-end.
- *  - Corner joints: front/back walls and side walls comb their vertical edges
- *    over the same height span with COMPLEMENTARY phase (where one is solid the
- *    other is notched), so tabs meet slots. Fingers are inset by t at top and
- *    bottom so the corner cubes belong cleanly to one panel.
- *  - Base joint: each wall's bottom edge is notched inward; the bottom panel
- *    (inset by t all round so it drops inside the walls) carries matching tabs
- *    over the same span, same phase — tab fills notch.
+ * Construction (this is the first *coordinated multi-panel* generator — mating
+ * features are pre-phased so the parts assemble):
+ *  - Outer size length (X) × width (Y) × height (Z); material thickness t.
+ *  - The four vertical corners are box (finger) joints running the FULL height.
+ *    Front/back and side walls comb their vertical edges with COMPLEMENTARY phase
+ *    (where one is solid the other is notched), so tabs meet slots. Because these
+ *    joints inherently alternate, some fingers show at the rim on every wall —
+ *    that is correct for a box joint, not a defect.
+ *  - The bottom is captured in a GROOVE (dado), not finger-jointed into the wall
+ *    edges — exactly like a real drawer. Each wall carries a groove rectangle
+ *    (inset from the corners so it clears the corner fingers) meant to be milled
+ *    as a shallow POCKET (~t/2 deep); the plain bottom panel drops into the four
+ *    grooves. Keeping the bottom off the wall edges is what avoids the 3-way
+ *    corner conflict that a bottom-edge finger joint creates.
  *
- * Joints are square (no kerf compensation): the operator adds fit allowance via
- * tool offset. Drawn around the origin; the runner places the layout in the work
- * area. See generators/index.ts.
+ * The wall outlines and the bottom are profile cuts; the four groove rectangles
+ * are pockets. Joints are square (no kerf compensation) — the operator adds fit
+ * allowance via tool offset. Drawn around the origin; the runner places the
+ * layout in the work area. See generators/index.ts.
  */
 
 import type { Generator } from "./index";
@@ -138,6 +139,16 @@ function panel(w: number, h: number, specs: PanelSpecs): Pt[] {
   return out;
 }
 
+/** Plain closed rectangle w×h with its bottom-left corner at the origin. */
+function rect(w: number, h: number): Pt[] {
+  return [
+    { x: 0, y: 0 },
+    { x: w, y: 0 },
+    { x: w, y: h },
+    { x: 0, y: h },
+  ];
+}
+
 export const box: Generator = {
   id: "finger-box",
   name: "Finger-Joint Box",
@@ -148,53 +159,55 @@ export const box: Generator = {
     const t = s.param("thickness", 6, { min: 0.5, label: "Material thickness" });
     const f = s.param("fingerWidth", 12, { min: 2, label: "Finger width" });
 
-    // Vertical corner joints run from the base joint (inset t at the bottom) up
-    // to the open rim (inset 0 at the top). The front/back (longer, more visible)
-    // walls START AND END SOLID (firstActive false → solid·notch·solid): a solid
-    // finger at each end means clean top-corners at the rim and no pinched corner
-    // square where the corner joint meets the base joint. The side walls take the
-    // complementary phase (notch·solid·notch) so tabs still meet slots.
-    const cornerFB: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: t, insetEnd: 0 };
-    const cornerSide: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: t, insetEnd: 0 };
-    // Base joints inset t at both ends to clear the two vertical corners, and are
-    // solid-first (firstActive false) so the corner-adjacent finger is solid —
-    // that's what keeps the side walls (whose corner joint IS notch-first) from
-    // pinching their bottom corner. Bottom-panel tabs share the phase so tab
-    // meets notch.
-    const baseWall: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: t, insetEnd: t };
-    const baseTab: CombSpec = { fingerW: f, depth: t, protrude: true, firstActive: false, insetStart: 0, insetEnd: 0 };
+    // Vertical corner joints run the FULL height (no inset — the bottom is held
+    // by a groove, not a bottom-edge joint, so nothing conflicts at the corners).
+    // Front/back and side walls take complementary phase so tabs meet slots; the
+    // fingers alternate, so some show at the rim on every wall — that's inherent
+    // to a box joint. Straight top/bottom edges (the groove captures the bottom).
+    const cornerFB: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: 0, insetEnd: 0 };
+    const cornerSide: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: 0, insetEnd: 0 };
 
-    // Front / back walls (length × height): vertical edges = corner joints,
-    // bottom edge = base joint, open top.
-    const frontBack: PanelSpecs = { left: cornerFB, right: cornerFB, bottom: baseWall };
-    // Side walls (width × height): complementary corner phase.
-    const side: PanelSpecs = { left: cornerSide, right: cornerSide, bottom: baseWall };
-    // Bottom (inset by t all round): every edge tabs into a wall's base notch.
-    const bottomSpecs: PanelSpecs = {
-      bottom: baseTab,
-      top: baseTab,
-      left: baseTab,
-      right: baseTab,
-    };
+    const frontBack: PanelSpecs = { left: cornerFB, right: cornerFB };
+    const side: PanelSpecs = { left: cornerSide, right: cornerSide };
 
     const front = panel(length, height, frontBack);
     const back = panel(length, height, frontBack);
     const left = panel(width, height, side);
     const right = panel(width, height, side);
-    const bottom = panel(length - 2 * t, width - 2 * t, bottomSpecs);
+    // Bottom drops into the grooves: cavity (outer − 2t) plus the groove depth
+    // (t/2) it enters on each side → (length − t) × (width − t). A plain panel.
+    const bottom = rect(length - t, width - t);
 
-    // Lay the five panels out flat with gaps so nothing overlaps.
+    // A groove (dado) on each wall, inset t from the corners so it clears the
+    // corner fingers, a channel t wide sitting `t` above the wall's bottom edge.
+    // Milled as a shallow pocket (~t/2 deep); the bottom edge slides into it.
+    const grooveOffset = t;
+    const grooveOf = (faceW: number): Pt[] => rect(faceW - 2 * t, t);
+
     const g = Math.max(4 * t, 6);
     const shift = (pts: Pt[], ox: number, oy: number): Pt[] =>
       pts.map((p) => ({ x: p.x + ox, y: p.y + oy }));
-    const col = length + g; // bottom sits to the right of the wall column
+    // Each wall's y offset in the flat layout column.
+    const yFront = 0,
+      yBack = height + g,
+      yLeft = 2 * (height + g),
+      yRight = 3 * (height + g);
+    const groove = (faceW: number, oy: number) =>
+      shift(grooveOf(faceW), t, oy + grooveOffset);
 
     return [
-      s.polyline(shift(front, 0, 0), { closed: true }),
-      s.polyline(shift(back, 0, height + g), { closed: true }),
-      s.polyline(shift(left, 0, 2 * (height + g)), { closed: true }),
-      s.polyline(shift(right, 0, 3 * (height + g)), { closed: true }),
-      s.polyline(shift(bottom, col, 0), { closed: true }),
+      // Walls (profile cuts).
+      s.polyline(shift(front, 0, yFront), { closed: true }),
+      s.polyline(shift(back, 0, yBack), { closed: true }),
+      s.polyline(shift(left, 0, yLeft), { closed: true }),
+      s.polyline(shift(right, 0, yRight), { closed: true }),
+      // Bottom panel (profile cut), off to the side.
+      s.polyline(shift(bottom, length + g, 0), { closed: true }),
+      // Bottom grooves (pockets), one inside each wall.
+      s.polyline(groove(length, yFront), { closed: true }),
+      s.polyline(groove(length, yBack), { closed: true }),
+      s.polyline(groove(width, yLeft), { closed: true }),
+      s.polyline(groove(width, yRight), { closed: true }),
     ];
   },
 };

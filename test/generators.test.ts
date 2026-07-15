@@ -88,33 +88,35 @@ test("runGenerator centres a multi-entity feature (gear body + bore) together", 
   expect(bore.center.y).toBeCloseTo(100);
 });
 
-test("finger-joint box emits five closed panels with exact outer sizes", () => {
+test("drawer-style box emits 4 walls + bottom + 4 grooves, correctly sized", () => {
   const t = 6;
   const s = new Sketch({
     params: { length: 100, width: 60, height: 40, thickness: t, fingerWidth: 12 },
   });
-  const panels = box.build(s);
-  expect(panels).toHaveLength(5); // front, back, left, right, bottom
-  for (const h of panels) {
+  const parts = box.build(s);
+  expect(parts).toHaveLength(9); // 4 walls, bottom, 4 grooves
+  for (const h of parts) {
     const p = h.entity as PolylineEntity;
     expect(p).toBeInstanceOf(PolylineEntity);
     expect(p.closed).toBe(true);
   }
 
-  const size = (h: (typeof panels)[number]) => {
+  const size = (h: (typeof parts)[number]) => {
     const b = h.entity.bounds();
     return { w: b.max.x - b.min.x, h: b.max.y - b.min.y };
   };
-  // A wall's corner/base combs recede inward, so its box stays the exact face
-  // size: front wall = length × height.
-  const front = size(panels[0]);
-  expect(front.w).toBeCloseTo(100, 3);
-  expect(front.h).toBeCloseTo(40, 3);
-  // The bottom is inset by t all round but its tabs protrude back out by t, so
-  // its footprint is the inner cavity plus tabs = length × width.
-  const bottom = size(panels[4]);
-  expect(bottom.w).toBeCloseTo(100, 3);
-  expect(bottom.h).toBeCloseTo(60, 3);
+  // Corner combs recede inward, so a wall's box stays its exact face size.
+  const front = size(parts[0]);
+  expect(front.w).toBeCloseTo(100, 3); // length
+  expect(front.h).toBeCloseTo(40, 3); // height
+  // Bottom is a plain panel sized to enter the grooves: (length−t)×(width−t).
+  const bottom = size(parts[4]);
+  expect(bottom.w).toBeCloseTo(94, 3);
+  expect(bottom.h).toBeCloseTo(54, 3);
+  // A groove is a channel inset t from the corners: (faceW−2t) × t.
+  const frontGroove = size(parts[5]);
+  expect(frontGroove.w).toBeCloseTo(100 - 2 * t, 3); // 88
+  expect(frontGroove.h).toBeCloseTo(t, 3); // 6
 });
 
 test("runGenerator commits geometry as a single grouped feature", () => {
