@@ -18,6 +18,7 @@ import { nextId } from "../model/ids";
 import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
 import { boxJoint } from "./boxJoint";
 import { gear } from "./gear";
+import { box } from "./box";
 
 export interface Generator {
   /** Stable id (kebab-case), also the group name prefix. */
@@ -32,6 +33,7 @@ export interface Generator {
 export const GENERATORS: Record<string, Generator> = {
   [boxJoint.id]: boxJoint,
   [gear.id]: gear,
+  [box.id]: box,
 };
 
 /**

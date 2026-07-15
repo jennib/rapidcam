@@ -4,6 +4,7 @@ import { ArcEntity, CircleEntity, PolylineEntity } from "../src/model/entities";
 import { Sketch } from "../src/generators/sketch";
 import { boxJoint } from "../src/generators/boxJoint";
 import { gear } from "../src/generators/gear";
+import { box } from "../src/generators/box";
 import {
   GENERATORS,
   findFeatureForEntities,
@@ -85,6 +86,35 @@ test("runGenerator centres a multi-entity feature (gear body + bore) together", 
   const bore = res.handles[1].entity as CircleEntity;
   expect(bore.center.x).toBeCloseTo(100);
   expect(bore.center.y).toBeCloseTo(100);
+});
+
+test("finger-joint box emits five closed panels with exact outer sizes", () => {
+  const t = 6;
+  const s = new Sketch({
+    params: { length: 100, width: 60, height: 40, thickness: t, fingerWidth: 12 },
+  });
+  const panels = box.build(s);
+  expect(panels).toHaveLength(5); // front, back, left, right, bottom
+  for (const h of panels) {
+    const p = h.entity as PolylineEntity;
+    expect(p).toBeInstanceOf(PolylineEntity);
+    expect(p.closed).toBe(true);
+  }
+
+  const size = (h: (typeof panels)[number]) => {
+    const b = h.entity.bounds();
+    return { w: b.max.x - b.min.x, h: b.max.y - b.min.y };
+  };
+  // A wall's corner/base combs recede inward, so its box stays the exact face
+  // size: front wall = length × height.
+  const front = size(panels[0]);
+  expect(front.w).toBeCloseTo(100, 3);
+  expect(front.h).toBeCloseTo(40, 3);
+  // The bottom is inset by t all round but its tabs protrude back out by t, so
+  // its footprint is the inner cavity plus tabs = length × width.
+  const bottom = size(panels[4]);
+  expect(bottom.w).toBeCloseTo(100, 3);
+  expect(bottom.h).toBeCloseTo(60, 3);
 });
 
 test("runGenerator commits geometry as a single grouped feature", () => {
