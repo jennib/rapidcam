@@ -148,17 +148,21 @@ export const box: Generator = {
     const t = s.param("thickness", 6, { min: 0.5, label: "Material thickness" });
     const f = s.param("fingerWidth", 12, { min: 2, label: "Finger width" });
 
-    // Edge-role specs. Corner joints use complementary phase between front/back
-    // (firstActive true) and side walls (false); base joints share phase, with
-    // walls notched and the bottom tabbed.
     // Vertical corner joints run from the base joint (inset t at the bottom) up
-    // to the open rim (inset 0 at the top). Front/back and side walls take
-    // complementary phase so tabs meet slots.
-    const cornerFB: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: t, insetEnd: 0 };
-    const cornerSide: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: t, insetEnd: 0 };
-    // Base joints inset t at both ends to clear the two vertical corners.
-    const baseWall: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: t, insetEnd: t };
-    const baseTab: CombSpec = { fingerW: f, depth: t, protrude: true, firstActive: true, insetStart: 0, insetEnd: 0 };
+    // to the open rim (inset 0 at the top). The front/back (longer, more visible)
+    // walls START AND END SOLID (firstActive false → solid·notch·solid): a solid
+    // finger at each end means clean top-corners at the rim and no pinched corner
+    // square where the corner joint meets the base joint. The side walls take the
+    // complementary phase (notch·solid·notch) so tabs still meet slots.
+    const cornerFB: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: t, insetEnd: 0 };
+    const cornerSide: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: t, insetEnd: 0 };
+    // Base joints inset t at both ends to clear the two vertical corners, and are
+    // solid-first (firstActive false) so the corner-adjacent finger is solid —
+    // that's what keeps the side walls (whose corner joint IS notch-first) from
+    // pinching their bottom corner. Bottom-panel tabs share the phase so tab
+    // meets notch.
+    const baseWall: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: t, insetEnd: t };
+    const baseTab: CombSpec = { fingerW: f, depth: t, protrude: true, firstActive: false, insetStart: 0, insetEnd: 0 };
 
     // Front / back walls (length × height): vertical edges = corner joints,
     // bottom edge = base joint, open top.
