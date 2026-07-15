@@ -133,9 +133,18 @@ export type TextFlattener = (opts: {
   angleDeg: number;
 }) => Vec2[][];
 
+/** Where an entity wants to live: a named layer (created on commit if absent). */
+export interface LayerHint {
+  name: string;
+  /** CSS hex colour for the layer if it has to be created. */
+  color?: string;
+}
+
 export class Sketch {
   /** Entities emitted so far, in draw order. */
   readonly entities: Entity[] = [];
+  /** Layer hint per entity, parallel to {@link entities} (undefined = default layer). */
+  readonly entityLayers: (LayerHint | undefined)[] = [];
   /** Variables the generator declared (added to the document on commit). */
   readonly variables: Variable[] = [];
   /** Parameters the generator declared, in declaration order. */
@@ -143,10 +152,20 @@ export class Sketch {
 
   private readonly overrides: Map<string, number>;
   private readonly flatten?: TextFlattener;
+  private curLayer?: LayerHint;
 
   constructor(opts: { params?: Record<string, number>; flatten?: TextFlattener } = {}) {
     this.overrides = new Map(Object.entries(opts.params ?? {}));
     this.flatten = opts.flatten;
+  }
+
+  /**
+   * Route subsequently-emitted geometry onto a named layer (created on commit if
+   * it doesn't exist), e.g. to separate pocket geometry from profile cuts. Call
+   * with no name to return to the default (active) layer.
+   */
+  layer(name?: string, color?: string): void {
+    this.curLayer = name ? { name, color } : undefined;
   }
 
   /**
@@ -230,6 +249,7 @@ export class Sketch {
 
   private push<T extends Entity>(e: T): Handle {
     this.entities.push(e);
+    this.entityLayers.push(this.curLayer);
     return makeHandle(e);
   }
 }

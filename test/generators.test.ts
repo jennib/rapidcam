@@ -119,6 +119,18 @@ test("drawer-style box emits 4 walls + bottom + 4 grooves, correctly sized", () 
   expect(frontGroove.h).toBeCloseTo(t, 3); // 6
 });
 
+test("box grooves commit onto a separate 'Groove pockets' layer", () => {
+  const doc = new CADDocument({ width: 400, height: 400 });
+  const res = runGenerator(doc, GENERATORS["finger-box"], {});
+  const layer = doc.layers.find((l) => l.name === "Groove pockets");
+  expect(layer).toBeDefined();
+
+  const ents = res.group.entityIds.map((id) => doc.entities.find((e) => e.id === id)!);
+  // First 5 (walls + bottom) are NOT on the groove layer; the last 4 (grooves) are.
+  expect(ents.slice(0, 5).every((e) => e.layerId !== layer!.id)).toBe(true);
+  expect(ents.slice(5).every((e) => e.layerId === layer!.id)).toBe(true);
+});
+
 test("runGenerator commits geometry as a single grouped feature", () => {
   const doc = new CADDocument({ width: 200, height: 200 });
   const before = doc.entities.length;

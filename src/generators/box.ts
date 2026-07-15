@@ -195,19 +195,25 @@ export const box: Generator = {
     const groove = (faceW: number, oy: number) =>
       shift(grooveOf(faceW), t, oy + grooveOffset);
 
-    return [
-      // Walls (profile cuts).
+    // Walls + bottom are profile cuts on the default layer.
+    const profiles = [
       s.polyline(shift(front, 0, yFront), { closed: true }),
       s.polyline(shift(back, 0, yBack), { closed: true }),
       s.polyline(shift(left, 0, yLeft), { closed: true }),
       s.polyline(shift(right, 0, yRight), { closed: true }),
-      // Bottom panel (profile cut), off to the side.
       s.polyline(shift(bottom, length + g, 0), { closed: true }),
-      // Bottom grooves (pockets), one inside each wall.
+    ];
+    // Grooves are POCKETS, not profile cuts — put them on their own layer so the
+    // distinction is obvious when assigning toolpaths.
+    s.layer("Groove pockets", "#f59e0b");
+    const grooves = [
       s.polyline(groove(length, yFront), { closed: true }),
       s.polyline(groove(length, yBack), { closed: true }),
       s.polyline(groove(width, yLeft), { closed: true }),
       s.polyline(groove(width, yRight), { closed: true }),
     ];
+    s.layer(); // back to the default layer
+
+    return [...profiles, ...grooves];
   },
 };

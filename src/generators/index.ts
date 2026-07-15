@@ -12,7 +12,7 @@
  * Worker-safe. See sketch.ts.
  */
 
-import type { CADDocument, FeatureInstance, GroupDef } from "../model/document";
+import type { CADDocument, FeatureInstance, GroupDef, LayerDef } from "../model/document";
 import type { Entity } from "../model/entities";
 import { nextId } from "../model/ids";
 import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
@@ -87,6 +87,35 @@ function centreOffset(doc: CADDocument, entities: Entity[]): Pt {
   };
 }
 
+/** Id of the doc layer named `name` (reused across runs), creating it if absent. */
+function ensureLayer(doc: CADDocument, name: string, color?: string): string {
+  const existing = doc.layers.find((l) => l.name === name);
+  if (existing) return existing.id;
+  const layer: LayerDef = {
+    id: nextId("layer"),
+    name,
+    color: color ?? "#10b981",
+    visible: true,
+    locked: false,
+  };
+  doc.layers.push(layer);
+  return layer.id;
+}
+
+/**
+ * Place a sketch's entities onto `doc`: apply each entity's layer hint (creating
+ * the layer on demand), translate by `offset`, and add. Shared by run + regen.
+ */
+function commitEntities(doc: CADDocument, sketch: Sketch, offset: Pt): void {
+  sketch.entities.forEach((e, i) => {
+    const hint = sketch.entityLayers[i];
+    if (hint) e.layerId = ensureLayer(doc, hint.name, hint.color);
+    e.translate(offset);
+    doc.add(e);
+  });
+  for (const v of sketch.variables) doc.addVariable(v);
+}
+
 /**
  * Run `gen` with `params` and commit the result onto `doc` as a re-editable
  * feature: every emitted entity is added, its ids collected into a group, any
@@ -105,11 +134,7 @@ export function runGenerator(
   // Generators draw around the origin; place the part in the middle of the work
   // area so it lands where the user is looking, not jammed at the WCS corner.
   const offset = centreOffset(doc, sketch.entities);
-  for (const e of sketch.entities) {
-    e.translate(offset);
-    doc.add(e);
-  }
-  for (const v of sketch.variables) doc.addVariable(v);
+  commitEntities(doc, sketch, offset);
 
   const group: GroupDef = {
     id: nextId("group"),
@@ -163,11 +188,7 @@ export function regenerateFeature(
   const handles = gen.build(sketch);
   // Re-apply the feature's stored placement so it rebuilds where it sits.
   const offset = feature.offset ?? { x: 0, y: 0 };
-  for (const e of sketch.entities) {
-    e.translate(offset);
-    doc.add(e);
-  }
-  for (const v of sketch.variables) doc.addVariable(v);
+  commitEntities(doc, sketch, offset);
 
   group.entityIds = sketch.entities.map((e) => e.id);
   feature.params = effectiveParams(sketch);
