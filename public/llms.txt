@@ -25,6 +25,22 @@ integration guide, inlined as one plain-text document.
   way an AI can work with RapidCAM — the in-app assistant loop, this index,
   the headless CLI, and the MCP server — plus authoring tips
 
+## Parametric features (generators)
+
+- `features[]` in `.rcam`: geometry produced by a built-in generator (box,
+  box-joint, spur gear, ...) that stays re-editable — `{id, generatorId,
+  params, paramExprs?, groupId, offset}`.
+- `paramExprs` (optional) holds an expression per param, evaluated against
+  document `variables` and `stock` (the stock thickness); `params` holds the
+  last resolved values as cache/fallback for params with no expression, or
+  whose expression fails to evaluate.
+- Features regenerate automatically when a variable they reference changes
+  (and are self-healed on file open if `params` doesn't match what the
+  expressions currently resolve to).
+- Entity ids stay stable across a regeneration, so CAM operations,
+  constraints, and dimensions that reference generated geometry survive a
+  parameter edit.
+
 ## Authoring tips for LLMs
 
 - All lengths are millimetres and all angles are radians (CCW), regardless of

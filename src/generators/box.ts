@@ -41,6 +41,10 @@ interface CombSpec {
    *  Ends abutting a perpendicular joint inset by t; a free rim (open top) insets 0. */
   insetStart: number;
   insetEnd: number;
+  /** Joint clearance (mm): each active (notch) run widens by clearance/2 per
+   *  mating face, at the expense of its inactive neighbours, for a snugger fit
+   *  after kerf/tolerance. 0 reproduces the un-relieved comb exactly. */
+  clearance: number;
 }
 
 /**
@@ -57,6 +61,22 @@ function comb(len: number, spec: CombSpec): Pt[] {
   const n = Math.max(2, Math.round(span / spec.fingerW));
   const w = span / n;
   const sign = spec.protrude ? 1 : -1;
+  const c = spec.clearance;
+  const isActive = (i: number) => (spec.firstActive ? i % 2 === 0 : i % 2 === 1);
+
+  // Boundary x-positions between runs (n+1 of them), nominally s + w·k — the
+  // same expression the un-relieved code used, so c = 0 reproduces it exactly.
+  // The comb-span ends (k = 0, n) stay pinned to s/e. An interior boundary sits
+  // between exactly one active run and one inactive run (active alternates
+  // every run), and moves clearance/2 into the INACTIVE run's territory —
+  // widening the active notch by c/2 per mating face — clamped so it can't
+  // cross the comb's own ends. Runs are read off these shared boundaries, so
+  // they stay contiguous with no gap or overlap (holds for c < w).
+  const boundary = (k: number): number => {
+    const x = s + w * k;
+    if (k <= 0 || k >= n) return x;
+    return isActive(k - 1) ? Math.min(e, x + c / 2) : Math.max(s, x - c / 2);
+  };
 
   const pts: Pt[] = [
     { x: 0, y: 0 },
@@ -64,10 +84,10 @@ function comb(len: number, spec: CombSpec): Pt[] {
   ];
   let curY = 0;
   for (let i = 0; i < n; i++) {
-    const active = spec.firstActive ? i % 2 === 0 : i % 2 === 1;
+    const active = isActive(i);
     const y = active ? sign * spec.depth : 0;
-    const x0 = s + w * i;
-    const x1 = s + w * (i + 1);
+    const x0 = boundary(i);
+    const x1 = boundary(i + 1);
     if (y !== curY) {
       pts.push({ x: x0, y }); // riser from the previous point at x0
       curY = y;
@@ -158,14 +178,32 @@ export const box: Generator = {
     const height = s.param("height", 40, { min: 10, label: "Height (Z)" });
     const t = s.param("thickness", 6, { min: 0.5, label: "Material thickness" });
     const f = s.param("fingerWidth", 12, { min: 2, label: "Finger width" });
+    const clearance = s.param("clearance", 0, { min: 0, label: "Joint clearance" });
+    s.note("Grooves are pockets ≈ thickness/2 deep; the bottom panel drops into them.");
 
     // Vertical corner joints run the FULL height (no inset — the bottom is held
     // by a groove, not a bottom-edge joint, so nothing conflicts at the corners).
     // Front/back and side walls take complementary phase so tabs meet slots; the
     // fingers alternate, so some show at the rim on every wall — that's inherent
     // to a box joint. Straight top/bottom edges (the groove captures the bottom).
-    const cornerFB: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: false, insetStart: 0, insetEnd: 0 };
-    const cornerSide: CombSpec = { fingerW: f, depth: t, protrude: false, firstActive: true, insetStart: 0, insetEnd: 0 };
+    const cornerFB: CombSpec = {
+      fingerW: f,
+      depth: t,
+      protrude: false,
+      firstActive: false,
+      insetStart: 0,
+      insetEnd: 0,
+      clearance,
+    };
+    const cornerSide: CombSpec = {
+      fingerW: f,
+      depth: t,
+      protrude: false,
+      firstActive: true,
+      insetStart: 0,
+      insetEnd: 0,
+      clearance,
+    };
 
     const frontBack: PanelSpecs = { left: cornerFB, right: cornerFB };
     const side: PanelSpecs = { left: cornerSide, right: cornerSide };
@@ -175,14 +213,16 @@ export const box: Generator = {
     const left = panel(width, height, side);
     const right = panel(width, height, side);
     // Bottom drops into the grooves: cavity (outer − 2t) plus the groove depth
-    // (t/2) it enters on each side → (length − t) × (width − t). A plain panel.
-    const bottom = rect(length - t, width - t);
+    // (t/2) it enters on each side → (length − t) × (width − t), less the
+    // clearance so it seats snugly in the widened channel below.
+    const bottom = rect(length - t - clearance, width - t - clearance);
 
     // A groove (dado) on each wall, inset t from the corners so it clears the
-    // corner fingers, a channel t wide sitting `t` above the wall's bottom edge.
-    // Milled as a shallow pocket (~t/2 deep); the bottom edge slides into it.
+    // corner fingers, a channel t wide (t + clearance, to match the bottom
+    // panel's shrink) sitting `t` above the wall's bottom edge. Milled as a
+    // shallow pocket (~t/2 deep); the bottom edge slides into it.
     const grooveOffset = t;
-    const grooveOf = (faceW: number): Pt[] => rect(faceW - 2 * t, t);
+    const grooveOf = (faceW: number): Pt[] => rect(faceW - 2 * t, t + clearance);
 
     const g = Math.max(4 * t, 6);
     const shift = (pts: Pt[], ox: number, oy: number): Pt[] =>
@@ -213,6 +253,29 @@ export const box: Generator = {
       s.polyline(groove(width, yRight), { closed: true }),
     ];
     s.layer(); // back to the default layer
+
+    // The CAM intent this generator knows: walls + bottom are through profile
+    // cuts, grooves are shallow pockets at half the material thickness. Both
+    // get dog-bone relief so square fingers/panel edges seat against a round
+    // cutter's corners.
+    s.suggestOp({
+      name: "Box panels — Profile (outside)",
+      kind: "profile-outside",
+      targets: profiles,
+      depth: "through",
+      cornerStyle: "dogbone",
+    });
+    s.suggestOp({
+      name: "Bottom grooves — Pocket",
+      kind: "pocket",
+      targets: grooves,
+      depth: -t / 2,
+      cornerStyle: "dogbone",
+      // The groove channel is only t wide — the default 6 mm end mill leaves
+      // zero pocket area after tool-radius insetting and the op would post as
+      // "pocket too small — skipped". Half the channel width always fits.
+      toolDiameter: Math.min(6, t / 2),
+    });
 
     return [...profiles, ...grooves];
   },

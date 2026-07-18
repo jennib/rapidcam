@@ -1273,6 +1273,21 @@ button.cbtn.solve {
   justify-content: center;
 }
 
+/* "Peek" variant for dialogs with a live canvas preview (generator ghost):
+   no dimming, clicks pass through to the canvas, dialog docked to the right.
+   Keeps the .tp-backdrop class so the modal manager's Escape handling and
+   shortcut gating still apply. */
+.tp-backdrop.tp-backdrop--peek {
+  background: transparent;
+  pointer-events: none;
+  justify-content: flex-end;
+  padding-right: 24px;
+}
+.tp-backdrop--peek .tp-dialog {
+  pointer-events: auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
 .tp-dialog {
   background: var(--panel);
   border: 1px solid var(--border);

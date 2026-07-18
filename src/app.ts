@@ -65,7 +65,7 @@ import { TrimTool } from "./tools/trimTool";
 import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
 import { AlignBar } from "./ui/alignBar";
 import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
-import { GENERATORS, findFeatureForEntities } from "./generators/index";
+import { GENERATORS, findFeatureForEntities, regenerateStaleFeatures } from "./generators/index";
 import { openGeneratorDialog } from "./ui/generatorDialog";
 import { CamBar } from "./ui/camBar";
 import { ConstraintBar } from "./ui/constraintBar";
@@ -79,11 +79,18 @@ import { PropertiesBar } from "./ui/propertiesBar";
 import { SettingsBar } from "./ui/settingsBar";
 import { showShortcutOverlay } from "./ui/shortcutOverlay";
 import { StatusBar } from "./ui/statusBar";
+import { toast } from "./ui/toast";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
 import { VariablesBar } from "./ui/variablesBar";
 import { showWelcomeScreen } from "./ui/welcomeScreen";
-import type { DiagnosticMarker, FlipPreview, Overlay, StitchPreview } from "./view/overlay";
+import type {
+  DiagnosticMarker,
+  FlipPreview,
+  Overlay,
+  PreviewShape,
+  StitchPreview,
+} from "./view/overlay";
 import { Renderer } from "./view/renderer";
 import { Viewport } from "./view/viewport";
 
@@ -130,6 +137,12 @@ export class App {
   private dxfDiagnostics: DiagnosticMarker[] | null = null;
   /** Stitch tiled-milling preview (tile grid + registration features), if any. */
   private stitchPreview: StitchPreview | null = null;
+  /** Ghost of the generator dialog's pending output (flipPreview idiom). */
+  private generatorPreview: PreviewShape[] | null = null;
+  private readonly generatorPreviewSink = (s: PreviewShape[] | null): void => {
+    this.generatorPreview = s;
+    this.requestRender();
+  };
   /** Flip (double-sided) preview (flip axis + registration pins), if any. */
   private flipPreview: FlipPreview | null = null;
   private renderScheduled = false;
@@ -310,27 +323,34 @@ export class App {
         onRegeneratePatterns: () => this.doRegeneratePatterns(),
         onRectArray: () => openRectArrayDialog(this.doc, this.project.pushHistory),
         onCircArray: () => openCircArrayDialog(this.doc, this.project.pushHistory),
-        generators: Object.values(GENERATORS).map((g) => ({ id: g.id, name: g.name })),
-        onInsertGenerator: (id) =>
-          openGeneratorDialog(this.doc, this.project.pushHistory, GENERATORS[id], undefined, () =>
-            this.fitView(),
-          ),
         onEditFeature: () => {
           const feat = findFeatureForEntities(
             this.doc,
             this.doc.selected.map((e) => e.id),
           );
           if (!feat) {
-            alert("Select a generated feature to edit.");
+            toast("Select a generated feature to edit.");
             return;
           }
-          openGeneratorDialog(
-            this.doc,
-            this.project.pushHistory,
-            GENERATORS[feat.generatorId],
-            feat.id,
-          );
+          openGeneratorDialog({
+            doc: this.doc,
+            pushHistory: this.project.pushHistory,
+            gen: GENERATORS[feat.generatorId],
+            editFeatureId: feat.id,
+            onPreview: this.generatorPreviewSink,
+          });
         },
+      },
+      insert: {
+        generators: Object.values(GENERATORS).map((g) => ({ id: g.id, name: g.name })),
+        onInsertGenerator: (id) =>
+          openGeneratorDialog({
+            doc: this.doc,
+            pushHistory: this.project.pushHistory,
+            gen: GENERATORS[id],
+            onInserted: () => this.fitView(),
+            onPreview: this.generatorPreviewSink,
+          }),
       },
       view: {
         onFit: () => this.fitView(),
@@ -353,6 +373,7 @@ export class App {
       () => this.runSolve(),
       () => this.toggleConstruction(),
       (dim, v, expr) => this.commitDimValue(dim, v, expr),
+      this.generatorPreviewSink,
     );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     this.statusBar.setHint(TOOL_HINTS[this.tools.active.id] ?? "");
@@ -637,18 +658,20 @@ export class App {
   /**
    * A variable was committed (name/value/delete). Re-evaluate variables and
    * solve so any variable-driven dimensions move their geometry into place, then
-   * regenerate any pattern that became stale — whether its count/spacing
-   * expression changed or its source moved — and solve again to refresh. All
-   * inside the history transaction the VariablesBar already opened, so one undo
-   * reverts the edit and the regen together. The guard keeps a regen's
-   * emitChange from recursing back in.
+   * regenerate any pattern OR generator feature that became stale — whether its
+   * count/spacing/param expression changed or (for patterns) its source moved —
+   * and solve again to refresh. All inside the history transaction the
+   * VariablesBar already opened, so one undo reverts the edit and the regen
+   * together. The guard keeps a regen's emitChange from recursing back in.
    */
   private onVariablesChanged(): void {
     this.runSolve(); // re-evaluates variables/dimensions and settles geometry
     if (this.autoRegenerating) return;
     this.autoRegenerating = true;
     try {
-      if (regenerateStalePatterns(this.doc)) this.runSolve();
+      const p = regenerateStalePatterns(this.doc);
+      const f = regenerateStaleFeatures(this.doc);
+      if (p || f) this.runSolve();
     } finally {
       this.autoRegenerating = false;
     }
@@ -698,7 +721,7 @@ export class App {
   private render(): void {
     const to = this.tools.overlay();
     const overlay: Overlay = {
-      previews: to.previews,
+      previews: this.generatorPreview ? to.previews.concat(this.generatorPreview) : to.previews,
       selectionRect: to.selectionRect,
       snap: to.snap ?? this.currentSnap,
       hover: this.currentHover,
@@ -909,6 +932,26 @@ export class App {
     if (dim) {
       this.openDimEditor(dim);
       return;
+    }
+    // Double-clicking generated geometry with the select tool active opens the
+    // owning feature for editing — this intentionally supersedes the select
+    // tool's default double-click behavior (e.g. polyline chain-select) for
+    // anything a generator produced, since re-opening its params is almost
+    // always the more useful action.
+    if (this.tools.active.id === "select") {
+      const hitId = this.pickEntityAt(world);
+      const feat = hitId ? findFeatureForEntities(this.doc, [hitId]) : null;
+      const gen = feat ? GENERATORS[feat.generatorId] : undefined;
+      if (feat && gen) {
+        openGeneratorDialog({
+          doc: this.doc,
+          pushHistory: this.project.pushHistory,
+          gen,
+          editFeatureId: feat.id,
+          onPreview: this.generatorPreviewSink,
+        });
+        return;
+      }
     }
     this.tools.doubleClick(this.toolEvent(ev, screen));
     this.requestRender();

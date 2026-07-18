@@ -19,10 +19,14 @@ export const gear: Generator = {
   id: "spur-gear",
   name: "Spur Gear",
   build(s) {
-    const teeth = Math.max(6, Math.round(s.param("teeth", 20, { min: 6, label: "Teeth" })));
+    const teeth = s.param("teeth", 20, { min: 6, int: true, label: "Teeth" });
     const module = s.param("module", 2, { min: 0.1, label: "Module (mm)" });
     const paDeg = s.param("pressureAngle", 20, { min: 10, max: 30, label: "Pressure angle (°)" });
     const bore = s.param("bore", 6, { min: 0, label: "Bore Ø (mm)" });
+    // Below ~17 teeth (for a 20° pressure angle) the involute flank at the base
+    // circle undercuts into the root, weakening the tooth root and roughening
+    // the profile — a heads-up, not a hard limit (min stays 6, matching before).
+    if (teeth < 17) s.note("Below ~17 teeth, involute flanks are undercut — mesh may be rough.");
 
     const alpha = (paDeg * Math.PI) / 180;
     const rp = (module * teeth) / 2; // pitch radius
@@ -72,8 +76,30 @@ export const gear: Generator = {
       for (let i = 1; i < ROOT; i++) at(rRoot, leftRoot + ((nextRight - leftRoot) * i) / ROOT);
     }
 
-    const out = [s.polyline(pts, { closed: true })];
-    if (bore > 0) out.push(s.circle({ x: 0, y: 0 }, bore / 2));
+    const body = s.polyline(pts, { closed: true });
+    // Through profile cut. NO corner relief: dog-boning the concave involute
+    // roots would gouge spurious overcuts into the tooth flanks.
+    s.suggestOp({
+      name: "Gear — Profile (outside)",
+      kind: "profile-outside",
+      targets: [body],
+      depth: "through",
+    });
+    const out = [body];
+    if (bore > 0) {
+      const boreH = s.circle({ x: 0, y: 0 }, bore / 2);
+      // Inside profile for the bore. The default 6 mm end mill is degenerate
+      // inside a small bore (empty toolpath, silently) — clamp the suggested
+      // tool to half the bore so the op cuts out of the box.
+      s.suggestOp({
+        name: "Bore — Profile (inside)",
+        kind: "profile-inside",
+        targets: [boreH],
+        depth: "through",
+        toolDiameter: Math.min(6, bore / 2),
+      });
+      out.push(boreH);
+    }
     return out;
   },
 };

@@ -10,6 +10,7 @@ import {
   selectionBounds,
 } from "../core/transform";
 import { formatAngle, formatLength, parseAngle, parseLength } from "../core/units";
+import { GENERATORS } from "../generators/index";
 import { findBinding } from "../model/bindings";
 import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
 import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
@@ -27,6 +28,8 @@ import {
 } from "../model/entities";
 import { nextId } from "../model/ids";
 import { varMap } from "../model/variables";
+import type { PreviewShape } from "../view/overlay";
+import { openGeneratorDialog } from "./generatorDialog";
 
 const DIM_LABELS: Record<DimensionType, string> = {
   distance: "Distance",
@@ -77,6 +80,8 @@ export class PropertiesBar {
     private solve: () => void,
     private onConstructionToggle: () => void,
     private commitDimValue: (dim: Dimension, v: number, expr?: string) => boolean,
+    /** Ghost-preview sink for the feature Edit… dialog (App's generatorPreviewSink). */
+    private onGeneratorPreview?: (shapes: PreviewShape[] | null) => void,
   ) {
     this.build();
     this.doc.onChange(() => this.refresh());
@@ -1168,7 +1173,14 @@ export class PropertiesBar {
   // Group sections
 
   private buildGroupSection(group: GroupDef, fullySelected: boolean): void {
-    const sec = this.createSection(`Group · ${group.entityIds.length} entities`);
+    // A group backing a generator feature gets a distinct title plus an
+    // Edit… button that reopens the generator's parameter dialog — the
+    // group is just how the feature's entities are tracked on the doc.
+    const feat = this.doc.features.find((f) => f.groupId === group.id);
+    const title = feat
+      ? `Feature · ${GENERATORS[feat.generatorId]?.name ?? feat.generatorId}`
+      : `Group · ${group.entityIds.length} entities`;
+    const sec = this.createSection(title);
 
     const nameRow = document.createElement("div");
     nameRow.className = "props-row";
@@ -1188,6 +1200,26 @@ export class PropertiesBar {
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex;gap:4px;margin-top:4px;";
 
+    if (feat) {
+      const gen = GENERATORS[feat.generatorId];
+      if (gen) {
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn";
+        editBtn.textContent = "Edit…";
+        editBtn.title = "Edit this feature's parameters";
+        editBtn.addEventListener("click", () => {
+          openGeneratorDialog({
+            doc: this.doc,
+            pushHistory: this.pushHistory,
+            gen,
+            editFeatureId: feat.id,
+            onPreview: this.onGeneratorPreview,
+          });
+        });
+        btnRow.appendChild(editBtn);
+      }
+    }
+
     if (!fullySelected) {
       const selectBtn = document.createElement("button");
       selectBtn.className = "btn";
@@ -1203,9 +1235,16 @@ export class PropertiesBar {
     const ungroupBtn = document.createElement("button");
     ungroupBtn.className = "btn";
     ungroupBtn.textContent = "Ungroup";
+    ungroupBtn.title = feat
+      ? "Ungroup and forget the feature (geometry becomes plain)"
+      : "Ungroup";
     ungroupBtn.addEventListener("click", () => {
       this.pushHistory();
       this.doc.groups = this.doc.groups.filter((g) => g.id !== group.id);
+      // Ungrouping is the explicit "explode to plain geometry" gesture — a
+      // feature can't outlive the group that tracks its entities, so drop it
+      // too rather than leaving a dangling FeatureInstance.
+      if (feat) this.doc.features = this.doc.features.filter((f) => f.id !== feat.id);
       this.doc.emitChange();
     });
     btnRow.appendChild(ungroupBtn);

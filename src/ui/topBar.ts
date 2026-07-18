@@ -1,6 +1,7 @@
 import type { CADDocument } from "../model/document";
 import { FileMenu, type FileMenuCallbacks } from "./fileMenu";
 import { EditMenu, type EditMenuCallbacks } from "./editMenu";
+import { InsertMenu, type InsertMenuCallbacks } from "./insertMenu";
 import { ViewMenu, type ViewMenuCallbacks } from "./viewMenu";
 import { HelpMenu } from "./helpMenu";
 
@@ -16,6 +17,7 @@ export interface TopBarCallbacks {
   isDirty: () => boolean;
   file: FileMenuCallbacks;
   edit: EditMenuCallbacks;
+  insert: InsertMenuCallbacks;
   view: ViewMenuCallbacks;
 }
 
@@ -46,6 +48,7 @@ export class TopBar {
 
     new FileMenu(this.host, this.cb.file);
     new EditMenu(this.host, this.cb.edit);
+    new InsertMenu(this.host, this.cb.insert);
     new ViewMenu(this.host, this.cb.view);
 
     // Machine configuration (post-processor, tool changer, coolant capability,

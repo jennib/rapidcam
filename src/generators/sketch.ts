@@ -49,6 +49,10 @@ export interface ParamSpec {
   min?: number;
   max?: number;
   label?: string;
+  /** Value must be an integer (e.g. a tooth or finger count). */
+  int?: boolean;
+  /** UI step hint for a numeric input; purely presentational, not enforced here. */
+  step?: number;
 }
 
 /**
@@ -84,7 +88,11 @@ function boundsCenter(e: Entity): Pt {
 /** Build the normalized handle for an entity, mapping the per-type field names. */
 function makeHandle(e: Entity): Handle {
   return {
-    id: e.id,
+    // Live getter, not a snapshot: regeneration may move a surviving entity's
+    // id onto this entity (replaceInstanceEntity), and the handle must follow.
+    get id(): string {
+      return e.id;
+    },
     entity: e,
     get center(): Pt {
       if (e instanceof CircleEntity || e instanceof ArcEntity) return { ...e.center };
@@ -140,6 +148,31 @@ export interface LayerHint {
   color?: string;
 }
 
+/**
+ * A CAM operation the generator recommends for some of its output — the piece
+ * of intent a layer name alone can't carry (the box generator KNOWS its grooves
+ * are pockets at half the material thickness). Recorded here in machine-neutral
+ * terms; generators/suggestOps.ts turns suggestions into real `CAMOperation`s
+ * at insert time, applying the document's machine kind and tool/feed defaults.
+ * Suggestions are advisory: the host may skip them, and once created the ops
+ * belong to the user (regeneration never re-creates them).
+ */
+export interface OpSuggestion {
+  /** Operation display name, e.g. "Box panels — Profile (outside)". */
+  name: string;
+  kind: "profile-outside" | "profile-inside" | "pocket" | "engrave";
+  /** Handles of the entities the op should cut (their ids are read at commit). */
+  targets: Handle[];
+  /** Cut depth: mm below the surface (negative), or "through" = full stock thickness. */
+  depth: number | "through";
+  /** Dog-bone/T-bone corner relief (profile + pocket only; see cam/dogbone.ts). */
+  cornerStyle?: "dogbone" | "tbone";
+  /** Per-pass stepdown override (mm); omitted = host default. */
+  stepdown?: number;
+  /** Tool-diameter override (mm), e.g. clamped small for a narrow bore. */
+  toolDiameter?: number;
+}
+
 export class Sketch {
   /** Entities emitted so far, in draw order. */
   readonly entities: Entity[] = [];
@@ -149,6 +182,16 @@ export class Sketch {
   readonly variables: Variable[] = [];
   /** Parameters the generator declared, in declaration order. */
   readonly params: ParamSpec[] = [];
+  /**
+   * Advisory messages surfaced for the CURRENT parameter values (e.g. an
+   * undercut warning at a low tooth count). A generator calls {@link note}
+   * while building; since `build()` re-runs on every probe, notes are
+   * re-collected fresh each time — a host re-probing on input changes gets
+   * live-updating notes. Not persisted with the feature.
+   */
+  readonly notes: string[] = [];
+  /** CAM operations the generator recommends for its output (see {@link OpSuggestion}). */
+  readonly opSuggestions: OpSuggestion[] = [];
 
   private readonly overrides: Map<string, number>;
   private readonly flatten?: TextFlattener;
@@ -174,18 +217,51 @@ export class Sketch {
    * otherwise `def`. This is the hook that makes a generator a re-runnable
    * feature: the host reads {@link params} to build an editor and re-runs with
    * new overrides.
+   *
+   * When `int` is set, rounding happens BEFORE clamping — an override can round
+   * to just outside [min,max] (e.g. 100.4 rounds to 100, past a max of 12), and
+   * the clamp must have the final say so the declared range is never violated.
+   * The recorded `ParamSpec.value` (and the returned value) is the post-round,
+   * post-clamp value — exactly what the generator actually built with.
    */
-  param(name: string, def: number, opts: { min?: number; max?: number; label?: string } = {}): number {
+  param(
+    name: string,
+    def: number,
+    opts: { min?: number; max?: number; label?: string; int?: boolean; step?: number } = {},
+  ): number {
     let value = this.overrides.has(name) ? this.overrides.get(name)! : def;
+    if (opts.int) value = Math.round(value);
     if (opts.min !== undefined) value = Math.max(opts.min, value);
     if (opts.max !== undefined) value = Math.min(opts.max, value);
-    this.params.push({ name, value, def, min: opts.min, max: opts.max, label: opts.label });
+    this.params.push({
+      name,
+      value,
+      def,
+      min: opts.min,
+      max: opts.max,
+      label: opts.label,
+      int: opts.int,
+      step: opts.step,
+    });
     return value;
+  }
+
+  /**
+   * Surface an advisory message for the current parameter values (e.g. "below
+   * ~17 teeth the involute flanks are undercut"). See {@link notes}.
+   */
+  note(text: string): void {
+    this.notes.push(text);
   }
 
   /** Declare a document variable (e.g. exposing a driving dimension by name). */
   variable(name: string, expr: string): void {
     this.variables.push(makeVariable(name, expr, "mm"));
+  }
+
+  /** Recommend a CAM operation for part of this sketch's output (see {@link OpSuggestion}). */
+  suggestOp(spec: OpSuggestion): void {
+    this.opSuggestions.push(spec);
   }
 
   // --- self-contained geometry (v1 core) ---------------------------------

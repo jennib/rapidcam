@@ -9,6 +9,7 @@ import {
 } from "../core/imageManager";
 import { StorageKeys } from "../core/storageKeys";
 import { reconcileLoadedPatterns } from "../model/patternEngine";
+import { reconcileLoadedFeatures } from "../generators";
 import { DEFAULTS } from "../cam/types";
 
 export const RCAM_VERSION = 2 as const;
@@ -306,6 +307,10 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
   // mismatched instanceIds self-corrects on open. Resolution reads the loaded
   // variable values (no re-evaluation, so stored dimension values are preserved).
   reconcileLoadedPatterns(doc);
+  // Same self-correction for parametric features: a hand- or AI-authored file
+  // whose expression-driven params don't match the stored `params` regenerates
+  // on load so the document is internally consistent from the start.
+  reconcileLoadedFeatures(doc);
 }
 
 export async function openFile(): Promise<{

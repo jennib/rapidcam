@@ -252,6 +252,13 @@ export interface FeatureInstance {
    * rebuilds the feature *where it sits*, not back at the origin. Absent = none.
    */
   offset?: { x: number; y: number };
+  /**
+   * Optional expression per param, evaluated against document variables (and
+   * `stock`, the stock thickness — see model/variables.ts `varMap`). `params`
+   * holds the last resolved values as cache/fallback: a param with no entry
+   * here, or whose expression fails to evaluate, keeps its cached numeric.
+   */
+  paramExprs?: Record<string, string>;
 }
 
 export interface LayerDef {
@@ -688,6 +695,15 @@ export class CADDocument {
       op.entityIds = op.entityIds.filter((id) => ids.has(id));
       if (op.islandIds) op.islandIds = op.islandIds.filter((id) => ids.has(id));
     }
+    // Trim groups to surviving members (replacing only the id array so a held
+    // GroupDef reference — e.g. during a generator regeneration — stays live),
+    // drop groups left empty, and drop generator features whose backing group
+    // is gone: a feature whose geometry was entirely deleted must not linger
+    // invisibly in the document and its saved files.
+    for (const g of this.groups) g.entityIds = g.entityIds.filter((id) => ids.has(id));
+    this.groups = this.groups.filter((g) => g.entityIds.length > 0);
+    const groupIds = new Set(this.groups.map((g) => g.id));
+    this.features = this.features.filter((f) => groupIds.has(f.groupId));
   }
 
   // --- patterns ------------------------------------------------------------
@@ -821,6 +837,12 @@ export class CADDocument {
       }
     }
     for (const b of this.bindings) b.expr = b.expr.replace(re, newName);
+    for (const f of this.features) {
+      if (!f.paramExprs) continue;
+      for (const key of Object.keys(f.paramExprs)) {
+        f.paramExprs[key] = f.paramExprs[key].replace(re, newName);
+      }
+    }
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -1098,6 +1120,7 @@ export class CADDocument {
         ...f,
         params: { ...f.params },
         ...(f.offset ? { offset: { ...f.offset } } : {}),
+        ...(f.paramExprs ? { paramExprs: { ...f.paramExprs } } : {}),
       })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map((l) => ({ ...l })),
@@ -1252,6 +1275,7 @@ export class CADDocument {
           ...f,
           params: { ...f.params },
           ...(f.offset ? { offset: { ...f.offset } } : {}),
+          ...(f.paramExprs ? { paramExprs: { ...f.paramExprs } } : {}),
         }))
       : [];
     for (const f of this.features) updateCounter(f.id);

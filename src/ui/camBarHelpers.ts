@@ -19,8 +19,8 @@ import type { Vec2 } from "../core/vec2";
 import { dist } from "../core/vec2";
 import { formatLength } from "../core/units";
 import type { CAMOperation, RegionRef } from "../cam/types";
-import { collectClosedLoops, pointInPolygon } from "../cam/loops";
-import { interiorPoint, refAtPoint, resolveRegion } from "../cam/regions";
+import { collectClosedLoops } from "../cam/loops";
+import { interiorPoint, resolveRegion, seedsFromEntityIds } from "../cam/regions";
 
 export type OpCombo =
   | "profile-outside"
@@ -159,44 +159,13 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
   }
 }
 
-/**
- * Synthesize region seeds from entity-id sets: one seed inside each boundary
- * loop, clear of its islands. Used to migrate legacy pocket ops and to seed
- * regions from the canvas selection.
- */
-export function seedsFromEntityIds(
-  doc: CADDocument,
-  entIds: Set<string>,
-  islIds: Set<string>,
-): Vec2[] {
-  const loops = collectClosedLoops(doc.entities);
-  const boundaries = loops.filter((L) => L.ids.every((id) => entIds.has(id)));
-  const islands = loops.filter((L) => L.ids.every((id) => islIds.has(id)));
-  const seeds: Vec2[] = [];
-  for (const b of boundaries) {
-    const holes = islands.filter((i) => pointInPolygon(i.verts[0], b.verts)).map((i) => i.verts);
-    const p = interiorPoint(b.verts, holes);
-    if (p) seeds.push(p);
-  }
-  return seeds;
-}
+// Region seeding moved to cam/regions.ts so headless callers (generators,
+// tests, the CLI) can seed regions without importing ui code; re-exported here
+// so camBar and existing tests keep their import path.
+export { refsFromSeeds, seedsFromEntityIds } from "../cam/regions";
 
 export function legacyPocketSeeds(op: CAMOperation, doc: CADDocument): Vec2[] {
   return seedsFromEntityIds(doc, new Set(op.entityIds), new Set(op.islandIds ?? []));
-}
-
-/**
- * Convert transient edit-time seed points (valid against the current, static
- * geometry while the dialog is open) into parametric region refs for storage.
- */
-export function refsFromSeeds(doc: CADDocument, seeds: Vec2[]): RegionRef[] {
-  const loops = collectClosedLoops(doc.entities);
-  const refs: RegionRef[] = [];
-  for (const p of seeds) {
-    const ref = refAtPoint(p, loops);
-    if (ref) refs.push(ref);
-  }
-  return refs;
 }
 
 /** Resolve stored region refs back to interior seed points for live editing. */
