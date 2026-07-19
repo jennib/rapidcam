@@ -13,10 +13,6 @@ test("app boots and the editor shell is interactive", async ({ page }) => {
     .poll(() => page.evaluate(() => "__app" in window && Boolean((window as unknown as { __app: unknown }).__app)))
     .toBe(true);
 
-  // Dismiss the first-load analytics consent banner so it can't overlay dialogs.
-  const consent = page.locator("#analytics-consent-banner");
-  await consent.getByRole("button", { name: "No thanks" }).click();
-  await expect(consent).toHaveCount(0);
 
   // First run shows the welcome screen; start a blank project to enter the editor.
   const welcome = page.locator(".welcome-backdrop");
@@ -29,6 +25,11 @@ test("app boots and the editor shell is interactive", async ({ page }) => {
   await expect(newProjectDialog).toBeVisible();
   await newProjectDialog.getByRole("button", { name: "Create Project" }).click();
   await expect(newProjectDialog).toHaveCount(0);
+
+  // Now that the startup modals are gone, we can dismiss the consent banner.
+  const consent = page.locator("#analytics-consent-banner");
+  await consent.getByRole("button", { name: "No thanks" }).click();
+  await expect(consent).toHaveCount(0);
 
   // The editor shell is now present.
   await expect(page.locator("#scene")).toBeAttached();

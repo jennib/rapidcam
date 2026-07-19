@@ -26,10 +26,6 @@ test("Rotary Z0: New Project sets centre-zero; Machine Settings reflects and edi
     .poll(() => page.evaluate(() => "__app" in window && Boolean((window as { __app?: unknown }).__app)))
     .toBe(true);
 
-  // Clear the consent banner so it can't overlay the dialogs.
-  const consent = page.locator("#analytics-consent-banner");
-  await consent.getByRole("button", { name: "No thanks" }).click();
-  await expect(consent).toHaveCount(0);
 
   // Welcome → New Project dialog.
   const welcome = page.locator(".welcome-backdrop");
@@ -47,6 +43,11 @@ test("Rotary Z0: New Project sets centre-zero; Machine Settings reflects and edi
   await zeroRow.locator("select").selectOption("center");
   await npd.getByRole("button", { name: "Create Project" }).click();
   await expect(npd).toHaveCount(0);
+
+  // Clear the consent banner so it doesn't interfere with later interactions.
+  const consent = page.locator("#analytics-consent-banner");
+  await consent.getByRole("button", { name: "No thanks" }).click();
+  await expect(consent).toHaveCount(0);
 
   // The choice landed on the document (what export/send read).
   expect(await rotary(page)).toMatchObject({ machineKind: "mill-rotary", rotary: { zero: "center" } });
