@@ -23,6 +23,7 @@ export function showWelcomeScreen(
   onOpenRecent: (entry: RecentEntry) => void,
   onRestoreDraft: () => void,
   onOpenExample: (entry: ExampleEntry) => void,
+  opts: { dismissable?: boolean } = {},
 ): void {
   // Dedup: never stack two splashes (e.g. re-opened from the File menu).
   document.querySelector(".welcome-backdrop")?.remove();
@@ -32,16 +33,21 @@ export function showWelcomeScreen(
 
   const draft = getDraftMeta();
 
+  // A native <dialog> in the top layer; the inline styles defeat the UA's
+  // dialog defaults (auto margins, fit-content sizing) so the element fills
+  // the viewport and the CSS class handles layout. Scrolling lives on the
+  // dialog itself: the card centres via margin:auto when it fits and stays
+  // fully reachable on short laptop viewports when it doesn't.
   const backdrop = document.createElement("dialog");
   backdrop.className = "welcome-backdrop";
   backdrop.style.border = "none";
   backdrop.style.margin = "0";
-  backdrop.style.padding = "0";
   backdrop.style.maxWidth = "none";
   backdrop.style.maxHeight = "none";
   backdrop.style.width = "100%";
   backdrop.style.height = "100%";
   backdrop.style.display = "flex";
+  backdrop.style.overflowY = "auto";
   backdrop.style.background = "rgba(15, 17, 23, 0.85)";
 
   const container = document.createElement("div");
@@ -286,13 +292,6 @@ export function showWelcomeScreen(
 
   const footer = document.createElement("div");
   footer.className = "welcome-footer";
-  const bmc = document.createElement("a");
-  bmc.href = "https://www.buymeacoffee.com/jennibm";
-  bmc.target = "_blank";
-  bmc.rel = "noopener noreferrer";
-  bmc.className = "bmc-button";
-  bmc.innerHTML = `<img src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" alt="☕"> Buy me a coffee`;
-  footer.appendChild(bmc);
 
   // Deliberately visible (not display:none): screenshot-driven agents can only
   // discover what a human can see. Kept dim so humans skim past it.
@@ -305,16 +304,25 @@ export function showWelcomeScreen(
   footer.appendChild(aiHint);
 
   container.appendChild(logo);
-  container.appendChild(content);
   container.appendChild(welcome);
+  container.appendChild(content);
   container.appendChild(footer);
   backdrop.appendChild(container);
 
-  // The user requested a strict modal: no dismissing by clicking the background
-  // or pressing Escape. They must choose an option to proceed.
-  backdrop.addEventListener("cancel", (e) => {
-    e.preventDefault(); // Prevent native Escape key from closing the dialog
-  });
+  if (opts.dismissable) {
+    // Reopened mid-session (File → Start Screen): every card on the splash
+    // replaces the current document, so the user needs a way to back out and
+    // keep working — Escape (the native <dialog> cancel) or a click on the
+    // dimmed area outside the card.
+    backdrop.addEventListener("cancel", () => backdrop.remove());
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+  } else {
+    // At launch there is nothing behind the splash — strict modal: no Escape,
+    // no click-outside. The user must choose an option to proceed.
+    backdrop.addEventListener("cancel", (e) => e.preventDefault());
+  }
 
   document.body.appendChild(backdrop);
   backdrop.showModal();
