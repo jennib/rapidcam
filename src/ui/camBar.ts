@@ -31,6 +31,7 @@ import { generateGCode } from "../cam/gcode";
 import { lintGCode, buildLintContext } from "../cam/lint";
 import { sendToGsender } from "../io/gsender";
 import { sendToNcsender } from "../io/ncsender";
+import { showSenderDialog } from "./senderDialog";
 import { openStitchDialog } from "./stitchDialog";
 import { openFlipDialog } from "./flipDialog";
 import { generateFlipPrograms, opFace } from "../cam/flip";
@@ -159,7 +160,6 @@ export class CamBar {
   /** Tile (stitch) + Two-sided (flip) buttons — hidden for a rotary machine (flat-mill only). */
   private stitchBtn: HTMLButtonElement | null = null;
   private flipBtn: HTMLButtonElement | null = null;
-  private sendBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -241,9 +241,10 @@ export class CamBar {
     const sendBtn = document.createElement("button");
     sendBtn.className = "cam-add-btn";
     sendBtn.style.cssText = "width:100%;margin-top:6px;";
+    sendBtn.textContent = "Send G-code to Sender";
+    sendBtn.title = "Load these toolpaths into a running sender application";
     sendBtn.addEventListener("click", () => this.sendToMachine());
     this.content.appendChild(sendBtn);
-    this.sendBtn = sendBtn;
 
     // Export a chosen subset of toolpaths into a single file (e.g. all the ops
     // that share a tool). Appears only when ≥1 toolpath is checked.
@@ -293,12 +294,6 @@ export class CamBar {
     const rotary = this.doc.machineKind === "mill-rotary";
     if (this.stitchBtn) this.stitchBtn.style.display = rotary ? "none" : "";
     if (this.flipBtn) this.flipBtn.style.display = rotary ? "none" : "";
-    
-    if (this.sendBtn) {
-      const app = getSenderApp();
-      this.sendBtn.textContent = `Send to ${app}`;
-      this.sendBtn.title = `Load these toolpaths into a running ${app}`;
-    }
   }
 
   private openFlip(): void {
@@ -1814,12 +1809,23 @@ export class CamBar {
       alert("Add at least one toolpath first.");
       return;
     }
+    const app = getSenderApp();
+    if (app === "ask") {
+      showSenderDialog((selectedApp) => {
+        void this.doSendToMachine(selectedApp);
+      });
+      return;
+    }
+    await this.doSendToMachine(app);
+  }
+
+  private async doSendToMachine(app: "gSender" | "ncSender"): Promise<void> {
     if (!(await this.confirmMissingFonts())) return;
     const isRotary = this.doc.machineKind === "mill-rotary";
     // A two-sided job can't run as one program — send side A now, side B after
     // the operator flips the stock. (Not for a rotary job.)
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
-      await this.sendFlip();
+      await this.sendFlip(app);
       return;
     }
     let gcode: string;
@@ -1832,7 +1838,6 @@ export class CamBar {
     }
     if (!(await this.preflight(gcode))) return;
 
-    const app = getSenderApp();
     toast(`Sending to ${app}…`);
     // One name for both the send and any fallback download below.
     const jobName = this.exportName(isRotary ? "all-rotary" : "all");
@@ -1878,7 +1883,7 @@ export class CamBar {
    * operator flips the stock onto the registration pins — side B. Each side is
    * pre-flighted; on any send failure the file is offered as a download.
    */
-  private async sendFlip(): Promise<void> {
+  private async sendFlip(app: "gSender" | "ncSender"): Promise<void> {
     const flip = this.doc.flip!;
     const { sideA, sideB, warnings, hasPins } = generateFlipPrograms(this.doc, this.gcodeOpts());
     if (warnings.length > 0) {
@@ -1901,7 +1906,6 @@ export class CamBar {
     const nameA = formatExportName({ project, scope: "sideA", stamp });
     const nameB = formatExportName({ project, scope: "sideB", stamp });
 
-    const app = getSenderApp();
     toast(`Sending side A to ${app}…`);
     
     let resA: { ok: boolean; hint?: string; error?: string };

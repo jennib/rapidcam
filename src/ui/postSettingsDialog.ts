@@ -357,7 +357,7 @@ function senderAppField(): { field: HTMLElement; save: () => void } {
   const appSelect = document.createElement("select");
   appSelect.className = "unit post-settings-select";
   appSelect.style.flex = "1";
-  for (const [v, l] of [["gSender", "gSender"], ["ncSender", "ncSender"]]) {
+  for (const [v, l] of [["gSender", "gSender"], ["ncSender", "ncSender"], ["ask", "Ask Each Time"]]) {
     const o = document.createElement("option");
     o.value = v;
     o.textContent = l;
@@ -384,6 +384,9 @@ function senderAppField(): { field: HTMLElement; save: () => void } {
 
   const status = document.createElement("div");
   status.className = "post-settings-note";
+  
+  const detailWrapper = document.createElement("div");
+  detailWrapper.append(urlLab, row, status);
 
   let currentApp = appSelect.value as SenderApp;
   let gsenderVal = getGsenderUrl();
@@ -391,6 +394,13 @@ function senderAppField(): { field: HTMLElement; save: () => void } {
 
   const sync = () => {
     currentApp = appSelect.value as SenderApp;
+    
+    if (currentApp === "ask") {
+      detailWrapper.style.display = "none";
+      return;
+    }
+    detailWrapper.style.display = "";
+    
     input.value = currentApp === "gSender" ? gsenderVal : ncsenderVal;
     input.placeholder = currentApp === "gSender" ? DEFAULT_GSENDER_URL : DEFAULT_NCSENDER_URL;
     status.textContent = currentApp === "gSender"
@@ -429,7 +439,7 @@ function senderAppField(): { field: HTMLElement; save: () => void } {
 
   appRow.append(appSelect);
   row.append(input, testBtn);
-  field.append(lab, appRow, urlLab, row, status);
+  field.append(lab, appRow, detailWrapper);
 
   return {
     field,

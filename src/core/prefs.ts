@@ -22,7 +22,7 @@ export const DEFAULT_GSENDER_URL = "http://localhost:8000";
 /** Where ncSender listens for G-code uploads. */
 export const DEFAULT_NCSENDER_URL = "http://localhost:8090";
 
-export type SenderApp = "gSender" | "ncSender";
+export type SenderApp = "gSender" | "ncSender" | "ask";
 
 export interface CustomGcode {
   /** Lines injected once near the top of the program (after G21/G90/G17). */
@@ -104,15 +104,15 @@ export function setNcsenderUrl(url: string): void {
 
 export function getSenderApp(): SenderApp {
   try {
-    return (localStorage.getItem(SENDER_APP_KEY) as SenderApp) || "gSender";
+    return (localStorage.getItem(SENDER_APP_KEY) as SenderApp) || "ask";
   } catch {
-    return "gSender";
+    return "ask";
   }
 }
 
 export function setSenderApp(app: SenderApp): void {
   try {
-    if (app && app !== "gSender") localStorage.setItem(SENDER_APP_KEY, app);
+    if (app && app !== "ask") localStorage.setItem(SENDER_APP_KEY, app);
     else localStorage.removeItem(SENDER_APP_KEY);
   } catch {
   }
