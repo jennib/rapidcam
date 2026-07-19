@@ -63,10 +63,10 @@ export function showWelcomeScreen(
   welcome.className = "welcome-intro";
   welcome.innerHTML = `
     <p class="welcome-intro-heading">Welcome to RapidCAM</p>
-    <p class="welcome-intro-body">RapidCAM is a parametric 2D CAD/CAM editor built for CNC work.
-    Draw with fully constrained geometry — dimensions, parallel, perpendicular, and coincident
-    constraints keep your design exact as you iterate. When you're ready, generate G-code profiles,
-    pockets, and engrave paths directly from your drawing.</p>
+    <p class="welcome-intro-body">RapidCAM is a parametric 2D CAD/CAM editor built for CNC and laser.
+    Draw with fully constrained geometry and variables to keep your design exact as you iterate. 
+    When you're ready, generate G-code for profiles, pockets, V-carving, 3D relief carving, 
+    rotary 4th-axis, and laser engraving directly from your drawing.</p>
   `;
 
   const content = document.createElement("div");
