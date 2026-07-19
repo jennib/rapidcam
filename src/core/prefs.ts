@@ -11,11 +11,18 @@ const START_KEY = StorageKeys.gcodeCustomStart;
 const END_KEY = StorageKeys.gcodeCustomEnd;
 const HAS_COOLANT_KEY = StorageKeys.machineHasCoolant;
 const GSENDER_URL_KEY = StorageKeys.gsenderUrl;
+const NCSENDER_URL_KEY = "rapidcam.ncsenderUrl";
+const SENDER_APP_KEY = "rapidcam.senderApp";
 
 /** Where gSender's server listens for the "Send to gSender" handoff. On the same
  *  machine this is localhost:8000 (gSender's default when Remote/Wireless Control
  *  is enabled); on a shop network it's the LAN address gSender shows you. */
 export const DEFAULT_GSENDER_URL = "http://localhost:8000";
+
+/** Where ncSender listens for G-code uploads. */
+export const DEFAULT_NCSENDER_URL = "http://localhost:8090";
+
+export type SenderApp = "gSender" | "ncSender";
 
 export interface CustomGcode {
   /** Lines injected once near the top of the program (after G21/G90/G17). */
@@ -75,6 +82,39 @@ export function setGsenderUrl(url: string): void {
     else localStorage.removeItem(GSENDER_URL_KEY);
   } catch {
     /* private mode / storage disabled — preference simply doesn't persist */
+  }
+}
+
+export function getNcsenderUrl(): string {
+  try {
+    return localStorage.getItem(NCSENDER_URL_KEY) || DEFAULT_NCSENDER_URL;
+  } catch {
+    return DEFAULT_NCSENDER_URL;
+  }
+}
+
+export function setNcsenderUrl(url: string): void {
+  try {
+    const v = url.trim();
+    if (v && v !== DEFAULT_NCSENDER_URL) localStorage.setItem(NCSENDER_URL_KEY, v);
+    else localStorage.removeItem(NCSENDER_URL_KEY);
+  } catch {
+  }
+}
+
+export function getSenderApp(): SenderApp {
+  try {
+    return (localStorage.getItem(SENDER_APP_KEY) as SenderApp) || "gSender";
+  } catch {
+    return "gSender";
+  }
+}
+
+export function setSenderApp(app: SenderApp): void {
+  try {
+    if (app && app !== "gSender") localStorage.setItem(SENDER_APP_KEY, app);
+    else localStorage.removeItem(SENDER_APP_KEY);
+  } catch {
   }
 }
 

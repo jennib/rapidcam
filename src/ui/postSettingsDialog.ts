@@ -6,11 +6,18 @@ import {
   getGsenderUrl,
   setGsenderUrl,
   DEFAULT_GSENDER_URL,
+  getNcsenderUrl,
+  setNcsenderUrl,
+  DEFAULT_NCSENDER_URL,
+  getSenderApp,
+  setSenderApp,
+  type SenderApp,
 } from "../core/prefs";
 import type { CADDocument, MachineKind, RotarySettings } from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/klein";
 import { testGsenderConnection } from "../io/gsender";
+import { testNcsenderConnection } from "../io/ncsender";
 import { registerModal } from "./modal";
 
 const MILL_POST_OPTIONS: [string, string][] = [
@@ -212,10 +219,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   const startArea = textareaField("Program start", current.start, "e.g. G54 ; work offset");
   const endArea = textareaField("Program end", current.end, "e.g. G0 X0 Y0 ; park");
 
-  // "Send to gSender" address. Machine-wide (localStorage), like coolant/custom
-  // G-code. Includes a live "Test" so the operator can confirm reachability
-  // before relying on it mid-job.
-  const gsField = gsenderField(getGsenderUrl());
+  // "Send to Machine" settings. Machine-wide (localStorage).
+  const senderControl = senderAppField();
 
   const buttons = document.createElement("div");
   buttons.className = "post-settings-buttons";
@@ -263,7 +268,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     // Machine-wide preferences.
     setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
-    setGsenderUrl(gsField.value);
+    senderControl.save();
     close();
     doc.emitChange();
     opts.onSaved?.();
@@ -282,7 +287,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     note,
     startArea.field,
     endArea.field,
-    gsField.field,
+    senderControl.field,
     buttons,
   );
   backdrop.appendChild(container);
@@ -338,16 +343,32 @@ function checkRow(label: string, check: HTMLInputElement): HTMLElement {
 }
 
 /**
- * gSender address input + a live "Test" button. Test probes the (unsaved)
- * address and reports whether gSender answered and what's connected, so the
- * operator isn't relying on an address they've never confirmed.
+ * Machine sender app selection and address input + a live "Test" button.
  */
-function gsenderField(value: string): { field: HTMLElement; value: string } {
+function senderAppField(): { field: HTMLElement; save: () => void } {
   const field = document.createElement("div");
   field.className = "post-settings-field";
 
   const lab = document.createElement("label");
-  lab.textContent = "Send to gSender — address";
+  lab.textContent = "Send to Machine — Application";
+
+  const appRow = document.createElement("div");
+  appRow.className = "post-settings-row";
+  const appSelect = document.createElement("select");
+  appSelect.className = "unit post-settings-select";
+  appSelect.style.flex = "1";
+  for (const [v, l] of [["gSender", "gSender"], ["ncSender", "ncSender"]]) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    appSelect.appendChild(o);
+  }
+  appSelect.value = getSenderApp();
+
+  const urlLab = document.createElement("label");
+  urlLab.textContent = "Send to Machine — Address";
+  urlLab.style.marginTop = "12px";
+  urlLab.style.display = "block";
 
   const row = document.createElement("div");
   row.className = "post-settings-row";
@@ -355,8 +376,6 @@ function gsenderField(value: string): { field: HTMLElement; value: string } {
   input.type = "text";
   input.className = "unit post-settings-select";
   input.style.flex = "1";
-  input.value = value;
-  input.placeholder = DEFAULT_GSENDER_URL;
 
   const testBtn = document.createElement("button");
   testBtn.className = "btn";
@@ -365,30 +384,59 @@ function gsenderField(value: string): { field: HTMLElement; value: string } {
 
   const status = document.createElement("div");
   status.className = "post-settings-note";
-  status.textContent =
-    "In gSender, enable Remote/Wireless Control and use the address it shows: " +
-    "localhost:8000 on the same PC, or the machine's IP (e.g. 192.168.1.42:8000) for a shop PC/Pi. " +
-    "Note: from an https page the browser reaches http://localhost but blocks a plain-http LAN address " +
-    "unless you allow “Insecure content” for this site.";
+
+  let currentApp = appSelect.value as SenderApp;
+  let gsenderVal = getGsenderUrl();
+  let ncsenderVal = getNcsenderUrl();
+
+  const sync = () => {
+    currentApp = appSelect.value as SenderApp;
+    input.value = currentApp === "gSender" ? gsenderVal : ncsenderVal;
+    input.placeholder = currentApp === "gSender" ? DEFAULT_GSENDER_URL : DEFAULT_NCSENDER_URL;
+    status.textContent = currentApp === "gSender"
+      ? "In gSender, enable Remote/Wireless Control and use the address it shows: localhost:8000 on the same PC, or the machine's IP (e.g. 192.168.1.42:8000) for a shop PC. Note: from an https page the browser blocks plain-http LAN addresses unless you allow “Insecure content” for this site."
+      : "For ncSender, use the address it is running on (e.g. localhost:8090).";
+  };
+
+  appSelect.addEventListener("change", sync);
+  input.addEventListener("input", () => {
+    if (currentApp === "gSender") gsenderVal = input.value;
+    else ncsenderVal = input.value;
+  });
+
+  sync();
 
   testBtn.addEventListener("click", async () => {
     status.textContent = "Testing…";
-    const res = await testGsenderConnection(input.value || DEFAULT_GSENDER_URL);
-    if (!res.ok) {
-      status.textContent = `✗ ${res.error}`;
-    } else if (res.ports.length === 0) {
-      status.textContent = "✓ gSender is reachable, but no CNC is connected yet.";
+    if (currentApp === "gSender") {
+      const res = await testGsenderConnection(input.value || DEFAULT_GSENDER_URL);
+      if (!res.ok) {
+        status.textContent = `✗ ${res.error}`;
+      } else if (res.ports.length === 0) {
+        status.textContent = "✓ gSender is reachable, but no CNC is connected yet.";
+      } else {
+        status.textContent = `✓ gSender is reachable — connected: ${res.ports.join(", ")}.`;
+      }
     } else {
-      status.textContent = `✓ gSender is reachable — connected: ${res.ports.join(", ")}.`;
+      const res = await testNcsenderConnection(input.value || DEFAULT_NCSENDER_URL);
+      if (!res.ok) {
+        status.textContent = `✗ ${res.error}`;
+      } else {
+        status.textContent = "✓ ncSender is reachable.";
+      }
     }
   });
 
+  appRow.append(appSelect);
   row.append(input, testBtn);
-  field.append(lab, row, status);
+  field.append(lab, appRow, urlLab, row, status);
+
   return {
     field,
-    get value() {
-      return input.value;
+    save: () => {
+      setSenderApp(currentApp);
+      setGsenderUrl(gsenderVal);
+      setNcsenderUrl(ncsenderVal);
     },
   };
 }

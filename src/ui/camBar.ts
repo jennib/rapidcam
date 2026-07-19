@@ -30,6 +30,7 @@ import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
 import { lintGCode, buildLintContext } from "../cam/lint";
 import { sendToGsender } from "../io/gsender";
+import { sendToNcsender } from "../io/ncsender";
 import { openStitchDialog } from "./stitchDialog";
 import { openFlipDialog } from "./flipDialog";
 import { generateFlipPrograms, opFace } from "../cam/flip";
@@ -38,7 +39,7 @@ import { formatExportName, timeStamp } from "../cam/exportName";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
-import { getCustomGcode, getMachineHasCoolant, getGsenderUrl } from "../core/prefs";
+import { getCustomGcode, getMachineHasCoolant, getGsenderUrl, getNcsenderUrl, getSenderApp } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -158,6 +159,7 @@ export class CamBar {
   /** Tile (stitch) + Two-sided (flip) buttons — hidden for a rotary machine (flat-mill only). */
   private stitchBtn: HTMLButtonElement | null = null;
   private flipBtn: HTMLButtonElement | null = null;
+  private sendBtn: HTMLButtonElement | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -236,15 +238,12 @@ export class CamBar {
     genBtn.addEventListener("click", () => this.generate());
     this.content.appendChild(genBtn);
 
-    // Hand the program straight to a running gSender (same preflight gate; falls
-    // back to a file download if gSender can't be reached).
     const sendBtn = document.createElement("button");
     sendBtn.className = "cam-add-btn";
     sendBtn.style.cssText = "width:100%;margin-top:6px;";
-    sendBtn.textContent = "Send to gSender";
-    sendBtn.title = "Load these toolpaths into a running gSender over Remote/Wireless Control";
-    sendBtn.addEventListener("click", () => this.sendToGsender());
+    sendBtn.addEventListener("click", () => this.sendToMachine());
     this.content.appendChild(sendBtn);
+    this.sendBtn = sendBtn;
 
     // Export a chosen subset of toolpaths into a single file (e.g. all the ops
     // that share a tool). Appears only when ≥1 toolpath is checked.
@@ -294,6 +293,12 @@ export class CamBar {
     const rotary = this.doc.machineKind === "mill-rotary";
     if (this.stitchBtn) this.stitchBtn.style.display = rotary ? "none" : "";
     if (this.flipBtn) this.flipBtn.style.display = rotary ? "none" : "";
+    
+    if (this.sendBtn) {
+      const app = getSenderApp();
+      this.sendBtn.textContent = `Send to ${app}`;
+      this.sendBtn.title = `Load these toolpaths into a running ${app}`;
+    }
   }
 
   private openFlip(): void {
@@ -1801,11 +1806,10 @@ export class CamBar {
   }
 
   /**
-   * Hand the whole program to a running gSender (via its Remote/Wireless Control
-   * server). Same missing-font and Apollo pre-flight gates as file export; on any
+   * Hand the whole program to a running sender app. Same missing-font and Apollo pre-flight gates as file export; on any
    * connection problem, offers a plain file download so the work is never trapped.
    */
-  private async sendToGsender(): Promise<void> {
+  private async sendToMachine(): Promise<void> {
     if (this.doc.operations.length === 0) {
       alert("Add at least one toolpath first.");
       return;
@@ -1828,27 +1832,37 @@ export class CamBar {
     }
     if (!(await this.preflight(gcode))) return;
 
-    toast("Sending to gSender…");
+    const app = getSenderApp();
+    toast(`Sending to ${app}…`);
     // One name for both the send and any fallback download below.
     const jobName = this.exportName(isRotary ? "all-rotary" : "all");
-    const res = await sendToGsender(getGsenderUrl(), jobName, gcode);
-    track("gcode_sent_gsender", {
+    
+    let res: { ok: boolean; hint?: string; error?: string; port?: string };
+    if (app === "gSender") {
+      res = await sendToGsender(getGsenderUrl(), jobName, gcode);
+    } else {
+      res = await sendToNcsender(getNcsenderUrl(), jobName, gcode);
+    }
+    
+    track("gcode_sent_machine", {
+      app,
       ok: res.ok,
       hint: res.hint,
       ...(isRotary ? { rotary: true } : {}),
     });
+    
     if (res.ok) {
       toast(
         res.port
-          ? `Loaded into gSender on ${res.port} — press Play there to run.`
-          : "Loaded into gSender — connect your machine and press Play there.",
+          ? `Loaded into ${app} on ${res.port} — press Play there to run.`
+          : `Loaded into ${app} — connect your machine and press Play there.`,
       );
       maybeShowSharePrompt();
       return;
     }
     // Couldn't send — surface why, and offer the file so they're not stuck.
     const download = await confirmDialog({
-      title: "Couldn't send to gSender",
+      title: `Couldn't send to ${app}`,
       message: `${res.error}\n\nDownload the G-code file instead?`,
       confirmLabel: "Download file",
       cancelLabel: "Close",
@@ -1860,7 +1874,7 @@ export class CamBar {
   }
 
   /**
-   * Hand a two-sided job to gSender in two steps: side A now, then — after the
+   * Hand a two-sided job to the machine in two steps: side A now, then — after the
    * operator flips the stock onto the registration pins — side B. Each side is
    * pre-flighted; on any send failure the file is offered as a download.
    */
@@ -1887,9 +1901,17 @@ export class CamBar {
     const nameA = formatExportName({ project, scope: "sideA", stamp });
     const nameB = formatExportName({ project, scope: "sideB", stamp });
 
-    toast("Sending side A to gSender…");
-    const resA = await sendToGsender(getGsenderUrl(), nameA, sideA);
-    track("gcode_sent_gsender", { ok: resA.ok, hint: resA.hint, flip: "A" });
+    const app = getSenderApp();
+    toast(`Sending side A to ${app}…`);
+    
+    let resA: { ok: boolean; hint?: string; error?: string };
+    if (app === "gSender") {
+      resA = await sendToGsender(getGsenderUrl(), nameA, sideA);
+    } else {
+      resA = await sendToNcsender(getNcsenderUrl(), nameA, sideA);
+    }
+    
+    track("gcode_sent_machine", { app, ok: resA.ok, hint: resA.hint, flip: "A" });
     if (!resA.ok) {
       const dl = await confirmDialog({
         title: "Couldn't send side A",
@@ -1905,22 +1927,29 @@ export class CamBar {
     const goB = await confirmDialog({
       title: "Side A loaded",
       message:
-        "Side A is loaded in gSender — press Play there to run it.\n\n" +
+        `Side A is loaded in ${app} — press Play there to run it.\n\n` +
         "When it finishes: flip the stock onto the registration pins and re-zero Z on the new top face. " +
         "Then send side B.",
       confirmLabel: "Send side B",
       cancelLabel: "Later",
     });
     if (!goB) {
-      toast("Side B not sent — reopen and Send to gSender when ready.");
+      toast(`Side B not sent — reopen and Send to ${app} when ready.`);
       return;
     }
     if (!(await this.preflight(sideB))) return;
-    toast("Sending side B to gSender…");
-    const resB = await sendToGsender(getGsenderUrl(), nameB, sideB);
-    track("gcode_sent_gsender", { ok: resB.ok, hint: resB.hint, flip: "B" });
+    toast(`Sending side B to ${app}…`);
+    
+    let resB: { ok: boolean; hint?: string; error?: string };
+    if (app === "gSender") {
+      resB = await sendToGsender(getGsenderUrl(), nameB, sideB);
+    } else {
+      resB = await sendToNcsender(getNcsenderUrl(), nameB, sideB);
+    }
+    
+    track("gcode_sent_machine", { app, ok: resB.ok, hint: resB.hint, flip: "B" });
     if (resB.ok) {
-      toast("Side B loaded — press Play in gSender to run it.");
+      toast(`Side B loaded — press Play in ${app} to run it.`);
       maybeShowSharePrompt();
       return;
     }
