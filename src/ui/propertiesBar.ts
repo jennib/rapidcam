@@ -157,7 +157,10 @@ export class PropertiesBar {
     if (selected.length === 0 && !selDim && !selCon) {
       const empty = document.createElement("div");
       empty.className = "props-empty";
-      empty.textContent = "No selection";
+      empty.innerHTML = `
+        <div class="empty-icon">⬚</div>
+        <div>Select an object to edit its properties.</div>
+      `;
       this.content.appendChild(empty);
       return;
     }
