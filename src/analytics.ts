@@ -272,5 +272,12 @@ function renderBanner(): void {
   });
 
   banner.append(text, replayLabel, accept, decline);
-  document.body.appendChild(banner);
+  
+  if (banner.showPopover) {
+    banner.setAttribute("popover", "manual");
+    document.body.appendChild(banner);
+    banner.showPopover();
+  } else {
+    document.body.appendChild(banner);
+  }
 }
