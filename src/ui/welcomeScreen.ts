@@ -32,8 +32,13 @@ export function showWelcomeScreen(
 
   const draft = getDraftMeta();
 
-  const backdrop = document.createElement("div");
+  const backdrop = document.createElement("dialog");
   backdrop.className = "welcome-backdrop";
+  backdrop.style.border = "none";
+  backdrop.style.margin = "0";
+  backdrop.style.padding = "0";
+  backdrop.style.maxWidth = "100vw";
+  backdrop.style.maxHeight = "100vh";
 
   const container = document.createElement("div");
   container.className = "welcome-container";
@@ -320,4 +325,5 @@ export function showWelcomeScreen(
   window.addEventListener("keydown", onKey);
 
   document.body.appendChild(backdrop);
+  backdrop.showModal();
 }
