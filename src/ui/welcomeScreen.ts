@@ -2,6 +2,7 @@ import { getRecents, type RecentEntry } from "../io/fileio";
 import { getExamples, type ExampleEntry } from "../io/examples";
 import { renderThumbnailSvg } from "./entityThumbnail";
 import { getDraftMeta } from "../io/draftStore";
+import { registerModal } from "./modal";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -50,9 +51,24 @@ export function showWelcomeScreen(
   backdrop.style.overflowY = "auto";
   backdrop.style.background = "rgba(15, 17, 23, 0.85)";
 
+  // One close funnel: dismissable mode registers with the modal stack (the
+  // stack's capture-phase Escape handler swallows the key before the native
+  // <dialog> cancel can fire, so dismissal MUST go through it), and the
+  // registration is disposed however the splash goes away.
+  let unregister: () => void = () => {};
+  const closeSplash = (): void => {
+    unregister();
+    backdrop.remove();
+  };
+
   const container = document.createElement("div");
   container.className = "welcome-container";
 
+  // Header row: logo beside the intro copy. Stacking them (and parking the
+  // intro below the columns) made the card ~150px taller than a 768px laptop
+  // viewport can show.
+  const header = document.createElement("div");
+  header.className = "welcome-header";
 
   const logo = document.createElement("img");
   logo.src = "/rapidcam-logo.svg";
@@ -101,7 +117,7 @@ export function showWelcomeScreen(
       </div>
     `;
     restoreCard.addEventListener("click", () => {
-      backdrop.remove();
+      closeSplash();
       onRestoreDraft();
     });
     cards.appendChild(restoreCard);
@@ -124,7 +140,7 @@ export function showWelcomeScreen(
       </div>
     `;
     resumeCard.addEventListener("click", () => {
-      backdrop.remove();
+      closeSplash();
       onOpenRecent(lastProject);
     });
     cards.appendChild(resumeCard);
@@ -147,7 +163,7 @@ export function showWelcomeScreen(
     </div>
   `;
   newCard.addEventListener("click", () => {
-    backdrop.remove();
+    closeSplash();
     onNew();
   });
 
@@ -166,7 +182,7 @@ export function showWelcomeScreen(
     </div>
   `;
   openCard.addEventListener("click", () => {
-    backdrop.remove();
+    closeSplash();
     onOpen();
   });
 
@@ -303,8 +319,9 @@ export function showWelcomeScreen(
   aiHint.textContent = "AI agents: docs at rapidcam.app/llms.txt";
   footer.appendChild(aiHint);
 
-  container.appendChild(logo);
-  container.appendChild(welcome);
+  header.appendChild(logo);
+  header.appendChild(welcome);
+  container.appendChild(header);
   container.appendChild(content);
   container.appendChild(footer);
   backdrop.appendChild(container);
@@ -312,11 +329,15 @@ export function showWelcomeScreen(
   if (opts.dismissable) {
     // Reopened mid-session (File → Start Screen): every card on the splash
     // replaces the current document, so the user needs a way to back out and
-    // keep working — Escape (the native <dialog> cancel) or a click on the
-    // dimmed area outside the card.
-    backdrop.addEventListener("cancel", () => backdrop.remove());
+    // keep working — Escape (via the modal stack) or a click on the dimmed
+    // area outside the card.
+    unregister = registerModal(backdrop, closeSplash);
+    backdrop.addEventListener("cancel", (e) => {
+      e.preventDefault(); // the stack owns Escape; keep one close path
+      closeSplash();
+    });
     backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) backdrop.remove();
+      if (e.target === backdrop) closeSplash();
     });
   } else {
     // At launch there is nothing behind the splash — strict modal: no Escape,
