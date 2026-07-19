@@ -47,7 +47,7 @@ export class StatusBar {
     this.host.appendChild(this.flashEl);
 
     this.hintEl = statusItem("");
-    this.hintEl.style.opacity = "0.55";
+    this.hintEl.style.opacity = "0.9";
     this.host.appendChild(this.hintEl);
 
     const spacer = document.createElement("div");

@@ -113,7 +113,7 @@ export class PropertiesBar {
 
     this.constructionBtn = document.createElement("button");
     this.constructionBtn.className = "btn props-construction-btn";
-    this.constructionBtn.innerHTML = '<span class="cm-led"></span>Construction Mode';
+    this.constructionBtn.innerHTML = '<input type="checkbox" class="cm-checkbox" style="pointer-events: none;"> Construction Mode';
     this.constructionBtn.title = "Toggle construction geometry mode (X)";
     this.constructionBtn.addEventListener("click", () => this.onConstructionToggle());
     this.content.appendChild(this.constructionBtn);
@@ -144,6 +144,8 @@ export class PropertiesBar {
     const cmActive =
       selected.length > 0 ? selected.every((e) => e.isConstruction) : this.doc.isConstructionMode;
     this.constructionBtn.classList.toggle("active", cmActive);
+    const cb = this.constructionBtn.querySelector(".cm-checkbox") as HTMLInputElement | null;
+    if (cb) cb.checked = cmActive;
 
     const selDim = this.doc.selectedDimensionId
       ? (this.doc.dimensions.find((d) => d.id === this.doc.selectedDimensionId) ?? null)

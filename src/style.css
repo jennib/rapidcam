@@ -165,9 +165,9 @@ button.icon-btn.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
+  height: 44px;
   padding: 0 12px;
-  background: var(--panel-2);
+  background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
   overflow-x: auto;
@@ -175,22 +175,23 @@ button.icon-btn.danger:hover:not(:disabled) {
 
 .cb-label {
   color: var(--text-dim);
-  font-size: 11px;
-  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
 }
 
 button.cbtn {
-  background: var(--panel);
+  background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  height: 24px;
-  min-width: 26px;
-  padding: 0 7px;
+  border-radius: 6px;
+  height: 30px;
+  min-width: 34px;
+  padding: 0 8px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -210,14 +211,17 @@ button.cbtn.solve {
 
 .cb-sep {
   width: 1px;
-  height: 20px;
+  height: 24px;
   background: var(--border);
-  margin: 0 6px;
+  margin: 0 8px;
 }
 
 .cb-msg {
-  margin-left: 8px;
-  font-size: 11px;
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
   color: var(--text-dim);
 }
 .cb-msg.error {
@@ -256,7 +260,7 @@ button.cbtn.solve {
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-dim);
+  color: #a8adb8; /* Brighter than --text-dim for better unselected visibility */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -275,6 +279,7 @@ button.cbtn.solve {
 .tool-btn svg {
   width: 22px;
   height: 22px;
+  stroke-width: 2px;
 }
 .tool-sep {
   width: 32px;
@@ -403,9 +408,10 @@ button.cbtn.solve {
 }
 
 .settings-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.3px;
 }
 
 .settings-toggle {
@@ -512,9 +518,10 @@ button.cbtn.solve {
 }
 
 .vars-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.3px;
 }
 
 .vars-toggle {
@@ -576,9 +583,10 @@ button.cbtn.solve {
 }
 
 .layers-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.3px;
 }
 
 .layers-toggle {
@@ -613,7 +621,7 @@ button.cbtn.solve {
 #propertiesbar {
   flex: 0 0 auto;
   background: var(--panel);
-  border-top: 3px solid var(--border);
+  border-top: 6px solid var(--bg);
   display: flex;
   flex-direction: column;
 }
@@ -637,9 +645,10 @@ button.cbtn.solve {
 }
 
 .props-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.3px;
 }
 
 .props-toggle {
@@ -1020,7 +1029,7 @@ button.cbtn.solve {
 #cambar {
   flex: 0 0 auto;
   background: var(--panel);
-  border-top: 3px solid var(--border);
+  border-top: 6px solid var(--bg);
   display: flex;
   flex-direction: column;
 }
@@ -1047,9 +1056,10 @@ button.cbtn.solve {
 }
 
 .cam-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.3px;
 }
 
 .cam-toggle {

@@ -1,5 +1,5 @@
 <svg width="360" height="80" viewBox="0 0 360 80" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="0" width="360" height="80" rx="14" fill="#0F6E56"/>
+  <!-- Green background removed for better integration with dark theme -->
   <circle cx="50" cy="40" r="24" fill="none" stroke="#5DCAA5" stroke-width="2"/>
   <circle cx="50" cy="40" r="14" fill="none" stroke="#5DCAA5" stroke-width="1" stroke-dasharray="3 3"/>
   <line x1="50" y1="6" x2="50" y2="20" stroke="#9FE1CB" stroke-width="2" stroke-linecap="round"/>

@@ -138,7 +138,8 @@ export class LayersBar {
       // Visibility toggle (eye)
       const visBtn = document.createElement("button");
       visBtn.className = "icon-btn";
-      visBtn.style.padding = "2px";
+      visBtn.style.padding = "4px 6px";
+      visBtn.style.fontSize = "14px";
       visBtn.innerHTML = layer.visible ? "👁" : "🕶";
       visBtn.title = "Toggle Visibility";
       visBtn.onclick = () => {
@@ -152,7 +153,8 @@ export class LayersBar {
       // Lock toggle
       const lockBtn = document.createElement("button");
       lockBtn.className = "icon-btn";
-      lockBtn.style.padding = "2px";
+      lockBtn.style.padding = "4px 6px";
+      lockBtn.style.fontSize = "14px";
       lockBtn.innerHTML = layer.locked ? "🔒" : "🔓";
       lockBtn.title = "Toggle Lock";
       lockBtn.onclick = () => {
@@ -167,7 +169,8 @@ export class LayersBar {
       // / keep-outs: not machined, and pre-flight flags any move that would hit one.
       const fixBtn = document.createElement("button");
       fixBtn.className = "icon-btn";
-      fixBtn.style.padding = "2px";
+      fixBtn.style.padding = "4px 6px";
+      fixBtn.style.fontSize = "14px";
       fixBtn.innerHTML = "🗜";
       fixBtn.style.opacity = layer.fixture ? "1" : "0.35";
       fixBtn.title = layer.fixture
@@ -205,7 +208,8 @@ export class LayersBar {
       // Delete button
       const delBtn = document.createElement("button");
       delBtn.className = "icon-btn danger";
-      delBtn.style.padding = "2px";
+      delBtn.style.padding = "4px 6px";
+      delBtn.style.fontSize = "14px";
       delBtn.innerHTML = "🗑";
       delBtn.title = "Delete Layer";
       delBtn.disabled = this.doc.layers.length <= 1;
