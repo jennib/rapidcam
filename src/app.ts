@@ -291,7 +291,7 @@ export class App {
         }),
       file: {
         onNew: () => this.project.fileNew(),
-        onStartScreen: () => this.openStartScreen(),
+        onStartScreen: () => this.openStartScreen(true),
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
         onShareLink: () => {
@@ -439,9 +439,12 @@ export class App {
     this.openStartScreen();
   }
 
-  /** Show the start screen (welcome splash). Used at launch and from File → Start
-   *  Screen; the splash is dismissable (Escape / click-outside) when reopened. */
-  private openStartScreen(): void {
+  /** Show the start screen (welcome splash). At launch it is a STRICT modal —
+   *  nothing exists behind it, the user must pick an option. Reopened from
+   *  File → Start Screen it is dismissable (Escape / click outside the card):
+   *  every card replaces the current document, so peeking at the examples must
+   *  not strand the user away from their work. */
+  private openStartScreen(dismissable = false): void {
     showWelcomeScreen(
       // fileNew (not openSetupDialog) so a mid-session "New Project" from the
       // reopened splash still confirms before discarding real work; at launch the
@@ -453,6 +456,7 @@ export class App {
       (entry) => this.project.fileOpenRecent(entry),
       () => this.project.restoreDraft(),
       (entry) => this.project.loadExample(entry),
+      { dismissable },
     );
   }
 

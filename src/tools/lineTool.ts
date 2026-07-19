@@ -32,6 +32,14 @@ export class LineTool implements Tool {
         ctx.doc.addSelected(ent);
         autoJoin(ctx, ent.id, "a", this.startSnap);
         autoJoin(ctx, ent.id, "b", endSnap);
+        
+        // Auto-add H/V constraints if perfectly orthogonal
+        if (Math.abs(this.start.y - world.y) < 1e-6) {
+          ctx.doc.addConstraint(makeConstraint("horizontal", { entities: [ent.id] }));
+        } else if (Math.abs(this.start.x - world.x) < 1e-6) {
+          ctx.doc.addConstraint(makeConstraint("vertical", { entities: [ent.id] }));
+        }
+        
         ctx.solve();
       }
       this.start = null;

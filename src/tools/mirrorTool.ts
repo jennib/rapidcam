@@ -122,7 +122,32 @@ export class MirrorTool implements Tool {
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
+    
     if (!this.axisStart) {
+      // First try to hit an existing line to use as the mirror axis directly
+      const tol = ctx.view.toWorldLen(12);
+      const hit = ctx.doc.hitTest(e.worldRaw, tol);
+      if (hit instanceof LineEntity) {
+        if (ctx.doc.selected.length > 0) {
+          ctx.pushHistory();
+          let skipped = 0;
+          for (const ent of ctx.doc.selected) {
+            // Don't mirror the axis line itself
+            if (ent.id === hit.id) continue;
+            const m = mirrorEntity(ent, hit.a, hit.b);
+            if (m) ctx.doc.add(m);
+            else skipped++;
+          }
+          if (skipped > 0) {
+            ctx.notify(`${skipped} object${skipped === 1 ? "" : "s"} can't be mirrored — skipped`);
+          }
+          ctx.doc.emitChange();
+        }
+        ctx.requestRender();
+        return; // Done in one click
+      }
+      
+      // If no line clicked, start drawing an axis
       this.axisStart = { ...e.world };
     } else {
       const A = this.axisStart;
