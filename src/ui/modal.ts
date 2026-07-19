@@ -106,6 +106,9 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** Style the confirm button as destructive (red). Default false. */
   danger?: boolean;
+  /** Use the non-dimming side-docked backdrop so the canvas stays visible
+   *  behind the dialog (e.g. pre-flight findings highlighting geometry). */
+  peek?: boolean;
 }
 
 /**
@@ -115,7 +118,7 @@ export interface ConfirmOptions {
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
-    backdrop.className = "tp-backdrop";
+    backdrop.className = opts.peek ? "tp-backdrop tp-backdrop--peek" : "tp-backdrop";
 
     const dialog = document.createElement("div");
     dialog.className = "tp-dialog";

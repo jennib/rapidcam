@@ -26,6 +26,7 @@ export const boxJoint: Generator = {
 
     const w = width / fingers;
     const c = Math.min(clearance, (w / 2) * 0.9);
+    if (c > 0) s.note(`Clearance adds ~${c} mm of gap per mating face.`);
     const top = height;
 
     // Boundary x-positions between runs, nominally k·w. Clearance shifts each
@@ -58,15 +59,18 @@ export const boxJoint: Generator = {
       ...topProfile.slice().reverse(),
     ];
 
+    s.key("panel");
     const panel = s.polyline(outline, { closed: true });
     // A through profile cut; dog-bone relief so the slots' square inside
-    // corners accept the mating panel's square fingers.
+    // corners accept the mating panel's square fingers. The tool must enter
+    // each slot (width w), so clamp the suggestion to fit.
     s.suggestOp({
       name: "Panel — Profile (outside)",
       kind: "profile-outside",
       targets: [panel],
       depth: "through",
       cornerStyle: "dogbone",
+      toolDiameter: Math.min(6, w),
     });
     return [panel];
   },

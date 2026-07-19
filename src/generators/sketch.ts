@@ -171,6 +171,11 @@ export interface OpSuggestion {
   stepdown?: number;
   /** Tool-diameter override (mm), e.g. clamped small for a narrow bore. */
   toolDiameter?: number;
+  /**
+   * Set false to opt out of the automatic hold-down tabs a through outside
+   * profile gets by default (e.g. a vacuum-table generator).
+   */
+  tabs?: false;
 }
 
 export class Sketch {
@@ -192,10 +197,13 @@ export class Sketch {
   readonly notes: string[] = [];
   /** CAM operations the generator recommends for its output (see {@link OpSuggestion}). */
   readonly opSuggestions: OpSuggestion[] = [];
+  /** Stable key per entity, parallel to {@link entities} (undefined = unkeyed; see {@link key}). */
+  readonly entityKeys: (string | undefined)[] = [];
 
   private readonly overrides: Map<string, number>;
   private readonly flatten?: TextFlattener;
   private curLayer?: LayerHint;
+  private pendingKey?: string;
 
   constructor(opts: { params?: Record<string, number>; flatten?: TextFlattener } = {}) {
     this.overrides = new Map(Object.entries(opts.params ?? {}));
@@ -264,6 +272,23 @@ export class Sketch {
     this.opSuggestions.push(spec);
   }
 
+  /**
+   * Give the NEXT emitted entity a stable identity key (`s.key("front-wall");
+   * s.polyline(...)`). Across regenerations, a keyed entity keeps its document
+   * id by KEY rather than by emit position — so CAM ops/constraints/dims stay
+   * attached to the same logical part even when the output order shifts or an
+   * entity was deleted mid-sequence. One-shot (a key names exactly one entity),
+   * unlike the modal {@link layer}. Reusing a key within one build throws, so a
+   * generator bug surfaces at probe time in the dialog.
+   */
+  key(k: string): void {
+    if (this.entityKeys.includes(k)) throw new Error(`Sketch.key: duplicate key "${k}"`);
+    if (this.pendingKey !== undefined) {
+      throw new Error(`Sketch.key: "${this.pendingKey}" was never consumed by an entity`);
+    }
+    this.pendingKey = k;
+  }
+
   // --- self-contained geometry (v1 core) ---------------------------------
 
   line(a: Pt, b: Pt): Handle {
@@ -306,10 +331,7 @@ export class Sketch {
    * resource-free geometry). Requires a {@link TextFlattener} to have been passed
    * to the constructor; throws otherwise so the missing dependency is explicit.
    */
-  textToPath(
-    text: string,
-    o: { font: string; size: number; at: Pt; angleDeg?: number },
-  ): Handle[] {
+  textToPath(text: string, o: { font: string; size: number; at: Pt; angleDeg?: number }): Handle[] {
     if (!this.flatten) {
       throw new Error("Sketch.textToPath requires a flatten() function (none was provided)");
     }
@@ -326,6 +348,8 @@ export class Sketch {
   private push<T extends Entity>(e: T): Handle {
     this.entities.push(e);
     this.entityLayers.push(this.curLayer);
+    this.entityKeys.push(this.pendingKey);
+    this.pendingKey = undefined;
     return makeHandle(e);
   }
 }

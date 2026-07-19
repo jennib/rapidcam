@@ -29,9 +29,47 @@ import type { PreviewShape } from "../view/overlay";
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
 import { registerModal } from "./modal";
+import { toast } from "./toast";
 
 interface BackdropEl extends HTMLElement {
   close: () => void;
+}
+
+/** Host-side advisory warnings for the current parameter values. Conventions:
+ *  a generator param named "thickness" is the joint/material thickness; one
+ *  named "clearance" is a per-mating-face fit gap. (Dialog-side because these
+ *  need document knowledge — stock, machine kind — that the pure Sketch
+ *  deliberately never sees.) */
+export function dialogWarnings(
+  specs: readonly ParamSpec[],
+  params: Record<string, number>,
+  doc: CADDocument,
+): string[] {
+  const warnings: string[] = [];
+
+  if (specs.some((s) => s.name === "thickness")) {
+    const t = params.thickness;
+    if (Math.abs(t - doc.stockThickness) > 1e-3) {
+      warnings.push(
+        `Material thickness (${t}) ≠ stock thickness (${doc.stockThickness} mm) — joints sized for ${t} mm material won't assemble as cut.`,
+      );
+    }
+  }
+
+  if (doc.machineKind === "laser" && specs.some((s) => s.name === "clearance")) {
+    const clearance = params.clearance;
+    if (!clearance || clearance <= 0) {
+      warnings.push(
+        "On a laser, the beam removes ~kerf width from every edge, loosening joints — enable kerf compensation in the post settings for a snug fit.",
+      );
+    } else {
+      warnings.push(
+        "Laser kerf already loosens joints by roughly the kerf width; clearance adds to it. Prefer clearance 0 with kerf compensation enabled, or reduce clearance by the kerf.",
+      );
+    }
+  }
+
+  return warnings;
 }
 
 export interface GeneratorDialogOptions {
@@ -86,7 +124,16 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
 
   const inputs = new Map<string, HTMLInputElement>();
   for (const spec of specs) {
-    const seed = editing?.paramExprs?.[spec.name] ?? String(spec.value);
+    // Editing always seeds from the stored feature (unchanged). A fresh insert
+    // seeds "thickness" from the stock actually in the machine rather than the
+    // generator's arbitrary default — it's usually right, and it stops the
+    // thickness-vs-stock warning from firing on the untouched default (a
+    // warning users would otherwise learn to ignore).
+    const seed = editing
+      ? (editing.paramExprs?.[spec.name] ?? String(spec.value))
+      : spec.name === "thickness"
+        ? String(doc.stockThickness)
+        : String(spec.value);
     inputs.set(spec.name, addField(body, spec, seed));
   }
 
@@ -100,7 +147,18 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
     notesEl.textContent = notes.map((n) => `ⓘ ${n}`).join("\n");
     notesEl.style.display = notes.length ? "" : "none";
   };
-  renderNotes(probe.notes);
+
+  // Host-side advisory warnings (M2 thickness-vs-stock, M5 laser kerf) — a
+  // separate element from notesEl because these need per-line color and
+  // notesEl is a single textContent block.
+  const warnEl = document.createElement("div");
+  warnEl.style.cssText =
+    "opacity:.7;font-size:11px;margin-top:6px;max-width:260px;white-space:pre-line;color:#e0a555";
+  body.appendChild(warnEl);
+  const renderWarnings = (warnings: string[]): void => {
+    warnEl.textContent = warnings.map((w) => `⚠ ${w}`).join("\n");
+    warnEl.style.display = warnings.length ? "" : "none";
+  };
 
   // Insert only: offer the generator's suggested toolpaths (default on). Edit
   // never re-creates ops — after insert they belong to the user.
@@ -139,9 +197,11 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
   // centring for a fresh insert. (reprobeTimer is declared beside the close
   // funnel above, which cancels it.)
   const reprobe = (): void => {
-    const p = new Sketch({ params: currentParams(), flatten: opts.flatten ?? (() => []) });
+    const params = currentParams();
+    const p = new Sketch({ params, flatten: opts.flatten ?? (() => []) });
     gen.build(p);
     renderNotes(p.notes);
+    renderWarnings(dialogWarnings(specs, params, doc));
     if (opts.onPreview) {
       const offset = editing ? (editing.offset ?? { x: 0, y: 0 }) : centreOffset(doc, p.entities);
       opts.onPreview(sketchPreviews(p, offset));
@@ -153,7 +213,11 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
       reprobeTimer = window.setTimeout(reprobe, 150);
     });
   }
-  if (opts.onPreview) reprobe(); // initial ghost on open
+  // Initial render on open: notes/warnings must reflect the SEEDED field
+  // values (e.g. thickness seeded from stock above), not the probe's raw
+  // defaults, so this always runs; the ghost preview itself is still gated
+  // on opts.onPreview inside reprobe().
+  reprobe();
 
   const { cancelBtn, applyBtn } = addFooter(dialog, backdrop, editing ? "Update" : "Insert", () => {
     const vm = varMap(doc.variables, doc.stockThickness);
@@ -178,7 +242,19 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
 
     pushHistory();
     if (editing) {
+      // A shrink (e.g. gear bore → 0) can strip an op's last entity via
+      // pruneReferences — say so instead of leaving a silent no-op toolpath.
+      const hadGeometry = new Set(
+        doc.operations
+          .filter((op) => op.entityIds.length > 0 || (op.regions?.length ?? 0) > 0)
+          .map((op) => op.id),
+      );
       regenerateFeature(doc, editing.id, params, { flatten: opts.flatten, paramExprs });
+      for (const op of doc.operations) {
+        if (hadGeometry.has(op.id) && op.entityIds.length === 0 && !(op.regions?.length ?? 0)) {
+          toast(`"${op.name}" lost its geometry — reassign or delete it.`);
+        }
+      }
     } else {
       runGenerator(doc, gen, params, {
         flatten: opts.flatten,

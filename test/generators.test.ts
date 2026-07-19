@@ -3,18 +3,21 @@ import { CADDocument } from "../src/model/document";
 import { ArcEntity, CircleEntity, PolylineEntity } from "../src/model/entities";
 import { makeConstraint } from "../src/model/constraints";
 import { type CAMOperation, DEFAULTS } from "../src/cam/types";
-import { Sketch } from "../src/generators/sketch";
+import { Sketch, type ParamSpec, type Pt } from "../src/generators/sketch";
 import { boxJoint } from "../src/generators/boxJoint";
 import { gear } from "../src/generators/gear";
-import { box } from "../src/generators/box";
+import { box, comb, type CombSpec } from "../src/generators/box";
 import {
   GENERATORS,
   type Generator,
+  centreOffset,
   findFeatureForEntities,
+  nudgeOffset,
   regenerateFeature,
   runGenerator,
 } from "../src/generators/index";
 import { applyFile, serializeDoc } from "../src/io/fileio";
+import { dialogWarnings } from "../src/ui/generatorDialog";
 
 test("Sketch takes angles in degrees and converts to internal radians", () => {
   const s = new Sketch();
@@ -326,6 +329,101 @@ test("a pure-survivor regeneration emits exactly one change", () => {
   expect(emits).toBe(1);
 });
 
+// --- s.key() stable identity ------------------------------------------------
+
+test("keyed entities keep their ids when the emit order changes", () => {
+  const testGen: Generator = {
+    id: "test-key-gen",
+    name: "Test Key Gen",
+    build(s) {
+      const swap = s.param("swap", 0, {});
+      const emitA = () => {
+        s.key("a");
+        return s.circle({ x: 0, y: 0 }, 5);
+      };
+      const emitB = () => {
+        s.key("b");
+        return s.circle({ x: 20, y: 0 }, 3);
+      };
+      return swap ? [emitB(), emitA()] : [emitA(), emitB()];
+    },
+  };
+  GENERATORS[testGen.id] = testGen;
+  try {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const res = runGenerator(doc, testGen, {});
+    const aId = res.feature.keyIds!["a"];
+    const bId = res.feature.keyIds!["b"];
+
+    regenerateFeature(doc, res.feature.id, { swap: 1 });
+    // Ids follow the KEY, not the emit position — radius identifies which
+    // logical entity each id points at.
+    expect(res.feature.keyIds!["a"]).toBe(aId);
+    expect(res.feature.keyIds!["b"]).toBe(bId);
+    const a = doc.entities.find((e) => e.id === aId) as CircleEntity;
+    expect(a.radius).toBe(5);
+  } finally {
+    delete GENERATORS[testGen.id];
+  }
+});
+
+test("after a partial delete, ops on other keyed entities stay attached", () => {
+  const doc = new CADDocument({ width: 500, height: 500 });
+  const res = runGenerator(doc, GENERATORS["finger-box"], {});
+  const leftWallId = res.feature.keyIds!["left-wall"];
+  const rightWallId = res.feature.keyIds!["right-wall"];
+  doc.operations.push(minimalOp([rightWallId]));
+
+  doc.remove(leftWallId);
+  expect(res.feature.keyIds!["left-wall"]).toBeUndefined(); // pruned with the entity
+
+  regenerateFeature(doc, res.feature.id, { height: 45 });
+  // The right wall kept its id via its key (index matching would have shifted
+  // every wall after the deleted one by a position)…
+  expect(res.feature.keyIds!["right-wall"]).toBe(rightWallId);
+  expect(doc.operations.at(-1)!.entityIds).toEqual([rightWallId]);
+  // …and the deleted wall came back as a NEW entity; the group is whole again.
+  const newLeft = res.feature.keyIds!["left-wall"];
+  expect(newLeft).toBeDefined();
+  expect(newLeft).not.toBe(leftWallId);
+  expect(doc.groups[0].entityIds).toHaveLength(9);
+});
+
+test("keyIds persist through serialize → applyFile and don't alias snapshots", () => {
+  const doc = new CADDocument({ width: 500, height: 500 });
+  const res = runGenerator(doc, GENERATORS["finger-box"], {});
+  expect(Object.keys(res.feature.keyIds!)).toHaveLength(9);
+
+  const file = serializeDoc(doc, "box");
+  const reloaded = new CADDocument({ width: 500, height: 500 });
+  applyFile(reloaded, file);
+  expect(reloaded.features[0].keyIds).toEqual(res.feature.keyIds);
+
+  const snap = doc.snapshot();
+  const orig = res.feature.keyIds!["bottom"];
+  res.feature.keyIds!["bottom"] = "mutated";
+  doc.restore(snap);
+  expect(doc.features[0].keyIds!["bottom"]).toBe(orig);
+});
+
+test("sketch keys: duplicates and unconsumed keys throw at build time", () => {
+  const s = new Sketch();
+  s.key("x");
+  s.circle({ x: 0, y: 0 }, 1);
+  expect(() => s.key("x")).toThrow(/duplicate/);
+  s.key("y");
+  expect(() => s.key("z")).toThrow(/never consumed/);
+});
+
+test("clearance note appears only when clearance > 0", () => {
+  const s0 = new Sketch();
+  boxJoint.build(s0);
+  expect(s0.notes.some((n) => n.includes("mating face"))).toBe(false);
+  const s1 = new Sketch({ params: { clearance: 1 } });
+  boxJoint.build(s1);
+  expect(s1.notes.some((n) => n.includes("mating face"))).toBe(true);
+});
+
 test("features survive a serialize → applyFile round-trip", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const res = runGenerator(doc, GENERATORS["box-joint"], { fingers: 5 });
@@ -445,4 +543,255 @@ test("clearance = 0 is byte-identical to a build with no clearance override (reg
       (boxWithout[i].entity as PolylineEntity).points,
     );
   }
+});
+
+// --- M6: mating-edge self-verification (box corner comb complementarity) ---
+
+/** Reconstruct horizontal runs from a comb()'s raw point list: a run is a
+ *  maximal horizontal advance (same y, x changes); risers (same x, y changes)
+ *  and the degenerate duplicate points comb() emits at its pinned ends (when
+ *  insetStart/insetEnd are 0) collapse to nothing under this walk. */
+function runsOf(pts: Pt[]): { x0: number; x1: number; y: number }[] {
+  const runs: { x0: number; x1: number; y: number }[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (a.y === b.y && a.x !== b.x) runs.push({ x0: a.x, x1: b.x, y: a.y });
+  }
+  return runs;
+}
+
+test("comb: front/back vs. side corner phases stay complementary across a height×fingerWidth×clearance grid", () => {
+  const t = 6;
+  for (const height of [40, 50, 63.7]) {
+    for (const fingerW of [5, 8, 12]) {
+      for (const clearance of [0, 0.2, 0.4]) {
+        const base: Omit<CombSpec, "firstActive"> = {
+          fingerW,
+          depth: t,
+          protrude: false,
+          insetStart: 0,
+          insetEnd: 0,
+          clearance,
+        };
+        const runsFB = runsOf(comb(height, { ...base, firstActive: false }));
+        const runsSide = runsOf(comb(height, { ...base, firstActive: true }));
+
+        // (a) same run count on both edges, matching comb()'s own finger count.
+        const n = Math.max(2, Math.round(height / fingerW));
+        expect(runsFB).toHaveLength(n);
+        expect(runsSide).toHaveLength(n);
+
+        // (b) complementary pattern: wherever FB is active, Side is inactive.
+        for (let i = 0; i < n; i++) {
+          expect(runsFB[i].y === -t).toBe(!(runsSide[i].y === -t));
+        }
+
+        // (d) active runs sit at exactly y = -t (notches recede, don't protrude);
+        // ends are pinned to the full span.
+        for (const r of [...runsFB, ...runsSide]) expect(r.y === 0 || r.y === -t).toBe(true);
+        expect(runsFB[0].x0).toBeCloseTo(0, 9);
+        expect(runsFB[n - 1].x1).toBeCloseTo(height, 9);
+        expect(runsSide[0].x0).toBeCloseTo(0, 9);
+        expect(runsSide[n - 1].x1).toBeCloseTo(height, 9);
+
+        // (c) every interior boundary is exactly `clearance` wider on one side
+        // than the other, alternating by parity — each notch is clearance/2
+        // wider per mating face than its counterpart's tab. Boundaries are read
+        // off the shared run edges (run k-1's x1 === run k's x0).
+        for (let k = 1; k < n; k++) {
+          expect(runsFB[k].x0).toBeCloseTo(runsFB[k - 1].x1, 9); // contiguous, no gap
+          expect(runsSide[k].x0).toBeCloseTo(runsSide[k - 1].x1, 9);
+          const fbBoundary = runsFB[k - 1].x1;
+          const sideBoundary = runsSide[k - 1].x1;
+          const expectedDelta = k % 2 === 0 ? clearance : -clearance;
+          expect(fbBoundary - sideBoundary).toBeCloseTo(expectedDelta, 9);
+        }
+      }
+    }
+  }
+});
+
+test("finger-box: front-wall and left-wall have equal vertex counts (complementary combs; catches phase regressions)", () => {
+  const doc = new CADDocument({ width: 400, height: 400 });
+  const res = runGenerator(doc, GENERATORS["finger-box"], {});
+  const frontId = res.feature.keyIds!["front-wall"];
+  const leftId = res.feature.keyIds!["left-wall"];
+  const front = doc.entities.find((e) => e.id === frontId) as PolylineEntity;
+  const left = doc.entities.find((e) => e.id === leftId) as PolylineEntity;
+  expect(front.points.length).toBe(left.points.length);
+});
+
+// --- M2/M5: dialogWarnings (thickness-vs-stock, laser kerf × clearance) ----
+
+function spec(name: string, value: number): ParamSpec {
+  return { name, value, def: value };
+}
+
+test("dialogWarnings: thickness param mismatched with stock thickness warns", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.stockThickness = 10;
+  const warnings = dialogWarnings([spec("thickness", 6)], { thickness: 6 }, doc);
+  expect(warnings.some((w) => w.includes("≠ stock thickness"))).toBe(true);
+});
+
+test("dialogWarnings: thickness matching stock (within 1e-3 float dust) warns not at all", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.stockThickness = 6;
+  const warnings = dialogWarnings([spec("thickness", 6.0005)], { thickness: 6.0005 }, doc);
+  expect(warnings).toHaveLength(0);
+});
+
+test("dialogWarnings: a generator with no thickness param (gear) never warns about stock", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.stockThickness = 10;
+  const specs = [spec("teeth", 20), spec("module", 2), spec("bore", 6)];
+  const params = { teeth: 20, module: 2, bore: 6 };
+  expect(dialogWarnings(specs, params, doc)).toHaveLength(0);
+});
+
+test("dialogWarnings: laser + clearance 0 recommends kerf compensation", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.machineKind = "laser";
+  const warnings = dialogWarnings([spec("clearance", 0)], { clearance: 0 }, doc);
+  expect(warnings.some((w) => /kerf compensation/.test(w))).toBe(true);
+});
+
+test("dialogWarnings: laser + clearance > 0 warns clearance stacks with kerf", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.machineKind = "laser";
+  const warnings = dialogWarnings([spec("clearance", 0.2)], { clearance: 0.2 }, doc);
+  expect(warnings.some((w) => /clearance adds to it/.test(w))).toBe(true);
+});
+
+test("dialogWarnings: mill + clearance never triggers the laser kerf warning", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.machineKind = "mill";
+  const warnings = dialogWarnings([spec("clearance", 0.2)], { clearance: 0.2 }, doc);
+  expect(warnings).toHaveLength(0);
+});
+
+// --- P4: nudgeOffset — repeated inserts used to stack dead-centre ----------
+
+/** Combined bbox of the live entities behind `ids` (mirrors nudgeOffset's own
+ *  per-group bbox math, but against the doc directly for test assertions). */
+function boundsOfIds(doc: CADDocument, ids: readonly string[]) {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const id of ids) {
+    const e = doc.entities.find((e) => e.id === id);
+    if (!e) continue;
+    const b = e.bounds();
+    minX = Math.min(minX, b.min.x);
+    minY = Math.min(minY, b.min.y);
+    maxX = Math.max(maxX, b.max.x);
+    maxY = Math.max(maxY, b.max.y);
+  }
+  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
+test("nudgeOffset jumps past a blocking feature in one step", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  // Manually plant one "existing feature": a circle bbox [0,0]-[50,50], grouped
+  // and linked from a feature, exactly as runGenerator would record it.
+  const existing = new CircleEntity({ x: 25, y: 25 }, 25);
+  doc.add(existing);
+  const group = { id: "g1", name: "Existing", entityIds: [existing.id] };
+  doc.groups.push(group);
+  doc.features.push({ id: "f1", generatorId: "x", params: {}, groupId: group.id });
+
+  const bounds = { min: { x: 0, y: 0 }, max: { x: 50, y: 50 } };
+  const start = { x: 0, y: 0 }; // candidate lands exactly on the existing feature
+  const nudged = nudgeOffset(doc, bounds, start);
+  // One jump to just past the blocker's right edge (50) + the 10mm margin —
+  // a fixed small step would need several tries and exhaust on big blockers.
+  expect(nudged).toEqual({ x: 60, y: 0 });
+});
+
+test("nudgeOffset places a small part beside a large centred one (row-wrap layout)", () => {
+  // The live-repro case the fixed-step walk failed: a big box at centre, then
+  // small gears — each must land in free space, not pile at an exhausted offset.
+  const doc = new CADDocument({ width: 800, height: 800 });
+  runGenerator(doc, GENERATORS["finger-box"], {});
+  const g1 = runGenerator(doc, GENERATORS["spur-gear"], { teeth: 12, module: 2, bore: 0 });
+  const g2 = runGenerator(doc, GENERATORS["spur-gear"], { teeth: 12, module: 2, bore: 0 });
+
+  const boxes = doc.features.map((f) =>
+    boundsOfIds(doc, doc.groups.find((g) => g.id === f.groupId)!.entityIds),
+  );
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      const overlap =
+        a.min.x < b.max.x && a.max.x > b.min.x && a.min.y < b.max.y && a.max.y > b.min.y;
+      expect(overlap).toBe(false);
+    }
+  }
+  expect(g1.feature.offset).not.toEqual(g2.feature.offset);
+});
+
+test("nudgeOffset returns unshifted when nothing exists to collide with", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const start = { x: 42, y: 7 };
+  const nudged = nudgeOffset(doc, { min: { x: 0, y: 0 }, max: { x: 10, y: 10 } }, start);
+  expect(nudged).toEqual(start);
+});
+
+test("two identical box inserts: the second feature's group bbox does not overlap the first's", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const gen = GENERATORS["finger-box"];
+  // Small dimensions: the box net's combined bbox (walls stacked in a column
+  // plus the bottom off to the side, see box.ts) must fit within 8 shifts of
+  // 15 mm each — the default 100×60×40 net is wide enough that even 8 shifts
+  // can't clear it, which isn't what this test is after (it's covered
+  // separately by the "bounded" exhaustion test below).
+  const params = { length: 15, width: 15, height: 15, thickness: 1, fingerWidth: 2 };
+  const first = runGenerator(doc, gen, params);
+  const second = runGenerator(doc, gen, params);
+
+  const b1 = boundsOfIds(doc, first.group.entityIds);
+  const b2 = boundsOfIds(doc, second.group.entityIds);
+  const overlap = b1.min.x < b2.max.x && b1.max.x > b2.min.x && b1.min.y < b2.max.y && b1.max.y > b2.min.y;
+  expect(overlap).toBe(false);
+});
+
+test("nudgeOffset stacks at centre when the work area has no free room", () => {
+  // A default box net nearly fills a 300×300 work area: no jump or row-wrap
+  // can clear it, so every later insert stacks visibly at the centred start
+  // instead of wandering off the stock.
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const gen = GENERATORS["finger-box"];
+
+  // centreOffset only depends on the incoming geometry's bounds and the doc's
+  // canvas size, not on what's already on the document, so this probe gives
+  // the same "start" every one of the runs below would independently compute.
+  const probe = new Sketch({ params: {} });
+  gen.build(probe);
+  const start = centreOffset(doc, probe.entities);
+
+  for (let i = 0; i < 12; i++) {
+    const res = runGenerator(doc, gen, {});
+    const off = res.feature.offset!;
+    expect(off.x).toBeCloseTo(start.x, 9);
+    expect(off.y).toBeCloseTo(start.y, 9);
+  }
+});
+
+test("regenerateFeature preserves a nudged insert's offset exactly (footprint stays put)", () => {
+  const doc = new CADDocument({ width: 300, height: 300 });
+  const gen = GENERATORS["finger-box"];
+  const params = { length: 15, width: 15, height: 15, thickness: 1, fingerWidth: 2 };
+  const first = runGenerator(doc, gen, params);
+  const second = runGenerator(doc, gen, params); // overlaps the first's footprint → gets nudged
+  expect(second.feature.offset).not.toEqual(first.feature.offset);
+
+  const before = boundsOfIds(doc, second.group.entityIds);
+  const again = regenerateFeature(doc, second.feature.id, { thickness: 5 });
+  const after = boundsOfIds(doc, again!.group.entityIds);
+  expect(after.min.x).toBeCloseTo(before.min.x, 6);
+  expect(after.min.y).toBeCloseTo(before.min.y, 6);
+  expect(again!.feature.offset).toEqual(second.feature.offset);
 });

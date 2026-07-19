@@ -24,6 +24,7 @@
 import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
+import { checkMachinability } from "./machinability";
 
 export type LintSeverity = "error" | "warning";
 
@@ -35,6 +36,9 @@ export interface LintFinding {
   message: string;
   /** 1-based source line of the first offending move, when applicable. */
   line?: number;
+  /** Geometry involved in the finding, for canvas highlight while the
+   *  pre-flight dialog is up; absent when not applicable (move-stream checks). */
+  entityIds?: string[];
 }
 
 export interface LintContext {
@@ -47,6 +51,14 @@ export interface LintContext {
   /** Workholding keep-outs in emitted (post-origin) coords; empty when none. */
   fixtures?: Fixture[];
   machineKind: "mill" | "laser";
+  /**
+   * Source document, for document-level checks that reason about geometry and
+   * operations rather than the move stream (machinability). Optional so
+   * hand-built test contexts simply skip those checks. On multi-program jobs
+   * (flip sides) the doc-level findings repeat per program — accepted for now
+   * (aiCheck dedupes); the once-only home would be postPrograms.
+   */
+  doc?: CADDocument;
 }
 
 /** 10µm — comfortably above the generator's 3-decimal rounding, well below any real hazard. */
@@ -397,6 +409,10 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
     findings.push(checkFastPlunge(moves));
     findings.push(checkFixtures(moves, ctx));
     findings.push(checkMissingToolChange(gcode));
+    // Document-level: geometry the ops' tools can't reach (silent at toolpath
+    // time — the offset just swallows narrow features). Needs the doc, so
+    // hand-built contexts without one skip it.
+    if (ctx.doc) findings.push(...checkMachinability(ctx.doc));
   }
 
   const order: Record<LintSeverity, number> = { error: 0, warning: 1 };
@@ -439,5 +455,6 @@ export function buildLintContext(
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     fixtures,
     machineKind: doc.machineKind === "laser" ? "laser" : "mill",
+    doc,
   };
 }

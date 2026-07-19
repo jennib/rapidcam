@@ -25,10 +25,10 @@
  */
 
 import type { Generator } from "./index";
-import type { Pt } from "./sketch";
+import type { Handle, Pt } from "./sketch";
 
 /** One edge profile of a panel: a square-finger comb, or straight when omitted. */
-interface CombSpec {
+export interface CombSpec {
   /** Nominal finger pitch (mm); the actual count is chosen to fit the span. */
   fingerW: number;
   /** Finger depth (mm) — the mating material thickness. */
@@ -53,8 +53,11 @@ interface CombSpec {
  * stay on the base line so they abut a perpendicular joint cleanly. At least two
  * fingers, so a pair of complementary edges always interlocks (with one finger,
  * one side would carry the notch and the mate nothing).
+ *
+ * Exported for tests — mating-edge complementarity verification; not part of
+ * the generator API.
  */
-function comb(len: number, spec: CombSpec): Pt[] {
+export function comb(len: number, spec: CombSpec): Pt[] {
   const s = spec.insetStart;
   const e = len - spec.insetEnd;
   const span = e - s;
@@ -156,7 +159,48 @@ function panel(w: number, h: number, specs: PanelSpecs): Pt[] {
     }
   }
   if (out.length > 1 && near(out[0], out[out.length - 1])) out.pop();
-  return out;
+  return removeSpurs(out);
+}
+
+/**
+ * Remove zero-area backtracking spurs from an assembled outline. When a comb's
+ * first/last run is ACTIVE (a notch at the panel corner — the side walls'
+ * full-height corner joints), the adjacent straight edge still runs to the
+ * nominal corner and the comb immediately doubles back along it: the outline
+ * visits a corner point that is notched-away material and retraces a segment.
+ * Rendering hides this (the spur overlaps the edge) but boolean/offset
+ * geometry sees a self-touching polygon. Snip any vertex whose outgoing
+ * segment exactly reverses the incoming one, clipping the overlap; iterate
+ * until stable (a corner can need two passes as the closing wraps).
+ */
+function removeSpurs(pts: Pt[]): Pt[] {
+  let cur = pts;
+  for (let pass = 0; pass < pts.length; pass++) {
+    let changed = false;
+    const n = cur.length;
+    const next: Pt[] = [];
+    for (let i = 0; i < n; i++) {
+      const prev = cur[(i - 1 + n) % n];
+      const v = cur[i];
+      const after = cur[(i + 1) % n];
+      const ax = v.x - prev.x;
+      const ay = v.y - prev.y;
+      const bx = after.x - v.x;
+      const by = after.y - v.y;
+      // Anti-parallel (cross = 0, dot < 0) means the path doubles back at v —
+      // v is a spur tip on a notched-away corner; drop it.
+      const cross = ax * by - ay * bx;
+      const dot = ax * bx + ay * by;
+      if (Math.abs(cross) < 1e-9 && dot < -1e-9) {
+        changed = true;
+        continue;
+      }
+      next.push(v);
+    }
+    cur = next;
+    if (!changed) break;
+  }
+  return cur;
 }
 
 /** Plain closed rectangle w×h with its bottom-left corner at the origin. */
@@ -180,6 +224,7 @@ export const box: Generator = {
     const f = s.param("fingerWidth", 12, { min: 2, label: "Finger width" });
     const clearance = s.param("clearance", 0, { min: 0, label: "Joint clearance" });
     s.note("Grooves are pockets ≈ thickness/2 deep; the bottom panel drops into them.");
+    if (clearance > 0) s.note(`Clearance adds ~${clearance} mm of gap per mating face.`);
 
     // Vertical corner joints run the FULL height (no inset — the bottom is held
     // by a groove, not a bottom-edge joint, so nothing conflicts at the corners).
@@ -235,22 +280,28 @@ export const box: Generator = {
     const groove = (faceW: number, oy: number) =>
       shift(grooveOf(faceW), t, oy + grooveOffset);
 
-    // Walls + bottom are profile cuts on the default layer.
+    // Walls + bottom are profile cuts on the default layer. Every entity is
+    // KEYED so toolpaths/constraints follow the logical part across regens
+    // even after a partial delete (see Sketch.key).
+    const keyed = (k: string, pts: Pt[]): Handle => {
+      s.key(k);
+      return s.polyline(pts, { closed: true });
+    };
     const profiles = [
-      s.polyline(shift(front, 0, yFront), { closed: true }),
-      s.polyline(shift(back, 0, yBack), { closed: true }),
-      s.polyline(shift(left, 0, yLeft), { closed: true }),
-      s.polyline(shift(right, 0, yRight), { closed: true }),
-      s.polyline(shift(bottom, length + g, 0), { closed: true }),
+      keyed("front-wall", shift(front, 0, yFront)),
+      keyed("back-wall", shift(back, 0, yBack)),
+      keyed("left-wall", shift(left, 0, yLeft)),
+      keyed("right-wall", shift(right, 0, yRight)),
+      keyed("bottom", shift(bottom, length + g, 0)),
     ];
     // Grooves are POCKETS, not profile cuts — put them on their own layer so the
     // distinction is obvious when assigning toolpaths.
     s.layer("Groove pockets", "#f59e0b");
     const grooves = [
-      s.polyline(groove(length, yFront), { closed: true }),
-      s.polyline(groove(length, yBack), { closed: true }),
-      s.polyline(groove(width, yLeft), { closed: true }),
-      s.polyline(groove(width, yRight), { closed: true }),
+      keyed("groove-front", groove(length, yFront)),
+      keyed("groove-back", groove(length, yBack)),
+      keyed("groove-left", groove(width, yLeft)),
+      keyed("groove-right", groove(width, yRight)),
     ];
     s.layer(); // back to the default layer
 
@@ -258,12 +309,17 @@ export const box: Generator = {
     // cuts, grooves are shallow pockets at half the material thickness. Both
     // get dog-bone relief so square fingers/panel edges seat against a round
     // cutter's corners.
+    // The tool must enter each corner-comb slot on the wall outlines. Slot
+    // width = height / n with comb()'s own finger count (span = height, no
+    // insets on the corner joints) — clamp the suggested tool to fit.
+    const slotW = height / Math.max(2, Math.round(height / f));
     s.suggestOp({
       name: "Box panels — Profile (outside)",
       kind: "profile-outside",
       targets: profiles,
       depth: "through",
       cornerStyle: "dogbone",
+      toolDiameter: Math.min(6, slotW),
     });
     s.suggestOp({
       name: "Bottom grooves — Pocket",

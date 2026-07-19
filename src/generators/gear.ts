@@ -76,7 +76,18 @@ export const gear: Generator = {
       for (let i = 1; i < ROOT; i++) at(rRoot, leftRoot + ((nextRight - leftRoot) * i) / ROOT);
     }
 
+    s.key("body");
     const body = s.polyline(pts, { closed: true });
+    // The cutter must reach down between adjacent teeth: the root land spans
+    // (2π/teeth − 2·flankOffset(rStart)) radians at the root radius, ~2.2 mm
+    // for the default 20T/m2 gear — far under the 6 mm default tool. Clamp the
+    // suggested tool to that gap or the profile posts with uncut tooth roots.
+    const rootGap = rRoot * (2 * Math.PI / teeth - 2 * flankOffset(rStart));
+    if (rootGap < 1) {
+      s.note(
+        `Tooth spaces are only ~${rootGap.toFixed(2)} mm — consider a larger module or v-carving.`,
+      );
+    }
     // Through profile cut. NO corner relief: dog-boning the concave involute
     // roots would gouge spurious overcuts into the tooth flanks.
     s.suggestOp({
@@ -84,9 +95,11 @@ export const gear: Generator = {
       kind: "profile-outside",
       targets: [body],
       depth: "through",
+      toolDiameter: Math.min(6, rootGap),
     });
     const out = [body];
     if (bore > 0) {
+      s.key("bore");
       const boreH = s.circle({ x: 0, y: 0 }, bore / 2);
       // Inside profile for the bore. The default 6 mm end mill is degenerate
       // inside a small bore (empty toolpath, silently) — clamp the suggested

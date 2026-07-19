@@ -259,6 +259,13 @@ export interface FeatureInstance {
    * here, or whose expression fails to evaluate, keeps its cached numeric.
    */
   paramExprs?: Record<string, string>;
+  /**
+   * Stable-key → entity-id map for entities the generator named via
+   * `Sketch.key()`. Regeneration pairs keyed entities by KEY (falling back to
+   * emit position for unkeyed ones), so references survive output reordering
+   * and partial deletes. Entries whose entity is deleted are pruned.
+   */
+  keyIds?: Record<string, EntityId>;
 }
 
 export interface LayerDef {
@@ -704,6 +711,14 @@ export class CADDocument {
     this.groups = this.groups.filter((g) => g.entityIds.length > 0);
     const groupIds = new Set(this.groups.map((g) => g.id));
     this.features = this.features.filter((f) => groupIds.has(f.groupId));
+    // Drop key mappings to deleted entities so a regeneration re-creates the
+    // keyed entity fresh instead of pairing with a dead id.
+    for (const f of this.features) {
+      if (!f.keyIds) continue;
+      for (const k of Object.keys(f.keyIds)) {
+        if (!ids.has(f.keyIds[k])) delete f.keyIds[k];
+      }
+    }
   }
 
   // --- patterns ------------------------------------------------------------
@@ -1121,6 +1136,7 @@ export class CADDocument {
         params: { ...f.params },
         ...(f.offset ? { offset: { ...f.offset } } : {}),
         ...(f.paramExprs ? { paramExprs: { ...f.paramExprs } } : {}),
+        ...(f.keyIds ? { keyIds: { ...f.keyIds } } : {}),
       })),
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map((l) => ({ ...l })),
@@ -1276,6 +1292,7 @@ export class CADDocument {
           params: { ...f.params },
           ...(f.offset ? { offset: { ...f.offset } } : {}),
           ...(f.paramExprs ? { paramExprs: { ...f.paramExprs } } : {}),
+        ...(f.keyIds ? { keyIds: { ...f.keyIds } } : {}),
         }))
       : [];
     for (const f of this.features) updateCounter(f.id);

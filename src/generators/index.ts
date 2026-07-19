@@ -13,7 +13,7 @@
  */
 
 import type { CADDocument, FeatureInstance, GroupDef, LayerDef } from "../model/document";
-import type { Entity } from "../model/entities";
+import type { Bounds, Entity } from "../model/entities";
 import type { CAMOperation } from "../cam/types";
 import { nextId } from "../model/ids";
 import { evalExpr } from "../core/expr";
@@ -32,10 +32,11 @@ export interface Generator {
   /**
    * Draw the feature into `s`; return the handles that form its output.
    *
-   * ORDERING CONTRACT: emit entities in a deterministic order that is stable
-   * across parameter values (append new optional entities at the end).
-   * Regeneration matches old→new entities by position to keep entity ids — and
-   * therefore CAM ops, constraints, and dimensions — alive across a re-run; an
+   * IDENTITY CONTRACT: name entities via `s.key()` — keyed entities keep their
+   * document ids across regeneration BY KEY, immune to output reordering and
+   * partial deletes. Unkeyed entities fall back to positional matching, so if
+   * any go unkeyed, emit them in a deterministic order that is stable across
+   * parameter values (append new optional entities at the end); an unkeyed
    * entity that changes position pairs with the wrong id or loses it entirely.
    */
   build(s: Sketch): Handle[];
@@ -82,11 +83,9 @@ function effectiveParams(sketch: Sketch): Record<string, number> {
   return Object.fromEntries(sketch.params.map((p) => [p.name, p.value]));
 }
 
-/** Offset that centres `entities`' combined bounding box on the work-area centre.
- *  Exported for the dialog's insert-mode ghost preview, which must show the part
- *  where a commit would actually place it. */
-export function centreOffset(doc: CADDocument, entities: Entity[]): Pt {
-  if (entities.length === 0) return { x: 0, y: 0 };
+/** Combined bounding box of `entities`, or null if there are none. */
+function boundsOf(entities: readonly Entity[]): Bounds | null {
+  if (entities.length === 0) return null;
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -98,10 +97,78 @@ export function centreOffset(doc: CADDocument, entities: Entity[]): Pt {
     maxX = Math.max(maxX, b.max.x);
     maxY = Math.max(maxY, b.max.y);
   }
+  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
+/** Offset that centres `entities`' combined bounding box on the work-area centre.
+ *  Exported for the dialog's insert-mode ghost preview, which must show the part
+ *  where a commit would actually place it. */
+export function centreOffset(doc: CADDocument, entities: Entity[]): Pt {
+  const b = boundsOf(entities);
+  if (!b) return { x: 0, y: 0 };
   return {
-    x: doc.canvas.width / 2 - (minX + maxX) / 2,
-    y: doc.canvas.height / 2 - (minY + maxY) / 2,
+    x: doc.canvas.width / 2 - (b.min.x + b.max.x) / 2,
+    y: doc.canvas.height / 2 - (b.min.y + b.max.y) / 2,
   };
+}
+
+/** Strict rectangle overlap — touching edges (equal coordinates) don't count. */
+function rectsOverlap(a: Bounds, b: Bounds): boolean {
+  return a.min.x < b.max.x && a.max.x > b.min.x && a.min.y < b.max.y && a.max.y > b.min.y;
+}
+
+/**
+ * Nudge `start` (centreOffset's proposed translation) so the incoming
+ * geometry — `bounds`, its untranslated bbox — doesn't land on top of an
+ * existing feature. Repeated inserts used to stack dead-centre on the work
+ * area. Each step JUMPS PAST the first colliding feature's bbox (a fixed
+ * small step exhausts against any part wider than step×tries — a big first
+ * insert would make every later part pile at the same offset). If a jump
+ * would push the candidate outside the work area, or the blocker count runs
+ * out, return `start` — stacking at centre is better than wandering off the
+ * stock, and there the user can see the pile-up.
+ *
+ * Pure: only reads doc state, never mutates. Exported for tests.
+ */
+export function nudgeOffset(doc: CADDocument, bounds: Bounds, start: Pt): Pt {
+  const byId = new Map(doc.entities.map((e) => [e.id, e] as const));
+  // Combined bbox of each feature's group — only groups a feature actually
+  // references, and only their still-live entities (a group a regen emptied
+  // out contributes nothing).
+  const existing: Bounds[] = [];
+  for (const f of doc.features) {
+    const group = doc.groups.find((g) => g.id === f.groupId);
+    if (!group) continue;
+    const liveEntities = group.entityIds.map((id) => byId.get(id)).filter((e): e is Entity => !!e);
+    const b = boundsOf(liveEntities);
+    if (b) existing.push(b);
+  }
+
+  const MARGIN = 10;
+  const MAX_JUMPS = 8;
+  let offset: Pt = { x: start.x, y: start.y };
+  for (let jumps = 0; jumps <= MAX_JUMPS; jumps++) {
+    const candidate: Bounds = {
+      min: { x: bounds.min.x + offset.x, y: bounds.min.y + offset.y },
+      max: { x: bounds.max.x + offset.x, y: bounds.max.y + offset.y },
+    };
+    const blocker = existing.find((o) => rectsOverlap(candidate, o));
+    if (!blocker) return offset;
+    // Jump to just past the blocker's right edge; wrap into a "next row"
+    // below the blocker when that would leave the work area horizontally.
+    const dx = blocker.max.x - candidate.min.x + MARGIN;
+    if (candidate.max.x + dx <= doc.canvas.width) {
+      offset = { x: offset.x + dx, y: offset.y };
+      continue;
+    }
+    const dy = blocker.max.y - candidate.min.y + MARGIN;
+    if (candidate.max.y + dy <= doc.canvas.height) {
+      offset = { x: start.x, y: offset.y + dy };
+      continue;
+    }
+    return start; // no room anywhere sensible — stack at centre, visibly
+  }
+  return start;
 }
 
 /** Id of the doc layer named `name` (reused across runs), creating it if absent. */
@@ -146,26 +213,50 @@ function upsertVariables(doc: CADDocument, sketch: Sketch): void {
 }
 
 /**
- * Pair a feature's existing entity ids with the fresh entities of a re-run, by
- * position: entity k of the new run inherits entity k's id when the types
- * match, so CAM ops, constraints, and dimensions pointing at surviving
- * geometry stay valid across a regeneration (the same id-reuse contract
- * pattern regeneration relies on — see CADDocument.replaceInstanceEntity).
- * A type mismatch at a position breaks the pair: the fresh entity is added
- * under its own new id and the old one is removed.
+ * Pair a feature's existing entity ids with the fresh entities of a re-run so
+ * surviving entities KEEP their ids (CAM ops, constraints, and dimensions stay
+ * valid — the same id-reuse contract pattern regeneration relies on, see
+ * CADDocument.replaceInstanceEntity). Two passes:
+ *
+ * 1. KEYED: a fresh entity named via `Sketch.key()` claims the id its key
+ *    mapped to last run (`keyIds`), regardless of where either sits in the
+ *    sequence — immune to output reordering and to earlier entities having
+ *    been deleted.
+ * 2. INDEX: the remainders pair by position with same-entity-type required
+ *    (unkeyed generators take this path wholesale — the original behavior).
+ *
+ * Anything left unpaired is added (fresh) or removed (old).
  */
 function matchEntities(
   oldIds: readonly string[],
   byId: ReadonlyMap<string, Entity>,
   fresh: readonly Entity[],
+  freshKeys: readonly (string | undefined)[] = [],
+  keyIds: Readonly<Record<string, string>> = {},
 ): { pairs: { oldId: string; fresh: Entity }[]; added: Entity[]; removedIds: string[] } {
   const pairs: { oldId: string; fresh: Entity }[] = [];
   const added: Entity[] = [];
   const removedIds: string[] = [];
-  const n = Math.max(oldIds.length, fresh.length);
+  const usedOld = new Set<string>();
+  const pairedFresh = new Set<number>();
+
+  fresh.forEach((f, i) => {
+    const k = freshKeys[i];
+    if (!k) return;
+    const oldEnt = keyIds[k] ? byId.get(keyIds[k]) : undefined;
+    if (oldEnt && !usedOld.has(oldEnt.id) && oldEnt.type === f.type) {
+      pairs.push({ oldId: oldEnt.id, fresh: f });
+      usedOld.add(oldEnt.id);
+      pairedFresh.add(i);
+    }
+  });
+
+  const remOld = oldIds.filter((id) => !usedOld.has(id));
+  const remFresh = fresh.filter((_, i) => !pairedFresh.has(i));
+  const n = Math.max(remOld.length, remFresh.length);
   for (let i = 0; i < n; i++) {
-    const oldEnt = i < oldIds.length ? byId.get(oldIds[i]) : undefined;
-    const f = i < fresh.length ? fresh[i] : undefined;
+    const oldEnt = i < remOld.length ? byId.get(remOld[i]) : undefined;
+    const f = i < remFresh.length ? remFresh[i] : undefined;
     if (oldEnt && f && oldEnt.type === f.type) {
       pairs.push({ oldId: oldEnt.id, fresh: f });
     } else {
@@ -174,6 +265,15 @@ function matchEntities(
     }
   }
   return { pairs, added, removedIds };
+}
+
+/** Key → committed-entity-id map from a built sketch (empty object if unkeyed). */
+function collectKeyIds(sketch: Sketch): Record<string, string> {
+  const out: Record<string, string> = {};
+  sketch.entityKeys.forEach((k, i) => {
+    if (k) out[k] = sketch.entities[i].id;
+  });
+  return out;
 }
 
 /**
@@ -198,7 +298,11 @@ export function runGenerator(
 
   // Generators draw around the origin; place the part in the middle of the work
   // area so it lands where the user is looking, not jammed at the WCS corner.
-  const offset = centreOffset(doc, sketch.entities);
+  // Repeated inserts used to stack dead-centre on top of each other — nudge
+  // off any existing feature's footprint so they land visibly apart instead.
+  const start = centreOffset(doc, sketch.entities);
+  const bounds = boundsOf(sketch.entities) ?? { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
+  const offset = nudgeOffset(doc, bounds, start);
   prepareEntities(doc, sketch, offset);
   for (const e of sketch.entities) doc.add(e);
   upsertVariables(doc, sketch);
@@ -216,6 +320,7 @@ export function runGenerator(
   };
   doc.groups.push(group);
 
+  const keyIds = collectKeyIds(sketch);
   const feature: FeatureInstance = {
     id: nextId("feat"),
     generatorId: gen.id,
@@ -225,6 +330,7 @@ export function runGenerator(
     ...(opts.paramExprs && Object.keys(opts.paramExprs).length
       ? { paramExprs: { ...opts.paramExprs } }
       : {}),
+    ...(Object.keys(keyIds).length ? { keyIds } : {}),
   };
   doc.features.push(feature);
   doc.emitChange();
@@ -263,7 +369,13 @@ export function regenerateFeature(
   prepareEntities(doc, sketch, offset);
 
   const byId = new Map(doc.entities.map((e) => [e.id, e] as const));
-  const { pairs, added, removedIds } = matchEntities(group.entityIds, byId, sketch.entities);
+  const { pairs, added, removedIds } = matchEntities(
+    group.entityIds,
+    byId,
+    sketch.entities,
+    sketch.entityKeys,
+    feature.keyIds ?? {},
+  );
   for (const p of pairs) doc.replaceInstanceEntity(p.oldId, p.fresh);
   for (const e of added) doc.add(e);
 
@@ -277,6 +389,10 @@ export function regenerateFeature(
 
   upsertVariables(doc, sketch);
   feature.params = effectiveParams(sketch);
+  // Ids are final here (survivors got theirs back via replaceInstanceEntity),
+  // so the key map can be rebuilt for the next regeneration.
+  const keyIds = collectKeyIds(sketch);
+  feature.keyIds = Object.keys(keyIds).length ? keyIds : undefined;
   // `paramExprs` replaces wholesale when the caller PROVIDES it (an empty object
   // clears every stored expr — a field the user blanked out reverts to a plain
   // literal); omitting the option leaves whatever exprs are already stored

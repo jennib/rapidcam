@@ -40,6 +40,9 @@ integration guide, inlined as one plain-text document.
 - Entity ids stay stable across a regeneration, so CAM operations,
   constraints, and dimensions that reference generated geometry survive a
   parameter edit.
+- `keyIds` (optional) maps generator-assigned stable keys (e.g. "front-wall")
+  to entity ids; keyed entities keep their ids by key rather than by emit
+  position, so references survive output reordering and partial deletes.
 
 ## Authoring tips for LLMs
 

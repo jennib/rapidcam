@@ -1,5 +1,5 @@
 import type { Vec2 } from "../core/vec2";
-import { inflatePathsD, JoinType, EndType, differenceD, FillRule } from "clipper2-ts";
+import { inflatePathsD, intersectD, JoinType, EndType, differenceD, FillRule } from "clipper2-ts";
 
 /**
  * Re-start a closed path at the midpoint of its longest edge, so a profile's
@@ -83,5 +83,52 @@ export function offsetPolygon(pts: Vec2[], d: number, miterLimit = 4): Vec2[][] 
 export function subtractPolygons(subject: Vec2[], clips: Vec2[][]): Vec2[][] {
   if (clips.length === 0) return [subject];
   const result = differenceD([subject], clips, FillRule.NonZero);
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
+}
+
+/**
+ * Offset a SET of paths as one NonZero region (holes wound opposite the outer
+ * offset correctly; lobes merged by a dilation erode back as a unit). The
+ * single-path {@link offsetPolygon} can't express either.
+ *
+ * `join` defaults to the pipeline's miter, but morphological open/close (see
+ * cam/machinability.ts) must use `"round"`: a disc-swept cut IS round-join
+ * morphology — miter closing wrongly seals corner-open steps a real cutter
+ * can reach into (verified on the box generator's rim-corner notches).
+ */
+export function offsetPolygons(
+  paths: Vec2[][],
+  d: number,
+  opts: { miterLimit?: number; join?: "miter" | "round"; arcTolerance?: number } = {},
+): Vec2[][] {
+  const closed = paths.filter((p) => p.length >= 3);
+  if (closed.length === 0) return [];
+  const join = opts.join === "round" ? JoinType.Round : JoinType.Miter;
+  // Round joins NEED an explicit arc tolerance — the library default generates
+  // pathologically fine arcs (seconds per offset on a gear outline).
+  const result = inflatePathsD(
+    closed,
+    d,
+    join,
+    EndType.Polygon,
+    opts.miterLimit ?? 4,
+    undefined,
+    opts.arcTolerance,
+  );
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
+}
+
+/** Multi-subject variant of {@link subtractPolygons} (NonZero both sides). */
+export function subtractPolygonSets(subject: Vec2[][], clips: Vec2[][]): Vec2[][] {
+  if (subject.length === 0) return [];
+  if (clips.length === 0) return subject;
+  const result = differenceD(subject, clips, FillRule.NonZero);
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
+}
+
+/** Boolean intersection of two path sets (NonZero). Empty when either is. */
+export function intersectPolygonSets(a: Vec2[][], b: Vec2[][]): Vec2[][] {
+  if (a.length === 0 || b.length === 0) return [];
+  const result = intersectD(a, b, FillRule.NonZero);
   return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
 }

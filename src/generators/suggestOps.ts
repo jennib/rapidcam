@@ -28,6 +28,25 @@ function resolveDepth(doc: CADDocument, depth: number | "through"): number {
   return depth === "through" ? -doc.stockThickness : depth;
 }
 
+/**
+ * Conservative small-tool derating heuristic — NOT physics. At the shared
+ * default spindle speed, chipload roughly scales with diameter, so a tool
+ * much narrower than the default needs a proportionally slower feed or it's
+ * asked for the same chipload as a tool 3x its size; a 0.4 floor keeps very
+ * small tools from being derated into uselessness. Stepdown is capped at half
+ * the diameter (the common small-endmill rule of thumb — deeper passes on a
+ * skinny tool flex and snap it). Plunge rate is scaled too: it's the likeliest
+ * way to snap a ⌀2mm tool, since generators don't otherwise touch it.
+ */
+function applySmallToolScaling(op: CAMOperation): void {
+  const ratio = op.diameter / DEFAULTS.diameter;
+  if (ratio >= 1) return;
+  op.stepdown = Math.min(op.stepdown, 0.5 * op.diameter);
+  const f = Math.max(0.4, ratio);
+  op.feedrate = Math.round(DEFAULTS.feedrate * f);
+  op.plungeRate = Math.round(DEFAULTS.plungeRate * f);
+}
+
 function baseOp(doc: CADDocument, spec: OpSuggestion): CAMOperation {
   return {
     id: nextId("cam"),
@@ -75,6 +94,7 @@ export function buildSuggestedOps(doc: CADDocument, sketch: Sketch): CAMOperatio
     }
 
     const op = baseOp(doc, spec);
+    applySmallToolScaling(op);
     switch (spec.kind) {
       case "pocket": {
         op.type = "pocket";
@@ -93,6 +113,30 @@ export function buildSuggestedOps(doc: CADDocument, sketch: Sketch): CAMOperatio
     }
     if (spec.cornerStyle && (op.type === "profile" || op.type === "pocket")) {
       op.cornerStyle = spec.cornerStyle;
+    }
+    // A through-cut outside profile comes free on its last pass with nothing
+    // holding it to the stock and can be thrown by the cutter — auto-add
+    // hold-down tabs unless the generator opted out (e.g. a vacuum-table
+    // setup that doesn't need them). Inside profiles are excluded: the
+    // falling slug of a small bore is accepted for now. "spacing" strategy
+    // auto-scales tab count with perimeter via resolveTabCount (cam/tabs.ts);
+    // `count` is set only because TabDef.count is required even under
+    // "spacing". Height is capped at half the stock so tabs don't dominate
+    // thin material.
+    if (
+      op.type === "profile" &&
+      op.side === "outside" &&
+      spec.depth === "through" &&
+      spec.tabs !== false
+    ) {
+      op.tabs = {
+        enabled: true,
+        strategy: "spacing",
+        count: 4,
+        spacing: 40,
+        width: 4,
+        height: Math.min(2, doc.stockThickness / 2),
+      };
     }
     ops.push(op);
   }

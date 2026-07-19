@@ -1654,13 +1654,29 @@ export class CamBar {
       ...findings.flatMap((f) => [`${f.severity === "error" ? "⛔" : "⚠"} ${f.message}`, ""]),
       "Export anyway?",
     ].join("\n");
-    return confirmDialog({
-      title: "Pre-flight check",
-      message,
-      confirmLabel: "Export anyway",
-      cancelLabel: "Review first",
-      danger: errors > 0,
-    });
+    // Findings that name geometry (machinability) highlight it on the canvas
+    // while the dialog is up — hence the non-dimming peek backdrop. Same
+    // highlight channel as op hover; cleared whichever way the dialog closes.
+    const highlightIds = findings.flatMap((f) => f.entityIds ?? []);
+    if (highlightIds.length) {
+      this.doc.toolpathHighlightIds = new Set(highlightIds);
+      this.doc.emitChange();
+    }
+    try {
+      return await confirmDialog({
+        title: "Pre-flight check",
+        message,
+        confirmLabel: "Export anyway",
+        cancelLabel: "Review first",
+        danger: errors > 0,
+        peek: highlightIds.length > 0,
+      });
+    } finally {
+      if (highlightIds.length) {
+        this.doc.toolpathHighlightIds = null;
+        this.doc.emitChange();
+      }
+    }
   }
 
   private async generate(): Promise<void> {
