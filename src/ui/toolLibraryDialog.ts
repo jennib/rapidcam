@@ -71,10 +71,7 @@ export function openToolLibraryDialog(): void {
   sidebarFooter.style.flex = "0 0 auto";
   sidebar.appendChild(sidebarFooter);
 
-  const addBtn = document.createElement("button");
-  addBtn.className = "cam-add-btn";
-  addBtn.textContent = "+ New Tool";
-  addBtn.addEventListener("click", () => {
+  const addNewTool = () => {
     saveCurrentEdit(); // save anything currently being edited
     const newId = `tool-${Date.now()}`;
     const newTool: ToolDef = {
@@ -92,7 +89,12 @@ export function openToolLibraryDialog(): void {
     selectedId = newId;
     currentEdit = JSON.parse(JSON.stringify(newTool));
     render();
-  });
+  };
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "cam-add-btn";
+  addBtn.textContent = "+ New Tool";
+  addBtn.addEventListener("click", addNewTool);
   sidebarFooter.appendChild(addBtn);
 
   // editor
@@ -124,6 +126,12 @@ export function openToolLibraryDialog(): void {
       empty.style.fontStyle = "italic";
       empty.style.textAlign = "center";
       empty.textContent = "Library is empty";
+      const emptyAdd = document.createElement("button");
+      emptyAdd.className = "cam-add-btn";
+      emptyAdd.textContent = "+ New Tool";
+      emptyAdd.style.marginTop = "10px";
+      emptyAdd.addEventListener("click", addNewTool);
+      empty.appendChild(emptyAdd);
       listEl.appendChild(empty);
       return;
     }

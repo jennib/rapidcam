@@ -364,11 +364,16 @@ export class CamBar {
     this.opsList.innerHTML = "";
     if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "cam-ops-empty";
+      empty.className = "empty-state cam-ops-empty";
       empty.innerHTML = `
         <div class="empty-icon">⬚</div>
-        <div>No toolpaths yet.<br>Click "+ Add Toolpath" to get started.</div>
+        <div>No toolpaths yet.</div>
       `;
+      const emptyAdd = document.createElement("button");
+      emptyAdd.className = "cam-add-btn";
+      emptyAdd.textContent = "+ Add Toolpath";
+      emptyAdd.addEventListener("click", () => this.openDialog(null));
+      empty.appendChild(emptyAdd);
       this.opsList.appendChild(empty);
       this.updateExportSelBtn();
       return;
