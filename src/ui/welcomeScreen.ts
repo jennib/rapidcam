@@ -37,11 +37,16 @@ export function showWelcomeScreen(
   backdrop.style.border = "none";
   backdrop.style.margin = "0";
   backdrop.style.padding = "0";
-  backdrop.style.maxWidth = "100vw";
-  backdrop.style.maxHeight = "100vh";
+  backdrop.style.maxWidth = "none";
+  backdrop.style.maxHeight = "none";
+  backdrop.style.width = "100%";
+  backdrop.style.height = "100%";
+  backdrop.style.display = "flex";
+  backdrop.style.background = "rgba(15, 17, 23, 0.85)";
 
   const container = document.createElement("div");
   container.className = "welcome-container";
+
 
   const logo = document.createElement("img");
   logo.src = "/rapidcam-logo.svg";
@@ -305,24 +310,11 @@ export function showWelcomeScreen(
   container.appendChild(footer);
   backdrop.appendChild(container);
 
-  // Dismissable: click the dimmed area outside the card, or press Escape. This
-  // matters when re-opened mid-session from the File menu (peek the examples,
-  // then back out) — there's always the current/empty document behind it.
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+  // The user requested a strict modal: no dismissing by clicking the background
+  // or pressing Escape. They must choose an option to proceed.
+  backdrop.addEventListener("cancel", (e) => {
+    e.preventDefault(); // Prevent native Escape key from closing the dialog
   });
-  const onKey = (e: KeyboardEvent): void => {
-    // Self-detach once the splash is gone (dismissed via a button or click).
-    if (!backdrop.isConnected) {
-      window.removeEventListener("keydown", onKey);
-      return;
-    }
-    if (e.key === "Escape") {
-      backdrop.remove();
-      window.removeEventListener("keydown", onKey);
-    }
-  };
-  window.addEventListener("keydown", onKey);
 
   document.body.appendChild(backdrop);
   backdrop.showModal();
