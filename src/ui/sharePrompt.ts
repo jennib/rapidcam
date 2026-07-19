@@ -115,8 +115,8 @@ export function maybeShowSharePrompt(): void {
   copyBtn.addEventListener("click", () => {
     copyToClipboard(shareUrl);
     copyBtn.textContent = "Copied!";
-    copyBtn.style.background = "#2d8a4e";
-    copyBtn.style.borderColor = "#2d8a4e";
+    copyBtn.style.background = "var(--success)";
+    copyBtn.style.borderColor = "var(--success)";
     setTimeout(() => {
       copyBtn.textContent = "Copy link";
       copyBtn.style.background = accent;

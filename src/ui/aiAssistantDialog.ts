@@ -62,7 +62,7 @@ export function loadSchemaValidator(): Promise<SchemaValidator | null> {
 function flashCopied(btn: HTMLButtonElement, label: string): void {
   const prev = btn.textContent;
   btn.textContent = label;
-  btn.style.background = "#2d8a4e";
+  btn.style.background = "var(--success)";
   btn.style.color = "#fff";
   setTimeout(() => {
     btn.textContent = prev;

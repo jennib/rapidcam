@@ -1,6 +1,7 @@
 import "./style.css";
 import { showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
+import { syncColorsFromTheme } from "./view/colors";
 
 declare global {
   interface Window {
@@ -56,6 +57,9 @@ function showMobileWarning(): boolean {
 }
 
 function bootApp(): void {
+  // Pull the CSS theme tokens into the canvas palette before anything renders.
+  syncColorsFromTheme();
+
   const canvas = document.getElementById("scene") as HTMLCanvasElement | null;
   const palette = document.getElementById("toolpalette");
   const topbar = document.getElementById("topbar");

@@ -529,7 +529,7 @@ export class CamBar {
       face.className = "tp-badge";
       face.textContent = "▽ B";
       face.title = "Bottom face — cut after the flip, mirrored";
-      face.style.cssText = "background:#e0a85a;color:#1a1a1a;";
+      face.style.cssText = "background:var(--warn, #e0a85a);color:#1a1a1a;";
       topRow.appendChild(face);
     }
 

@@ -117,7 +117,7 @@ export function showShareDialog(): void {
   copyBtn.addEventListener("click", () => {
     copyToClipboard(SHARE_URL);
     copyBtn.textContent = "Copied!";
-    copyBtn.style.background = "#2d8a4e";
+    copyBtn.style.background = "var(--success)";
     copyBtn.style.color = "#fff";
     setTimeout(() => {
       copyBtn.textContent = "Copy";

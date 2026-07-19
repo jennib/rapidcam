@@ -8,6 +8,17 @@
   --accent: #4aa3ff;
   --accent-dim: #2f6aa8;
   --danger: #ff5d5d;
+  --success: #2d8a4e;
+  /* Promoted from previously-undefined vars whose inline fallbacks were unanimous,
+     so these are behavior-neutral but now themeable. */
+  --tp-color: #f59e42;
+  --muted: #9aa4b2;
+  --text-muted: #888;
+  /* NOTE: --warn is intentionally left undefined for now: its inline fallbacks
+     disagree (#c8982a in 3 places, #e0a85a in 5), so defining it would change
+     rendering somewhere. Unifying to one amber is a design call — see follow-up.
+     --surface and --hover are also undefined (currently invalid → transparent);
+     defining them would alter dialog/hover backgrounds, out of scope for a token pass. */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }

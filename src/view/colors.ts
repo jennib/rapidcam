@@ -1,4 +1,11 @@
-/** Central canvas palette so renderer styling stays consistent with the CSS theme. */
+/**
+ * Central canvas palette. The values below are compile-time defaults; at runtime
+ * `syncColorsFromTheme()` overwrites the entries that mirror a CSS custom property
+ * with the resolved token value, making the CSS theme the single source of truth
+ * (see themeTokens.ts). The literals here double as safe fallbacks for non-browser
+ * contexts (unit tests, headless render) where CSS vars can't be read.
+ */
+import { readToken } from "./themeTokens";
 
 export const COLORS = {
   background: "#1e1f24",
@@ -50,4 +57,30 @@ export const COLORS = {
   // Flat laser toolpath preview (cut paths drawn over the 2D canvas).
   laserCut: "#ff4d4d",
   laserCutGlow: "rgba(255,77,77,0.35)",
-} as const;
+};
+
+/**
+ * Canvas-palette keys that are exact duplicates of a CSS custom property.
+ * These are kept in sync from the CSS theme at runtime; the defaults above must
+ * equal the token's value so behavior is identical before the first sync.
+ */
+const TOKEN_MIRRORS: Partial<Record<keyof typeof COLORS, string>> = {
+  background: "--bg",
+  gridLabel: "--text-dim",
+  entityConstruction: "--text-dim",
+  preview: "--accent",
+  selectionRectBorder: "--accent",
+  toolpathHighlight: "--tp-color",
+};
+
+/**
+ * Copy resolved CSS token values into COLORS. Call once after the stylesheet is
+ * applied (app boot). No-op for tokens that don't resolve (keeps the default).
+ */
+export function syncColorsFromTheme(): void {
+  const palette = COLORS as Record<string, string>;
+  for (const [key, cssVar] of Object.entries(TOKEN_MIRRORS)) {
+    const v = readToken(cssVar);
+    if (v) palette[key] = v;
+  }
+}
