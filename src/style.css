@@ -9,6 +9,11 @@
   --accent-dim: #2f6aa8;
   --danger: #ff5d5d;
   --success: #2d8a4e;
+  /* Elevated dialog surface + subtle hover overlay. Previously referenced but
+     never defined, which left .about-dialog / .feedback-dialog transparent and
+     several :hover states inert. */
+  --surface: #2e313a;
+  --hover: rgba(255, 255, 255, 0.08);
   /* Promoted from previously-undefined vars whose inline fallbacks were unanimous,
      so these are behavior-neutral but now themeable. */
   --tp-color: #f59e42;
