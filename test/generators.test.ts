@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { ArcEntity, CircleEntity, PolylineEntity } from "../src/model/entities";
+import { ArcEntity, CircleEntity, PolylineEntity, RectEntity } from "../src/model/entities";
+import { makeVariable } from "../src/model/variables";
 import { makeConstraint } from "../src/model/constraints";
 import { type CAMOperation, DEFAULTS } from "../src/cam/types";
 import { Sketch, type ParamSpec, type Pt } from "../src/generators/sketch";
@@ -14,8 +15,10 @@ import {
   findFeatureForEntities,
   nudgeOffset,
   regenerateFeature,
+  regenerateStaleFeatures,
   runGenerator,
 } from "../src/generators/index";
+import { panel } from "../src/generators/panel";
 import { applyFile, serializeDoc } from "../src/io/fileio";
 import { dialogWarnings } from "../src/ui/generatorDialog";
 
@@ -135,6 +138,102 @@ test("box grooves commit onto a separate 'Groove pockets' layer", () => {
   // First 5 (walls + bottom) are NOT on the groove layer; the last 4 (grooves) are.
   expect(ents.slice(0, 5).every((e) => e.layerId !== layer!.id)).toBe(true);
   expect(ents.slice(5).every((e) => e.layerId === layer!.id)).toBe(true);
+});
+
+test("panel emits one whole-shape rectangle sized to width×height (plain blank)", () => {
+  const s = new Sketch({ params: { width: 150, height: 100 } });
+  const handles = panel.build(s);
+  expect(handles).toHaveLength(1); // no inner panel when inset is 0
+
+  const outer = handles[0].entity as RectEntity;
+  expect(outer).toBeInstanceOf(RectEntity);
+  expect(outer.width).toBeCloseTo(150);
+  expect(outer.height).toBeCloseTo(100);
+  expect(outer.bounds().min).toEqual({ x: 0, y: 0 });
+
+  // A plain blank suggests only a through outside profile (no pocket).
+  expect(s.opSuggestions.map((o) => o.kind)).toEqual(["profile-outside"]);
+  expect(s.opSuggestions[0].depth).toBe("through");
+});
+
+test("panel with an inset draws a recessed inner panel, inset on all sides", () => {
+  const s = new Sketch({ params: { width: 200, height: 120, panelInset: 15, panelDepth: 4 } });
+  const [outer, inner] = panel.build(s);
+  expect(outer.entity).toBeInstanceOf(RectEntity);
+  expect(inner.entity).toBeInstanceOf(RectEntity);
+
+  const ir = inner.entity as RectEntity;
+  // Inset 15 on every edge: 200−30 × 120−30, offset to (15,15).
+  expect(ir.width).toBeCloseTo(170);
+  expect(ir.height).toBeCloseTo(90);
+  expect(ir.bounds().min).toEqual({ x: 15, y: 15 });
+
+  // Outer through profile + inner pocket at the panel depth (negative = below).
+  const kinds = s.opSuggestions.map((o) => o.kind);
+  expect(kinds).toEqual(["profile-outside", "pocket"]);
+  expect(s.opSuggestions[1].depth).toBeCloseTo(-4);
+});
+
+test("panel commits the recessed panel onto its own 'Panel' layer", () => {
+  const doc = new CADDocument({ width: 400, height: 400 });
+  const res = runGenerator(doc, GENERATORS["panel"], { width: 200, height: 120, panelInset: 20 });
+  const layer = doc.layers.find((l) => l.name === "Panel");
+  expect(layer).toBeDefined();
+
+  const ents = res.group.entityIds.map((id) => doc.entities.find((e) => e.id === id)!);
+  expect(ents).toHaveLength(2);
+  expect(ents[0].layerId).not.toBe(layer!.id); // outer stays on the default layer
+  expect(ents[1].layerId).toBe(layer!.id); // recessed panel on the Panel layer
+});
+
+test("panel omits the inner panel when the inset is too large to fit", () => {
+  const s = new Sketch({ params: { width: 100, height: 80, panelInset: 40 } });
+  const handles = panel.build(s);
+  // 80 − 2·40 = 0 height → degenerate, so no inner rectangle is emitted.
+  expect(handles).toHaveLength(1);
+  expect(s.notes.some((n) => /too large/i.test(n))).toBe(true);
+  expect(s.opSuggestions.map((o) => o.kind)).toEqual(["profile-outside"]);
+});
+
+test("panel does not suggest a pocket when the recessed panel has zero depth", () => {
+  const s = new Sketch({ params: { width: 200, height: 120, panelInset: 15, panelDepth: 0 } });
+  const [, inner] = panel.build(s);
+  expect(inner).toBeDefined(); // geometry (scribe line) still drawn
+  expect(s.opSuggestions.map((o) => o.kind)).toEqual(["profile-outside"]);
+});
+
+test("panel regenerates id-stably when resized", () => {
+  const doc = new CADDocument({ width: 500, height: 500 });
+  const first = runGenerator(doc, GENERATORS["panel"], { width: 150, height: 100 });
+  const outerId = first.group.entityIds[0];
+
+  const again = regenerateFeature(doc, first.feature.id, { width: 300 });
+  expect(again).not.toBeNull();
+  // Same entity id after the resize — a Width/Height edit doesn't orphan CAM
+  // ops, constraints, or dimensions attached to the panel's outer profile.
+  expect(again!.group.entityIds[0]).toBe(outerId);
+  expect((again!.handles[0].entity as RectEntity).width).toBeCloseTo(300);
+});
+
+test("panel width can be driven by a document variable and resizes when it changes", () => {
+  const doc = new CADDocument({ width: 800, height: 800 });
+  doc.addVariable(makeVariable("doorW", "400", "mm"));
+  const res = runGenerator(
+    doc,
+    GENERATORS["panel"],
+    { width: 400, height: 300 },
+    { paramExprs: { width: "doorW" } },
+  );
+  const outer = () => res.group.entityIds.map((id) => doc.entities.find((e) => e.id === id)!)[0];
+  expect((outer() as RectEntity).width).toBeCloseTo(400);
+
+  // Change the one number; the panel rebuilds wider on the next stale sweep.
+  const v = doc.variables.find((v) => v.name === "doorW")!;
+  v.expr = "550";
+  v.value = 550; // varMap resolves against the cached value (the edit path recomputes it)
+  const changed = regenerateStaleFeatures(doc);
+  expect(changed).toBe(true);
+  expect((outer() as RectEntity).width).toBeCloseTo(550);
 });
 
 test("runGenerator commits geometry as a single grouped feature", () => {

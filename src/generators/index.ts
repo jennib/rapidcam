@@ -20,6 +20,7 @@ import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
 import { buildSuggestedOps } from "./suggestOps";
 import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
+import { panel } from "./panel";
 import { boxJoint } from "./boxJoint";
 import { gear } from "./gear";
 import { box } from "./box";
@@ -44,6 +45,7 @@ export interface Generator {
 
 /** Built-in first-party generators, keyed by id. */
 export const GENERATORS: Record<string, Generator> = {
+  [panel.id]: panel,
   [boxJoint.id]: boxJoint,
   [gear.id]: gear,
   [box.id]: box,
