@@ -6,6 +6,54 @@ import type { CADDocument } from "../model/document";
 import type { SnapEngine } from "../input/snapping";
 import type { SolveResult } from "../solver/solver";
 
+/** How a solve state should read in the status bar. `null` = show nothing (an
+ *  unconstrained sketch has no meaningful "definedness" to report yet). */
+export interface SolveStatusLabel {
+  html: string;
+  /** CSS color (token or literal) for the status text. */
+  color: string;
+  /** Plain-language explanation, shown on hover — the DOF number alone tells a
+   *  newcomer nothing about what it means or what to do. */
+  tooltip: string;
+}
+
+/**
+ * Translate a solve result into a legible status label. Pure (no DOM) so it is
+ * unit-testable; {@link StatusBar.setSolveStatus} just applies it.
+ *
+ * The under-constrained case is the one that used to read as a bare "DOF 5" —
+ * jargon that hides the two things a newcomer needs to know: geometry can still
+ * move, and editing one value may shift another. Green = locked, blue = the CAD
+ * convention for "not fully defined yet", red = conflicting.
+ */
+export function solveStatusLabel(res: SolveResult | null): SolveStatusLabel | null {
+  if (!res?.hasConstraints) return null;
+  if (!res.converged) {
+    return {
+      html: "⚠ Over-constrained / conflicting",
+      color: "var(--danger)",
+      tooltip:
+        "Conflicting or redundant constraints — the sketch can't satisfy them all at once. Remove a constraint or dimension to resolve it.",
+    };
+  }
+  if (res.dof === 0) {
+    return {
+      html: "Fully constrained ✓",
+      color: "#3fb950",
+      tooltip:
+        "Every point is locked — the geometry can't move unless you change a dimension or a variable.",
+    };
+  }
+  const n = res.dof;
+  return {
+    html: `Under-constrained · <b>${n}</b> free`,
+    color: "var(--accent)",
+    tooltip:
+      `${n} degree${n === 1 ? "" : "s"} of freedom (DOF) are still unconstrained — this sketch can move, ` +
+      "and editing one value may shift other geometry. Add dimensions or constraints to pin it down (0 = fully constrained).",
+  };
+}
+
 export class StatusBar {
   private coordEl!: HTMLElement;
   private zoomEl!: HTMLElement;
@@ -121,21 +169,16 @@ export class StatusBar {
   }
 
   setSolveStatus(res: SolveResult | null): void {
-    if (!res?.hasConstraints) {
+    const label = solveStatusLabel(res);
+    if (!label) {
       this.solveEl.textContent = "";
       this.solveEl.style.color = "";
+      this.solveEl.title = "";
       return;
     }
-    if (!res.converged) {
-      this.solveEl.innerHTML = "⚠ Over-constrained / conflicting";
-      this.solveEl.style.color = "var(--danger)";
-    } else if (res.dof === 0) {
-      this.solveEl.innerHTML = "Fully constrained";
-      this.solveEl.style.color = "var(--accent)";
-    } else {
-      this.solveEl.innerHTML = `DOF <b>${res.dof}</b>`;
-      this.solveEl.style.color = "";
-    }
+    this.solveEl.innerHTML = label.html;
+    this.solveEl.style.color = label.color;
+    this.solveEl.title = label.tooltip;
   }
 
   private toggle(label: string, onClick: () => void, tooltip?: string): HTMLElement {
