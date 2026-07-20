@@ -12,7 +12,7 @@ import { rasterizeStock } from "./cam/stockRasterizer";
 import type { CAMOperation } from "./cam/types";
 import { WebGLPreview } from "./cam/webglPreview";
 import { initBundledFonts } from "./core/fontManager";
-import { selectionBounds } from "./core/transform";
+import { placePasteClones, PASTE_OFFSET_MM } from "./core/paste";
 import { dist, type Vec2 } from "./core/vec2";
 import { SnapEngine, type SnapResult } from "./input/snapping";
 import { ProjectManager } from "./io/projectManager";
@@ -95,8 +95,6 @@ import { Renderer } from "./view/renderer";
 import { Viewport } from "./view/viewport";
 
 const HOVER_TOLERANCE_PX = 8;
-/** Offset applied to pasted/duplicated copies so they don't hide the original. */
-const PASTE_OFFSET_MM = 5;
 
 /** Directional resize cursors for the transform-box scale handles. */
 const RESIZE_CURSORS: Record<string, string> = {
@@ -1209,22 +1207,11 @@ export class App {
   private paste(at?: Vec2): void {
     if (this.clipboard.length === 0) return;
     this.project.pushHistory();
-    // Clone first, then offset the CLONES — never the stored clipboard entities.
-    // (The old code translated the clipboard in place to get the cascade; that
-    // left the clipboard permanently drifting, so we track a paste counter instead.)
-    const clones = this.clipboard.map((c) => c.duplicate());
-    if (at) {
-      const b = selectionBounds(clones);
-      if (b) {
-        const d = { x: at.x - (b.min.x + b.max.x) / 2, y: at.y - (b.min.y + b.max.y) / 2 };
-        for (const c of clones) c.translate(d);
-      }
-    } else {
-      // Cascade: each successive plain paste steps further from the source so
-      // repeat pastes don't stack on top of each other (matches the old behaviour).
-      const n = ++this.pasteCount;
-      for (const c of clones) c.translate({ x: PASTE_OFFSET_MM * n, y: -PASTE_OFFSET_MM * n });
-    }
+    // Placement (clone-then-offset, never mutating the clipboard) lives in the pure
+    // placePasteClones helper. The cascade counter — so repeat plain pastes step
+    // away instead of stacking — is the only per-App state; it's reset on copy/cut.
+    const count = at ? 0 : ++this.pasteCount;
+    const clones = placePasteClones(this.clipboard, count, at);
     this.insertClones(clones, this.clipboardGroups);
   }
 
