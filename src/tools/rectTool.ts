@@ -6,14 +6,15 @@
  * rectangle and resize it to exactly 400×300, or drive it from a variable" is
  * the default path a new user meets. This is deliberately the simple-by-default
  * primitive; when you need a rotated rectangle, a skew, or per-edge/per-corner
- * constraints, `Explode` (Edit menu) breaks it into four independent lines (the
- * behavior this tool used to emit up front) and `Join` puts it back.
+ * constraints, `Explode` (Edit menu) UNLOCKS it into four lines wired with the
+ * full rectangle constraint set — the exact flexible rectangle this tool used to
+ * emit up front, so no capability is lost, you just unlock it on demand.
  *
  * A snapped corner still lands exactly on its target (the click coordinate is
  * already the snapped point); we don't add a coincident constraint to a corner,
  * because a RectEntity is a rigid axis-aligned body and pinning corners can
- * over-constrain it — link a corner to other geometry with an explicit
- * constraint (or Explode to lines) when you want that.
+ * over-constrain it. To pin a corner to other geometry, Explode (the corners
+ * become line endpoints you can constrain freely).
  */
 
 import type { Vec2 } from "../core/vec2";
