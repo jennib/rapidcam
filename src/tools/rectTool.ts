@@ -1,12 +1,23 @@
 /**
  * Rectangle tool: click one corner, click the opposite.
- * Emits 4 LineEntities with coincident + horizontal/vertical constraints so the
- * resulting rectangle is fully parametric (width, height, position all free DOFs).
+ *
+ * Emits a single {@link RectEntity} — one whole-shape object with editable
+ * Width/Height (both formula-drivable) in the properties panel, so "draw a
+ * rectangle and resize it to exactly 400×300, or drive it from a variable" is
+ * the default path a new user meets. This is deliberately the simple-by-default
+ * primitive; when you need a rotated rectangle, a skew, or per-edge/per-corner
+ * constraints, `Explode` (Edit menu) breaks it into four independent lines (the
+ * behavior this tool used to emit up front) and `Join` puts it back.
+ *
+ * A snapped corner still lands exactly on its target (the click coordinate is
+ * already the snapped point); we don't add a coincident constraint to a corner,
+ * because a RectEntity is a rigid axis-aligned body and pinning corners can
+ * over-constrain it — link a corner to other geometry with an explicit
+ * constraint (or Explode to lines) when you want that.
  */
 
 import type { Vec2 } from "../core/vec2";
-import { LineEntity, type SnapPoint } from "../model/entities";
-import { makeConstraint } from "../model/constraints";
+import { RectEntity } from "../model/entities";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 
@@ -16,23 +27,20 @@ export class RectTool implements Tool {
   readonly icon = ICONS.rect;
 
   private corner: Vec2 | null = null;
-  private cornerSnap: SnapPoint | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
     if (!this.corner) {
       this.corner = e.world;
-      this.cornerSnap = e.snap?.key ? e.snap : null;
     } else {
       const w = Math.abs(e.world.x - this.corner.x);
       const h = Math.abs(e.world.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
-        this.commit(this.corner, e.world, this.cornerSnap, e.snap?.key ? e.snap : null, ctx);
+        this.commit(this.corner, e.world, ctx);
       }
       this.corner = null;
-      this.cornerSnap = null;
     }
   }
 
@@ -61,84 +69,15 @@ export class RectTool implements Tool {
     ctx.requestRender();
   }
 
-  private commit(
-    c0: Vec2,
-    c1: Vec2,
-    snap0: SnapPoint | null,
-    snap1: SnapPoint | null,
-    ctx: ToolContext,
-  ): void {
-    const x0 = Math.min(c0.x, c1.x),
-      y0 = Math.min(c0.y, c1.y);
-    const x1 = Math.max(c0.x, c1.x),
-      y1 = Math.max(c0.y, c1.y);
-    const bl = { x: x0, y: y0 },
-      br = { x: x1, y: y0 };
-    const tr = { x: x1, y: y1 },
-      tl = { x: x0, y: y1 };
-    const isC = ctx.doc.isConstructionMode;
-
-    // 4 sides: bottom (bl→br), right (br→tr), top (tl→tr), left (bl→tl)
-    const bottom = Object.assign(new LineEntity(bl, br), { isConstruction: isC });
-    const right = Object.assign(new LineEntity(br, tr), { isConstruction: isC });
-    const top = Object.assign(new LineEntity(tl, tr), { isConstruction: isC });
-    const left = Object.assign(new LineEntity(bl, tl), { isConstruction: isC });
-    const sides = [bottom, right, top, left];
-
-    // Add all 4, select all 4.
+  private commit(c0: Vec2, c1: Vec2, ctx: ToolContext): void {
+    // RectEntity normalizes its corners to (min, max), so pass the two clicked
+    // corners in any order.
+    const rect = Object.assign(new RectEntity(c0, c1), {
+      isConstruction: ctx.doc.isConstructionMode,
+    });
     ctx.doc.clearSelection();
-    for (const s of sides) {
-      ctx.doc.add(s);
-      s.selected = true;
-    }
-
-    // Use parallel and perpendicular constraints so the rectangle can be rotated!
-    ctx.doc.addConstraint(makeConstraint("parallel", { entities: [bottom.id, top.id] }));
-    ctx.doc.addConstraint(makeConstraint("parallel", { entities: [left.id, right.id] }));
-    ctx.doc.addConstraint(makeConstraint("perpendicular", { entities: [bottom.id, left.id] }));
-
-    // Coincident at the 4 corners.
-    const coin = (eid1: string, k1: string, eid2: string, k2: string) =>
-      ctx.doc.addConstraint(
-        makeConstraint("coincident", {
-          points: [
-            { entityId: eid1, key: k1 },
-            { entityId: eid2, key: k2 },
-          ],
-        }),
-      );
-    coin(bottom.id, "a", left.id, "a"); // bl
-    coin(bottom.id, "b", right.id, "a"); // br
-    coin(right.id, "b", top.id, "b"); // tr
-    coin(top.id, "a", left.id, "b"); // tl
-
-    // If a corner was snapped to existing geometry, pin it with a coincident constraint.
-    const EPS = 1e-6;
-    const cornerMap = [
-      { pos: bl, entityId: bottom.id, key: "a" },
-      { pos: br, entityId: right.id, key: "a" },
-      { pos: tr, entityId: right.id, key: "b" },
-      { pos: tl, entityId: left.id, key: "b" },
-    ];
-    const autoJoinCorner = (snap: SnapPoint | null, clicked: Vec2) => {
-      if (!snap) return;
-      for (const c of cornerMap) {
-        if (Math.abs(c.pos.x - clicked.x) < EPS && Math.abs(c.pos.y - clicked.y) < EPS) {
-          ctx.doc.addConstraint(
-            makeConstraint("coincident", {
-              points: [
-                { entityId: c.entityId, key: c.key },
-                { entityId: snap.entityId, key: snap.key! },
-              ],
-            }),
-          );
-          return;
-        }
-      }
-    };
-    autoJoinCorner(snap0, c0);
-    autoJoinCorner(snap1, c1);
-
+    ctx.doc.add(rect);
+    rect.selected = true;
     ctx.doc.emitChange();
     ctx.solve();
   }
