@@ -64,7 +64,7 @@ export const COLORS = {
  * These are kept in sync from the CSS theme at runtime; the defaults above must
  * equal the token's value so behavior is identical before the first sync.
  */
-const TOKEN_MIRRORS: Partial<Record<keyof typeof COLORS, string>> = {
+export const TOKEN_MIRRORS: Partial<Record<keyof typeof COLORS, string>> = {
   background: "--bg",
   gridLabel: "--text-dim",
   entityConstruction: "--text-dim",
