@@ -152,6 +152,9 @@ export class App {
    *  copies come in unconstrained, like pattern instances. */
   private clipboard: Entity[] = [];
   private clipboardGroups: number[][] = [];
+  /** How many times the current clipboard has been plain-pasted, so repeat
+   *  pastes cascade (offset grows) instead of stacking. Reset on copy/cut. */
+  private pasteCount = 0;
 
   /** Last pointer position on the canvas (CSS px), for cursor feedback. */
   private lastScreen: Vec2 | null = null;
@@ -980,7 +983,13 @@ export class App {
     });
   }
 
-  private commitDimValue(dim: Dimension, v: number, expr?: string): boolean {
+  private commitDimValue(dimArg: Dimension, v: number, expr?: string): boolean {
+    // Re-resolve by id to the live instance: a prior rejected commit calls
+    // doc.restore(), which rebuilds every Dimension as a new object. The editor
+    // stays open holding its original reference, so on the retry `dimArg` may be
+    // an orphan no longer in the document — mutating that would silently no-op.
+    const dim = this.doc.dimensions.find((d) => d.id === dimArg.id) ?? dimArg;
+
     // Arc-length cannot exceed full circumference.
     if (dim.type === "arclength") {
       const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
@@ -989,9 +998,6 @@ export class App {
     }
 
     const docSnap = this.doc.snapshot();
-    const oldVal = dim.value;
-    const oldExpr = dim.expr;
-    const oldDriving = dim.driving;
 
     dim.value = v;
     dim.expr = expr;
@@ -999,9 +1005,11 @@ export class App {
     this.runSolve();
 
     if (this.lastSolveResult && !this.lastSolveResult.converged) {
-      dim.value = oldVal;
-      dim.expr = oldExpr;
-      dim.driving = oldDriving;
+      // Full rollback to the captured snapshot: the solver already moved geometry,
+      // so reverting just the three dim fields and re-solving isn't guaranteed to
+      // reproduce the prior state (and that re-solve could itself fail to converge,
+      // leaving the document corrupted). Restoring the snapshot is exact.
+      this.doc.restore(docSnap);
       this.runSolve();
       return false;
     }
@@ -1182,6 +1190,7 @@ export class App {
     if (!snap) return;
     this.clipboard = snap.clones;
     this.clipboardGroups = snap.groups;
+    this.pasteCount = 0;
   }
 
   private cutSelected(): void {
@@ -1189,6 +1198,7 @@ export class App {
     if (!snap) return;
     this.clipboard = snap.clones;
     this.clipboardGroups = snap.groups;
+    this.pasteCount = 0;
     this.project.pushHistory();
     this.doc.removeSelected();
     this.runSolve();
@@ -1199,9 +1209,9 @@ export class App {
   private paste(at?: Vec2): void {
     if (this.clipboard.length === 0) return;
     this.project.pushHistory();
-    if (!at) {
-      for (const c of this.clipboard) c.translate({ x: PASTE_OFFSET_MM, y: -PASTE_OFFSET_MM });
-    }
+    // Clone first, then offset the CLONES — never the stored clipboard entities.
+    // (The old code translated the clipboard in place to get the cascade; that
+    // left the clipboard permanently drifting, so we track a paste counter instead.)
     const clones = this.clipboard.map((c) => c.duplicate());
     if (at) {
       const b = selectionBounds(clones);
@@ -1209,6 +1219,11 @@ export class App {
         const d = { x: at.x - (b.min.x + b.max.x) / 2, y: at.y - (b.min.y + b.max.y) / 2 };
         for (const c of clones) c.translate(d);
       }
+    } else {
+      // Cascade: each successive plain paste steps further from the source so
+      // repeat pastes don't stack on top of each other (matches the old behaviour).
+      const n = ++this.pasteCount;
+      for (const c of clones) c.translate({ x: PASTE_OFFSET_MM * n, y: -PASTE_OFFSET_MM * n });
     }
     this.insertClones(clones, this.clipboardGroups);
   }

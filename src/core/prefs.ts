@@ -11,8 +11,8 @@ const START_KEY = StorageKeys.gcodeCustomStart;
 const END_KEY = StorageKeys.gcodeCustomEnd;
 const HAS_COOLANT_KEY = StorageKeys.machineHasCoolant;
 const GSENDER_URL_KEY = StorageKeys.gsenderUrl;
-const NCSENDER_URL_KEY = "rapidcam.ncsenderUrl";
-const SENDER_APP_KEY = "rapidcam.senderApp";
+const NCSENDER_URL_KEY = StorageKeys.ncsenderUrl;
+const SENDER_APP_KEY = StorageKeys.senderApp;
 
 /** Where gSender's server listens for the "Send to gSender" handoff. On the same
  *  machine this is localhost:8000 (gSender's default when Remote/Wireless Control
@@ -99,12 +99,16 @@ export function setNcsenderUrl(url: string): void {
     if (v && v !== DEFAULT_NCSENDER_URL) localStorage.setItem(NCSENDER_URL_KEY, v);
     else localStorage.removeItem(NCSENDER_URL_KEY);
   } catch {
+    /* private mode / storage disabled — preference simply doesn't persist */
   }
 }
 
 export function getSenderApp(): SenderApp {
   try {
-    return (localStorage.getItem(SENDER_APP_KEY) as SenderApp) || "ask";
+    // Validate rather than blindly cast: localStorage is external input and could
+    // hold a stale/garbage value from an older build. Anything unrecognized → "ask".
+    const raw = localStorage.getItem(SENDER_APP_KEY);
+    return raw === "gSender" || raw === "ncSender" ? raw : "ask";
   } catch {
     return "ask";
   }
@@ -115,15 +119,16 @@ export function setSenderApp(app: SenderApp): void {
     if (app && app !== "ask") localStorage.setItem(SENDER_APP_KEY, app);
     else localStorage.removeItem(SENDER_APP_KEY);
   } catch {
+    /* private mode / storage disabled — preference simply doesn't persist */
   }
 }
 
 export function setCustomGcode(g: CustomGcode): void {
   try {
-    // Trim trailing whitespace/newlines so we don't accumulate blank lines, and
+    // Trim surrounding whitespace/newlines so we don't accumulate blank lines, and
     // treat empty as "remove" to keep storage tidy.
-    const start = g.start.replace(/\s+$/, "");
-    const end = g.end.replace(/\s+$/, "");
+    const start = g.start.trim();
+    const end = g.end.trim();
     if (start) localStorage.setItem(START_KEY, start);
     else localStorage.removeItem(START_KEY);
     if (end) localStorage.setItem(END_KEY, end);

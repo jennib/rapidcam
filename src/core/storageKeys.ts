@@ -43,4 +43,10 @@ export const StorageKeys = {
   sharePromptCounter: "rapidcam:sharePromptCounter",
   /** gSender base URL for the "Send to gSender" handoff (e.g. http://localhost:8000). */
   gsenderUrl: "rapidcam:gsender:url",
+  /** ncSender base URL for the "Send to ncSender" handoff (e.g. http://localhost:8090).
+   *  Value uses the legacy `rapidcam.` dotted prefix — preserved, do not "normalize". */
+  ncsenderUrl: "rapidcam.ncsenderUrl",
+  /** Chosen sender app for the export handoff ("gSender" | "ncSender" | "ask").
+   *  Value uses the legacy `rapidcam.` dotted prefix — preserved, do not "normalize". */
+  senderApp: "rapidcam.senderApp",
 } as const;

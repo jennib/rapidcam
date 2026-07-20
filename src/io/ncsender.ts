@@ -81,7 +81,10 @@ export async function testNcsenderConnection(
       timedFetch(fetchImpl, `${base}/`, { method: "GET" })
     );
     return { ok: true };
-  } catch {
+  } catch (e) {
+    // Keep the underlying error out of the UI message but in the console, so a
+    // genuine bug (not just an unreachable host) is diagnosable rather than masked.
+    console.warn("[ncSender] connection probe failed:", e);
     return { ok: false, error: unreachableMsg(base) };
   }
 }
@@ -114,7 +117,10 @@ export async function sendToNcsender(
       return { ok: false, hint: "rejected", error: `ncSender rejected the program: status ${res.status}` };
     }
     return { ok: true };
-  } catch {
+  } catch (e) {
+    // Log the real error (see testNcsenderConnection) rather than swallowing it —
+    // a masked TypeError here looks identical to an offline sender otherwise.
+    console.warn("[ncSender] upload failed:", e);
     return { ok: false, error: unreachableMsg(base), hint: "unreachable" };
   }
 }

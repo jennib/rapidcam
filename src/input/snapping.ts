@@ -64,13 +64,18 @@ export class SnapEngine {
     // 2) Grid snap to nearest minor intersection.
     if (this.gridEnabled) {
       const step = computeGrid(view.scale, doc.displayUnit).minorMM;
-      return {
-        world: {
-          x: Math.round(rawWorld.x / step) * step,
-          y: Math.round(rawWorld.y / step) * step,
-        },
-        snap: null,
-      };
+      // Guard the divisor: a zero/non-finite step would poison rawWorld with NaN
+      // and corrupt the snap state. It shouldn't happen (scale is clamped > 0), but
+      // rounding to an unusable grid is never worth a NaN — fall back to the raw point.
+      if (step > 0) {
+        return {
+          world: {
+            x: Math.round(rawWorld.x / step) * step,
+            y: Math.round(rawWorld.y / step) * step,
+          },
+          snap: null,
+        };
+      }
     }
 
     return { world: rawWorld, snap: null };

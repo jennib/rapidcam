@@ -1,5 +1,8 @@
 /** Tiny dense linear algebra: solve A·x = b by Gaussian elimination with partial pivoting. */
 
+/** Pivot magnitude below which a matrix is treated as singular in {@link solveLinearSystem}. */
+const SINGULAR_PIVOT_EPS = 1e-14;
+
 /**
  * Return the set of column indices that are uniquely determined by the row space of A.
  * A variable is "determined" if it has zero component in every null vector of A.
@@ -15,7 +18,6 @@ export function determinedVariables(A: number[][], tolerance = 1e-9): Set<number
   const n = A[0].length;
   const M = A.map((row) => [...row]);
 
-  const pivotForRow: number[] = new Array(m).fill(-1); // pivotForRow[r] = col, -1 = zero row
   const rowForPivot: number[] = new Array(n).fill(-1); // rowForPivot[c] = row, -1 = free col
 
   let row = 0;
@@ -46,7 +48,6 @@ export function determinedVariables(A: number[][], tolerance = 1e-9): Set<number
       for (let c = col; c < n; c++) M[r][c] -= f * M[row][c];
     }
 
-    pivotForRow[row] = col;
     rowForPivot[col] = row;
     row++;
   }
@@ -117,7 +118,7 @@ export function solveLinearSystem(A: number[][], b: number[]): number[] | null {
         pivot = r;
       }
     }
-    if (best < 1e-14) return null; // singular
+    if (best < SINGULAR_PIVOT_EPS) return null; // singular
     if (pivot !== col) [M[col], M[pivot]] = [M[pivot], M[col]];
 
     // Eliminate below.

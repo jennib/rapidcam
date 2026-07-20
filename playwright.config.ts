@@ -10,6 +10,9 @@ export default defineConfig({
   testMatch: "**/*.e2e.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // Cap the whole run so a hung dev server / stuck spec fails CI in minutes
+  // instead of blocking the pipeline until the outer job timeout.
+  globalTimeout: 10 * 60_000,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "list" : "html",
   use: {
