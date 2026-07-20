@@ -126,12 +126,6 @@ export function openToolLibraryDialog(): void {
       empty.style.fontStyle = "italic";
       empty.style.textAlign = "center";
       empty.textContent = "Library is empty";
-      const emptyAdd = document.createElement("button");
-      emptyAdd.className = "cam-add-btn";
-      emptyAdd.textContent = "+ New Tool";
-      emptyAdd.style.marginTop = "10px";
-      emptyAdd.addEventListener("click", addNewTool);
-      empty.appendChild(emptyAdd);
       listEl.appendChild(empty);
       return;
     }
