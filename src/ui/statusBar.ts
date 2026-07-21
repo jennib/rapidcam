@@ -26,12 +26,23 @@ export interface SolveStatusLabel {
  * move, and editing one value may shift another. Green = locked, blue = the CAD
  * convention for "not fully defined yet", red = conflicting.
  */
-export function solveStatusLabel(res: SolveResult | null): SolveStatusLabel | null {
+/**
+ * @param hasUnderDefined whether any entity is actually drawn under-defined
+ *   (blue). Lets the bar agree with the canvas: geometry that is programmatically
+ *   controlled (a generator feature, a pattern instance) has free solver DOF but
+ *   is NOT loose, so a feature-only sketch reads "Fully constrained" even though
+ *   `res.dof > 0`. Defaults to `res.dof > 0` when omitted (pure-DOF callers/tests).
+ */
+export function solveStatusLabel(
+  res: SolveResult | null,
+  hasUnderDefined?: boolean,
+): SolveStatusLabel | null {
   // Nothing solvable on the canvas (empty, or only fixed geometry) → no status
   // to report. Otherwise ALWAYS report definedness — matching the SolidWorks
   // model where a fresh, unconstrained sketch already reads "under-defined"
   // (and its geometry is drawn blue), not blank until the first constraint.
   if (!res || res.variables === 0) return null;
+  const underDefined = hasUnderDefined ?? res.dof > 0;
   if (!res.converged) {
     return {
       html: "⚠ Over-constrained / conflicting",
@@ -40,12 +51,12 @@ export function solveStatusLabel(res: SolveResult | null): SolveStatusLabel | nu
         "Conflicting or redundant constraints — the sketch can't satisfy them all at once. Remove a constraint or dimension to resolve it.",
     };
   }
-  if (res.dof === 0) {
+  if (!underDefined) {
     return {
       html: "Fully constrained ✓",
       color: "#3fb950",
       tooltip:
-        "Every point is locked — the geometry can't move unless you change a dimension or a variable.",
+        "Nothing is loose — the geometry can't move unless you change a dimension, a variable, or a feature parameter.",
     };
   }
   const n = res.dof;
@@ -172,8 +183,8 @@ export class StatusBar {
     }
   }
 
-  setSolveStatus(res: SolveResult | null): void {
-    const label = solveStatusLabel(res);
+  setSolveStatus(res: SolveResult | null, hasUnderDefined?: boolean): void {
+    const label = solveStatusLabel(res, hasUnderDefined);
     if (!label) {
       this.solveEl.textContent = "";
       this.solveEl.style.color = "";

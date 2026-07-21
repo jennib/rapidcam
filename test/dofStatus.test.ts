@@ -9,6 +9,8 @@ import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { makeConstraint } from "../src/model/constraints";
 import { solve, computeEntityDofStatus } from "../src/solver/solver";
+import { runGenerator } from "../src/generators/index";
+import { panel } from "../src/generators/panel";
 
 describe("entity DOF status drives the under-defined colour", () => {
   it("a freshly drawn line is under-defined (blue), with no constraints", () => {
@@ -24,5 +26,17 @@ describe("entity DOF status drives the under-defined colour", () => {
     doc.addConstraint(makeConstraint("fixed", { entities: [line.id] }));
     const status = computeEntityDofStatus(doc, solve(doc));
     expect(status.get(line.id)).toBe("defined");
+  });
+
+  it("generated feature geometry is defined, not under-defined (it's driven, not loose)", () => {
+    const doc = new CADDocument({ width: 400, height: 400 });
+    const res = runGenerator(doc, panel, { width: 150, height: 100 });
+    const rectId = res.group.entityIds[0];
+    // A loose line alongside it keeps the solver's variable analysis non-trivial.
+    doc.add(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }));
+    const status = computeEntityDofStatus(doc, solve(doc));
+    // The Panel's rectangle has free solver DOF (no constraints) but is controlled
+    // by its feature — it must NOT render blue.
+    expect(status.get(rectId)).toBe("defined");
   });
 });

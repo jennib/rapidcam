@@ -28,7 +28,7 @@ describe("solveStatusLabel", () => {
   it("reads 'Fully constrained' at DOF 0", () => {
     const l = solveStatusLabel(res({ dof: 0 }))!;
     expect(l.html).toContain("Fully constrained");
-    expect(l.tooltip).toMatch(/locked/i);
+    expect(l.tooltip).toMatch(/can't move|loose/i);
   });
 
   it("names the under-constrained state in plain language, not a bare DOF number", () => {
@@ -38,6 +38,19 @@ describe("solveStatusLabel", () => {
     // The tooltip must explain what DOF means and that geometry can move.
     expect(l.tooltip).toMatch(/degrees of freedom/i);
     expect(l.tooltip).toMatch(/can move|shift/i);
+  });
+
+  it("reads fully constrained when nothing is loose, even with free DOF (feature-only sketch)", () => {
+    // A generator feature has free solver DOF but is controlled, so the caller
+    // passes hasUnderDefined=false — the bar must agree with the layer-coloured
+    // geometry, not contradict it with "under-constrained".
+    const l = solveStatusLabel(res({ dof: 4, variables: 4 }), false)!;
+    expect(l.html).toContain("Fully constrained");
+  });
+
+  it("respects an explicit hasUnderDefined=true even at a low DOF", () => {
+    const l = solveStatusLabel(res({ dof: 2, variables: 8 }), true)!;
+    expect(l.html).toContain("Under-constrained");
   });
 
   it("singularises the tooltip at DOF 1", () => {

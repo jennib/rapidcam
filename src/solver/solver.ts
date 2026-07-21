@@ -556,6 +556,21 @@ export function computeEntityDofStatus(
     if (!entColsMap.has(e.id)) statusMap.set(e.id, "defined");
   }
 
+  // Programmatically CONTROLLED geometry — a generator feature's output or a
+  // pattern instance — is driven by its feature/pattern, not by the constraint
+  // solver, so its free solver DOF are not "loose". Treat it as defined so an
+  // inserted Panel/gear/box or a patterned copy doesn't render under-defined
+  // (blue) despite being fully controlled. (The pattern SOURCE is ordinary
+  // geometry and is left to the normal analysis.)
+  const controlled = new Set<EntityId>();
+  for (const f of doc.features) {
+    const g = doc.groups.find((gr) => gr.id === f.groupId);
+    if (g) for (const id of g.entityIds) controlled.add(id);
+  }
+  for (const p of doc.patterns) {
+    for (const inst of p.instanceIds) for (const id of inst) controlled.add(id);
+  }
+
   if (vars.length === 0) return statusMap;
 
   // Build constraint Jacobian (no anchors/pins — pure constraint equations)
@@ -582,8 +597,9 @@ export function computeEntityDofStatus(
   const fx = evalR(x);
 
   if (fx.length === 0) {
-    // No effective constraints → all under-defined
-    for (const [eid] of entColsMap) statusMap.set(eid, "under-defined");
+    // No effective constraints → all under-defined, except controlled geometry.
+    for (const [eid] of entColsMap)
+      statusMap.set(eid, controlled.has(eid) ? "defined" : "under-defined");
     evalR(x); // restore entity state
     return statusMap;
   }
@@ -594,10 +610,11 @@ export function computeEntityDofStatus(
   // Find which variable indices are uniquely determined by the constraints
   const determined = determinedVariables(J);
 
-  // An entity is "defined" iff ALL its variables are determined
+  // An entity is "defined" iff ALL its variables are determined — or it is
+  // controlled by a feature/pattern (driven, not loose).
   for (const [eid, cols] of entColsMap) {
     const allDetermined = cols.every((ci) => determined.has(ci));
-    statusMap.set(eid, allDetermined ? "defined" : "under-defined");
+    statusMap.set(eid, allDetermined || controlled.has(eid) ? "defined" : "under-defined");
   }
 
   return statusMap;

@@ -694,7 +694,13 @@ export class App {
     // Always report definedness (solveStatusLabel blanks an empty canvas): a
     // fresh, unconstrained sketch reads "under-constrained" and draws blue, per
     // the SolidWorks model — the status bar must agree with the geometry colour.
-    this.statusBar.setSolveStatus(res);
+    // Pass whether anything is ACTUALLY drawn under-defined so a feature-only
+    // sketch (controlled geometry, free solver DOF but not loose) reads
+    // "Fully constrained" instead of contradicting its own layer-coloured parts.
+    const anyUnderDefined = [...this.renderer.entityStatus.values()].some(
+      (s) => s === "under-defined",
+    );
+    this.statusBar.setSolveStatus(res, anyUnderDefined);
     this.requestRender();
   }
 
