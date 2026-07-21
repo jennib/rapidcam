@@ -37,6 +37,11 @@ export class CircleTool implements Tool {
             }),
           );
         }
+        // Solve on commit like every other draw tool (line/arc/rect/polyline/
+        // polygon). Circle was the lone tool that didn't, leaving the solve
+        // result — and so currentDof() — stale from before the circle existed,
+        // which skews any consumer that reads it before the next solve.
+        ctx.solve();
       }
       this.center = null;
       this.centerSnap = null;
