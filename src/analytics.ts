@@ -193,9 +193,12 @@ function renderBanner(): void {
   banner.setAttribute("aria-label", "Analytics consent");
   banner.style.cssText = [
     "position:fixed",
-    "bottom:16px",
-    "left:16px",
-    "right:16px",
+    // Anchor to the BOTTOM. As a popover this element is in the top layer with
+    // the UA `[popover]:popover-open { inset:0 }` rule; setting only `bottom`
+    // left the UA `top:0` in force, so the banner rendered pinned to the TOP,
+    // covering the menu bar and reading as a second modal over the New Project
+    // dialog. An explicit four-side inset (top:auto) overrides that.
+    "inset:auto 16px 16px 16px",
     "max-width:520px",
     "margin:0 auto",
     "z-index:10000",
