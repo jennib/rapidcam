@@ -594,7 +594,7 @@ export class App {
                 return { diameter: s.diameter, wrapAxis: s.wrapAxis };
               })()
             : null;
-        this.webglPreview.render(rasterizeStock(ops, doc), rotary);
+        this.webglPreview.render(rasterizeStock(ops, doc), rotary, ops.length > 0);
       }
     }, 250);
   }

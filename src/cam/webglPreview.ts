@@ -558,6 +558,21 @@ const DEFAULT_YAW = Math.PI / 4;
 const DEFAULT_PITCH = Math.atan(1 / Math.sqrt(2)); // ~35.26° isometric
 const DEFAULT_ZOOM = 1.0;
 
+/**
+ * The overlay message for the 3D preview, or null to show nothing. When the
+ * block shows cuts, stay silent. When it doesn't, the message depends on WHY:
+ * with no toolpaths this is the normal state for a geometry-only file (every
+ * bundled example) — a friendly next step, not an error blaming the user's
+ * "geometry selection"; with toolpaths present, point at the likely cause.
+ * Pure, so the wording is unit-testable without a GL context.
+ */
+export function previewStatusMessage(hasCuts: boolean, hasToolpaths: boolean): string | null {
+  if (hasCuts) return null;
+  return hasToolpaths
+    ? "These toolpaths remove no material — check their cut depth and the geometry they target."
+    : "Add a toolpath in the CAM tab to see it carved here.";
+}
+
 export class WebGLPreview {
   private canvas: HTMLCanvasElement;
   private resetBtn: HTMLButtonElement;
@@ -635,7 +650,7 @@ export class WebGLPreview {
     this.handleResize();
   }
 
-  render(hm: HeightMap, rotary: RotaryView | null = null): void {
+  render(hm: HeightMap, rotary: RotaryView | null = null, hasToolpaths = false): void {
     const gl = this.gl;
     if (!gl) return;
 
@@ -670,14 +685,19 @@ export class WebGLPreview {
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, hm.gridW, hm.gridH, 0, gl.RED, gl.FLOAT, hm.data);
 
-    // Scan for any material removal so we can warn when cuts are absent.
+    // Scan for any material removal so we can hint when the preview shows a bare
+    // block. The message is context-aware: with no toolpaths this is the normal,
+    // expected state (a geometry-only file — e.g. every bundled example), so it
+    // reads as a friendly next step, not an error. Only when toolpaths exist but
+    // remove nothing does it point at the likely cause.
     let minH = hm.stockT;
     for (let i = 0; i < hm.data.length; i++) {
       if (hm.data[i] < minH) minH = hm.data[i];
     }
     const hasCuts = minH < hm.stockT - 0.5;
-    this.statusEl.textContent = "No material removed — check geometry selection";
-    this.statusEl.style.display = hasCuts ? "none" : "block";
+    const msg = previewStatusMessage(hasCuts, hasToolpaths);
+    this.statusEl.textContent = msg ?? "";
+    this.statusEl.style.display = msg ? "block" : "none";
 
     this.draw();
   }
