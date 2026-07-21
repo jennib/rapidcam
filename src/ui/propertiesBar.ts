@@ -27,9 +27,33 @@ import {
   TextEntity,
 } from "../model/entities";
 import { nextId } from "../model/ids";
-import { varMap } from "../model/variables";
+import { type Variable, varMap } from "../model/variables";
 import type { PreviewShape } from "../view/overlay";
+import { ContextMenu, type ContextMenuEntry } from "./contextMenu";
 import { openGeneratorDialog } from "./generatorDialog";
+
+/**
+ * Menu entries for the ƒx variable picker: a clickable row per variable (drives
+ * the field by that variable via `onPick`), or a single disabled hint when the
+ * document has none. Pure, so the picker's contents are unit-testable without DOM.
+ */
+export function varPickerEntries(
+  variables: readonly Variable[],
+  onPick: (name: string) => void,
+): ContextMenuEntry[] {
+  if (variables.length === 0) {
+    return [
+      { label: "No variables yet — add one in Variables below", enabled: false, onClick: () => {} },
+    ];
+  }
+  const entries: ContextMenuEntry[] = [
+    { label: "Drive by variable:", enabled: false, onClick: () => {} },
+  ];
+  for (const v of variables) {
+    entries.push({ label: `${v.name} = ${v.value}`, onClick: () => onPick(v.name) });
+  }
+  return entries;
+}
 
 const DIM_LABELS: Record<DimensionType, string> = {
   distance: "Distance",
@@ -72,6 +96,8 @@ export class PropertiesBar {
    *  entity's own `aspectLocked`, which persists on the entity). */
   private scaleLocked = true;
   private transformCollapsed = true;
+  /** Shared popup for the ƒx badge's "drive by a variable" picker. */
+  private readonly fxMenu = new ContextMenu();
 
   constructor(
     private host: HTMLElement,
@@ -497,6 +523,61 @@ export class PropertiesBar {
   }
 
   /**
+   * The `ƒx` affordance for a parametric field. Unlike the old badge it is
+   * ALWAYS visible — dimmed when the field holds a plain number — so a first-time
+   * user can SEE that the field accepts a formula. (Audit #3: the badge used to
+   * appear only AFTER you already knew to type a variable name, so the whole
+   * feature was invisible.) States:
+   *   - literal (unbound): dim `ƒx`; click opens the variable picker.
+   *   - bound: accent `ƒx`; click unbinds (`onUnbind`).
+   *   - broken: danger `⚠`; click unbinds.
+   */
+  private fxBadge(opts: {
+    input: HTMLInputElement;
+    bound: boolean;
+    broken: boolean;
+    boundExpr?: string;
+    onUnbind: () => void;
+  }): HTMLSpanElement {
+    const { input, bound, broken } = opts;
+    const active = bound || broken;
+    const badge = document.createElement("span");
+    badge.textContent = broken ? "⚠" : "ƒx";
+    const color = broken
+      ? "var(--danger,#e05555)"
+      : bound
+        ? "var(--accent,#5b9)"
+        : "var(--text-dim,#8b909c)";
+    badge.style.cssText = `cursor:pointer;font-style:italic;padding:0 4px;color:${color};opacity:${active ? 0.95 : 0.5};`;
+    badge.title = broken
+      ? `Broken formula (unknown variable?): ${opts.boundExpr ?? ""} — click to unbind`
+      : bound
+        ? `Driven by formula: ${opts.boundExpr} (click to unbind)`
+        : "Click to drive this with a variable or formula (e.g. width/2)";
+    badge.addEventListener("click", (e) => {
+      if (active) opts.onUnbind();
+      else this.openVarPicker(e, input);
+    });
+    return badge;
+  }
+
+  /**
+   * Popup anchored at the ƒx badge that lists the document's variables; clicking
+   * one drives the field by it (fills the input and commits the same change a
+   * user would by typing the name). With no variables, a single hint points at
+   * the Variables panel — so the path from "I want this parametric" to a working
+   * formula is always visible.
+   */
+  private openVarPicker(e: MouseEvent, input: HTMLInputElement): void {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const entries = varPickerEntries(this.doc.variables, (name) => {
+      input.value = name;
+      input.dispatchEvent(new Event("change"));
+    });
+    this.fxMenu.show(rect.left, rect.bottom + 2, entries);
+  }
+
+  /**
    * A scalar property row backed by the parametric engine. Enter a **formula**
    * referencing variables (e.g. `plateW/2`) and it creates/updates a headless
    * `ScalarBinding` on `(entityId, scalarKey)`, so the SOLVER drives the value
@@ -528,6 +609,7 @@ export class PropertiesBar {
     inp.type = "text";
     inp.style.flex = "1";
     inp.value = binding ? binding.expr : currentValue.toFixed(decimals);
+    inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
     // deleted) is flagged red — the value silently held its last number otherwise.
     const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
@@ -537,20 +619,18 @@ export class PropertiesBar {
       inp.value = b ? b.expr : currentValue.toFixed(decimals);
     };
 
-    const badge = document.createElement("span");
-    badge.textContent = broken ? "⚠" : "ƒx";
-    badge.title = broken
-      ? `Broken formula (unknown variable?): ${binding!.expr} — click to unbind`
-      : binding
-        ? `Driven by formula: ${binding.expr} (click to unbind)`
-        : "";
-    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${binding ? "inline" : "none"};`;
-    badge.addEventListener("click", () => {
-      const b = findBinding(this.doc.bindings, entityId, scalarKey);
-      if (b)
-        this.applyEdit(() => {
-          this.doc.bindings = this.doc.bindings.filter((x) => x !== b);
-        });
+    const badge = this.fxBadge({
+      input: inp,
+      bound: !!binding && !broken,
+      broken,
+      boundExpr: binding?.expr,
+      onUnbind: () => {
+        const b = findBinding(this.doc.bindings, entityId, scalarKey);
+        if (b)
+          this.applyEdit(() => {
+            this.doc.bindings = this.doc.bindings.filter((x) => x !== b);
+          });
+      },
     });
 
     inp.addEventListener("change", () => {
@@ -640,6 +720,7 @@ export class PropertiesBar {
     inp.type = "text";
     inp.style.flex = "1";
     inp.value = dim?.expr ?? currentValue.toFixed(decimals);
+    inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
@@ -647,25 +728,22 @@ export class PropertiesBar {
       inp.value = d?.expr ?? currentValue.toFixed(decimals);
     };
 
-    const badge = document.createElement("span");
-    badge.textContent = broken ? "⚠" : "ƒx";
-    // Only formula-driven dims get the badge; a plain-literal driving dimension has no formula.
-    const badged = !!dim?.expr;
-    badge.title = broken
-      ? `Broken formula: ${dim!.expr} — click to unbind`
-      : badged
-        ? `Driven by formula: ${dim!.expr} (click to unbind)`
-        : "";
-    badge.style.cssText = `cursor:pointer;font-style:italic;opacity:0.9;padding:0 4px;color:${broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)"};display:${badged ? "inline" : "none"};`;
-    badge.addEventListener("click", () => {
-      const d = findDim();
-      if (!d) return;
-      // Clearing our own hidden dim removes it; a user's visible dim is kept (just
-      // its formula is dropped, becoming a plain-value dimension) — don't delete it.
-      this.applyEdit(() => {
-        if (d.hidden) this.doc.dimensions = this.doc.dimensions.filter((x) => x !== d);
-        else d.expr = undefined;
-      });
+    // Only a formula-driven dim is "bound"; a plain-literal driving dimension has no formula.
+    const badge = this.fxBadge({
+      input: inp,
+      bound: !!dim?.expr && !broken,
+      broken,
+      boundExpr: dim?.expr,
+      onUnbind: () => {
+        const d = findDim();
+        if (!d) return;
+        // Clearing our own hidden dim removes it; a user's visible dim is kept
+        // (its formula is dropped, becoming a plain-value dimension) — don't delete it.
+        this.applyEdit(() => {
+          if (d.hidden) this.doc.dimensions = this.doc.dimensions.filter((x) => x !== d);
+          else d.expr = undefined;
+        });
+      },
     });
 
     inp.addEventListener("change", () => {
