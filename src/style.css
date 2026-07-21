@@ -1245,9 +1245,15 @@ button.cbtn.solve {
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
-  white-space: nowrap;
+  line-height: 1.25;
+  /* Wrap to two lines instead of truncating, so "Panel — Profile (outside)"
+     reads at a glance rather than "Panel — Profile (o…". The title tooltip
+     still backstops anything longer. */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tp-op-params {

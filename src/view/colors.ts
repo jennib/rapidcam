@@ -33,11 +33,13 @@ export const COLORS = {
   entityPatternStale: "#c8982a",
   // Under-defined geometry — the SolidWorks convention: geometry that can still
   // move (free DOF) is blue; once fully constrained it reverts to its layer
-  // colour. A distinct blue from the accent/preview blue so ghosts don't read
-  // as under-defined geometry.
+  // colour.
   entityUnderDefined: "#4a90e2",
 
-  preview: "#4aa3ff",
+  // Transient tool/ghost previews (draw-tool rubber-banding, the generator
+  // dialog's live ghost). VIOLET, deliberately off the blue used for
+  // under-defined geometry so a ghost never reads as a real under-defined shape.
+  preview: "#a06bff",
   previewPoint: "#ffd24a",
 
   snapMarker: "#ffd24a",
@@ -73,7 +75,6 @@ export const TOKEN_MIRRORS: Partial<Record<keyof typeof COLORS, string>> = {
   background: "--bg",
   gridLabel: "--text-dim",
   entityConstruction: "--text-dim",
-  preview: "--accent",
   selectionRectBorder: "--accent",
   toolpathHighlight: "--tp-color",
 };
