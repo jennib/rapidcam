@@ -54,8 +54,36 @@ import type { PreviewShape } from "../view/overlay";
 import { ICONS } from "./icons";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 
-type Phase = "first" | "second" | "placeLinear" | "placeCircle" | "secondLine" | "placeAngle";
+export type Phase =
+  | "first"
+  | "second"
+  | "placeLinear"
+  | "placeCircle"
+  | "secondLine"
+  | "placeAngle";
 const POINT_PICK_PX = 8;
+
+/**
+ * Phase-aware status-bar hint. The tool's static TOOL_HINTS entry only covers
+ * the start; once the user has picked their points the guidance must change —
+ * above all it has to say the dimension is placed by clicking in OPEN SPACE.
+ * (Clicking near geometry re-picks the point instead of placing, which reads as
+ * "nothing happened" — audit #4.) `null` means "restore the tool default".
+ */
+export function dimensionHint(phase: Phase): string | null {
+  switch (phase) {
+    case "second":
+      return "Click the second point or edge — or Esc to cancel";
+    case "secondLine":
+      return "Click a second line to dimension the angle between them";
+    case "placeLinear":
+    case "placeCircle":
+    case "placeAngle":
+      return "Move to position, then click in open space to place the dimension";
+    default:
+      return null; // "first" → the tool's default hint
+  }
+}
 
 interface Pick {
   ref: PointRef;
@@ -254,7 +282,13 @@ export class DimensionTool implements Tool {
         break;
     }
     this.recompute(ctx);
+    this.updateHint(ctx);
     ctx.requestRender();
+  }
+
+  /** Push the hint for the current phase (see {@link dimensionHint}). */
+  private updateHint(ctx: ToolContext): void {
+    ctx.setHint(dimensionHint(this.phase));
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -366,6 +400,7 @@ export class DimensionTool implements Tool {
     this.line2Id = null;
     this.forcedLinearType = null;
     this.preview = { previews: [], selectionRect: null };
+    this.updateHint(ctx); // phase reset to "first" → restore the default hint
     ctx.requestRender();
   }
 
