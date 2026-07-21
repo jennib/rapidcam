@@ -31,6 +31,11 @@ export const COLORS = {
   entitySelected: "#f97316",
   entityConflict: "#e05a5a",
   entityPatternStale: "#c8982a",
+  // Under-defined geometry — the SolidWorks convention: geometry that can still
+  // move (free DOF) is blue; once fully constrained it reverts to its layer
+  // colour. A distinct blue from the accent/preview blue so ghosts don't read
+  // as under-defined geometry.
+  entityUnderDefined: "#4a90e2",
 
   preview: "#4aa3ff",
   previewPoint: "#ffd24a",

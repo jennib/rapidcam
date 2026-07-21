@@ -27,7 +27,11 @@ export interface SolveStatusLabel {
  * convention for "not fully defined yet", red = conflicting.
  */
 export function solveStatusLabel(res: SolveResult | null): SolveStatusLabel | null {
-  if (!res?.hasConstraints) return null;
+  // Nothing solvable on the canvas (empty, or only fixed geometry) → no status
+  // to report. Otherwise ALWAYS report definedness — matching the SolidWorks
+  // model where a fresh, unconstrained sketch already reads "under-defined"
+  // (and its geometry is drawn blue), not blank until the first constraint.
+  if (!res || res.variables === 0) return null;
   if (!res.converged) {
     return {
       html: "⚠ Over-constrained / conflicting",

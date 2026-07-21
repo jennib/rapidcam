@@ -691,7 +691,10 @@ export class App {
       this.renderer.entityStatus = computeEntityDofStatus(this.doc, res);
       this.updatePatternStaleness();
     }
-    this.statusBar.setSolveStatus(res.hasConstraints ? res : null);
+    // Always report definedness (solveStatusLabel blanks an empty canvas): a
+    // fresh, unconstrained sketch reads "under-constrained" and draws blue, per
+    // the SolidWorks model — the status bar must agree with the geometry colour.
+    this.statusBar.setSolveStatus(res);
     this.requestRender();
   }
 

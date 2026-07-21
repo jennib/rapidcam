@@ -363,7 +363,9 @@ export class Renderer {
                   ? COLORS.entityConflict
                   : layer.fixture
                     ? COLORS.fixture
-                    : layer.color;
+                    : dofStatus === "under-defined"
+                      ? COLORS.entityUnderDefined
+                      : layer.color;
       const width = 1.5;
       this.ctx.save();
       if (e.isConstruction) {

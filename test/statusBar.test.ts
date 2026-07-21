@@ -7,15 +7,22 @@ const res = (o: Partial<SolveResult>): SolveResult => ({
   converged: true,
   residualNorm: 0,
   dof: 0,
-  variables: 0,
-  equations: 0,
+  variables: 8, // nonzero by default → there is solvable geometry (override to 0 for "empty")
+  equations: 8,
   ...o,
 });
 
 describe("solveStatusLabel", () => {
-  it("shows nothing for an unconstrained sketch (no definedness to report)", () => {
+  it("shows nothing when there is no solvable geometry (empty canvas)", () => {
     expect(solveStatusLabel(null)).toBeNull();
-    expect(solveStatusLabel(res({ hasConstraints: false, dof: 8 }))).toBeNull();
+    expect(solveStatusLabel(res({ variables: 0, dof: 0 }))).toBeNull();
+  });
+
+  it("reads under-constrained for fresh geometry even before any constraint (SolidWorks model)", () => {
+    // Free geometry, no constraints yet: variables > 0, dof > 0, hasConstraints false.
+    const l = solveStatusLabel(res({ hasConstraints: false, variables: 4, dof: 4 }))!;
+    expect(l.html).toContain("Under-constrained");
+    expect(l.html).toContain("4");
   });
 
   it("reads 'Fully constrained' at DOF 0", () => {
