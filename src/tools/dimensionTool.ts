@@ -497,6 +497,13 @@ export class DimensionTool implements Tool {
    * the editor. Otherwise add driving and open the editor.
    */
   private finaliseDim(dim: Dimension, ctx: ToolContext): void {
+    // Refresh the DOF FIRST: some draw tools (circle/arc/line) don't re-solve on
+    // commit, so currentDof() can be stale from before the geometry existed —
+    // typically the empty-doc 0. Reading that stale 0 here would wrongly demote
+    // the FIRST dimension on freshly-drawn geometry to a non-driving reference:
+    // no editor, no constraint, no feedback — which reads as "nothing happened"
+    // (audit #4). Solving now makes the check reflect the geometry as it is.
+    ctx.solve();
     if (ctx.currentDof() < 1) {
       // Sketch is fully or already over-constrained — add as reference only.
       dim.driving = false;
