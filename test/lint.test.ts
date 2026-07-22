@@ -187,6 +187,24 @@ test("end-to-end: a job deeper than the stock warns over-deep", () => {
   expect(found).toContain("over-deep");
 });
 
+test("an operation bound to no geometry warns empty-toolpath", () => {
+  const { doc, op } = docWith({ entityIds: [] });
+  doc.operations.push(op); // doc-level check reads doc.operations
+  const g = generateGCode([op], doc);
+  const found = lintGCode(g, buildLintContext(doc));
+  const empty = found.find((f) => f.code === "empty-toolpath");
+  expect(empty).toBeDefined();
+  expect(empty?.severity).toBe("warning");
+  expect(empty?.message).toContain("cut nothing");
+});
+
+test("a bound operation does not warn empty-toolpath", () => {
+  const { doc, op } = docWith({}); // bound to the rect
+  doc.operations.push(op);
+  const g = generateGCode([op], doc);
+  expect(lintGCode(g, buildLintContext(doc)).map((f) => f.code)).not.toContain("empty-toolpath");
+});
+
 test("buildLintContext maps a centered origin into emitted bounds", () => {
   const doc = new CADDocument({ width: 100, height: 80 });
   doc.origin = { x: "center", y: "center", z: "top" };

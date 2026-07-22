@@ -393,6 +393,27 @@ function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
 }
 
 /**
+ * WARNING: an operation bound to no geometry. It emits no motion, so the
+ * move-stream checks can't see it — but it silently cuts nothing (typically the
+ * shape it was bound to was deleted later). Doc-level, so it needs `ctx.doc`.
+ */
+function checkEmptyOps(doc: CADDocument): LintFinding | null {
+  const empty = doc.operations.filter(
+    (op) => op.entityIds.length === 0 && (op.regions?.length ?? 0) === 0,
+  );
+  if (empty.length === 0) return null;
+  const names = empty.map((o) => `"${o.name}"`).join(", ");
+  return {
+    code: "empty-toolpath",
+    severity: "warning",
+    message:
+      `${empty.length} toolpath${empty.length > 1 ? "s" : ""} (${names}) ` +
+      `${empty.length > 1 ? "have" : "has"} no geometry and will cut nothing — the shape ` +
+      `it was bound to may have been deleted. Reassign geometry or remove the toolpath.`,
+  };
+}
+
+/**
  * Lint a generated G-code program against its document-derived context. Returns
  * findings ordered errors-first; an empty array means the program passed.
  */
@@ -403,6 +424,9 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // XY bounds apply to every machine; the Z-based checks are milling-only (a
   // laser has no Z axis — no plunge, no depth, no through-cut).
   findings.push(checkOutOfBounds(moves, ctx));
+  // Empty-toolpath is doc-level and machine-agnostic (an empty cut/engrave on a
+  // laser cuts nothing too); the move stream can't see it since it emits none.
+  if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   if (ctx.machineKind !== "laser") {
     findings.push(checkRapidThroughStock(moves, ctx));
     findings.push(checkOverDeep(moves, ctx));

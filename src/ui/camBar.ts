@@ -341,7 +341,9 @@ export class CamBar {
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
     const file = this.download(gcode, this.exportName(`selected-${ops.length}`));
-    toast(`Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""} → ${file}`);
+    toast(
+      `Exported ${ops.length} selected toolpath${ops.length > 1 ? "s" : ""}${this.depthSummary(ops)} → ${file}`,
+    );
     maybeShowSharePrompt();
   }
 
@@ -357,6 +359,19 @@ export class CamBar {
   private feedU(mmPerMin: number): string {
     const du = this.doc.displayUnit;
     return `${fromMM(mmPerMin, du).toFixed(du === "in" ? 1 : 0)} ${du}/min`;
+  }
+  /** One-line cut-depth summary for an export toast, e.g. " · depth 3–10mm into
+   *  19.05mm stock" — a quick sanity read (depth vs stock) after an otherwise
+   *  instant export. Empty for a laser (no Z) or when nothing cuts. */
+  private depthSummary(ops: CAMOperation[]): string {
+    if (this.doc.machineKind === "laser") return "";
+    const depths = ops.map((o) => Math.abs(o.depth)).filter((d) => d > 0);
+    if (depths.length === 0) return "";
+    const du = this.doc.displayUnit;
+    const min = Math.min(...depths);
+    const max = Math.max(...depths);
+    const depth = min === max ? this.lenU(max) : `${formatLength(min, du)}–${this.lenU(max)}`;
+    return ` · depth ${depth} into ${this.lenU(this.doc.stockThickness)} stock`;
   }
 
   // --- list rendering --------------------------------------------------------
@@ -1758,7 +1773,7 @@ export class CamBar {
     });
     const n = this.doc.operations.length;
     const file = this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
-    toast(`Exported ${n} toolpath${n > 1 ? "s" : ""} → ${file}`);
+    toast(`Exported ${n} toolpath${n > 1 ? "s" : ""}${this.depthSummary(this.doc.operations)} → ${file}`);
     maybeShowSharePrompt();
   }
 
