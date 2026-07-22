@@ -612,6 +612,35 @@ export class CamBar {
       follows.title = "This toolpath covers the whole pattern and tracks its count as it changes.";
       info.appendChild(follows);
     }
+
+    // WHAT this toolpath is bound to. Cards used to show only the tool/depth, so
+    // you couldn't tell which shapes a path cut — or that it was bound to nothing
+    // (an empty toolpath is accepted silently and just produces no motion). Show
+    // the count, or a prominent warning when there's no geometry.
+    const nRegions = op.regions?.length ?? 0;
+    const nEntities = op.entityIds?.length ?? 0;
+    if (nRegions === 0 && nEntities === 0) {
+      const warn = document.createElement("div");
+      warn.className = "tp-op-params";
+      warn.style.color = "var(--warn, #e0a85a)";
+      warn.textContent = "⚠ no geometry — cuts nothing";
+      warn.title =
+        "This toolpath isn't bound to any shape, so it produces no motion and is skipped on export. Select the shape(s) it should cut, then delete and re-add this toolpath (or use Edit).";
+      info.appendChild(warn);
+      item.classList.add("tp-op-empty");
+    } else if (patternN <= 0 || op.followPattern === false) {
+      // Non-pattern (or pattern opted-out): the pattern line above already states
+      // the cut count for pattern ops.
+      const n = nRegions || nEntities;
+      const bind = document.createElement("div");
+      bind.className = "tp-op-params";
+      bind.style.opacity = "0.6";
+      bind.textContent = nRegions
+        ? `cuts ${n} region${n > 1 ? "s" : ""}`
+        : `cuts ${n} shape${n > 1 ? "s" : ""}`;
+      bind.title = "Click the card to highlight the shapes this toolpath cuts.";
+      info.appendChild(bind);
+    }
     botRow.appendChild(info);
 
     const dlBtn = document.createElement("button");

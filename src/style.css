@@ -1239,6 +1239,12 @@ button.cbtn.solve {
   min-width: 0;
 }
 
+/* A toolpath bound to no geometry — cuts nothing. Tint its edge so it stands
+   out in the list, not just via the inline warning line. */
+.tp-op-item.tp-op-empty {
+  border-left: 3px solid var(--warn, #e0a85a);
+}
+
 .tp-op-name {
   flex: 1 1 auto;
   min-width: 0;
