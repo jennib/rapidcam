@@ -20,16 +20,17 @@ test("app boots and the editor shell is interactive", async ({ page }) => {
   await welcome.locator(".welcome-card", { hasText: "New Project" }).click();
   await expect(welcome).toHaveCount(0);
 
-  // "New Project" opens the New Project dialog; confirm it to create the drawing.
+  // "New Project" opens the New Project dialog; dismiss the consent banner
+  // that overlays it before clicking the dialog button underneath.
   const newProjectDialog = page.locator("#npd-backdrop");
   await expect(newProjectDialog).toBeVisible();
-  await newProjectDialog.getByRole("button", { name: "Create Project" }).click();
-  await expect(newProjectDialog).toHaveCount(0);
 
-  // Now that the startup modals are gone, we can dismiss the consent banner.
   const consent = page.locator("#analytics-consent-banner");
   await consent.getByRole("button", { name: "No thanks" }).click();
   await expect(consent).toHaveCount(0);
+
+  await newProjectDialog.getByRole("button", { name: "Create Project" }).click();
+  await expect(newProjectDialog).toHaveCount(0);
 
   // The editor shell is now present.
   await expect(page.locator("#scene")).toBeAttached();
