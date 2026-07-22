@@ -158,6 +158,10 @@ export class DimensionTool implements Tool {
             this.firstMid = edge.mid;
             this.p1 = edge.p1;
             this.p2 = edge.p2;
+            const dx = Math.abs(edge.p2.pos.x - edge.p1.pos.x);
+            const dy = Math.abs(edge.p2.pos.y - edge.p1.pos.y);
+            this.forcedLinearType =
+              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
             this.phase = "placeLinear";
           }
         } else if (hit) {

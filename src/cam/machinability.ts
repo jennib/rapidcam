@@ -163,6 +163,7 @@ export function checkMachinability(doc: CADDocument): LintFinding[] {
     let pieceCount = 0;
     let pieceArea = 0;
     let deadBoundaries = 0;
+    let hairlineBoundaries = 0;
     const flagged = new Set<string>();
 
     for (const { paths: nominal, ids } of sets) {
@@ -177,6 +178,27 @@ export function checkMachinability(doc: CADDocument): LintFinding[] {
           for (const id of ids) flagged.add(id);
           continue;
         }
+
+        // Check if the entire eroded region is confined to a tiny space.
+        // If the clearing path is narrower than 10% of the tool diameter,
+        // it's a "hairline pocket" (e.g. 6.35mm hole with 6mm tool) that technically
+        // fits but has no room for proper clearing motion. Long slots survive this.
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const poly of eroded) {
+          for (const p of poly) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+          }
+        }
+        const maxDim = Math.max(maxX - minX, maxY - minY);
+        if (maxDim < eff.diameter * 0.1) {
+          hairlineBoundaries++;
+          for (const id of ids) flagged.add(id);
+          continue;
+        }
+
         const openedRound = offsetPolygons(eroded, rm, ROUND);
         const openedMiter = offsetPolygons(offsetPolygons(nominal, -rm, MITER), rm, MITER);
         pieces = intersectPolygonSets(
@@ -201,7 +223,7 @@ export function checkMachinability(doc: CADDocument): LintFinding[] {
 
     const dia = eff.diameter;
     const entityIds = flagged.size ? [...flagged] : undefined;
-    if (deadBoundaries > 0 && pieceCount === 0) {
+    if (deadBoundaries > 0 && pieceCount === 0 && hairlineBoundaries === 0) {
       findings.push({
         code: "unreachable-features",
         severity: "warning",
@@ -210,18 +232,41 @@ export function checkMachinability(doc: CADDocument): LintFinding[] {
           `⌀${dia} mm tool — the toolpath will be empty.`,
         ...(entityIds ? { entityIds } : {}),
       });
-    } else if (pieceCount > 0) {
-      const extra =
-        deadBoundaries > 0 ? ` (${deadBoundaries} boundar${deadBoundaries === 1 ? "y" : "ies"} entirely unreachable)` : "";
+    } else if (hairlineBoundaries > 0 && deadBoundaries === 0 && pieceCount === 0) {
       findings.push({
         code: "unreachable-features",
         severity: "warning",
         message:
-          `"${op.name}": ${pieceCount} feature region${pieceCount === 1 ? "" : "s"} ` +
-          `(≈${pieceArea.toFixed(1)} mm² total) are narrower than the ⌀${dia} mm tool ` +
-          `can reach and will be left uncut${extra} — use a smaller tool or widen the features.`,
+          `"${op.name}": ${hairlineBoundaries} feature region${hairlineBoundaries === 1 ? " is a" : "s are"} ` +
+          `'hairline' fit${hairlineBoundaries === 1 ? "" : "s"} — the tool technically fits, but the clearance ` +
+          `is too tight for clearing motion. Use a drill, a smaller tool, or enlarge the feature.`,
         ...(entityIds ? { entityIds } : {}),
       });
+    } else if (pieceCount > 0 || deadBoundaries > 0 || hairlineBoundaries > 0) {
+      const extra = [];
+      if (deadBoundaries > 0) extra.push(`${deadBoundaries} boundar${deadBoundaries === 1 ? "y" : "ies"} entirely unreachable`);
+      if (hairlineBoundaries > 0) extra.push(`${hairlineBoundaries} hairline fit${hairlineBoundaries === 1 ? "" : "s"}`);
+      const extraStr = extra.length > 0 ? ` (${extra.join(", ")})` : "";
+      
+      if (pieceCount > 0) {
+        findings.push({
+          code: "unreachable-features",
+          severity: "warning",
+          message:
+            `"${op.name}": ${pieceCount} feature region${pieceCount === 1 ? "" : "s"} ` +
+            `(≈${pieceArea.toFixed(1)} mm² total) are narrower than the ⌀${dia} mm tool ` +
+            `can reach and will be left uncut${extraStr} — use a smaller tool or widen the features.`,
+          ...(entityIds ? { entityIds } : {}),
+        });
+      } else {
+         // Fallback if only dead and hairline boundaries exist
+         findings.push({
+           code: "unreachable-features",
+           severity: "warning",
+           message: `"${op.name}": toolpath has reachability issues${extraStr} — use a smaller tool or widen the features.`,
+           ...(entityIds ? { entityIds } : {}),
+         });
+      }
     }
   }
 

@@ -324,6 +324,12 @@ export function chooseLinearType(p: Vec2, q: Vec2, cursor: Vec2): LinearDimType 
   return "distance"; // aligned
 }
 
+/** Ensure the dimension line never sits exactly on top of the measured geometry. */
+function clampMinOffset(val: number, min = 10): number {
+  if (Math.abs(val) < min) return (val >= 0 ? 1 : -1) * min;
+  return val;
+}
+
 /** Recompute `offset` from the cursor for the dimension's current type. */
 export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2): number {
   if (dim.type === "radius" || dim.type === "diameter") {
@@ -356,16 +362,16 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     const m = mid(p, q);
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
-    return dot(sub(cursor, m), n);
+    return clampMinOffset(dot(sub(cursor, m), n));
   }
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
   if (!p || !q) return dim.offset;
   const m = mid(p, q);
-  if (dim.type === "horizontal") return cursor.y - m.y;
-  if (dim.type === "vertical") return cursor.x - m.x;
+  if (dim.type === "horizontal") return clampMinOffset(cursor.y - m.y);
+  if (dim.type === "vertical") return clampMinOffset(cursor.x - m.x);
   // aligned
-  return dot(sub(cursor, m), linearNormal("distance", p, q));
+  return clampMinOffset(dot(sub(cursor, m), linearNormal("distance", p, q)));
 }
 
 export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout | null {

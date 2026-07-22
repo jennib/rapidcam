@@ -199,3 +199,56 @@ test("findings flow through lintGCode via buildLintContext; doc-less contexts sk
   const without = lintGCode(gcode, ctx);
   expect(without.some((f) => f.code === "unreachable-features")).toBe(false);
 });
+
+test("hairline pocket (6.35mm hole with 6mm tool) flags as a tight fit", () => {
+  // Creating a 6.35mm hole.
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const circle = new PolylineEntity(
+    Array.from({ length: 32 }, (_, i) => {
+      const a = (i / 32) * Math.PI * 2;
+      return { x: 50 + Math.cos(a) * 3.175, y: 50 + Math.sin(a) * 3.175 };
+    }),
+    true,
+  );
+  doc.add(circle);
+  doc.operations.push(op([circle.id], 6, { type: "pocket", name: "Quarter Inch Hole" }));
+  
+  const findings = checkMachinability(doc);
+  expect(findings).toHaveLength(1);
+  expect(findings[0].message).toContain("1 feature region is a 'hairline' fit");
+  expect(findings[0].message).toContain("too tight for clearing motion");
+});
+
+test("standard pocket (8mm hole with 6mm tool) passes clean", () => {
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const circle = new PolylineEntity(
+    Array.from({ length: 32 }, (_, i) => {
+      const a = (i / 32) * Math.PI * 2;
+      return { x: 50 + Math.cos(a) * 4.0, y: 50 + Math.sin(a) * 4.0 };
+    }),
+    true,
+  );
+  doc.add(circle);
+  doc.operations.push(op([circle.id], 6, { type: "pocket" }));
+  
+  const findings = checkMachinability(doc);
+  expect(findings).toHaveLength(0);
+});
+
+test("100mm x 6.35mm slot with 6mm tool passes clean (long path is not hairline)", () => {
+  const doc = new CADDocument({ width: 200, height: 100 });
+  const slot = new PolylineEntity(
+    [
+      { x: 10, y: 10 },
+      { x: 110, y: 10 },
+      { x: 110, y: 16.35 },
+      { x: 10, y: 16.35 },
+    ],
+    true,
+  );
+  doc.add(slot);
+  doc.operations.push(op([slot.id], 6, { type: "pocket" }));
+  
+  const findings = checkMachinability(doc);
+  expect(findings).toHaveLength(0);
+});

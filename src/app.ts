@@ -859,6 +859,16 @@ export class App {
         if (dist(screen, this.view.worldToScreen(p.pos)) < 10) return "pointer";
       }
     }
+
+    const geo: Geo = (id: string) => this.doc.entities.find(e => e.id === id);
+    for (const dim of this.doc.dimensions) {
+      const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
+      if (layout) {
+        const labelScreenDist = dist(screen, this.view.worldToScreen(layout.textPos));
+        if (labelScreenDist < 12) return "move";
+      }
+    }
+
     if (this.currentHover) return "move";
     return "default";
   }
