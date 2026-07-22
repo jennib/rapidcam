@@ -433,3 +433,36 @@ export function resolveOpTool(op: CAMOperation, tools?: ToolDef[]): CAMOperation
     safeZ: t.safeZ,
   };
 }
+
+/**
+ * Return all CAM operations in `operations` that reference any of the given `entityIds`
+ * (as direct target entities, islands, or region loop boundaries).
+ */
+export function getAssociatedOperations(
+  operations: CAMOperation[],
+  entityIds: Iterable<EntityId>,
+): CAMOperation[] {
+  const targetSet = new Set(entityIds);
+  if (targetSet.size === 0) return [];
+
+  const associated: CAMOperation[] = [];
+  for (const op of operations) {
+    let matches = false;
+    if (op.entityIds?.some((id) => targetSet.has(id))) {
+      matches = true;
+    } else if (op.islandIds?.some((id) => targetSet.has(id))) {
+      matches = true;
+    } else if (
+      op.regions?.some((r) =>
+        r.containingLoops.some((loop) => loop.some((id) => targetSet.has(id))),
+      )
+    ) {
+      matches = true;
+    }
+    if (matches) {
+      associated.push(op);
+    }
+  }
+  return associated;
+}
+

@@ -1,6 +1,7 @@
 import type { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
 import { confirmDialog } from "./modal";
+import { getAssociatedOperations } from "../cam/types";
 
 export class LayersBar {
   private content!: HTMLElement;
@@ -219,9 +220,13 @@ export class LayersBar {
 
         const entsOnLayer = this.doc.entities.filter((e) => e.layerId === layer.id);
         if (entsOnLayer.length > 0) {
+          const ops = getAssociatedOperations(this.doc.operations, entsOnLayer.map((e) => e.id));
+          const opsNote = ops.length > 0
+            ? `\n\nWarning: ${entsOnLayer.length > 1 ? "Objects on this layer are" : "An object on this layer is"} associated with toolpath${ops.length > 1 ? "s" : ""}:\n${[...new Set(ops.map((o) => o.name))].map((n) => `• ${n}`).join("\n")}`
+            : "";
           const ok = await confirmDialog({
             title: "Delete layer?",
-            message: `Layer "${layer.name}" contains ${entsOnLayer.length} object${entsOnLayer.length > 1 ? "s" : ""}.\nDeleting the layer deletes them too.`,
+            message: `Layer "${layer.name}" contains ${entsOnLayer.length} object${entsOnLayer.length > 1 ? "s" : ""}.\nDeleting the layer deletes them too.${opsNote}`,
             confirmLabel: "Delete",
             danger: true,
           });

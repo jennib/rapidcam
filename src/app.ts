@@ -9,7 +9,7 @@ import { buildSideA, buildSideB, opFace } from "./cam/flip";
 import { defaultRotarySettings } from "./cam/klein";
 import { laserPreviewPaths } from "./cam/lasergcode";
 import { rasterizeStock } from "./cam/stockRasterizer";
-import type { CAMOperation } from "./cam/types";
+import { type CAMOperation, getAssociatedOperations } from "./cam/types";
 import { WebGLPreview } from "./cam/webglPreview";
 import { initBundledFonts } from "./core/fontManager";
 import { placePasteClones, PASTE_OFFSET_MM } from "./core/paste";
@@ -72,7 +72,7 @@ import { ConstraintBar } from "./ui/constraintBar";
 import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
 import { DimEditor } from "./ui/dimEditor";
 import { LayersBar } from "./ui/layersBar";
-import { closeAllModals, isModalOpen } from "./ui/modal";
+import { closeAllModals, confirmDialog, isModalOpen } from "./ui/modal";
 import { openCircularPatternDialog, openLinearPatternDialog } from "./ui/patternDialogs";
 import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
 import { PropertiesBar } from "./ui/propertiesBar";
@@ -1142,7 +1142,7 @@ export class App {
     );
   }
 
-  private deleteSelected(): void {
+  private async deleteSelected(): Promise<void> {
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();
       this.doc.removeConstraint(this.doc.selectedConstraintId);
@@ -1152,6 +1152,22 @@ export class App {
       this.doc.removeDimension(this.doc.selectedDimensionId);
       this.runSolve();
     } else if (this.doc.selected.length > 0 || this.doc.selectedPoints.length > 0) {
+      const selectedEntities = this.doc.selected;
+      const pointEntityIds = this.doc.selectedPoints.map((p) => p.entityId);
+      const allTargetIds = [...new Set([...selectedEntities.map((e) => e.id), ...pointEntityIds])];
+
+      const ops = getAssociatedOperations(this.doc.operations, allTargetIds);
+      if (ops.length > 0) {
+        const names = [...new Set(ops.map((o) => o.name))];
+        const count = allTargetIds.length;
+        const ok = await confirmDialog({
+          title: "Delete object with toolpath?",
+          message: `The selected object${count > 1 ? "s are" : " is"} associated with toolpath${names.length > 1 ? "s" : ""}:\n\n${names.map((n) => `• ${n}`).join("\n")}\n\nAre you sure you want to delete ${count > 1 ? "them" : "it"}?`,
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (!ok) return;
+      }
       this.project.pushHistory();
       this.doc.removeSelected();
       this.runSolve();

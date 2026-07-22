@@ -3,7 +3,7 @@ import { CADDocument } from "../src/model/document";
 import { CircleEntity, RectEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
 import { rasterizeStock } from "../src/cam/stockRasterizer";
-import { selectedOpsInOrder, type CAMOperation } from "../src/cam/types";
+import { selectedOpsInOrder, getAssociatedOperations, type CAMOperation } from "../src/cam/types";
 
 const baseOp = (over: Partial<CAMOperation>): CAMOperation => ({
   id: "x",
@@ -153,3 +153,25 @@ test("chamfer preview carves the edge with a V-bit (and nothing without one)", (
     }
   expect(differs).toBe(true);
 });
+
+// --- getAssociatedOperations --------------------------------------------------
+
+test("getAssociatedOperations matches operations by entityIds, islandIds, and region containment", () => {
+  const op1 = baseOp({ id: "op1", name: "Op 1", entityIds: ["e1", "e2"] });
+  const op2 = baseOp({ id: "op2", name: "Op 2", entityIds: ["e3"], islandIds: ["e4"] });
+  const op3 = baseOp({
+    id: "op3",
+    name: "Op 3",
+    entityIds: [],
+    regions: [{ containingLoops: [["e5", "e6"]] }],
+  });
+
+  const ops = [op1, op2, op3];
+
+  expect(getAssociatedOperations(ops, ["e1"]).map((o) => o.id)).toEqual(["op1"]);
+  expect(getAssociatedOperations(ops, ["e4"]).map((o) => o.id)).toEqual(["op2"]);
+  expect(getAssociatedOperations(ops, ["e6"]).map((o) => o.id)).toEqual(["op3"]);
+  expect(getAssociatedOperations(ops, ["e2", "e3"]).map((o) => o.id)).toEqual(["op1", "op2"]);
+  expect(getAssociatedOperations(ops, ["e99"])).toEqual([]);
+});
+
