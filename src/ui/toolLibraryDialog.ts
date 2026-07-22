@@ -2,9 +2,13 @@ import { loadLibrary, saveLibrary, removeTool } from "../cam/toolLibrary";
 import { type ToolDef, type ToolType, TOOL_TYPE_LABELS } from "../cam/types";
 import { buildToolDiagram } from "./toolDiagram";
 import { registerModal, confirmDialog } from "./modal";
+import { type Unit, formatLength, formatFeed, toMM } from "../core/units";
 
-export function openToolLibraryDialog(): void {
+export function openToolLibraryDialog(unit: Unit): void {
   document.getElementById("tlib-backdrop")?.remove();
+
+  const lenView = (mm: number) => formatLength(mm, unit);
+  const feedView = (mmPerMin: number) => formatFeed(mmPerMin, unit);
 
   let tools = loadLibrary();
   let selectedId: string | null = tools.length > 0 ? tools[0].id : null;
@@ -166,7 +170,7 @@ export function openToolLibraryDialog(): void {
       const descSpan = document.createElement("div");
       descSpan.style.fontSize = "11px";
       descSpan.style.opacity = "0.8";
-      descSpan.textContent = `⌀${t.diameter}mm ${TOOL_TYPE_LABELS[t.toolType]}`;
+      descSpan.textContent = `⌀${lenView(t.diameter)}${unit} ${TOOL_TYPE_LABELS[t.toolType]}`;
       item.appendChild(descSpan);
 
       listEl.appendChild(item);
@@ -272,21 +276,29 @@ export function openToolLibraryDialog(): void {
       get: () => number | undefined,
       set: (v: number) => void,
       live = false,
+      unitConv?: "len" | "feed"
     ) => {
       const inp = document.createElement("input");
       inp.type = "number";
       inp.className = "dim";
       inp.step = "any";
-      inp.value = get() !== undefined ? String(get()) : "";
+
+      const toView = (v: number): string =>
+        unitConv === "feed" ? feedView(v) : unitConv === "len" ? lenView(v) : String(v);
+      const toModel = (v: number) => (unitConv ? toMM(v, unit) : v);
+
+      const current = get();
+      inp.value = current !== undefined ? toView(current) : "";
+
       inp.addEventListener("change", () => {
         const v = parseFloat(inp.value);
-        if (Number.isFinite(v)) set(v);
+        if (Number.isFinite(v)) set(toModel(v));
       });
       if (live)
         inp.addEventListener("input", () => {
           const v = parseFloat(inp.value);
           if (Number.isFinite(v)) {
-            set(v);
+            set(toModel(v));
             redrawDiagram();
           }
         });
@@ -295,13 +307,14 @@ export function openToolLibraryDialog(): void {
 
     editorWrap.appendChild(
       numField(
-        "Diameter (mm)",
+        `Diameter (${unit})`,
         () => t.diameter,
         (v) => {
           t.diameter = v;
           renderList();
         },
         true,
+        "len",
       ),
     );
 
@@ -318,12 +331,13 @@ export function openToolLibraryDialog(): void {
       );
       editorWrap.appendChild(
         numField(
-          "Tip Diam (mm)",
+          `Tip Diam (${unit})`,
           () => t.tipDiameter,
           (v) => {
             t.tipDiameter = v;
           },
           true,
+          "len",
         ),
       );
     }
@@ -353,29 +367,35 @@ export function openToolLibraryDialog(): void {
     );
     editorWrap.appendChild(
       numField(
-        "Feed (mm/min)",
+        `Feed (${unit}/min)`,
         () => t.feedrate,
         (v) => {
           t.feedrate = v;
         },
+        false,
+        "feed",
       ),
     );
     editorWrap.appendChild(
       numField(
-        "Plunge (mm/min)",
+        `Plunge (${unit}/min)`,
         () => t.plungeRate,
         (v) => {
           t.plungeRate = v;
         },
+        false,
+        "feed",
       ),
     );
     editorWrap.appendChild(
       numField(
-        "Safe Z (mm)",
+        `Safe Z (${unit})`,
         () => t.safeZ,
         (v) => {
           t.safeZ = v;
         },
+        false,
+        "len",
       ),
     );
   };

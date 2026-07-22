@@ -213,7 +213,7 @@ export class CamBar {
     libBtn.className = "cam-add-btn";
     libBtn.style.flex = "1";
     libBtn.textContent = "Manage Tools";
-    libBtn.addEventListener("click", () => openToolLibraryDialog());
+    libBtn.addEventListener("click", () => openToolLibraryDialog(this.doc.displayUnit));
     btnRow.appendChild(libBtn);
     this.libBtn = libBtn;
 
