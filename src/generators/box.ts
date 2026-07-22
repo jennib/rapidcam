@@ -252,7 +252,6 @@ export const box: Generator = {
 
     const frontBack: PanelSpecs = { left: cornerFB, right: cornerFB };
     const side: PanelSpecs = { left: cornerSide, right: cornerSide };
-
     const front = panel(length, height, frontBack);
     const back = panel(length, height, frontBack);
     const left = panel(width, height, side);
@@ -263,8 +262,8 @@ export const box: Generator = {
     const bottom = rect(length - t - clearance, width - t - clearance);
 
     // A groove (dado) on each wall, inset t from the corners so it clears the
-    // corner fingers, a channel t wide (t + clearance, to match the bottom
-    // panel's shrink) sitting `t` above the wall's bottom edge. Milled as a
+    // corner fingers, a channel t wide (t + clearance, widened to match clearance)
+    // sitting `t` above the wall's bottom edge. Milled as a
     // shallow pocket (~t/2 deep); the bottom edge slides into it.
     const grooveOffset = t;
     const grooveOf = (faceW: number): Pt[] => rect(faceW - 2 * t, t + clearance);
@@ -305,9 +304,8 @@ export const box: Generator = {
     ];
     s.layer(); // back to the default layer
 
-    // The CAM intent this generator knows: walls + bottom are through profile
-    // cuts, grooves are shallow pockets at half the material thickness. Both
-    // get dog-bone relief so square fingers/panel edges seat against a round
+    // Suggest operations pre-configured for the box. Profile cuts use dog-bone
+    // relief so square fingers/panel edges seat against a round
     // cutter's corners.
     // The tool must enter each corner-comb slot on the wall outlines. Slot
     // width = height / n with comb()'s own finger count (span = height, no
@@ -319,7 +317,7 @@ export const box: Generator = {
       targets: profiles,
       depth: "through",
       cornerStyle: "dogbone",
-      toolDiameter: Math.min(6, slotW),
+      toolDiameter: Math.max(1, Math.min(6, slotW)),
     });
     s.suggestOp({
       name: "Bottom grooves — Pocket",

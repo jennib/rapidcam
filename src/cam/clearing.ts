@@ -34,8 +34,9 @@ const dist2 = (a: Vec2, b: Vec2): number => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
 /** Offset a set of region paths (with holes) by `delta` mm. */
 function inflate(paths: Vec2[][], delta: number): Vec2[][] {
-  if (paths.length === 0) return [];
-  return inflatePathsD(paths, delta, JoinType.Miter, EndType.Polygon, 4).map(toV);
+  const valid = paths.filter((p) => p.length >= 3);
+  if (valid.length === 0) return [];
+  return inflatePathsD(valid, delta, JoinType.Miter, EndType.Polygon, 4).map(toV);
 }
 
 /** Nearest point ON the loop's edges (not just a vertex) to p. */

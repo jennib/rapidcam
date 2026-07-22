@@ -861,6 +861,7 @@ export class Renderer {
       ctx.globalAlpha = 0.12 + 0.88 * (b / BUCKETS);
       ctx.beginPath();
       for (const path of bucket) {
+        if (path.pts.length < 2) continue;
         const s = view.worldToScreen(path.pts[0]);
         ctx.moveTo(s.x, s.y);
         const e = view.worldToScreen(path.pts[1]);

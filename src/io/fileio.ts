@@ -110,7 +110,11 @@ export function migrateV1ToV2(old: Record<string, unknown>): RcamFile {
 
 /** Parse raw .rcam text into a current-version file, migrating older versions. */
 export function parseRcam(text: string): RcamFile {
-  return normalizeRcam(JSON.parse(text));
+  try {
+    return normalizeRcam(JSON.parse(text));
+  } catch (e) {
+    throw new Error(`Invalid .rcam file format: ${(e as Error).message}`);
+  }
 }
 
 /** Coerce a parsed object to the current version, migrating v1. Throws otherwise. */
@@ -337,7 +341,7 @@ export async function openFile(): Promise<{
       pushRecent({ name, savedAt: Date.now(), data: file });
       return { name, file, handle };
     } catch (e) {
-      if ((e as Error).name === "AbortError") return null;
+      return null;
     }
   }
 

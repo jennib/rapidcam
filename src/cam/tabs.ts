@@ -75,6 +75,7 @@ export function splitPathForTabs(
   regions: TabRegion[],
 ): PathSegment[] {
   const n = verts.length;
+  if (n < 3) return [];
   const segments: PathSegment[] = [];
 
   for (let i = 0; i < n; i++) {

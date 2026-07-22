@@ -846,17 +846,13 @@ export class BezierEntity extends Entity {
 
   override setPoint(key: string, v: Vec2): void {
     if (key === "p0") {
-      const d = sub(v, this.p0);
       this.p0 = clone(v);
-      this.p1 = add(this.p1, d);
     } else if (key === "p1") {
       this.p1 = clone(v);
     } else if (key === "p2") {
       this.p2 = clone(v);
     } else if (key === "p3") {
-      const d = sub(v, this.p3);
       this.p3 = clone(v);
-      this.p2 = add(this.p2, d);
     }
   }
 }

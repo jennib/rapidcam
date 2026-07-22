@@ -42,6 +42,7 @@ export function dogbonePoint(
   if (toolR <= 0) return null;
   const e1 = sub(v, p); // incoming edge direction
   const e2 = sub(q, v); // outgoing edge direction
+  if (len(e1) < 1e-9 || len(e2) < 1e-9) return null;
   const c = cross(e1, e2);
   
   if (side === "inside") {
