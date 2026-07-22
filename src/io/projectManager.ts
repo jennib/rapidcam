@@ -108,6 +108,7 @@ export class ProjectManager {
       (cfg) => {
         this.isDocumentLoading = true;
         this.history = new History<DocSnapshot>();
+        this.cb.onCloseEditors();
         this.doc.clear();
         this.doc.canvas = { width: cfg.width, height: cfg.height };
         this.doc.stockThickness = cfg.stockThickness;

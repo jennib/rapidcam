@@ -29,6 +29,7 @@ import {
   type LineEntity,
   type RectEntity,
   TextEntity,
+  type RasterImageEntity,
 } from "../model/entities";
 
 /** True when an entity can carry a radius / gap dimension. */
@@ -149,9 +150,9 @@ export class DimensionTool implements Tool {
           this.circleId = hit.id;
           this.circleKind = "radius";
           this.phase = "placeCircle";
-        } else if (hit && hit.type === "rectangle") {
+        } else if (hit && (hit.type === "rectangle" || hit.type === "image")) {
           // Clicking an edge directly sets both endpoints and skips the second pick.
-          const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+          const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
           if (edge) {
             this.firstRaw = e.worldRaw;
             this.firstMid = edge.mid;
@@ -226,8 +227,8 @@ export class DimensionTool implements Tool {
         if (hit) {
           let newP1: Pick | null = null;
           let newP2: Pick | null = null;
-          if (hit.type === "rectangle") {
-            const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+          if (hit.type === "rectangle" || hit.type === "image") {
+            const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
             if (edge && hit.id !== this.p1!.ref.entityId) {
               newP2 = edge.mid;
               if (this.firstMid) newP1 = this.firstMid;
@@ -314,8 +315,8 @@ export class DimensionTool implements Tool {
         if (hit) {
           let newP1: Pick | null = null;
           let newP2: Pick | null = null;
-          if (hit.type === "rectangle") {
-            const edge = pickRectEdge(hit as RectEntity, e.worldRaw);
+          if (hit.type === "rectangle" || hit.type === "image") {
+            const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
             if (edge && hit.id !== this.p1!.ref.entityId) {
               newP2 = edge.mid;
               if (this.firstMid) newP1 = this.firstMid;
@@ -687,13 +688,17 @@ function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | nul
   if (!e) return null;
   if (e.type === "line") {
     return { a: (e as LineEntity).a, b: (e as LineEntity).b };
-  } else if (e.type === "rectangle") {
+  } else if (e.type === "rectangle" || e.type === "image") {
     const key = midRef.ref.key;
-    const r = e as RectEntity;
-    if (key === "mid_b") return { a: r.getPoint("bl"), b: r.getPoint("br") };
-    if (key === "mid_r") return { a: r.getPoint("br"), b: r.getPoint("tr") };
-    if (key === "mid_t") return { a: r.getPoint("tr"), b: r.getPoint("tl") };
-    if (key === "mid_l") return { a: r.getPoint("tl"), b: r.getPoint("bl") };
+    const isImg = e.type === "image";
+    const blKey = isImg ? "c0" : "bl";
+    const brKey = isImg ? "c1" : "br";
+    const trKey = isImg ? "c2" : "tr";
+    const tlKey = isImg ? "c3" : "tl";
+    if (key === "mid_b") return { a: e.getPoint(blKey), b: e.getPoint(brKey) };
+    if (key === "mid_r") return { a: e.getPoint(brKey), b: e.getPoint(trKey) };
+    if (key === "mid_t") return { a: e.getPoint(trKey), b: e.getPoint(tlKey) };
+    if (key === "mid_l") return { a: e.getPoint(tlKey), b: e.getPoint(blKey) };
   }
   return null;
 }
@@ -706,17 +711,22 @@ function computeT(raw: Vec2, a: Vec2, b: Vec2): number {
   return Math.max(0, Math.min(1, t)); // constrain between 0 and 1
 }
 
-/** Find the closest edge of a rectangle and return its two corner PointRefs and its midpoint. */
-function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick; mid: Pick } | null {
-  const bl = rect.getPoint("bl");
-  const br = rect.getPoint("br");
-  const tr = rect.getPoint("tr");
-  const tl = rect.getPoint("tl");
+/** Find the closest edge of a rectangle or image and return its two corner PointRefs and its midpoint. */
+function pickRectOrImageEdge(ent: RectEntity | RasterImageEntity, p: Vec2): { p1: Pick; p2: Pick; mid: Pick } | null {
+  const isImg = ent.type === "image";
+  const blKey = isImg ? "c0" : "bl";
+  const brKey = isImg ? "c1" : "br";
+  const trKey = isImg ? "c2" : "tr";
+  const tlKey = isImg ? "c3" : "tl";
+  const bl = ent.getPoint(blKey);
+  const br = ent.getPoint(brKey);
+  const tr = ent.getPoint(trKey);
+  const tl = ent.getPoint(tlKey);
   const edges: [string, Vec2, string, Vec2, string, Vec2][] = [
-    ["bl", bl, "br", br, "mid_b", mid(bl, br)],
-    ["br", br, "tr", tr, "mid_r", mid(br, tr)],
-    ["tr", tr, "tl", tl, "mid_t", mid(tr, tl)],
-    ["tl", tl, "bl", bl, "mid_l", mid(tl, bl)],
+    [blKey, bl, brKey, br, "mid_b", mid(bl, br)],
+    [brKey, br, trKey, tr, "mid_r", mid(br, tr)],
+    [trKey, tr, tlKey, tl, "mid_t", mid(tr, tl)],
+    [tlKey, tl, blKey, bl, "mid_l", mid(tl, bl)],
   ];
   let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
   let bestD = Infinity;
@@ -729,8 +739,8 @@ function pickRectEdge(rect: RectEntity, p: Vec2): { p1: Pick; p2: Pick; mid: Pic
   }
   if (!best) return null;
   return {
-    p1: { ref: { entityId: rect.id, key: best[0] }, pos: best[1] },
-    p2: { ref: { entityId: rect.id, key: best[2] }, pos: best[3] },
-    mid: { ref: { entityId: rect.id, key: best[4] }, pos: best[5] },
+    p1: { ref: { entityId: ent.id, key: best[0] }, pos: best[1] },
+    p2: { ref: { entityId: ent.id, key: best[2] }, pos: best[3] },
+    mid: { ref: { entityId: ent.id, key: best[4] }, pos: best[5] },
   };
 }

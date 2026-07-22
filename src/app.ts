@@ -1143,6 +1143,9 @@ export class App {
   }
 
   private async deleteSelected(): Promise<void> {
+    this.dimEditor.close();
+    this.closeValueEditor();
+
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();
       this.doc.removeConstraint(this.doc.selectedConstraintId);
