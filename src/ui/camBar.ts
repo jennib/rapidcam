@@ -10,7 +10,7 @@ import {
 import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
-import { formatLength } from "../core/units";
+import { formatLength, fromMM } from "../core/units";
 import {
   DEFAULTS,
   TOOL_TYPE_LABELS,
@@ -345,6 +345,20 @@ export class CamBar {
     maybeShowSharePrompt();
   }
 
+  // --- unit-aware display helpers --------------------------------------------
+  // Internal values are millimetres; show them in the document's unit, rounded.
+
+  /** A length as e.g. "6.00mm" / "0.236in". */
+  private lenU(mm: number): string {
+    const du = this.doc.displayUnit;
+    return `${formatLength(mm, du)}${du}`;
+  }
+  /** A feed/plunge rate as e.g. "1200 mm/min" / "47.2 in/min". */
+  private feedU(mmPerMin: number): string {
+    const du = this.doc.displayUnit;
+    return `${fromMM(mmPerMin, du).toFixed(du === "in" ? 1 : 0)} ${du}/min`;
+  }
+
   // --- list rendering --------------------------------------------------------
 
   private renderOps(): void {
@@ -365,15 +379,12 @@ export class CamBar {
     if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-state cam-ops-empty";
+      // No "+ Add Toolpath" button here — the persistent one just below the list
+      // is always present, so an empty state used to show TWO identical buttons.
       empty.innerHTML = `
         <div class="empty-icon">⬚</div>
-        <div>No toolpaths yet.</div>
+        <div>No toolpaths yet — select a shape, then “+ Add Toolpath”.</div>
       `;
-      const emptyAdd = document.createElement("button");
-      emptyAdd.className = "cam-add-btn";
-      emptyAdd.textContent = "+ Add Toolpath";
-      emptyAdd.addEventListener("click", () => this.openDialog(null));
-      empty.appendChild(emptyAdd);
       this.opsList.appendChild(empty);
       this.updateExportSelBtn();
       return;
@@ -553,15 +564,17 @@ export class CamBar {
             : "End Mill";
     // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
     // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
+    // All lengths/feeds shown in the document's unit and rounded (raw internal
+    // mm otherwise leaked as "-19.0499999…mm").
     params.textContent =
       this.doc.machineKind === "laser"
-        ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${op.feedrate}mm/min` +
+        ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${this.feedU(op.feedrate)}` +
           (op.laserFill
             ? " · fill"
             : op.type === "profile" && (op.kerfWidth ?? 0) > 0
-              ? ` · kerf ${op.kerfWidth}mm`
+              ? ` · kerf ${this.lenU(op.kerfWidth ?? 0)}`
               : "")
-        : `T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  ${op.depth}mm`;
+        : `T${op.toolNumber} ⌀${this.lenU(op.diameter)} ${toolLabel}  ${this.lenU(op.depth)}`;
     // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
     // chamfer) left in a laser document won't produce a toolpath — flag it here
     // rather than letting it surface only as a "; NOTE:" buried in the G-code.
