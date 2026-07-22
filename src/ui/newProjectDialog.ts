@@ -35,6 +35,67 @@ export interface NewProjectConfig {
   rotary?: RotarySettings;
 }
 
+function renderOriginSvg(xSel: string, ySel: string, zSel: string): string {
+  const W = 100, D = 80, H = 30; // Logical dimensions for the diagram
+  const cx = 60, cy = 70; // Center offset
+
+  // Isometric projection
+  const ISO = Math.PI / 6;
+  const cosI = Math.cos(ISO);
+  const sinI = Math.sin(ISO);
+  const toIso = (x: number, y: number, z: number) => {
+    return [cx + (x + y) * cosI, cy + (x - y) * sinI - z];
+  };
+
+  const ox = xSel === "left" ? 0 : xSel === "center" ? W / 2 : W;
+  const oy = ySel === "front" ? 0 : ySel === "center" ? D / 2 : D;
+  const oz = zSel === "top" ? H : 0;
+
+  const b = [toIso(0, 0, 0), toIso(W, 0, 0), toIso(W, D, 0), toIso(0, D, 0)];
+  const t = [toIso(0, 0, H), toIso(W, 0, H), toIso(W, D, H), toIso(0, D, H)];
+
+  const poly = (pts: number[][]) => pts.map((p) => `${p[0]},${p[1]}`).join(" ");
+
+  let html = "";
+
+  // Bottom face
+  html += `<polygon points="${poly([b[0], b[1], b[2], b[3]])}" fill="#2a2a4a" stroke="#444470" stroke-width="1" stroke-dasharray="3,2" />`;
+  // Top face
+  html += `<polygon points="${poly(t)}" fill="#333366" stroke="#5555aa" stroke-width="1"/>`;
+  // Front face (y=0)
+  html += `<polygon points="${poly([b[0], b[1], t[1], t[0]])}" fill="#2d2d55" stroke="#5555aa" stroke-width="1"/>`;
+  // Right face (x=W)
+  html += `<polygon points="${poly([b[1], b[2], t[2], t[1]])}" fill="#25254d" stroke="#5555aa" stroke-width="1"/>`;
+
+  // Origin marker
+  const oIso = toIso(ox, oy, oz);
+  const r = 5;
+  html += `<circle cx="${oIso[0]}" cy="${oIso[1]}" r="${r}" fill="none" stroke="#ff4466" stroke-width="2"/>`;
+  html += `<circle cx="${oIso[0]}" cy="${oIso[1]}" r="2" fill="#ff4466"/>`;
+
+  // Crosshair
+  html += `<line x1="${oIso[0] - r - 3}" y1="${oIso[1]}" x2="${oIso[0] + r + 3}" y2="${oIso[1]}" stroke="#ff4466" stroke-width="1"/>`;
+  html += `<line x1="${oIso[0]}" y1="${oIso[1] - r - 3}" x2="${oIso[0]}" y2="${oIso[1] + r + 3}" stroke="#ff4466" stroke-width="1"/>`;
+
+  // Axis arrows from origin
+  const axisLen = 20;
+  const axEnd = toIso(ox + axisLen, oy, oz);
+  const ayEnd = toIso(ox, oy + axisLen, oz);
+  const azEnd = toIso(ox, oy, oz + axisLen * 0.8);
+  html += `<line x1="${oIso[0]}" y1="${oIso[1]}" x2="${axEnd[0]}" y2="${axEnd[1]}" stroke="#ff6644" stroke-width="1.5" marker-end="url(#arrowX)"/>`;
+  html += `<line x1="${oIso[0]}" y1="${oIso[1]}" x2="${ayEnd[0]}" y2="${ayEnd[1]}" stroke="#44cc66" stroke-width="1.5" marker-end="url(#arrowY)"/>`;
+  html += `<line x1="${oIso[0]}" y1="${oIso[1]}" x2="${azEnd[0]}" y2="${azEnd[1]}" stroke="#4488ff" stroke-width="1.5" marker-end="url(#arrowZ)"/>`;
+
+  return `<svg width="120" height="100" viewBox="50 -20 180 150">
+    <defs>
+      <marker id="arrowX" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0,0 4,2 0,4" fill="#ff6644"/></marker>
+      <marker id="arrowY" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0,0 4,2 0,4" fill="#44cc66"/></marker>
+      <marker id="arrowZ" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0,0 4,2 0,4" fill="#4488ff"/></marker>
+    </defs>
+    ${html}
+  </svg>`;
+}
+
 /**
  * Open the guided new-project setup dialog.
  * `initial` pre-fills the form (pass current doc values when editing).
@@ -176,10 +237,20 @@ export function openNewProjectDialog(
   oxSel.value = initial.origin?.x ?? defaults.origin?.x ?? "left";
   oySel.value = initial.origin?.y ?? defaults.origin?.y ?? "front";
   ozSel.value = initial.origin?.z ?? defaults.origin?.z ?? "top";
-  originSec.appendChild(row("X", oxSel));
-  originSec.appendChild(row("Y", oySel));
+
+  const originFlex = document.createElement("div");
+  originFlex.style.display = "flex";
+  originFlex.style.gap = "16px";
+  originFlex.style.alignItems = "flex-start";
+
+  const originLeft = document.createElement("div");
+  originLeft.style.flex = "1 1 auto";
+
+  originLeft.appendChild(row("X", oxSel));
+  originLeft.appendChild(row("Y", oySel));
   const ozRow = row("Z", ozSel);
-  originSec.appendChild(ozRow);
+  originLeft.appendChild(ozRow);
+
   // Rotary-only: where Z0 sits on the cylinder. "surface" = stock top (needs
   // gSender's "Visualize non-center zeros" toggle); "center" = rotary axis (native,
   // no toggle — every Z lifted by the radius). See RotarySettings.zero / cam/klein.ts.
@@ -189,7 +260,29 @@ export function openNewProjectDialog(
   ]);
   zeroSel.value = initial.rotary?.zero ?? defaults.rotary?.zero ?? "surface";
   const zeroRow = row("Rotary Z0", zeroSel);
-  originSec.appendChild(zeroRow);
+  originLeft.appendChild(zeroRow);
+
+  const originRight = document.createElement("div");
+  originRight.style.flex = "0 0 120px";
+  originRight.style.display = "flex";
+  originRight.style.justifyContent = "center";
+  originRight.style.alignItems = "center";
+  originRight.style.background = "#1a1a2e"; // Matching the user's diagram background
+  originRight.style.border = "1px solid #333366";
+  originRight.style.borderRadius = "6px";
+  originRight.style.padding = "4px 0";
+  originRight.style.marginTop = "4px";
+
+  const updateOriginDiagram = () => {
+    originRight.innerHTML = renderOriginSvg(oxSel.value, oySel.value, ozSel.value);
+  };
+  oxSel.addEventListener("change", updateOriginDiagram);
+  oySel.addEventListener("change", updateOriginDiagram);
+  ozSel.addEventListener("change", updateOriginDiagram);
+  updateOriginDiagram();
+
+  originFlex.append(originLeft, originRight);
+  originSec.appendChild(originFlex);
   body.appendChild(originSec);
 
   // -- machine --
