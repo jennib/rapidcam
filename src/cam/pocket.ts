@@ -20,29 +20,60 @@ export function rasterRowsWithIslands(
     if (v.y > maxY) maxY = v.y;
   }
 
+  const polygons = [outer, ...islands];
   const rows: Vec2[][] = [];
   let ltr = true;
 
   for (let y = minY + stepoverMM * 0.5; y <= maxY + 1e-9; y += stepoverMM) {
-    const oxs = scanlineXs(y, outer);
-    let intervals: [number, number][] = [];
-    for (let i = 0; i + 1 < oxs.length; i += 2) intervals.push([oxs[i], oxs[i + 1]]);
+    interface Event {
+      x: number;
+      polyIdx: number;
+    }
+    const events: Event[] = [];
 
-    for (const island of islands) {
-      const ixs = scanlineXs(y, island);
-      for (let i = 0; i + 1 < ixs.length; i += 2) {
-        const il = ixs[i],
-          ir = ixs[i + 1];
-        const next: [number, number][] = [];
-        for (const [ol, or_] of intervals) {
-          if (ir <= ol || il >= or_) {
-            next.push([ol, or_]);
-            continue;
-          }
-          if (ol < il) next.push([ol, il]);
-          if (ir < or_) next.push([ir, or_]);
+    for (let pIdx = 0; pIdx < polygons.length; pIdx++) {
+      const xs = scanlineXs(y, polygons[pIdx]);
+      for (const x of xs) {
+        events.push({ x, polyIdx: pIdx });
+      }
+    }
+
+    if (events.length === 0) {
+      ltr = !ltr;
+      continue;
+    }
+
+    events.sort((a, b) => a.x - b.x);
+
+    const inPoly = new Array<boolean>(polygons.length).fill(false);
+    const intervals: [number, number][] = [];
+    let activeStart: number | null = null;
+
+    let i = 0;
+    while (i < events.length) {
+      const xCurr = events[i].x;
+
+      while (i < events.length && Math.abs(events[i].x - xCurr) < 1e-9) {
+        const pIdx = events[i].polyIdx;
+        inPoly[pIdx] = !inPoly[pIdx];
+        i++;
+      }
+
+      const inOuter = inPoly[0];
+      let islandCount = 0;
+      for (let p = 1; p < polygons.length; p++) {
+        if (inPoly[p]) islandCount++;
+      }
+
+      const shouldMachine = inOuter && islandCount % 2 === 0;
+
+      if (shouldMachine && activeStart === null) {
+        activeStart = xCurr;
+      } else if (!shouldMachine && activeStart !== null) {
+        if (xCurr - activeStart > 1e-6) {
+          intervals.push([activeStart, xCurr]);
         }
-        intervals = next;
+        activeStart = null;
       }
     }
 
@@ -55,8 +86,8 @@ export function rasterRowsWithIslands(
     if (ltr) {
       for (const [a, b] of intervals) pts.push({ x: a, y }, { x: b, y });
     } else {
-      for (let i = intervals.length - 1; i >= 0; i--)
-        pts.push({ x: intervals[i][1], y }, { x: intervals[i][0], y });
+      for (let k = intervals.length - 1; k >= 0; k--)
+        pts.push({ x: intervals[k][1], y }, { x: intervals[k][0], y });
     }
     rows.push(pts);
     ltr = !ltr;

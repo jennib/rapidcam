@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
@@ -125,6 +125,8 @@ describe("pocket G-code from region references", () => {
   });
 });
 
+import { rasterRowsWithIslands } from "../src/cam/pocket";
+
 function addSquareWH(doc: CADDocument, x: number, y: number, w: number, h: number): LineEntity[] {
   const p = [
     { x, y },
@@ -134,3 +136,32 @@ function addSquareWH(doc: CADDocument, x: number, y: number, w: number, h: numbe
   ];
   return p.map((a, i) => doc.add(new LineEntity(a, p[(i + 1) % 4]))) as LineEntity[];
 }
+
+test("rasterRowsWithIslands clears boss inside hole (nested island depth 2)", () => {
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+
+  const outer = rect(0, 0, 100, 100);
+  const islandHole = rect(20, 20, 80, 80);
+  const islandBoss = rect(40, 40, 60, 60);
+
+  const rows = rasterRowsWithIslands(outer, [islandHole, islandBoss], 10);
+  expect(rows.length).toBeGreaterThan(0);
+
+  const y45Row = rows.find((r) => r.length > 0 && Math.abs(r[0].y - 45) < 1);
+  expect(y45Row).toBeDefined();
+
+  const xs = y45Row!.map((p) => p.x).sort((a, b) => a - b);
+  expect(xs.length).toBe(6);
+  expect(xs[0]).toBeCloseTo(0);
+  expect(xs[1]).toBeCloseTo(20);
+  expect(xs[2]).toBeCloseTo(40);
+  expect(xs[3]).toBeCloseTo(60);
+  expect(xs[4]).toBeCloseTo(80);
+  expect(xs[5]).toBeCloseTo(100);
+});
+

@@ -6,7 +6,7 @@
 import { CADDocument } from "../src/model/document";
 import { LineEntity, CircleEntity, RectEntity, ArcEntity } from "../src/model/entities";
 import { makeConstraint, type Geo, tangentContactOutsideArcSweep } from "../src/model/constraints";
-import { solve } from "../src/solver/solver";
+import { solve, scalarComponent } from "../src/solver/solver";
 import { dist, sub, cross, dot, normalize, len } from "../src/core/vec2";
 import { test, expect } from "vitest";
 
@@ -369,3 +369,45 @@ const geoOf = (doc: CADDocument): Geo => {
     );
   }
 }
+
+// Unknown scalar key validation (#1) ----------------------
+test("unknown scalar key throws error in scalarComponent", () => {
+  const circle = new CircleEntity({ x: 0, y: 0 }, 10);
+  const v = scalarComponent(circle, "invalid_key");
+  expect(() => v.get()).toThrow(/Unknown scalar key 'invalid_key'/);
+  expect(() => v.set(15)).toThrow(/Unknown scalar key 'invalid_key'/);
+});
+
+// pointOnArc clamping preserving coincident constraints (#2) ----------------------
+test("pointOnArc preserves coincident constraints when point is out of sweep", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  const arcA = doc.add(new ArcEntity({ x: 0, y: 0 }, 20, 0, Math.PI / 2)) as ArcEntity;
+  const line = doc.add(new LineEntity({ x: 0, y: -30 }, { x: 50, y: -30 })) as LineEntity;
+  const line2 = doc.add(new LineEntity({ x: 0, y: -30 }, { x: 20, y: -40 })) as LineEntity;
+
+  doc.addConstraint(
+    makeConstraint("pointOnArc", {
+      points: [{ entityId: line.id, key: "a" }],
+      entities: [arcA.id],
+    }),
+  );
+  doc.addConstraint(
+    makeConstraint("coincident", {
+      points: [
+        { entityId: line.id, key: "a" },
+        { entityId: line2.id, key: "a" },
+      ],
+    }),
+  );
+
+  solve(doc);
+
+  expect(dist(line.a, line2.a)).toBeLessThan(1e-3);
+});
+
+
+
+
+
+
+

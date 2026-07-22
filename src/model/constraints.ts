@@ -12,7 +12,7 @@
  * numerical solver well-conditioned across mixed constraint types.
  */
 
-import { angleInArc } from "../core/geom";
+import { angleInArc, arcAngleDiff, clampAngleToArc } from "../core/geom";
 import { cross, dot, len, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import {
   ArcEntity,
@@ -244,7 +244,14 @@ export function constraintResiduals(c: Constraint, geo: Geo): number[] {
       const p = readPoint(geo, c.points[0]);
       const arc = asArc(geo, c.entities[0]);
       if (!p || !arc) return [];
-      return [len(sub(p, arc.center)) - arc.radius];
+      const radialRes = len(sub(p, arc.center)) - arc.radius;
+      const angle = Math.atan2(p.y - arc.center.y, p.x - arc.center.x);
+      if (angleInArc(angle, arc.startAngle, arc.endAngle)) {
+        return [radialRes];
+      }
+      const clamped = clampAngleToArc(angle, arc.startAngle, arc.endAngle);
+      const angularRes = arc.radius * arcAngleDiff(angle, clamped);
+      return [radialRes, angularRes];
     }
     case "symmetric": {
       // points[0] and points[1] are symmetric about the infinite line of entities[0].

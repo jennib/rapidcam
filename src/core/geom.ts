@@ -76,6 +76,22 @@ export function angleInArc(theta: number, startAngle: number, endAngle: number):
   return t <= span;
 }
 
+/** Signed shortest angular difference from `a` to `b`, in (-π, π]. */
+export function arcAngleDiff(a: number, b: number): number {
+  let d = (((b - a) % TAU) + TAU) % TAU;
+  if (d > Math.PI) d -= TAU;
+  return d;
+}
+
+/** Clamp `angle` to the CCW arc range [startAngle, endAngle]. */
+export function clampAngleToArc(angle: number, startAngle: number, endAngle: number): number {
+  if (angleInArc(angle, startAngle, endAngle)) return angle;
+  const dStart = Math.abs(arcAngleDiff(angle, startAngle));
+  const dEnd = Math.abs(arcAngleDiff(angle, endAngle));
+  return dStart <= dEnd ? startAngle : endAngle;
+}
+
+
 /**
  * Pick a "nice" rounded step (1, 2, 5 × 10ⁿ) that is >= the raw step.
  * Used to choose grid spacing so labels land on sensible values.

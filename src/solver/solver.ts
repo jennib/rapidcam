@@ -383,25 +383,6 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   setX(x); // make sure the solution is the final state
 
-  // Post-solve: clamp pointOnArc constrained points to the arc's angular sweep.
-  // The residual only enforces the radial distance; this enforces the angular bounds.
-  for (const c of doc.constraints) {
-    if (c.type !== "pointOnArc") continue;
-    const arcEnt = byId.get(c.entities[0]);
-    if (!(arcEnt instanceof ArcEntity)) continue;
-    const pointEnt = byId.get(c.points[0].entityId);
-    if (!pointEnt || fixed.has(`${c.points[0].entityId}:${c.points[0].key}`)) continue;
-    const p = pointEnt.getPoint(c.points[0].key);
-    const angle = Math.atan2(p.y - arcEnt.center.y, p.x - arcEnt.center.x);
-    const clamped = clampAngleToArc(angle, arcEnt.startAngle, arcEnt.endAngle);
-    if (Math.abs(arcAngleDiff(clamped, angle)) > 1e-9) {
-      pointEnt.setPoint(c.points[0].key, {
-        x: arcEnt.center.x + arcEnt.radius * Math.cos(clamped),
-        y: arcEnt.center.y + arcEnt.radius * Math.sin(clamped),
-      });
-    }
-  }
-
   return finish();
 }
 
@@ -431,10 +412,21 @@ function pointComponent(ent: Entity, key: string, axis: "x" | "y"): Variable {
     },
   };
 }
-function scalarComponent(ent: Entity, key: string): Variable {
+export function scalarComponent(ent: Entity, key: string): Variable {
   return {
-    get: () => ent.dofScalars().find((s) => s.key === key)?.value ?? 0,
-    set: (val) => ent.setScalar(key, val),
+    get: () => {
+      const s = ent.dofScalars().find((s) => s.key === key);
+      if (!s) {
+        throw new Error(`Unknown scalar key '${key}' on ${ent.type} entity '${ent.id}'`);
+      }
+      return s.value;
+    },
+    set: (val) => {
+      if (!ent.dofScalars().some((s) => s.key === key)) {
+        throw new Error(`Unknown scalar key '${key}' on ${ent.type} entity '${ent.id}'`);
+      }
+      ent.setScalar(key, val);
+    },
   };
 }
 
@@ -459,28 +451,7 @@ function fixRigidImageScalars(doc: CADDocument, fixed: Set<string>): void {
 }
 const norm = (v: number[]): number => Math.sqrt(sumSq(v));
 
-const TAU = Math.PI * 2;
-/** Signed shortest angular difference from `a` to `b`, in (-π, π]. */
-function arcAngleDiff(a: number, b: number): number {
-  let d = (((b - a) % TAU) + TAU) % TAU;
-  if (d > Math.PI) d -= TAU;
-  return d;
-}
-/** True if `a` lies on the CCW arc from `s` to `e`. */
-function angleInArc(a: number, s: number, e: number): boolean {
-  const n = (x: number) => ((x % TAU) + TAU) % TAU;
-  const a2 = n(a),
-    s2 = n(s),
-    e2 = n(e);
-  return s2 <= e2 ? a2 >= s2 && a2 <= e2 : a2 >= s2 || a2 <= e2;
-}
-/** Clamp `angle` to the CCW arc range [startAngle, endAngle]. */
-function clampAngleToArc(angle: number, startAngle: number, endAngle: number): number {
-  if (angleInArc(angle, startAngle, endAngle)) return angle;
-  const dStart = Math.abs(arcAngleDiff(angle, startAngle));
-  const dEnd = Math.abs(arcAngleDiff(angle, endAngle));
-  return dStart <= dEnd ? startAngle : endAngle;
-}
+
 
 // ---------------------------------------------------------------------------
 // Per-entity DOF status for sketch coloring
