@@ -220,13 +220,11 @@ export function openNewProjectDialog(
 
   // -- origin --
   const originSec = sec("Origin (WCS - Work Coordinate System)");
-  const infoIcon = document.createElement("span");
-  infoIcon.textContent = "ⓘ";
-  infoIcon.style.cursor = "help";
-  infoIcon.style.marginLeft = "6px";
-  infoIcon.style.opacity = "0.7";
-  infoIcon.title = "The Work Coordinate System (WCS) origin is the physical 0,0,0 starting point on your CNC machine.";
-  originSec.firstElementChild?.appendChild(infoIcon);
+  const titleEl = originSec.firstElementChild as HTMLElement;
+  if (titleEl) {
+    titleEl.title = "The Work Coordinate System (WCS) origin is the physical 0,0,0 starting point on your CNC machine.";
+    titleEl.style.cursor = "help";
+  }
   const oxSel = sel([
     ["left", "Left"],
     ["center", "Center"],
