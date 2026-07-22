@@ -104,6 +104,16 @@ export function formatLengthWithUnit(mm: number, unit: Unit, precision?: number)
   return `${formatLength(mm, unit, precision)} ${unit}`;
 }
 
+/**
+ * Format an internal mm/min rate for display in `unit`/min. A feed rate's
+ * useful precision is coarser than a length's (a whole mm/min, or one decimal
+ * of in/min reads better than 2-3 decimals of noise), so this has its own
+ * (undivided-by-DEFAULT_PRECISION) rounding rather than reusing formatLength's.
+ */
+export function formatFeed(mmPerMin: number, unit: Unit): string {
+  return fromMM(mmPerMin, unit).toFixed(unit === "in" ? 1 : 0);
+}
+
 /** Parse an angle string to radians. Bare numbers or "45°" / "45deg" → degrees; "1.5rad" → radians. */
 export function parseAngle(input: string): number | null {
   let s = input.trim().toLowerCase();

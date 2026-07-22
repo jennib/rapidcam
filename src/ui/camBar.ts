@@ -10,7 +10,7 @@ import {
 import { textToContours } from "../cam/textOutlines";
 import { signedArea } from "../cam/offset";
 import type { Vec2 } from "../core/vec2";
-import { formatLength, fromMM } from "../core/units";
+import { formatFeed, formatLength, toMM } from "../core/units";
 import {
   DEFAULTS,
   TOOL_TYPE_LABELS,
@@ -355,10 +355,21 @@ export class CamBar {
     const du = this.doc.displayUnit;
     return `${formatLength(mm, du)}${du}`;
   }
+  /** A length converted + rounded to the document's unit, WITHOUT a unit suffix —
+   *  for populating an editable <input> (its label already states the unit).
+   *  Single source of truth so no dialog field ever regresses to showing a raw
+   *  float like "0.19685039370078738" when mm is converted to inches. */
+  private lenView(mm: number): string {
+    return formatLength(mm, this.doc.displayUnit);
+  }
   /** A feed/plunge rate as e.g. "1200 mm/min" / "47.2 in/min". */
   private feedU(mmPerMin: number): string {
-    const du = this.doc.displayUnit;
-    return `${fromMM(mmPerMin, du).toFixed(du === "in" ? 1 : 0)} ${du}/min`;
+    return `${this.feedView(mmPerMin)} ${this.doc.displayUnit}/min`;
+  }
+  /** A feed/plunge rate converted + rounded, without the "unit/min" suffix — for
+   *  populating an editable <input>. */
+  private feedView(mmPerMin: number): string {
+    return formatFeed(mmPerMin, this.doc.displayUnit);
   }
   /** One-line cut-depth summary for an export toast, e.g. " · depth 3–10mm into
    *  19.05mm stock" — a quick sanity read (depth vs stock) after an otherwise
@@ -719,6 +730,7 @@ export class CamBar {
 
   private openDialog(existing: CAMOperation | null): void {
     document.getElementById("tp-dialog-backdrop")?.remove();
+    const du = this.doc.displayUnit;
     this.highlightOp(null); // dialog manages toolpathHighlightIds from here
 
     const isNew = existing === null;
@@ -891,11 +903,11 @@ export class CamBar {
     depthInp.type = "number";
     depthInp.className = "dim";
     depthInp.step = "any";
-    depthInp.value = String(state.depth);
+    depthInp.value = this.lenView(state.depth);
     depthInp.addEventListener("change", () => {
       const v = parseFloat(depthInp.value);
       if (Number.isFinite(v)) {
-        state.depth = v;
+        state.depth = toMM(v, du);
         hooks.updateVBitHint();
         updateReliefEstimate();
       }
@@ -903,15 +915,15 @@ export class CamBar {
     const throughBtn = document.createElement("button");
     throughBtn.className = "cbtn";
     throughBtn.textContent = "⊥ stock";
-    throughBtn.title = `Set to stock thickness (${this.doc.stockThickness}mm)`;
+    throughBtn.title = `Set to stock thickness (${this.lenU(this.doc.stockThickness)})`;
     throughBtn.addEventListener("click", () => {
       state.depth = -this.doc.stockThickness;
-      depthInp.value = String(state.depth);
+      depthInp.value = this.lenView(state.depth);
       updateReliefEstimate();
     });
     depthRow.appendChild(depthInp);
     depthRow.appendChild(throughBtn);
-    cutSec.appendChild(this.dField("Depth (mm)", depthRow));
+    cutSec.appendChild(this.dField(`Depth (${du})`, depthRow));
 
     // V-bit effective width hint
     const vbitHint = document.createElement("div");
@@ -925,7 +937,7 @@ export class CamBar {
       }
       const halfAngle = (state.vAngle / 2) * (Math.PI / 180);
       const width = 2 * Math.abs(state.depth) * Math.tan(halfAngle);
-      vbitHint.textContent = `→ effective cut width: ${width.toFixed(3)} mm`;
+      vbitHint.textContent = `→ effective cut width: ${this.lenU(width)}`;
       vbitHint.style.display = "block";
     };
     hooks.updateVBitHint();
@@ -934,13 +946,13 @@ export class CamBar {
     stepInp.type = "number";
     stepInp.className = "dim";
     stepInp.step = "any";
-    stepInp.value = String(state.stepdown);
+    stepInp.value = this.lenView(state.stepdown);
     stepInp.addEventListener("change", () => {
       const v = parseFloat(stepInp.value);
-      if (Number.isFinite(v)) state.stepdown = v;
+      if (Number.isFinite(v)) state.stepdown = toMM(v, du);
       updateReliefEstimate();
     });
-    const stepRow = this.dField("Stepdown (mm)", stepInp);
+    const stepRow = this.dField(`Stepdown (${du})`, stepInp);
     cutSec.appendChild(stepRow);
 
     // Peck depth — drill ops only. 0 = single full-depth plunge.
@@ -949,12 +961,12 @@ export class CamBar {
     peckInp.className = "dim";
     peckInp.step = "any";
     peckInp.min = "0";
-    peckInp.value = String(state.peckDepth);
+    peckInp.value = this.lenView(state.peckDepth);
     peckInp.addEventListener("change", () => {
       const v = parseFloat(peckInp.value);
-      state.peckDepth = Number.isFinite(v) && v > 0 ? v : 0;
+      state.peckDepth = Number.isFinite(v) && v > 0 ? toMM(v, du) : 0;
     });
-    const peckRow = this.dField("Peck depth (mm, 0=off)", peckInp);
+    const peckRow = this.dField(`Peck depth (${du}, 0=off)`, peckInp);
     cutSec.appendChild(peckRow);
 
     const stepoverInp = document.createElement("input");
@@ -978,12 +990,12 @@ export class CamBar {
     vStepInp.className = "dim";
     vStepInp.step = "any";
     vStepInp.min = "0.01";
-    vStepInp.value = String(state.vStep);
+    vStepInp.value = this.lenView(state.vStep);
     vStepInp.addEventListener("change", () => {
       const v = parseFloat(vStepInp.value);
-      if (Number.isFinite(v) && v > 0) state.vStep = v;
+      if (Number.isFinite(v) && v > 0) state.vStep = toMM(v, du);
     });
-    const vStepRow = this.dField("V-carve pitch (mm)", vStepInp);
+    const vStepRow = this.dField(`V-carve pitch (${du})`, vStepInp);
     cutSec.appendChild(vStepRow);
 
     // V-carve hop clearance — height (mm above the surface) for rapid hops between
@@ -995,14 +1007,14 @@ export class CamBar {
     vHopInp.className = "dim";
     vHopInp.step = "any";
     vHopInp.min = "0";
-    vHopInp.value = String(state.vHopClearance);
+    vHopInp.value = this.lenView(state.vHopClearance);
     vHopInp.title =
       "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
     vHopInp.addEventListener("change", () => {
       const v = parseFloat(vHopInp.value);
-      if (Number.isFinite(v) && v >= 0) state.vHopClearance = v;
+      if (Number.isFinite(v) && v >= 0) state.vHopClearance = toMM(v, du);
     });
-    const vHopRow = this.dField("V-carve hop clearance (mm, 0 = safe Z)", vHopInp);
+    const vHopRow = this.dField(`V-carve hop clearance (${du}, 0 = safe Z)`, vHopInp);
     cutSec.appendChild(vHopRow);
 
     // Relief engrave (a mill Engrave op targeting an image) — carve the image as
@@ -1013,15 +1025,15 @@ export class CamBar {
     reliefLineInp.className = "dim";
     reliefLineInp.step = "any";
     reliefLineInp.min = "0.01";
-    reliefLineInp.value = String(state.rasterLineInterval);
+    reliefLineInp.value = this.lenView(state.rasterLineInterval);
     reliefLineInp.title =
       "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
     reliefLineInp.addEventListener("change", () => {
       const v = parseFloat(reliefLineInp.value);
-      if (Number.isFinite(v) && v > 0) state.rasterLineInterval = v;
+      if (Number.isFinite(v) && v > 0) state.rasterLineInterval = toMM(v, du);
       updateReliefEstimate();
     });
-    const reliefLineRow = this.dField("Relief stepover (mm)", reliefLineInp);
+    const reliefLineRow = this.dField(`Relief stepover (${du})`, reliefLineInp);
     cutSec.appendChild(reliefLineRow);
 
     const reliefDotInp = document.createElement("input");
@@ -1029,13 +1041,13 @@ export class CamBar {
     reliefDotInp.className = "dim";
     reliefDotInp.step = "any";
     reliefDotInp.min = "0";
-    reliefDotInp.value = String(state.rasterDotPitch);
+    reliefDotInp.value = this.lenView(state.rasterDotPitch);
     reliefDotInp.title = "Horizontal dot pitch. 0 = square dots (use the stepover).";
     reliefDotInp.addEventListener("change", () => {
       const v = parseFloat(reliefDotInp.value);
-      if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = v;
+      if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = toMM(v, du);
     });
-    const reliefDotRow = this.dField("Relief dot pitch (mm, 0 = square)", reliefDotInp);
+    const reliefDotRow = this.dField(`Relief dot pitch (${du}, 0 = square)`, reliefDotInp);
     cutSec.appendChild(reliefDotRow);
 
     const reliefInvChk = document.createElement("input");
@@ -1151,12 +1163,12 @@ export class CamBar {
     finishAllowInp.className = "dim";
     finishAllowInp.step = "any";
     finishAllowInp.min = "0";
-    finishAllowInp.value = String(state.finishAllowance);
+    finishAllowInp.value = this.lenView(state.finishAllowance);
     finishAllowInp.addEventListener("change", () => {
       const v = parseFloat(finishAllowInp.value);
-      state.finishAllowance = Number.isFinite(v) && v >= 0 ? v : 0;
+      state.finishAllowance = Number.isFinite(v) && v >= 0 ? toMM(v, du) : 0;
     });
-    const finishAllowRow = this.dField("Finish allowance (mm)", finishAllowInp);
+    const finishAllowRow = this.dField(`Finish allowance (${du})`, finishAllowInp);
     cutSec.appendChild(finishAllowRow);
 
     finishChk.addEventListener("change", () => {
@@ -1233,20 +1245,20 @@ export class CamBar {
     chamWidthInp.className = "dim";
     chamWidthInp.step = "any";
     chamWidthInp.min = "0";
-    chamWidthInp.value = String(state.chamferWidth);
+    chamWidthInp.value = this.lenView(state.chamferWidth);
     const chamHint = document.createElement("div");
     chamHint.className = "cam-vbit-hint";
     const updateChamHint = () => {
       const half = Math.tan(((state.vAngle ?? 60) / 2) * (Math.PI / 180));
       const depth = half > 1e-6 ? state.chamferWidth / half : 0;
-      chamHint.textContent = `→ depth ${depth.toFixed(2)} mm · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
+      chamHint.textContent = `→ depth ${formatLength(depth, du)} ${du} · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
     };
     chamWidthInp.addEventListener("input", () => {
       const v = parseFloat(chamWidthInp.value);
-      if (Number.isFinite(v) && v >= 0) state.chamferWidth = v;
+      if (Number.isFinite(v) && v >= 0) state.chamferWidth = toMM(v, du);
       updateChamHint();
     });
-    const chamWidthRow = this.dField("Chamfer width (mm)", chamWidthInp);
+    const chamWidthRow = this.dField(`Chamfer width (${du})`, chamWidthInp);
     cutSec.appendChild(chamWidthRow);
     cutSec.appendChild(chamHint);
 
@@ -2122,15 +2134,21 @@ export class CamBar {
     label: string,
     get: () => number,
     set: (v: number) => void,
+    unitConv?: "len" | "feed",
   ): { el: HTMLElement; inp: HTMLInputElement } {
     const inp = document.createElement("input");
     inp.type = "number";
     inp.className = "dim";
     inp.step = "any";
-    inp.value = String(get());
+    const du = this.doc.displayUnit;
+    const toView = (v: number): string =>
+      unitConv === "feed" ? this.feedView(v) : unitConv === "len" ? this.lenView(v) : String(v);
+    const toModel = (v: number) => (unitConv ? toMM(v, du) : v);
+
+    inp.value = toView(get());
     inp.addEventListener("change", () => {
       const v = parseFloat(inp.value);
-      if (Number.isFinite(v)) set(v);
+      if (Number.isFinite(v)) set(toModel(v));
     });
     return { el: this.dField(label, inp), inp };
   }
@@ -2140,15 +2158,21 @@ export class CamBar {
     label: string,
     get: () => number,
     set: (v: number, inp: HTMLInputElement) => void,
+    unitConv?: "len" | "feed",
   ): { el: HTMLElement; inp: HTMLInputElement } {
     const inp = document.createElement("input");
     inp.type = "number";
     inp.className = "dim";
     inp.step = "any";
-    inp.value = String(get());
+    const du = this.doc.displayUnit;
+    const toView = (v: number): string =>
+      unitConv === "feed" ? this.feedView(v) : unitConv === "len" ? this.lenView(v) : String(v);
+    const toModel = (v: number) => (unitConv ? toMM(v, du) : v);
+
+    inp.value = toView(get());
     inp.addEventListener("change", () => {
       const v = parseFloat(inp.value);
-      if (Number.isFinite(v)) set(v, inp);
+      if (Number.isFinite(v)) set(toModel(v), inp);
     });
     return { el: this.dField(label, inp), inp };
   }
@@ -2348,7 +2372,7 @@ export class CamBar {
         nameSpan.textContent = t.name;
         const detailSpan = document.createElement("span");
         detailSpan.style.color = "var(--text-dim)";
-        detailSpan.textContent = `⌀${t.diameter}mm`;
+        detailSpan.textContent = `⌀${this.lenU(t.diameter)}`;
         row.appendChild(nameSpan);
         row.appendChild(detailSpan);
         row.addEventListener("click", () => {
@@ -2377,8 +2401,8 @@ export class CamBar {
       const name = window.prompt(
         "Save tool as:",
         state.toolType === "v-bit"
-          ? `${state.vAngle}° V-Bit ⌀${state.diameter}mm`
-          : `⌀${state.diameter}mm ${TOOL_TYPE_LABELS[state.toolType]}`,
+          ? `${state.vAngle}° V-Bit ⌀${this.lenU(state.diameter)}`
+          : `⌀${this.lenU(state.diameter)} ${TOOL_TYPE_LABELS[state.toolType]}`,
       );
       if (!name) return;
       const def: ToolDef = {
@@ -2417,14 +2441,15 @@ export class CamBar {
       },
     );
     const diamRow = this.syncableInput(
-      "Diameter (mm)",
+      `Diameter (${this.doc.displayUnit})`,
       () => state.diameter,
       (v, i) => {
         fork();
         state.diameter = v;
-        i.value = String(v);
+        i.value = this.lenView(v);
         hooks.updateVBitHint();
       },
+      "len"
     );
     const spindleRow = this.syncableInput(
       "Spindle (rpm)",
@@ -2438,31 +2463,34 @@ export class CamBar {
     // Clamp cutting rates to >= 1 (F0 faults/stalls the controller) and Safe Z to
     // > 0 (a negative "safe" height turns every retract into a rapid into the stock).
     const feedRow = this.syncableInput(
-      "Feed (mm/min)",
+      `Feed (${this.doc.displayUnit}/min)`,
       () => state.feedrate,
       (v, i) => {
         fork();
         state.feedrate = Math.max(1, v);
-        i.value = String(state.feedrate);
+        i.value = this.feedView(state.feedrate);
       },
+      "feed"
     );
     const plungeRow = this.syncableInput(
-      "Plunge (mm/min)",
+      `Plunge (${this.doc.displayUnit}/min)`,
       () => state.plungeRate,
       (v, i) => {
         fork();
         state.plungeRate = Math.max(1, v);
-        i.value = String(state.plungeRate);
+        i.value = this.feedView(state.plungeRate);
       },
+      "feed"
     );
     const safeZRow = this.syncableInput(
-      "Safe Z (mm)",
+      `Safe Z (${this.doc.displayUnit})`,
       () => state.safeZ,
       (v, i) => {
         fork();
         state.safeZ = Math.max(0.1, v);
-        i.value = String(state.safeZ);
+        i.value = this.lenView(state.safeZ);
       },
+      "len"
     );
 
     const vAngleInp = document.createElement("input");
@@ -2533,13 +2561,13 @@ export class CamBar {
       state.spindleSpeed = t.spindleSpeed;
       state.safeZ = t.safeZ;
       toolTypeSelect.value = t.toolType;
-      diamRow.inp.value = String(t.diameter);
+      diamRow.inp.value = this.lenView(t.diameter);
       vAngleInp.value = String(state.vAngle);
       tipAngleInp.value = String(state.tipAngle);
       spindleRow.inp.value = String(t.spindleSpeed);
-      feedRow.inp.value = String(t.feedrate);
-      plungeRow.inp.value = String(t.plungeRate);
-      safeZRow.inp.value = String(t.safeZ);
+      feedRow.inp.value = this.feedView(t.feedrate);
+      plungeRow.inp.value = this.feedView(t.plungeRate);
+      safeZRow.inp.value = this.lenView(t.safeZ);
       updateToolTypeVisibility();
       hooks.updateVBitHint();
     };
@@ -2601,25 +2629,28 @@ export class CamBar {
       },
     );
     const tabSpacingRow = this.numRow(
-      "Tab spacing (mm)",
+      `Tab spacing (${this.doc.displayUnit})`,
       () => state.tabSpacing,
       (v) => {
         state.tabSpacing = Math.max(1, v);
       },
+      "len"
     );
     const tabWidthRow = this.numRow(
-      "Tab width (mm)",
+      `Tab width (${this.doc.displayUnit})`,
       () => state.tabWidth,
       (v) => {
         state.tabWidth = Math.max(0.1, v);
       },
+      "len"
     );
     const tabHeightRow = this.numRow(
-      "Tab height (mm)",
+      `Tab height (${this.doc.displayUnit})`,
       () => state.tabHeight,
       (v) => {
         state.tabHeight = Math.max(0.1, v);
       },
+      "len"
     );
     tabsSec.appendChild(tabStrategyRow);
     tabsSec.appendChild(tabCountRow.el);
@@ -2686,17 +2717,18 @@ export class CamBar {
     const roughFloor = Math.abs(op.depth) - Math.max(0, op.finishAllowance ?? 0);
     const finishDepth = Math.min(...finishDepths); // the shallowest finish is the binding one
     if (roughFloor <= finishDepth + 1e-6) return null;
-    return `Roughing clears to ${roughFloor.toFixed(2)} mm but the finish op only reaches ${finishDepth.toFixed(2)} mm — it will gouge below the final surface. Lower this op's depth or raise its finish allowance.`;
+    return `Roughing clears to ${roughFloor.toFixed(2)} ${this.doc.displayUnit} but the finish op only reaches ${finishDepth.toFixed(2)} ${this.doc.displayUnit} — it will gouge below the final surface. Lower this op's depth or raise its finish allowance.`;
   }
 
   private buildLaserSection(state: OpState): { root: HTMLElement; update: () => void } {
     const sec = this.dSection("Laser");
     const feed = this.numRow(
-      "Feed (mm/min)",
+      `Feed (${this.doc.displayUnit}/min)`,
       () => state.feedrate,
       (v) => {
         state.feedrate = Math.max(1, v);
       },
+      "feed"
     );
     const power = this.numRow(
       "Power (%)",
@@ -2713,11 +2745,12 @@ export class CamBar {
       },
     );
     const kerf = this.numRow(
-      "Kerf width (mm)",
+      `Kerf width (${this.doc.displayUnit})`,
       () => state.kerfWidth,
       (v) => {
         state.kerfWidth = Math.max(0, v);
       },
+      "len"
     );
     sec.appendChild(feed.el);
     sec.appendChild(power.el);
@@ -2731,18 +2764,20 @@ export class CamBar {
     fillChk.checked = state.laserFill;
     const fillRow = this.dField("Fill area (engrave solid)", fillChk);
     const fillSpacing = this.numRow(
-      "Fill spacing (mm)",
+      `Fill spacing (${this.doc.displayUnit})`,
       () => state.laserFillSpacing,
       (v) => {
         state.laserFillSpacing = Math.max(0.01, v);
       },
+      "len"
     );
     const overscan = this.numRow(
-      "Overscan (mm, 0=off)",
+      `Overscan (${this.doc.displayUnit}, 0=off)`,
       () => state.laserOverscan,
       (v) => {
         state.laserOverscan = Math.max(0, v);
       },
+      "len"
     );
     sec.appendChild(fillRow);
     sec.appendChild(fillSpacing.el);
@@ -2751,18 +2786,20 @@ export class CamBar {
     // Raster engrave — shown when the engrave op targets an image entity. Power (%)
     // above is the black/darkest power; these add the resolution and tonal range.
     const rLine = this.numRow(
-      "Line interval (mm)",
+      `Line interval (${this.doc.displayUnit})`,
       () => state.rasterLineInterval,
       (v) => {
         state.rasterLineInterval = Math.max(0.001, v);
       },
+      "len"
     );
     const rDot = this.numRow(
-      "Dot pitch (mm, 0=square)",
+      `Dot pitch (${this.doc.displayUnit}, 0=square)`,
       () => state.rasterDotPitch,
       (v) => {
         state.rasterDotPitch = Math.max(0, v);
       },
+      "len"
     );
     const rMin = this.numRow(
       "Min power (%)",
@@ -2857,11 +2894,12 @@ export class CamBar {
     );
     leadSec.appendChild(this.dField("Lead-in", liSel));
     const liLenRow = this.numRow(
-      "Lead-in length (mm)",
+      `Lead-in length (${this.doc.displayUnit})`,
       () => state.leadInLen,
       (v) => {
         state.leadInLen = Math.max(0.1, v);
       },
+      "len"
     );
     leadSec.appendChild(liLenRow.el);
 
@@ -2873,11 +2911,12 @@ export class CamBar {
     );
     leadSec.appendChild(this.dField("Lead-out", loSel));
     const loLenRow = this.numRow(
-      "Lead-out length (mm)",
+      `Lead-out length (${this.doc.displayUnit})`,
       () => state.leadOutLen,
       (v) => {
         state.leadOutLen = Math.max(0.1, v);
       },
+      "len"
     );
     leadSec.appendChild(loLenRow.el);
 
