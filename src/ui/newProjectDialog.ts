@@ -324,7 +324,7 @@ export function openNewProjectDialog(
   // the tool-changer and coolant toggles are grayed out.
   const initialPP = initial.postProcessor ?? defaults.postProcessor;
   let millPost =
-    initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP) ? initialPP : "linuxcnc";
+    initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP) ? initialPP : "grbl";
   let laserPost =
     initialPP && laserPostOptions().some(([v]) => v === initialPP)
       ? initialPP
