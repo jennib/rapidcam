@@ -501,22 +501,28 @@ export class PropertiesBar {
     row.className = "props-row";
     const lbl = document.createElement("span");
     lbl.textContent = label;
+    // A row declared in "mm" is a length → display and parse in the document's
+    // unit (formatLength/parseLength); other units (counts, °) pass through.
+    const du = this.doc.displayUnit;
+    const isLen = unit === "mm";
+    const fmt = (v: number) => (isLen ? formatLength(v, du, decimals) : v.toFixed(decimals));
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
-    inp.value = value.toFixed(decimals);
+    inp.value = fmt(value);
     inp.addEventListener("change", () => {
-      const v = parseFloat(inp.value);
-      if (Number.isNaN(v)) {
-        inp.value = value.toFixed(decimals);
+      const v = isLen ? parseLength(inp.value, du) : parseFloat(inp.value);
+      if (v === null || Number.isNaN(v)) {
+        inp.value = fmt(value);
         return;
       }
       onCommit(v);
     });
     row.append(lbl, inp);
-    if (unit) {
+    const unitLabel = isLen ? du : unit;
+    if (unitLabel) {
       const u = document.createElement("span");
-      u.textContent = unit;
+      u.textContent = unitLabel;
       row.appendChild(u);
     }
     parent.appendChild(row);
@@ -601,6 +607,11 @@ export class PropertiesBar {
     onAfterCommit?: (value: number, expr: string | undefined) => void,
   ): void {
     const binding = findBinding(this.doc.bindings, entityId, scalarKey);
+    // A field declared in "mm" is a length: show and read its literal in the
+    // document's unit (formulas over variables always evaluate in internal mm).
+    const du = this.doc.displayUnit;
+    const isLen = unit === "mm";
+    const fmtLit = (mm: number) => (isLen ? formatLength(mm, du, decimals) : mm.toFixed(decimals));
     const row = document.createElement("div");
     row.className = "props-row";
     const lbl = document.createElement("span");
@@ -608,7 +619,7 @@ export class PropertiesBar {
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
-    inp.value = binding ? binding.expr : currentValue.toFixed(decimals);
+    inp.value = binding ? binding.expr : fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
     // deleted) is flagged red — the value silently held its last number otherwise.
@@ -616,7 +627,7 @@ export class PropertiesBar {
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
-      inp.value = b ? b.expr : currentValue.toFixed(decimals);
+      inp.value = b ? b.expr : fmtLit(currentValue);
     };
 
     const badge = this.fxBadge({
@@ -640,13 +651,21 @@ export class PropertiesBar {
         reset();
         return;
       }
-      if (/^-?\d*\.?\d+$/.test(raw)) {
+      // Literal vs formula. For a length field parseLength also accepts inch
+      // fractions/suffixes ("1/2", "0.5in") and converts to internal mm; a plain
+      // number is read in the document's unit. Anything else is a formula (which
+      // always evaluates in mm, since variables are stored in mm).
+      const lit = isLen
+        ? parseLength(raw, du)
+        : /^-?\d*\.?\d+$/.test(raw)
+          ? parseFloat(raw)
+          : null;
+      if (lit !== null) {
         // literal → clear binding + set value
-        const v = parseFloat(raw);
         this.applyEdit(() => {
           if (existing) this.doc.bindings = this.doc.bindings.filter((x) => x !== existing);
-          applyLiteral(v);
-          onAfterCommit?.(v, undefined);
+          applyLiteral(lit);
+          onAfterCommit?.(lit, undefined);
         });
         return;
       }
@@ -672,9 +691,10 @@ export class PropertiesBar {
     });
 
     row.append(lbl, inp, badge);
-    if (unit) {
+    const unitLabel = isLen ? du : unit;
+    if (unitLabel) {
       const u = document.createElement("span");
-      u.textContent = unit;
+      u.textContent = unitLabel;
       row.appendChild(u);
     }
     parent.appendChild(row);
@@ -712,6 +732,11 @@ export class PropertiesBar {
       );
     const dim = findDim();
 
+    // A field declared in "mm" is a length: show/read its literal in the
+    // document's unit (formulas over variables always evaluate in internal mm).
+    const du = this.doc.displayUnit;
+    const isLen = unit === "mm";
+    const fmtLit = (mm: number) => (isLen ? formatLength(mm, du, decimals) : mm.toFixed(decimals));
     const row = document.createElement("div");
     row.className = "props-row";
     const lbl = document.createElement("span");
@@ -719,13 +744,13 @@ export class PropertiesBar {
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
-    inp.value = dim?.expr ?? currentValue.toFixed(decimals);
+    inp.value = dim?.expr ?? fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const d = findDim();
-      inp.value = d?.expr ?? currentValue.toFixed(decimals);
+      inp.value = d?.expr ?? fmtLit(currentValue);
     };
 
     // Only a formula-driven dim is "bound"; a plain-literal driving dimension has no formula.
@@ -753,9 +778,15 @@ export class PropertiesBar {
         reset();
         return;
       }
-      if (/^-?\d*\.?\d+$/.test(raw)) {
-        // literal
-        const v = parseFloat(raw);
+      // Literal (length → document's unit, incl. inch fractions/suffixes) vs a
+      // formula (always evaluated in internal mm).
+      const lit = isLen
+        ? parseLength(raw, du)
+        : /^-?\d*\.?\d+$/.test(raw)
+          ? parseFloat(raw)
+          : null;
+      if (lit !== null) {
+        const v = lit;
         if (v <= 0) {
           reset();
           return;
@@ -799,9 +830,10 @@ export class PropertiesBar {
     });
 
     row.append(lbl, inp, badge);
-    if (unit) {
+    const unitLabel = isLen ? du : unit;
+    if (unitLabel) {
       const u = document.createElement("span");
-      u.textContent = unit;
+      u.textContent = unitLabel;
       row.appendChild(u);
     }
     parent.appendChild(row);
@@ -818,22 +850,25 @@ export class PropertiesBar {
   ): void {
     const row = document.createElement("div");
     row.className = "props-row";
+    // Coordinates are lengths — show and read them in the document's unit.
+    const du = this.doc.displayUnit;
+    const fmt = (mm: number) => formatLength(mm, du);
     const lblA = document.createElement("span");
     lblA.textContent = labelA;
     const inA = document.createElement("input");
     inA.type = "text";
-    inA.value = a.toFixed(2);
+    inA.value = fmt(a);
     const lblB = document.createElement("span");
     lblB.textContent = labelB;
     const inB = document.createElement("input");
     inB.type = "text";
-    inB.value = b.toFixed(2);
+    inB.value = fmt(b);
     const apply = () => {
-      const va = parseFloat(inA.value),
-        vb = parseFloat(inB.value);
-      if (Number.isNaN(va) || Number.isNaN(vb)) {
-        inA.value = a.toFixed(2);
-        inB.value = b.toFixed(2);
+      const va = parseLength(inA.value, du),
+        vb = parseLength(inB.value, du);
+      if (va === null || vb === null) {
+        inA.value = fmt(a);
+        inB.value = fmt(b);
         return;
       }
       onCommit(va, vb);
