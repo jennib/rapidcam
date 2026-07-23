@@ -92,7 +92,7 @@ export class RectTool implements Tool {
     const signX = cursorWorld.x < this.start.x ? -1 : 1;
     const signY = cursorWorld.y < this.start.y ? -1 : 1;
 
-    let p0, p1;
+    let p0: { x: number; y: number }, p1: { x: number; y: number };
     if (this.isCenter) {
       p0 = { x: this.start.x - dx, y: this.start.y - dy };
       p1 = { x: this.start.x + dx, y: this.start.y + dy };
