@@ -28,15 +28,22 @@ export class RectTool implements Tool {
   readonly label = "Rectangle";
   readonly icon = ICONS.rect;
 
-  private corner: Vec2 | null = null;
+  private start: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private typedW: number | null = null;
   private typedH: number | null = null;
+  private isCenter: boolean = false;
+
+  onActivate(ctx: ToolContext): void {
+    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
+  }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
-    if (!this.corner) {
-      this.corner = e.world;
+    this.isCenter = e.altKey;
+    if (!this.start) {
+      this.start = e.world;
+      ctx.setHint("Click opposite corner (Hold Alt for center rectangle).");
       ctx.openMultiValueEditor(
         e.world,
         [
@@ -55,45 +62,57 @@ export class RectTool implements Tool {
       );
     } else {
       ctx.closeValueEditor();
-      
-      const signX = this.cursor.x < this.corner.x ? -1 : 1;
-      const signY = this.cursor.y < this.corner.y ? -1 : 1;
-      const effCursor = {
-        x: this.typedW !== null ? this.corner.x + this.typedW * signX : e.world.x,
-        y: this.typedH !== null ? this.corner.y + this.typedH * signY : e.world.y,
-      };
-
-      const w = Math.abs(effCursor.x - this.corner.x);
-      const h = Math.abs(effCursor.y - this.corner.y);
+      const { p0, p1 } = this.getRectExtents(e.world);
+      const w = Math.abs(p1.x - p0.x);
+      const h = Math.abs(p1.y - p0.y);
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
-        this.commit(this.corner, effCursor, ctx);
+        this.commit(p0, p1, ctx);
       }
-      this.corner = null;
+      this.start = null;
       this.typedW = null;
       this.typedH = null;
+      ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
     }
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     this.cursor = e.world;
-    if (this.corner) ctx.requestRender();
+    this.isCenter = e.altKey;
+    if (this.start) ctx.requestRender();
+  }
+
+  private getRectExtents(cursorWorld: Vec2): { p0: Vec2, p1: Vec2 } {
+    if (!this.start) return { p0: cursorWorld, p1: cursorWorld };
+
+    // The user's typed W and H are the total desired dimensions.
+    const dx = this.typedW !== null ? (this.isCenter ? this.typedW / 2 : this.typedW) : Math.abs(cursorWorld.x - this.start.x);
+    const dy = this.typedH !== null ? (this.isCenter ? this.typedH / 2 : this.typedH) : Math.abs(cursorWorld.y - this.start.y);
+
+    const signX = cursorWorld.x < this.start.x ? -1 : 1;
+    const signY = cursorWorld.y < this.start.y ? -1 : 1;
+
+    let p0, p1;
+    if (this.isCenter) {
+      p0 = { x: this.start.x - dx, y: this.start.y - dy };
+      p1 = { x: this.start.x + dx, y: this.start.y + dy };
+    } else {
+      p0 = this.start;
+      p1 = { x: this.start.x + dx * signX, y: this.start.y + dy * signY };
+    }
+
+    return { p0, p1 };
   }
 
   getOverlay(): ToolOverlay {
-    if (!this.corner) return { previews: [], selectionRect: null };
+    if (!this.start) return { previews: [], selectionRect: null };
 
-    const signX = this.cursor.x < this.corner.x ? -1 : 1;
-    const signY = this.cursor.y < this.corner.y ? -1 : 1;
-    const effCursor = {
-      x: this.typedW !== null ? this.corner.x + this.typedW * signX : this.cursor.x,
-      y: this.typedH !== null ? this.corner.y + this.typedH * signY : this.cursor.y,
-    };
+    const { p0, p1 } = this.getRectExtents(this.cursor);
 
     return {
       previews: [
-        { kind: "rect", p0: this.corner, p1: effCursor },
-        { kind: "point", pos: this.corner },
+        { kind: "rect", p0, p1 },
+        { kind: "point", pos: this.start },
       ],
       selectionRect: null,
     };
@@ -105,9 +124,10 @@ export class RectTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     ctx.closeValueEditor();
-    this.corner = null;
+    this.start = null;
     this.typedW = null;
     this.typedH = null;
+    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
     ctx.requestRender();
   }
 
@@ -123,24 +143,21 @@ export class RectTool implements Tool {
 
     if (w == null || h == null || w <= 1e-6 || h <= 1e-6) return false;
 
-    let signX = 1;
-    let signY = 1;
-    if (this.corner) {
-      if (this.cursor.x < this.corner.x) signX = -1;
-      if (this.cursor.y < this.corner.y) signY = -1;
-    }
-
-    const c1: Vec2 = {
-      x: this.corner!.x + w * signX,
-      y: this.corner!.y + h * signY,
-    };
+    // Use our helper to compute the points using the current cursor/center state.
+    // We already parsed `w` and `h` and set `this.typedW`/`this.typedH` inside the onChange callback,
+    // but the user might have pressed Enter without the onChange firing (e.g. they pasted or fast-typed).
+    // So we manually override them here before calling getRectExtents.
+    this.typedW = w;
+    this.typedH = h;
+    const { p0, p1 } = this.getRectExtents(this.cursor);
 
     ctx.pushHistory();
-    this.commit(this.corner!, c1, ctx);
+    this.commit(p0, p1, ctx);
     
-    this.corner = null;
+    this.start = null;
     this.typedW = null;
     this.typedH = null;
+    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
     return true;
   }
 
