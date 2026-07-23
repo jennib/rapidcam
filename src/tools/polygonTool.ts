@@ -36,6 +36,13 @@ export class PolygonTool implements Tool {
         ],
         (raws) => this.commitByText(raws, ctx),
         () => this.cancel(ctx),
+        (raws) => {
+          const n = parseInt(raws[0].trim(), 10);
+          if (Number.isFinite(n) && n >= 3 && n <= 64) {
+            this.sides = n;
+            ctx.requestRender();
+          }
+        }
       );
     } else {
       ctx.closeValueEditor();

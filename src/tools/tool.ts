@@ -47,6 +47,7 @@ export interface ToolContext {
     fields: { placeholder: string; initial?: string }[],
     onCommit: (raws: string[]) => boolean | undefined,
     onCancel: () => void,
+    onChange?: (raws: string[]) => void,
   ): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;

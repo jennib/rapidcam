@@ -1585,6 +1585,9 @@ button.cbtn.solve {
   text-align: center;
   outline: none;
 }
+.dim-multi-input:focus {
+  background: var(--panel);
+}
 
 .dim-multi-separator {
   width: 1px;

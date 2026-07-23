@@ -236,8 +236,8 @@ export class App {
         openValueEditor: (worldPos, placeholder, onCommit, onCancel, onTab) => {
           setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel, onTab), 0);
         },
-        openMultiValueEditor: (worldPos, fields, onCommit, onCancel) => {
-          setTimeout(() => this.openMultiValueEditor(worldPos, fields, onCommit, onCancel), 0);
+        openMultiValueEditor: (worldPos, fields, onCommit, onCancel, onChange) => {
+          setTimeout(() => this.openMultiValueEditor(worldPos, fields, onCommit, onCancel, onChange), 0);
         },
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
@@ -1100,6 +1100,7 @@ export class App {
     fields: { placeholder: string; initial?: string }[],
     onCommit: (raws: string[]) => boolean | undefined,
     onCancel: () => void,
+    onChange?: (raws: string[]) => void,
   ): void {
     this.closeValueEditor();
     const pos = this.view.worldToScreen(worldPos);
@@ -1145,6 +1146,12 @@ export class App {
         e.stopPropagation();
       });
       
+      input.addEventListener("input", () => {
+        if (onChange) {
+          onChange(inputs.map(i => i.value));
+        }
+      });
+      
       // Blur closes if focus moves outside the container
       input.addEventListener("blur", () => {
         setTimeout(() => {
@@ -1152,6 +1159,10 @@ export class App {
             this.closeValueEditor();
           }
         }, 0);
+      });
+      
+      input.addEventListener("focus", () => {
+        input.select();
       });
 
       container.appendChild(input);
