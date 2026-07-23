@@ -34,7 +34,10 @@ import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { chainLinesIntoPolygons, collectClosedLoops } from "./loops";
+import {
+  chainOpenCurvesIntoLoops,
+  collectClosedLoops,
+} from "./loops";
 import { expandOpPatternTargets } from "./patternExpand";
 import { resolveRegion } from "./regions";
 import {
@@ -153,28 +156,28 @@ function rasterizeOp(
         islands.push(e.points);
       }
     }
-    // Also chain any line segments in the island set into closed polygons.
-    const islandLineEnts = [...islandSet]
+    // Also chain any open curves in the island set into closed polygons.
+    const islandCurveEnts = [...islandSet]
       .map((id) => entityMap.get(id))
-      .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    for (const { verts } of chainLinesIntoPolygons(islandLineEnts).polygons) islands.push(verts);
+      .filter((e): e is Entity => !!e && !(e as Entity).isConstruction);
+    for (const { verts } of chainOpenCurvesIntoLoops(islandCurveEnts).loops) islands.push(verts);
   }
 
-  // Chain any selected line segments into closed polygons for profile/pocket ops.
+  // Chain any selected open curves into closed polygons for profile/pocket ops.
   if (op.type === "profile" || op.type === "pocket") {
-    const lineEnts = op.entityIds
+    const curveEnts = op.entityIds
       .filter((id) => !islandSet.has(id))
       .map((id) => entityMap.get(id))
-      .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-    if (lineEnts.length > 0) {
-      for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) {
+      .filter((e): e is Entity => !!e && !(e as Entity).isConstruction);
+    if (curveEnts.length > 0) {
+      const { loops } = chainOpenCurvesIntoLoops(curveEnts);
+      for (const { verts, ids } of loops) {
         if (op.type === "pocket")
           rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else rasProfilePolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
+        
+        for (const id of ids) lineSegIds.add(id);
       }
-      lineEnts.forEach((e) => {
-        lineSegIds.add(e.id);
-      });
     }
   }
 
@@ -185,12 +188,15 @@ function rasterizeOp(
 
     // Expand TextEntity to glyph contours and re-dispatch
     if (ent instanceof TextEntity) {
+      if (op.type === "pocket") {
+        for (const region of groupContoursIntoRegions(textToContours(ent).map((c) => c.points)))
+          rasPocketPolygon(region.outer, [...region.holes, ...islands], op, data, gridW, gridH, stockT, stamp, stepR);
+        continue;
+      }
       const contours = textToContours(ent);
       for (const c of contours) {
         if (op.type === "engrave")
           sweepPolyline(op, data, gridW, gridH, stockT, c.points, c.closed, stamp, stepR);
-        else if (op.type === "pocket" && c.closed)
-          rasPocketPolygon(c.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else if (op.type === "profile" && c.closed)
           rasProfilePolygon(c.points, op, data, gridW, gridH, stockT, stamp, stepR);
       }
@@ -352,13 +358,14 @@ function rasChamfer(
   };
 
   const lineSegIds = new Set<string>();
-  const lineEnts = op.entityIds
+  const curveEnts = op.entityIds
     .map((id) => entityMap.get(id))
-    .filter((e): e is LineEntity => e instanceof LineEntity && !e.isConstruction);
-  for (const { verts } of chainLinesIntoPolygons(lineEnts).polygons) closed(verts);
-  lineEnts.forEach((e) => {
-    lineSegIds.add(e.id);
-  });
+    .filter((e): e is Entity => !!e && !(e as Entity).isConstruction);
+  const { loops } = chainOpenCurvesIntoLoops(curveEnts);
+  for (const { verts, ids } of loops) {
+    closed(verts);
+    for (const id of ids) lineSegIds.add(id);
+  }
 
   for (const id of op.entityIds) {
     if (lineSegIds.has(id)) continue;

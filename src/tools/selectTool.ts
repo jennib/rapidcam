@@ -612,11 +612,17 @@ export class SelectTool implements Tool {
       const currentEnt = ctx.doc.entities.find((e) => e.id === currentId);
       if (!currentEnt) continue;
 
-      const currentPts = currentEnt.dofPoints().map((p) => p.pos);
+      const currentPts = currentEnt
+        .snapPoints()
+        .filter((p) => p.kind === "endpoint")
+        .map((p) => p.pos);
 
       for (const other of ctx.doc.entities) {
         if (toSelect.has(other.id)) continue;
-        const otherPts = other.dofPoints().map((p) => p.pos);
+        const otherPts = other
+          .snapPoints()
+          .filter((p) => p.kind === "endpoint")
+          .map((p) => p.pos);
 
         let connected = false;
         for (const p1 of currentPts) {

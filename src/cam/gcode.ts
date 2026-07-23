@@ -1461,11 +1461,13 @@ function toolpathBody(
         lines.push(`; NOTE: text "${ent.text}" — font not loaded or no glyphs`);
         continue;
       }
-      // V-carve needs the glyphs grouped into solids-with-counters so the holes
+      // V-carve and pocket need the glyphs grouped into solids-with-counters so the holes
       // (e.g. the centre of an "O") are carved as holes, not filled.
-      if (op.type === "vcarve") {
-        for (const region of groupContoursIntoRegions(contours.map((c) => c.points)))
-          lines.push(...vcarveRegionGcode(region, op, ox, oy, zOff));
+      if (op.type === "vcarve" || op.type === "pocket") {
+        for (const region of groupContoursIntoRegions(contours.map((c) => c.points))) {
+          if (op.type === "vcarve") lines.push(...vcarveRegionGcode(region, op, ox, oy, zOff));
+          else lines.push(...pocketPolygon(region.outer, [...region.holes, ...islands], op, ox, oy, zOff));
+        }
         continue;
       }
       for (const c of contours) {
@@ -1473,8 +1475,6 @@ function toolpathBody(
           lines.push(...engravePoints(c.points, c.closed, op, ox, oy, zOff));
         else if (op.type === "chamfer" && c.closed)
           lines.push(...chamferPolygon(c.points, op, ox, oy, zOff));
-        else if (op.type === "pocket" && c.closed)
-          lines.push(...pocketPolygon(c.points, islands, op, ox, oy, zOff));
         else if (op.type === "profile" && c.closed)
           lines.push(...profilePolygon(c.points, op, ox, oy, zOff, doc.stockThickness));
       }

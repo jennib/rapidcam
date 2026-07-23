@@ -7,8 +7,7 @@ import {
   TextEntity,
   RasterImageEntity,
 } from "../model/entities";
-import { textToContours } from "../cam/textOutlines";
-import { signedArea } from "../cam/offset";
+
 import type { Vec2 } from "../core/vec2";
 import { formatFeed, formatLength, toMM } from "../core/units";
 import {
@@ -58,7 +57,6 @@ import {
   checkOpSelection,
   describeEntity,
   isValidFor,
-  seedsFromEntityIds,
   legacyPocketSeeds,
   refsFromSeeds,
   seedsFromRegions,
@@ -1353,7 +1351,7 @@ export class CamBar {
     // geometry section
     const geom = this.buildGeometrySection(state);
     body.appendChild(geom.root);
-    const { renderEntities, ensurePocketSeeds, startPickMode, stopPickMode, getPickActive } = geom;
+    const { renderEntities, startPickMode, stopPickMode, getPickActive } = geom;
     geomCleanup = geom.cleanup;
 
     // "Follow pattern" opt-out — shown only when the op's geometry belongs to a
@@ -1440,7 +1438,6 @@ export class CamBar {
       updateLaserVisibility();
       updateReliefVisibility();
       if (state.combo === "pocket") {
-        ensurePocketSeeds();
         startPickMode(); // pocket picking is canvas-driven — make it live immediately
       }
       renderEntities();
@@ -1470,7 +1467,6 @@ export class CamBar {
     updateLaserVisibility();
     updateReliefVisibility();
     if (state.combo === "pocket") {
-      ensurePocketSeeds();
       startPickMode();
     }
     renderEntities();
@@ -1487,12 +1483,7 @@ export class CamBar {
     applyBtn.textContent = "Apply";
     applyBtn.addEventListener("click", () => {
       let ids = [...state.entityIds];
-      // Pocket must be region-picked. V-carve may be region-picked OR driven by
-      // selected entities (text/closed shapes); regions win when both exist.
-      if (state.combo === "pocket" && state.regionSeeds.length === 0) {
-        alert("Pick at least one enclosed area.");
-        return;
-      }
+
       const regionBased =
         (state.combo === "pocket" || state.combo === "vcarve") && state.regionSeeds.length > 0;
       if (regionBased) {
@@ -2923,7 +2914,7 @@ export class CamBar {
   private buildGeometrySection(state: OpState): {
     root: HTMLElement;
     renderEntities: () => void;
-    ensurePocketSeeds: () => void;
+
     startPickMode: () => void;
     stopPickMode: () => void;
     getPickActive: () => boolean;
@@ -2951,7 +2942,10 @@ export class CamBar {
     fromSelBtn.title = "Add whatever is currently selected on the canvas";
     fromSelBtn.textContent = "+ From Selection";
     fromSelBtn.addEventListener("click", () => {
-      if (state.combo === "pocket") {
+      if (
+        (state.combo === "pocket" || state.combo === "vcarve") &&
+        state.regionSeeds.length > 0
+      ) {
         const docLoops = collectClosedLoops(this.doc.entities);
         let added = 0;
 
@@ -2968,28 +2962,7 @@ export class CamBar {
           return true;
         };
 
-        // Text entities: seed each glyph's stroke area using winding direction to
-        // separate outer contours from counter holes (e.g. the hole inside 'O').
-        // Outer contours are CCW in Y-up (positive signed area); holes are CW (negative).
-        for (const e of this.doc.entities) {
-          if (!e.selected || e.isConstruction || !(e instanceof TextEntity)) continue;
-          const contours = textToContours(e).filter((c) => c.closed && c.points.length >= 3);
-          const outers = contours.filter((c) => signedArea(c.points) > 0);
-          const inners = contours.filter((c) => signedArea(c.points) <= 0);
-          for (const outer of outers) {
-            const holes = inners
-              .filter((inn) => pointInPolygon(inn.points[0], outer.points))
-              .map((inn) => inn.points);
-            const p = interiorPoint(outer.points, holes);
-            if (!p) continue;
-            if (addSeed(p, regionAtPoint(p, docLoops))) added++;
-          }
-        }
-
-        // Non-text entities: existing region-seed behaviour.
-        const selLoops = collectClosedLoops(
-          this.doc.entities.filter((e) => e.selected && !(e instanceof TextEntity)),
-        );
+        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected));
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
@@ -3006,7 +2979,10 @@ export class CamBar {
           added++;
         }
       }
-      if (added > 0) renderEntities();
+      if (added > 0) {
+        if (pickModeActive) stopPickMode();
+        renderEntities();
+      }
     });
 
     const clearBtn = document.createElement("button");
@@ -3054,7 +3030,10 @@ export class CamBar {
       pickBtn.classList.add("active");
       pickHint.style.display = "block";
 
-      if (state.combo === "pocket" || state.combo === "vcarve") {
+      if (
+        (state.combo === "pocket" || state.combo === "vcarve") &&
+        (state.regionSeeds.length > 0 || state.entityIds.size === 0)
+      ) {
         // Flood-fill region pick: hover previews the enclosed face under the
         // cursor (any face of the planar arrangement, including those formed
         // by overlapping shapes); click toggles it.
@@ -3198,12 +3177,12 @@ export class CamBar {
     };
 
     renderEntities = () => {
-      // Pocket is always region-based. V-carve supports BOTH: show the region
+      // Pocket and V-carve support BOTH: show the region
       // list once areas are picked (or while flood-fill picking), else fall
-      // through to the entity list so text/closed shapes can be selected.
+      // through to the entity list so boundaries/text can be explicitly selected.
       if (
-        state.combo === "pocket" ||
-        (state.combo === "vcarve" && (state.regionSeeds.length > 0 || pickModeActive))
+        (state.combo === "pocket" || state.combo === "vcarve") &&
+        (state.regionSeeds.length > 0 || pickModeActive)
       ) {
         renderRegionList();
         return;
@@ -3481,17 +3460,9 @@ export class CamBar {
       renderSection("boundary", list);
     };
 
-    // Seed regions from any closed loops already assigned/selected, so the
-    // "select shapes, then Add Toolpath" workflow shades immediately.
-    const ensurePocketSeeds = () => {
-      if (state.regionSeeds.length > 0 || state.entityIds.size === 0) return;
-      state.regionSeeds.push(...seedsFromEntityIds(this.doc, state.entityIds, state.islandIds));
-    };
-
     return {
       root: geoSec,
       renderEntities,
-      ensurePocketSeeds,
       startPickMode,
       stopPickMode,
       getPickActive: () => pickModeActive,
