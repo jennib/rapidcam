@@ -30,6 +30,8 @@ export class RectTool implements Tool {
 
   private corner: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
+  private typedW: number | null = null;
+  private typedH: number | null = null;
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
@@ -42,17 +44,34 @@ export class RectTool implements Tool {
           { placeholder: `H (${ctx.doc.displayUnit})` },
         ],
         (raws) => this.commitByText(raws, ctx),
-        () => this.cancel(ctx)
+        () => this.cancel(ctx),
+        (raws) => {
+          const w = parseLength(raws[0].trim(), ctx.doc.displayUnit);
+          const h = parseLength(raws[1].trim(), ctx.doc.displayUnit);
+          this.typedW = w != null && w > 0 ? w : null;
+          this.typedH = h != null && h > 0 ? h : null;
+          ctx.requestRender();
+        }
       );
     } else {
       ctx.closeValueEditor();
-      const w = Math.abs(e.world.x - this.corner.x);
-      const h = Math.abs(e.world.y - this.corner.y);
+      
+      const signX = this.cursor.x < this.corner.x ? -1 : 1;
+      const signY = this.cursor.y < this.corner.y ? -1 : 1;
+      const effCursor = {
+        x: this.typedW !== null ? this.corner.x + this.typedW * signX : e.world.x,
+        y: this.typedH !== null ? this.corner.y + this.typedH * signY : e.world.y,
+      };
+
+      const w = Math.abs(effCursor.x - this.corner.x);
+      const h = Math.abs(effCursor.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
-        this.commit(this.corner, e.world, ctx);
+        this.commit(this.corner, effCursor, ctx);
       }
       this.corner = null;
+      this.typedW = null;
+      this.typedH = null;
     }
   }
 
@@ -63,9 +82,17 @@ export class RectTool implements Tool {
 
   getOverlay(): ToolOverlay {
     if (!this.corner) return { previews: [], selectionRect: null };
+
+    const signX = this.cursor.x < this.corner.x ? -1 : 1;
+    const signY = this.cursor.y < this.corner.y ? -1 : 1;
+    const effCursor = {
+      x: this.typedW !== null ? this.corner.x + this.typedW * signX : this.cursor.x,
+      y: this.typedH !== null ? this.corner.y + this.typedH * signY : this.cursor.y,
+    };
+
     return {
       previews: [
-        { kind: "rect", p0: this.corner, p1: this.cursor },
+        { kind: "rect", p0: this.corner, p1: effCursor },
         { kind: "point", pos: this.corner },
       ],
       selectionRect: null,
@@ -79,6 +106,8 @@ export class RectTool implements Tool {
   cancel(ctx: ToolContext): void {
     ctx.closeValueEditor();
     this.corner = null;
+    this.typedW = null;
+    this.typedH = null;
     ctx.requestRender();
   }
 
@@ -108,6 +137,10 @@ export class RectTool implements Tool {
 
     ctx.pushHistory();
     this.commit(this.corner!, c1, ctx);
+    
+    this.corner = null;
+    this.typedW = null;
+    this.typedH = null;
     return true;
   }
 
