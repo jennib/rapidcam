@@ -423,6 +423,9 @@ export class App {
     document.getElementById("floating-3d-btn")?.addEventListener("click", () => {
       this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider);
     });
+    document.getElementById("floating-3d-close-btn")?.addEventListener("click", () => {
+      this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider);
+    });
 
     // Load bundled fonts in the background; re-SOLVE when they arrive. A text
     // entity's centre/box points derive from real ink extents, so any centring or
@@ -499,12 +502,14 @@ export class App {
       this.ensureSideToggle(webglHost);
       this.updateSideToggle();
       this.schedulePreviewUpdate();
+      document.getElementById("floating-3d-btn")?.classList.add("hidden");
     } else {
       webglHost.classList.add("hidden");
       divider.classList.add("hidden");
       canvasHost.style.flex = "";
       canvasHost.style.width = "";
       this.updateSideToggle();
+      document.getElementById("floating-3d-btn")?.classList.remove("hidden");
     }
   }
 

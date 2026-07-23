@@ -996,7 +996,7 @@ button.cbtn.solve {
   cursor: crosshair;
 }
 
-#floating-3d-btn {
+.floating-view-btn {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -1012,9 +1012,12 @@ button.cbtn.solve {
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   transition: background 0.15s, border-color 0.15s;
 }
-#floating-3d-btn:hover {
+.floating-view-btn:hover {
   background: var(--accent-dim);
   border-color: var(--accent);
+}
+.floating-view-btn.hidden {
+  display: none;
 }
 
 /* ---------- File menu dropdown ---------- */
