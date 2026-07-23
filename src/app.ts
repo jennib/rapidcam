@@ -420,6 +420,10 @@ export class App {
     this.handleResize();
     this.initialFit();
 
+    document.getElementById("floating-3d-btn")?.addEventListener("click", () => {
+      this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider);
+    });
+
     // Load bundled fonts in the background; re-SOLVE when they arrive. A text
     // entity's centre/box points derive from real ink extents, so any centring or
     // dimension constraint solved against the pre-load 0.6-em estimate must be

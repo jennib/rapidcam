@@ -996,6 +996,27 @@ button.cbtn.solve {
   cursor: crosshair;
 }
 
+#floating-3d-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 6px 12px;
+  background: var(--bg-hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 10;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: background 0.15s, border-color 0.15s;
+}
+#floating-3d-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
 /* ---------- File menu dropdown ---------- */
 .fmenu-dropdown {
   display: none;
