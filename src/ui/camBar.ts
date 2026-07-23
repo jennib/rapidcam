@@ -40,7 +40,7 @@ import { formatExportName, timeStamp } from "../cam/exportName";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
-import { getCustomGcode, getMachineHasCoolant, getGsenderUrl, getNcsenderUrl, getSenderApp } from "../core/prefs";
+import { getCustomGcode, getMachineHasCoolant, getGsenderUrl, getNcsenderUrl } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -1883,14 +1883,9 @@ export class CamBar {
       alert("Add at least one toolpath first.");
       return;
     }
-    const app = getSenderApp();
-    if (app === "ask") {
-      showSenderDialog((selectedApp) => {
-        void this.doSendToMachine(selectedApp);
-      });
-      return;
-    }
-    await this.doSendToMachine(app);
+    showSenderDialog((selectedApp) => {
+      void this.doSendToMachine(selectedApp);
+    });
   }
 
   private async doSendToMachine(app: "gSender" | "ncSender"): Promise<void> {
