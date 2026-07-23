@@ -976,7 +976,12 @@ export class WebGLPreview {
     ];
 
     const V = mat4();
-    lookAt(V, eye, target, [0, 1, 0]);
+    const up = [
+      -Math.sin(this.pitch) * Math.sin(this.yaw),
+      Math.cos(this.pitch),
+      -Math.sin(this.pitch) * Math.cos(this.yaw)
+    ];
+    lookAt(V, eye, target, up);
     const aspect = this.canvas.width / this.canvas.height;
     const P = mat4();
     perspective(P, 0.6, aspect, 0.1, diag * 10);
@@ -1055,11 +1060,13 @@ export class WebGLPreview {
         this.yaw -= dx * 0.006;
         // Flat stock is machined from the top, so orbit stays in the upper
         // hemisphere. A cylinder is cut all the way around, so let the camera go
-        // below the horizon to inspect the underside — stopping just shy of ±90°
-        // to avoid the look-straight-down gimbal (up-vector degeneracy).
-        const limit = Math.PI / 2 - 0.05;
-        const minPitch = this.rotary ? -limit : 0.08;
-        this.pitch = Math.max(minPitch, Math.min(limit, this.pitch + dy * 0.006));
+        // completely around it.
+        if (this.rotary) {
+          this.pitch += dy * 0.006;
+        } else {
+          const limit = Math.PI / 2 - 0.05;
+          this.pitch = Math.max(0.08, Math.min(limit, this.pitch + dy * 0.006));
+        }
       } else {
         // Pan: translate target in camera right/up directions.
         // right = (cos(yaw), 0, -sin(yaw))
@@ -1122,7 +1129,12 @@ export class WebGLPreview {
         const cssW = this.host.clientWidth || 1;
         const cssH = this.host.clientHeight || 1;
         const V = mat4();
-        lookAt(V, eye, target, [0, 1, 0]);
+        const up = [
+          -Math.sin(this.pitch) * Math.sin(this.yaw),
+          Math.cos(this.pitch),
+          -Math.sin(this.pitch) * Math.cos(this.yaw)
+        ];
+        lookAt(V, eye, target, up);
         const P = mat4();
         perspective(P, 0.6, cssW / cssH, 0.1, diag * 10);
         const MVP = mat4();
