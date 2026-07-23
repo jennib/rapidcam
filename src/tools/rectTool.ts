@@ -18,6 +18,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
+import { parseLength } from "../core/units";
 import { RectEntity } from "../model/entities";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -34,7 +35,17 @@ export class RectTool implements Tool {
     if (e.button !== 0) return;
     if (!this.corner) {
       this.corner = e.world;
+      ctx.openMultiValueEditor(
+        e.world,
+        [
+          { placeholder: `W (${ctx.doc.displayUnit})` },
+          { placeholder: `H (${ctx.doc.displayUnit})` },
+        ],
+        (raws) => this.commitByText(raws, ctx),
+        () => this.cancel(ctx)
+      );
     } else {
+      ctx.closeValueEditor();
       const w = Math.abs(e.world.x - this.corner.x);
       const h = Math.abs(e.world.y - this.corner.y);
       if (w > 1e-6 && h > 1e-6) {
@@ -66,8 +77,38 @@ export class RectTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
+    ctx.closeValueEditor();
     this.corner = null;
     ctx.requestRender();
+  }
+
+  private commitByText(raws: string[], ctx: ToolContext): boolean {
+    if (raws.length !== 2) return false;
+    const wStr = raws[0].trim();
+    const hStr = raws[1].trim();
+
+    if (!wStr || !hStr) return false;
+
+    const w = parseLength(wStr, ctx.doc.displayUnit);
+    const h = parseLength(hStr, ctx.doc.displayUnit);
+
+    if (w == null || h == null || w <= 1e-6 || h <= 1e-6) return false;
+
+    let signX = 1;
+    let signY = 1;
+    if (this.corner) {
+      if (this.cursor.x < this.corner.x) signX = -1;
+      if (this.cursor.y < this.corner.y) signY = -1;
+    }
+
+    const c1: Vec2 = {
+      x: this.corner!.x + w * signX,
+      y: this.corner!.y + h * signY,
+    };
+
+    ctx.pushHistory();
+    this.commit(this.corner!, c1, ctx);
+    return true;
   }
 
   private commit(c0: Vec2, c1: Vec2, ctx: ToolContext): void {
