@@ -41,6 +41,13 @@ export interface ToolContext {
     onCancel: () => void,
     onTab?: () => void,
   ): void;
+  /** Show a floating multi-input container near `worldPos`. Pressing Enter commits all fields. */
+  openMultiValueEditor(
+    worldPos: Vec2,
+    fields: { placeholder: string; initial?: string }[],
+    onCommit: (raws: string[]) => boolean | undefined,
+    onCancel: () => void,
+  ): void;
   /** Close any open floating value editor without committing. */
   closeValueEditor(): void;
 }

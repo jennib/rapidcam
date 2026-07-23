@@ -171,8 +171,7 @@ export class App {
   private spaceDown = false;
 
   private dimEditor = new DimEditor();
-  // generic floating value editor (e.g. arc length)
-  private valueEditor: HTMLInputElement | null = null;
+  private valueEditor: HTMLElement | null = null;
 
   private webglPreview: WebGLPreview | null = null;
   private preview3DVisible = false;
@@ -234,8 +233,11 @@ export class App {
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.project.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
-        openValueEditor: (worldPos, placeholder, onCommit, onCancel) => {
-          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel), 0);
+        openValueEditor: (worldPos, placeholder, onCommit, onCancel, onTab) => {
+          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel, onTab), 0);
+        },
+        openMultiValueEditor: (worldPos, fields, onCommit, onCancel) => {
+          setTimeout(() => this.openMultiValueEditor(worldPos, fields, onCommit, onCancel), 0);
         },
         closeValueEditor: () => this.closeValueEditor(),
         currentDof: () => this.currentDof(),
@@ -1090,6 +1092,85 @@ export class App {
       const el = this.valueEditor;
       this.valueEditor = null;
       el.remove();
+    }
+  }
+
+  private openMultiValueEditor(
+    worldPos: Vec2,
+    fields: { placeholder: string; initial?: string }[],
+    onCommit: (raws: string[]) => boolean | undefined,
+    onCancel: () => void,
+  ): void {
+    this.closeValueEditor();
+    const pos = this.view.worldToScreen(worldPos);
+    
+    const container = document.createElement("div");
+    container.className = "dim-multi-edit";
+    container.style.left = `${pos.x - 36}px`;
+    container.style.top = `${pos.y + 14}px`;
+
+    const inputs: HTMLInputElement[] = [];
+    
+    const tryCommit = () => {
+      const raws = inputs.map(i => i.value);
+      const ok = onCommit(raws);
+      if (ok === false) {
+        container.style.borderColor = "#e05555";
+        setTimeout(() => {
+          container.style.borderColor = "";
+        }, 600);
+      } else {
+        this.closeValueEditor();
+      }
+    };
+
+    fields.forEach((field, idx) => {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "dim-multi-input";
+      input.placeholder = field.placeholder;
+      if (field.initial !== undefined) {
+        input.value = field.initial;
+      }
+      
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          tryCommit();
+          e.preventDefault();
+        } else if (e.key === "Escape") {
+          this.closeValueEditor();
+          onCancel();
+          e.preventDefault();
+        }
+        e.stopPropagation();
+      });
+      
+      // Blur closes if focus moves outside the container
+      input.addEventListener("blur", () => {
+        setTimeout(() => {
+          if (this.valueEditor === container && !container.contains(document.activeElement)) {
+            this.closeValueEditor();
+          }
+        }, 0);
+      });
+
+      container.appendChild(input);
+      inputs.push(input);
+      
+      // Add a subtle separator between inputs
+      if (idx < fields.length - 1) {
+        const sep = document.createElement("div");
+        sep.className = "dim-multi-separator";
+        container.appendChild(sep);
+      }
+    });
+
+    this.canvas.parentElement!.appendChild(container);
+    this.valueEditor = container;
+    
+    if (inputs.length > 0) {
+      inputs[0].focus();
+      inputs[0].select();
     }
   }
 

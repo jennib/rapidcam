@@ -28,10 +28,13 @@ export class PolygonTool implements Tool {
     if (this.phase === "center") {
       this.center = e.world;
       this.phase = "radius";
-      ctx.openValueEditor(
+      ctx.openMultiValueEditor(
         e.world,
-        `sides × Ø  e.g. 6×50 (${ctx.doc.displayUnit})`,
-        (raw) => this.commitByText(raw, ctx),
+        [
+          { placeholder: "Sides", initial: this.sides.toString() },
+          { placeholder: `Ø (${ctx.doc.displayUnit})` }
+        ],
+        (raws) => this.commitByText(raws, ctx),
         () => this.cancel(ctx),
       );
     } else {
@@ -90,24 +93,22 @@ export class PolygonTool implements Tool {
   }
 
   /**
-   * Parse the value editor. Accepts "N × D" (sides and across-flats diameter),
-   * or just "D" to keep the current side count. Separators: × x or comma.
+   * Parse the multi-value editor. Receives [sidesStr, diaStr].
    * Diameter is across-flats (inscribed-circle Ø), the machinist convention, so
    * the circumradius is (D/2) / cos(π/n).
    */
-  private commitByText(raw: string, ctx: ToolContext): boolean {
-    const parts = raw
-      .split(/[x×,]/i)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    if (parts.length === 0) return false;
+  private commitByText(raws: string[], ctx: ToolContext): boolean {
+    if (raws.length !== 2) return false;
 
-    let diaStr = parts[0];
-    if (parts.length >= 2) {
-      const n = parseInt(parts[0], 10);
+    const sidesStr = raws[0].trim();
+    const diaStr = raws[1].trim();
+
+    if (!diaStr) return false;
+
+    if (sidesStr) {
+      const n = parseInt(sidesStr, 10);
       if (!Number.isFinite(n) || n < 3 || n > 64) return false;
       this.sides = n;
-      diaStr = parts[1];
     }
 
     const d = parseLength(diaStr, ctx.doc.displayUnit);

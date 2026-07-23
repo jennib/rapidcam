@@ -35,6 +35,7 @@ function makeCtx(doc: CADDocument): { ctx: ToolContext; notified: string[] } {
     openDimEditor() {},
     currentDof: () => 4,
     openValueEditor() {},
+    openMultiValueEditor() {},
     closeValueEditor() {},
     notify(msg) {
       notified.push(msg);
