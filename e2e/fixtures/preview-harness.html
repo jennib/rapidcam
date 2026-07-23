@@ -82,6 +82,10 @@
       try {
         const p = new WebGLPreview(host);
         p.render({ data, gridW, gridH, stockW, stockH, stockT }, rotary);
+        if (opts.pitch !== undefined) {
+          p.pitch = opts.pitch;
+          p.draw();
+        }
         // Grab the frame *synchronously*, in the same task as the draw, so the
         // WebGL drawing buffer is still intact (the context has no
         // preserveDrawingBuffer, so it is cleared once we yield). Screenshotting

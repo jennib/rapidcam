@@ -40,11 +40,6 @@ uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
 uniform vec2 uStockXZ;    // stock width (X) and depth (Z) in mm
 
-uniform vec3 uEye;
-uniform vec3 uKeyDir;
-uniform vec3 uFillDir;
-uniform vec3 uCameraUp;
-
 in vec2 vUV;
 in float vHeight;
 in vec3 vWorldPos;
@@ -125,13 +120,15 @@ void main() {
   albedo *= 0.86 + 0.22 * woodTone(vec2(wx, wz));
 
   // --- Lighting: hemisphere ambient + key + fill + a soft, tight sheen ---
-  float key  = max(dot(normal, uKeyDir),  0.0);
-  float fill = max(dot(normal, uFillDir), 0.0);
+  vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
+  vec3 fillDir = normalize(vec3(-0.7, 0.60, -0.40));
+  float key  = max(dot(normal, keyDir),  0.0);
+  float fill = max(dot(normal, fillDir), 0.0);
   // Sky above is brighter than the ground bounce below.
-  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * dot(normal, uCameraUp));
+  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * normal.y);
 
-  vec3 viewDir = normalize(uEye - vWorldPos);
-  vec3 halfV   = normalize(uKeyDir + viewDir);
+  vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
+  vec3 halfV   = normalize(keyDir + viewDir);
   float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
 
   float diffuse = ambient + key * 0.85 + fill * 0.25;
@@ -1037,46 +1034,32 @@ export class WebGLPreview {
       set("uStockXZ", this.stockW, this.stockH);
     }
     
-    // Upload camera-relative lighting uniforms
-    gl.uniform3f(gl.getUniformLocation(surf, "uEye"), eye[0], eye[1], eye[2]);
-    gl.uniform3f(gl.getUniformLocation(surf, "uCameraUp"), up[0], up[1], up[2]);
-    
-    // Key light: slightly above and right of camera
-    // We compute this by extracting the right vector from the view matrix.
-    // V[0], V[4], V[8] is the camera's Right vector.
-    // We'll define view direction as from eye to target.
-    const viewDir = [
-      target[0] - eye[0],
-      target[1] - eye[1],
-      target[2] - eye[2]
-    ];
-    const len = Math.hypot(viewDir[0], viewDir[1], viewDir[2]);
-    const fwd = [viewDir[0]/len, viewDir[1]/len, viewDir[2]/len];
-    
-    const right = [V[0], V[4], V[8]];
-    
-    // Let's create a key light direction relative to the camera:
-    // mostly forward (-fwd? No, light points AT the object, so same as fwd)
-    // plus some right and some up.
-    // In original: keyDir = normalize(0.5, 1.15, 0.75) where 0.75 was +Z (towards viewer)
-    // Actually, light direction points *towards* the light source in the shader dot products.
-    // So keyDir points back from the object to the light.
-    // Camera is at `eye`, looking at `target`. View vector to eye is `-fwd`.
-    // We want the light to be slightly right of the eye, and slightly above the eye.
-    // So lightDir = normalize( -fwd*0.75 + right*0.5 + up*1.15 )
-    const kx = -fwd[0] * 0.75 + right[0] * 0.5 + up[0] * 1.15;
-    const ky = -fwd[1] * 0.75 + right[1] * 0.5 + up[1] * 1.15;
-    const kz = -fwd[2] * 0.75 + right[2] * 0.5 + up[2] * 1.15;
-    const kLen = Math.hypot(kx, ky, kz);
-    gl.uniform3f(gl.getUniformLocation(surf, "uKeyDir"), kx/kLen, ky/kLen, kz/kLen);
-    
-    // Fill light: opposite side, mostly left and slightly down
-    // original: (-0.7, 0.60, -0.40)
-    const fx = -fwd[0] * -0.40 + right[0] * -0.7 + up[0] * 0.60;
-    const fy = -fwd[1] * -0.40 + right[1] * -0.7 + up[1] * 0.60;
-    const fz = -fwd[2] * -0.40 + right[2] * -0.7 + up[2] * 0.60;
-    const fLen = Math.hypot(fx, fy, fz);
-    gl.uniform3f(gl.getUniformLocation(surf, "uFillDir"), fx/fLen, fy/fLen, fz/fLen);
+    // Upload camera-relative lighting uniforms (only used by cylProgram now)
+    if (this.rotary) {
+      gl.uniform3f(gl.getUniformLocation(surf, "uEye"), eye[0], eye[1], eye[2]);
+      gl.uniform3f(gl.getUniformLocation(surf, "uCameraUp"), up[0], up[1], up[2]);
+      
+      const viewDir = [
+        target[0] - eye[0],
+        target[1] - eye[1],
+        target[2] - eye[2]
+      ];
+      const len = Math.hypot(viewDir[0], viewDir[1], viewDir[2]);
+      const fwd = [viewDir[0]/len, viewDir[1]/len, viewDir[2]/len];
+      const right = [V[0], V[4], V[8]];
+      
+      const kx = -fwd[0] * 0.75 + right[0] * 0.5 + up[0] * 1.15;
+      const ky = -fwd[1] * 0.75 + right[1] * 0.5 + up[1] * 1.15;
+      const kz = -fwd[2] * 0.75 + right[2] * 0.5 + up[2] * 1.15;
+      const kLen = Math.hypot(kx, ky, kz);
+      gl.uniform3f(gl.getUniformLocation(surf, "uKeyDir"), kx/kLen, ky/kLen, kz/kLen);
+      
+      const fx = -fwd[0] * -0.40 + right[0] * -0.7 + up[0] * 0.60;
+      const fy = -fwd[1] * -0.40 + right[1] * -0.7 + up[1] * 0.60;
+      const fz = -fwd[2] * -0.40 + right[2] * -0.7 + up[2] * 0.60;
+      const fLen = Math.hypot(fx, fy, fz);
+      gl.uniform3f(gl.getUniformLocation(surf, "uFillDir"), fx/fLen, fy/fLen, fz/fLen);
+    }
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);

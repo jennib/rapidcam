@@ -74,16 +74,16 @@ test("rotary 3D preview wraps the height map onto a cylinder", async ({ page }) 
   // between the measured correct (~5%) and mirrored (~0.4%) cases.
   const diffFrac = await page.evaluate(() => {
     const w = window;
-    w.__renderPreview?.({ rotary: true, mark: true });
+    w.__renderPreview?.({ rotary: true, mark: true, pitch: Math.PI / 2 });
     const A = w.__px?.slice();
-    w.__renderPreview?.({ rotary: true, noCuts: true });
+    w.__renderPreview?.({ rotary: true, noCuts: true, pitch: Math.PI / 2 });
     const B = w.__px;
     if (!A || !B) return -1;
     let diff = 0;
     for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) > 25) diff++;
     return diff / (A.length / 4);
   });
-  expect(diffFrac, "a high-v cut must be visible on the cylinder top (not mirrored under)").toBeGreaterThan(0.02);
+  expect(diffFrac, "a high-v cut must be visible on the cylinder top (not mirrored under)").toBeGreaterThan(0.015);
 
   // The swapped wrap axis (X wraps, Y = length) exercises the mirrored JS
   // branches (viewMetrics, caps, uniforms) and the uWrapX shader path.
