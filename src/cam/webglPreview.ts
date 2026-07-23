@@ -16,6 +16,7 @@ in vec2 aUV;
 
 out vec2 vUV;
 out float vHeight;
+out vec3 vWorldPos;
 
 void main() {
   float h = texture(uHeightMap, aUV).r;
@@ -25,7 +26,9 @@ void main() {
   // UV.y=0 = world Y=0 (canvas bottom) → near side; flip so canvas top = far side,
   // matching the Y-up 2D canvas orientation when viewed from the default camera.
   float wz = (0.5 - aUV.y) * uStockXZ.y;
-  gl_Position = uMVP * vec4(wx, h, wz, 1.0);
+  vec3 pos = vec3(wx, h, wz);
+  vWorldPos = pos;
+  gl_Position = uMVP * vec4(pos, 1.0);
 }`;
 
 const FRAG = `#version 300 es
@@ -37,8 +40,14 @@ uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
 uniform vec2 uStockXZ;    // stock width (X) and depth (Z) in mm
 
+uniform vec3 uEye;
+uniform vec3 uKeyDir;
+uniform vec3 uFillDir;
+uniform vec3 uCameraUp;
+
 in vec2 vUV;
 in float vHeight;
+in vec3 vWorldPos;
 
 out vec4 fragColor;
 
@@ -116,15 +125,13 @@ void main() {
   albedo *= 0.86 + 0.22 * woodTone(vec2(wx, wz));
 
   // --- Lighting: hemisphere ambient + key + fill + a soft, tight sheen ---
-  vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
-  vec3 fillDir = normalize(vec3(-0.7, 0.60, -0.40));
-  float key  = max(dot(normal, keyDir),  0.0);
-  float fill = max(dot(normal, fillDir), 0.0);
+  float key  = max(dot(normal, uKeyDir),  0.0);
+  float fill = max(dot(normal, uFillDir), 0.0);
   // Sky above is brighter than the ground bounce below.
-  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * normal.y);
+  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * dot(normal, uCameraUp));
 
-  vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
-  vec3 halfV   = normalize(keyDir + viewDir);
+  vec3 viewDir = normalize(uEye - vWorldPos);
+  vec3 halfV   = normalize(uKeyDir + viewDir);
   float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
 
   float diffuse = ambient + key * 0.85 + fill * 0.25;
@@ -442,6 +449,7 @@ out vec2  vUV;
 out float vHeight;
 out float vTheta;
 out float vAxial;
+out vec3  vWorldPos;
 
 void main() {
   float h = texture(uHeightMap, aUV).r;
@@ -462,6 +470,7 @@ void main() {
   vTheta = theta;
   vAxial = axial;
   vec3 pos = vec3(axial, radius * cos(theta), radius * sin(theta));
+  vWorldPos = pos;
   gl_Position = uMVP * vec4(pos, 1.0);
 }`;
 
@@ -475,11 +484,16 @@ uniform vec2  uCellMM;     // mm per texel in u and v
 uniform float uStockT;
 uniform float uRadius;
 uniform int   uWrapX;
+uniform vec3  uEye;
+uniform vec3  uKeyDir;
+uniform vec3  uFillDir;
+uniform vec3  uCameraUp;
 
 in vec2  vUV;
 in float vHeight;
 in float vTheta;
 in float vAxial;
+in vec3  vWorldPos;
 
 out vec4 fragColor;
 
@@ -540,13 +554,11 @@ void main() {
   albedo *= 0.86 + 0.22 * woodTone(vec2(vAxial, vTheta * uRadius));
 
   // Lighting: hemisphere ambient + key + fill + soft sheen (same as flat).
-  vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
-  vec3 fillDir = normalize(vec3(-0.7, 0.60, -0.40));
-  float key  = max(dot(normal, keyDir),  0.0);
-  float fill = max(dot(normal, fillDir), 0.0);
-  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * normal.y);
-  vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
-  vec3 halfV   = normalize(keyDir + viewDir);
+  float key  = max(dot(normal, uKeyDir),  0.0);
+  float fill = max(dot(normal, uFillDir), 0.0);
+  float ambient = mix(0.22, 0.42, 0.5 + 0.5 * dot(normal, uCameraUp));
+  vec3 viewDir = normalize(uEye - vWorldPos);
+  vec3 halfV   = normalize(uKeyDir + viewDir);
   float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
   float diffuse = ambient + key * 0.85 + fill * 0.25;
   vec3 col = albedo * diffuse + vec3(sheen);
@@ -676,9 +688,11 @@ export class WebGLPreview {
 
     if (needsMesh) this.buildMesh(hm.gridW, hm.gridH);
     if (solidChanged) {
+      const modeChanged = this.builtMode !== mode;
       if (rotary) this.buildCapsMesh();
       else this.buildBoxMesh();
       this.builtMode = mode;
+      if (modeChanged) this.resetView();
     }
 
     // Upload height data as R32F texture
@@ -703,8 +717,8 @@ export class WebGLPreview {
   }
 
   resetView(): void {
-    this.yaw = DEFAULT_YAW;
-    this.pitch = DEFAULT_PITCH;
+    this.yaw = this.rotary ? 0 : DEFAULT_YAW;
+    this.pitch = this.rotary ? -Math.PI / 2 : DEFAULT_PITCH;
     this.zoom = DEFAULT_ZOOM;
     this.panX = 0;
     this.panY = 0;
@@ -1022,6 +1036,48 @@ export class WebGLPreview {
     } else {
       set("uStockXZ", this.stockW, this.stockH);
     }
+    
+    // Upload camera-relative lighting uniforms
+    gl.uniform3f(gl.getUniformLocation(surf, "uEye"), eye[0], eye[1], eye[2]);
+    gl.uniform3f(gl.getUniformLocation(surf, "uCameraUp"), up[0], up[1], up[2]);
+    
+    // Key light: slightly above and right of camera
+    // We compute this by extracting the right vector from the view matrix.
+    // V[0], V[4], V[8] is the camera's Right vector.
+    // We'll define view direction as from eye to target.
+    const viewDir = [
+      target[0] - eye[0],
+      target[1] - eye[1],
+      target[2] - eye[2]
+    ];
+    const len = Math.hypot(viewDir[0], viewDir[1], viewDir[2]);
+    const fwd = [viewDir[0]/len, viewDir[1]/len, viewDir[2]/len];
+    
+    const right = [V[0], V[4], V[8]];
+    
+    // Let's create a key light direction relative to the camera:
+    // mostly forward (-fwd? No, light points AT the object, so same as fwd)
+    // plus some right and some up.
+    // In original: keyDir = normalize(0.5, 1.15, 0.75) where 0.75 was +Z (towards viewer)
+    // Actually, light direction points *towards* the light source in the shader dot products.
+    // So keyDir points back from the object to the light.
+    // Camera is at `eye`, looking at `target`. View vector to eye is `-fwd`.
+    // We want the light to be slightly right of the eye, and slightly above the eye.
+    // So lightDir = normalize( -fwd*0.75 + right*0.5 + up*1.15 )
+    const kx = -fwd[0] * 0.75 + right[0] * 0.5 + up[0] * 1.15;
+    const ky = -fwd[1] * 0.75 + right[1] * 0.5 + up[1] * 1.15;
+    const kz = -fwd[2] * 0.75 + right[2] * 0.5 + up[2] * 1.15;
+    const kLen = Math.hypot(kx, ky, kz);
+    gl.uniform3f(gl.getUniformLocation(surf, "uKeyDir"), kx/kLen, ky/kLen, kz/kLen);
+    
+    // Fill light: opposite side, mostly left and slightly down
+    // original: (-0.7, 0.60, -0.40)
+    const fx = -fwd[0] * -0.40 + right[0] * -0.7 + up[0] * 0.60;
+    const fy = -fwd[1] * -0.40 + right[1] * -0.7 + up[1] * 0.60;
+    const fz = -fwd[2] * -0.40 + right[2] * -0.7 + up[2] * 0.60;
+    const fLen = Math.hypot(fx, fy, fz);
+    gl.uniform3f(gl.getUniformLocation(surf, "uFillDir"), fx/fLen, fy/fLen, fz/fLen);
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.heightTex);
     gl.uniform1i(gl.getUniformLocation(surf, "uHeightMap"), 0);
