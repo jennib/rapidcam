@@ -241,7 +241,7 @@ export class CamBar {
     const sendBtn = document.createElement("button");
     sendBtn.className = "cam-add-btn";
     sendBtn.style.cssText = "width:100%;margin-top:6px;";
-    sendBtn.textContent = "Send G-code to Sender";
+    sendBtn.textContent = "Send G-code";
     sendBtn.title = "Load these toolpaths into a running sender application";
     sendBtn.addEventListener("click", () => this.sendToMachine());
     this.content.appendChild(sendBtn);
