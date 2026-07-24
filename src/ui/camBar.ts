@@ -43,6 +43,8 @@ import { getCustomGcode, getMachineHasCoolant, getGsenderUrl, getNcsenderUrl } f
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
+import { groupContoursIntoRegions } from "../cam/vcarve";
+import { textToContours } from "../cam/textOutlines";
 import { nextId } from "../model/ids";
 import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
@@ -2962,11 +2964,21 @@ export class CamBar {
           return true;
         };
 
-        const selLoops = collectClosedLoops(this.doc.entities.filter((e) => e.selected));
+        const selectedEnts = this.doc.entities.filter((e) => e.selected);
+        const selLoops = collectClosedLoops(selectedEnts.filter((e) => !(e instanceof TextEntity)));
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
           if (addSeed(p, regionAtPoint(p, docLoops))) added++;
+        }
+
+        const texts = selectedEnts.filter((e): e is TextEntity => e instanceof TextEntity);
+        for (const t of texts) {
+          const regions = groupContoursIntoRegions(textToContours(t).map((c) => c.points));
+          for (const r of regions) {
+            const p = interiorPoint(r.outer, r.holes);
+            if (p && addSeed(p, regionAtPoint(p, docLoops))) added++;
+          }
         }
 
         if (added > 0) renderEntities();
