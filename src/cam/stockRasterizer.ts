@@ -460,7 +460,20 @@ function rasVcarve(
     return;
   }
 
+  const chainedIds = new Set<string>();
+  const curveEnts = op.entityIds
+    .map((id) => entityMap.get(id))
+    .filter((e): e is Entity => !!e && !(e as Entity).isConstruction);
+  if (curveEnts.length > 0) {
+    const { loops } = chainOpenCurvesIntoLoops(curveEnts);
+    for (const { verts, ids } of loops) {
+      carve({ outer: verts, holes: [] });
+      for (const id of ids) chainedIds.add(id);
+    }
+  }
+
   for (const id of op.entityIds) {
+    if (chainedIds.has(id)) continue;
     const ent = entityMap.get(id) as any;
     if (!ent || ent.isConstruction) continue;
     if (ent instanceof TextEntity) {

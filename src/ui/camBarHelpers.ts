@@ -151,6 +151,9 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
         e instanceof TextEntity ||
         e instanceof CircleEntity ||
         e instanceof RectEntity ||
+        e instanceof LineEntity ||
+        e instanceof ArcEntity ||
+        e instanceof BezierEntity ||
         (e instanceof PolylineEntity && e.closed)
       );
     case "relief-rough":

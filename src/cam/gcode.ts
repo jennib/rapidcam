@@ -1415,7 +1415,12 @@ function toolpathBody(
   // are noted; other unchained open curves fall through to the per-entity
   // handling below (e.g. chamfer's open-edge bevel).
   const chainedIds = new Set<string>();
-  if (op.type === "profile" || op.type === "pocket" || op.type === "chamfer") {
+  if (
+    op.type === "profile" ||
+    op.type === "pocket" ||
+    op.type === "chamfer" ||
+    op.type === "vcarve"
+  ) {
     const candidates = op.entityIds
       .filter((id) => !islandSet.has(id))
       .map((id) => entityMap.get(id))
@@ -1424,6 +1429,8 @@ function toolpathBody(
     for (const { verts, ids } of loops) {
       if (op.type === "pocket") lines.push(...pocketPolygon(verts, islands, op, ox, oy, zOff));
       else if (op.type === "chamfer") lines.push(...chamferPolygon(verts, op, ox, oy, zOff));
+      else if (op.type === "vcarve")
+        lines.push(...vcarveRegionGcode({ outer: verts, holes: [] }, op, ox, oy, zOff));
       else lines.push(...profilePolygon(verts, op, ox, oy, zOff, doc.stockThickness));
       for (const id of ids) chainedIds.add(id);
     }
