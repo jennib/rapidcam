@@ -89,8 +89,10 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   // Expand pattern targets so the 3D preview matches the toolpath: an op on
   // patterned geometry renders all instances and follows the count.
-  for (const op of ops)
-    rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT);
+  const isLaser = doc.machineKind === "laser";
+  for (const op of ops) {
+    rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT, isLaser);
+  }
 
   return { data, gridW, gridH, stockW, stockH, stockT };
 }
@@ -105,6 +107,7 @@ function rasterizeOp(
   gridW: number,
   gridH: number,
   stockT: number,
+  isLaser: boolean,
 ): void {
   if (op.type === "chamfer") {
     rasChamfer(op, entityMap, data, gridW, gridH, stockT);
@@ -116,8 +119,8 @@ function rasterizeOp(
     return;
   }
 
-  const stamp = makeStampFn(op, data, gridW, gridH, stockT);
-  const stepR = effectiveToolR(op);
+  const stamp = makeStampFn(op, data, gridW, gridH, stockT, isLaser);
+  const stepR = effectiveToolR(op, isLaser);
   const lineSegIds = new Set<string>();
 
   // Region pockets (mirrors gcode.ts): resolve each parametric region from live
@@ -213,9 +216,10 @@ function rasterizeOp(
       if (ent instanceof RasterImageEntity) rasReliefRough(ent, op, stamp, stockT);
     } else if (op.type === "engrave") {
       if (ent instanceof RasterImageEntity) {
-        // Relief needs a depth-shaping bit (matches gcode.ts, which skips others).
-        if (op.toolType === "ball-nose" || op.toolType === "v-bit")
-          rasRelief(ent, op, stamp, stockT);
+        // Relief needs a depth-shaping bit (matches gcode.ts, which skips others),
+        // or a laser which we simulate with a fake depth.
+        if (op.toolType === "ball-nose" || op.toolType === "v-bit" || isLaser)
+          rasRelief(ent, op, stamp, stockT, isLaser);
       } else if (ent instanceof LineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
       else if (ent instanceof CircleEntity)
@@ -504,10 +508,10 @@ function rasVcarve(
  * (scallop and all), which the per-dot tip-Z G-code only approximates. Mirrors
  * `reliefImage` in gcode.ts (same rasterField, same level→depth mapping).
  */
-function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number): void {
+function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number, isLaser: boolean = false): void {
   const grid = getImageGrid(ent.imageId);
   if (!grid) return;
-  const maxDepth = Math.min(Math.abs(op.depth), stockT);
+  const maxDepth = Math.min(Math.abs(isLaser ? 2.0 : op.depth), stockT);
   if (maxDepth <= 0) return;
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
@@ -600,7 +604,12 @@ function makeStampFn(
   w: number,
   h: number,
   stockT: number,
+  isLaser: boolean = false,
 ): StampFn {
+  if (isLaser) {
+    const dotR = ((op.rasterDotPitch ?? 0.1) / 2) * RES;
+    return (cx, cy, d) => stampDisc(data, w, h, cx, cy, dotR, d);
+  }
   const R = op.diameter / 2;
   const Rcell = R * RES;
   const tt = op.toolType ?? "end-mill";
@@ -621,7 +630,8 @@ function makeStampFn(
 }
 
 /** Step radius used for spacing stamps along a path sweep. */
-function effectiveToolR(op: CAMOperation): number {
+function effectiveToolR(op: CAMOperation, isLaser: boolean = false): number {
+  if (isLaser) return (op.rasterDotPitch ?? 0.1) / 2;
   if ((op.toolType ?? "end-mill") === "v-bit") {
     // At max depth the V-bit footprint is this wide; use it for dense-enough stepping.
     return Math.max(0.05, Math.abs(op.depth) * Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180)));

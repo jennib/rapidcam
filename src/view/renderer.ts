@@ -854,6 +854,11 @@ export class Renderer {
     }
     ctx.lineWidth = 1.25;
     ctx.strokeStyle = COLORS.laserCut;
+    
+    // Use multiply blending so the dense raster passes darken the image underneath
+    // like a burn, rather than completely painting over it with a solid red block.
+    ctx.globalCompositeOperation = "multiply";
+
     for (let b = 0; b <= BUCKETS; b++) {
       const bucket = byBucket[b];
       if (bucket.length === 0) continue;
@@ -869,6 +874,9 @@ export class Renderer {
       }
       ctx.stroke();
     }
+    
+    // Restore default compositing and alpha
+    ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
   }
 

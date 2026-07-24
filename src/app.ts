@@ -475,18 +475,17 @@ export class App {
     webglHost: HTMLElement,
     divider: HTMLElement,
   ): void {
-    // A laser has no Z — the 3D height-map preview is meaningless. Toggle a flat
-    // cut-path overlay on the 2D canvas instead of opening the WebGL split pane.
+    this.preview3DVisible = !this.preview3DVisible;
+
+    // For laser machines, keep the flat cut-path overlay on the 2D canvas synced
+    // with the 3D preview state.
     if (this.doc.machineKind === "laser") {
-      this.laserPreviewVisible = !this.laserPreviewVisible;
+      this.laserPreviewVisible = this.preview3DVisible;
       if (this.laserPreviewVisible)
         this.computeLaserPreview(); // instant on toggle
       else this.renderer.laserPreview = null;
       this.requestRender();
-      return;
     }
-
-    this.preview3DVisible = !this.preview3DVisible;
 
     if (this.preview3DVisible) {
       webglHost.classList.remove("hidden");
@@ -573,8 +572,6 @@ export class App {
   }
 
   private schedulePreviewUpdate(): void {
-    // Drop a stale laser overlay if the machine type was switched away from laser
-    // while it was showing.
     if (this.laserPreviewVisible && this.doc.machineKind !== "laser") {
       this.laserPreviewVisible = false;
       this.renderer.laserPreview = null;
