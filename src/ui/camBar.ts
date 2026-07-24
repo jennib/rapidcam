@@ -120,6 +120,7 @@ interface OpState {
   rasterMinPower: number;
   rasterInvert: boolean;
   reliefGamma: number; // mill relief tone curve (1 = linear)
+  pocketBoundaryMode: "regions" | "entities"; // UI toggle for pocket/vcarve modes
 }
 
 /**
@@ -768,6 +769,7 @@ export class CamBar {
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
+      pocketBoundaryMode: existing?.regions?.length ? "regions" : "entities",
       finishPass: existing?.finishPass ?? false,
       finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
       chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
@@ -1402,6 +1404,7 @@ export class CamBar {
         nameInput.value = state.name;
       }
       if (getPickActive()) stopPickMode(); // pick behaviour differs per op type
+      geom.updateModeVisibility();
       stepRow.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
       peckRow.style.display = state.combo === "drill" ? "" : "none";
       stepoverRow.style.display =
@@ -1487,7 +1490,7 @@ export class CamBar {
       let ids = [...state.entityIds];
 
       const regionBased =
-        (state.combo === "pocket" || state.combo === "vcarve") && state.regionSeeds.length > 0;
+        (state.combo === "pocket" || state.combo === "vcarve") && state.pocketBoundaryMode === "regions";
       if (regionBased) {
         // Store the bounding loops' ids for ops-list hover highlighting.
         const loops = collectClosedLoops(this.doc.entities);
@@ -2921,6 +2924,7 @@ export class CamBar {
     stopPickMode: () => void;
     getPickActive: () => boolean;
     cleanup: () => void;
+    updateModeVisibility: () => void;
   } {
     let renderEntities!: () => void;
     let pickModeActive = false;
@@ -2928,6 +2932,27 @@ export class CamBar {
 
     // geometry section
     const geoSec = this.dSection("Geometry");
+
+    const modeSelect = document.createElement("select");
+    modeSelect.className = "d-input tp-boundary-mode";
+    modeSelect.innerHTML = `
+      <option value="regions">Flood-fill Regions</option>
+      <option value="entities">Explicit Entities</option>
+    `;
+    modeSelect.value = state.pocketBoundaryMode;
+    modeSelect.addEventListener("change", () => {
+      state.pocketBoundaryMode = modeSelect.value as "regions" | "entities";
+      if (state.pocketBoundaryMode === "regions") {
+        state.entityIds.clear();
+      } else {
+        state.regionSeeds = [];
+      }
+      renderEntities();
+    });
+
+    const modeRow = this.dField("Boundary mode", modeSelect);
+    modeRow.style.display = state.combo === "pocket" || state.combo === "vcarve" ? "" : "none";
+    geoSec.appendChild(modeRow);
 
     // Geometry toolbar
     const geoBar = document.createElement("div");
@@ -2946,9 +2971,11 @@ export class CamBar {
     fromSelBtn.addEventListener("click", () => {
       if (
         (state.combo === "pocket" || state.combo === "vcarve") &&
-        state.regionSeeds.length > 0
+        state.pocketBoundaryMode === "regions"
       ) {
         const docLoops = collectClosedLoops(this.doc.entities);
+        const selectedEnts = this.doc.entities.filter((e) => e.selected);
+        const selLoops = collectClosedLoops(selectedEnts.filter((e) => !(e instanceof TextEntity)));
         let added = 0;
 
         const addSeed = (p: Vec2, region: ReturnType<typeof regionAtPoint>) => {
@@ -2964,8 +2991,6 @@ export class CamBar {
           return true;
         };
 
-        const selectedEnts = this.doc.entities.filter((e) => e.selected);
-        const selLoops = collectClosedLoops(selectedEnts.filter((e) => !(e instanceof TextEntity)));
         for (const loop of selLoops) {
           const p = interiorPoint(loop.verts);
           if (!p) continue;
@@ -3044,7 +3069,7 @@ export class CamBar {
 
       if (
         (state.combo === "pocket" || state.combo === "vcarve") &&
-        (state.regionSeeds.length > 0 || state.entityIds.size === 0)
+        state.pocketBoundaryMode === "regions"
       ) {
         // Flood-fill region pick: hover previews the enclosed face under the
         // cursor (any face of the planar arrangement, including those formed
@@ -3480,6 +3505,9 @@ export class CamBar {
       getPickActive: () => pickModeActive,
       cleanup: () => {
         if (unsubPickMode) unsubPickMode();
+      },
+      updateModeVisibility: () => {
+        modeRow.style.display = state.combo === "pocket" || state.combo === "vcarve" ? "" : "none";
       },
     };
   }
