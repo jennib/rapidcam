@@ -769,7 +769,9 @@ export class CamBar {
       depth: existing?.depth ?? DEFAULTS.depth,
       stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
       peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
-      pocketBoundaryMode: existing?.regions?.length ? "regions" : "entities",
+      pocketBoundaryMode: (existing?.regions?.length ? "regions" : "entities") as
+        | "regions"
+        | "entities",
       finishPass: existing?.finishPass ?? false,
       finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
       chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
