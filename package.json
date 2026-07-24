@@ -43,5 +43,10 @@
     "core-js@3.49.0": true,
     "esbuild@0.28.0": true,
     "esbuild@0.28.1": true
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": {
+      "@hono/node-server": "^2.0.5"
+    }
   }
 }
