@@ -18,7 +18,7 @@ import { bindingResidualAt, bindingTarget } from "../model/bindings";
 import { type Constraint, constraintResiduals, type Geo } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
-import type { EntityId } from "../model/entities";
+import type { EntityId, ImageConstraintFit } from "../model/entities";
 import { ArcEntity, type Entity, RasterImageEntity } from "../model/entities";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
@@ -97,7 +97,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidImageScalars(doc, fixed);
+  fixImageScalars(doc, fixed);
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
   // the cursor by a weak residual, so hard constraints win in a conflict while a
@@ -382,8 +382,31 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   }
 
   setX(x); // make sure the solution is the final state
+  normalizeImageAngles(doc);
 
   return finish();
+}
+
+/**
+ * Wrap a solver-driven image `angle` into (−π, π]. A single LM step can overshoot
+ * a rotation by whole turns and then converge inside that basin — geometrically
+ * identical (every corner is read back through cos/sin, and nothing measures an
+ * image's cumulative rotation) but it leaves a nonsense number like −15750° in
+ * the Properties panel, and the solver can't unwind it afterwards because the
+ * route back crosses the constraints.
+ *
+ * Only angles this solve could actually have wound are touched: the fit must hand
+ * the angle to the solver, and no formula binding may drive it — a binding reads
+ * the raw value, so there 720° is a real, intended 720°.
+ */
+function normalizeImageAngles(doc: CADDocument): void {
+  const TWO_PI = Math.PI * 2;
+  for (const ent of doc.entities) {
+    if (!(ent instanceof RasterImageEntity) || Math.abs(ent.angle) <= Math.PI) continue;
+    if (!FREE_IMAGE_SCALARS[ent.constraintFit].includes("angle")) continue;
+    if (doc.bindings.some((b) => b.entityId === ent.id && b.scalarKey === "angle")) continue;
+    ent.angle -= TWO_PI * Math.round(ent.angle / TWO_PI);
+  }
 }
 
 // --- finite-difference Jacobian (m×n) --------------------------------------
@@ -434,18 +457,34 @@ const scalarKey = (id: string, key: string): string => `scalar:${id}:${key}`;
 const sumSq = (v: number[]): number => v.reduce((s, x) => s + x * x, 0);
 
 /**
- * Fix an image's size/rotation DOFs (w/h/angle) UNLESS a formula binding drives
- * them. An image is then a **rigid** body under geometric constraints — a corner
- * or centre coincident/point-on constraint translates it, rather than the solver
- * distorting size/rotation to satisfy the constraint (its corners are nonlinear in
- * w/h/angle, so an unfixed image reflows ambiguously). A bound scalar stays free
- * so parametric formulas still drive it.
+ * Fix the image size/rotation DOFs (w/h/angle) that the image's
+ * {@link ImageConstraintFit} doesn't hand to the solver — the default being all
+ * three, so an image is a **rigid** body and a corner/centre constraint
+ * translates it rather than distorting it to fit (its corners are nonlinear in
+ * w/h/angle, so an image left free reflows ambiguously).
+ *
+ * `"scale"` frees w alone — h rides on w inside `setScalar`, so the pair is a
+ * single uniform-scale DOF and the aspect can't drift; `"rotate"` frees the angle
+ * alone; `"scale-rotate"` frees both; `"stretch"` frees all three. A scalar driven
+ * by a formula binding is always free, whatever the fit, so parametric formulas
+ * keep working.
  */
-function fixRigidImageScalars(doc: CADDocument, fixed: Set<string>): void {
+const FREE_IMAGE_SCALARS: Record<ImageConstraintFit, readonly string[]> = {
+  rigid: [],
+  scale: ["w"],
+  rotate: ["angle"],
+  "scale-rotate": ["w", "angle"],
+  stretch: ["w", "h", "angle"],
+};
+function fixImageScalars(doc: CADDocument, fixed: Set<string>): void {
   for (const ent of doc.entities) {
     if (!(ent instanceof RasterImageEntity)) continue;
+    const free = FREE_IMAGE_SCALARS[ent.constraintFit];
     for (const s of ent.dofScalars())
-      if (!doc.bindings.some((b) => b.entityId === ent.id && b.scalarKey === s.key))
+      if (
+        !free.includes(s.key) &&
+        !doc.bindings.some((b) => b.entityId === ent.id && b.scalarKey === s.key)
+      )
         fixed.add(scalarKey(ent.id, s.key));
   }
 }
@@ -497,7 +536,7 @@ export function computeEntityDofStatus(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidImageScalars(doc, fixed);
+  fixImageScalars(doc, fixed);
 
   // Build variable list with per-variable entity tracking
   const vars: Variable[] = [];
@@ -622,7 +661,7 @@ export function constraintJacobianRankChange(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidImageScalars(doc, fixed);
+  fixImageScalars(doc, fixed);
 
   // Build variable list
   const vars: Variable[] = [];

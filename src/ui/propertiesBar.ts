@@ -20,6 +20,8 @@ import {
   type Bounds,
   CircleEntity,
   type Entity,
+  IMAGE_CONSTRAINT_FITS,
+  type ImageConstraintFit,
   LineEntity,
   PolylineEntity,
   RasterImageEntity,
@@ -330,6 +332,48 @@ export class PropertiesBar {
     });
     lockRow.append(lockLbl, lockCb);
     sec.appendChild(lockRow);
+
+    // How far constraints/dimensions may reflow the image. Rigid (the default)
+    // keeps a corner constraint a pure move; "scale" turns a driving dimension on
+    // the image into a calibration; "stretch" lets it be pulled to fit.
+    const fitRow = document.createElement("div");
+    fitRow.className = "props-row";
+    const fitLbl = document.createElement("span");
+    fitLbl.textContent = "Constraints";
+    fitLbl.title =
+      "What a constraint or dimension on this image may change. Pick the narrowest " +
+      "one that matches your intent — spare freedom lets the solver satisfy a " +
+      "constraint the wrong way.\n" +
+      "Move only: the image is rigid — it translates.\n" +
+      "Scale to fit: it resizes uniformly, aspect kept exactly (rotation held) — " +
+      "dimension a known distance to calibrate a scan.\n" +
+      "Rotate to fit: it turns, size held — level a tilted scan.\n" +
+      "Scale + rotate: both — pin two corners and it lands on both.\n" +
+      "Stretch to fit: width, height and angle are all free.";
+    const fitSel = document.createElement("select");
+    fitSel.className = "dim";
+    fitSel.style.flex = "1";
+    const FIT_LABELS: Record<ImageConstraintFit, string> = {
+      rigid: "Move only",
+      scale: "Scale to fit",
+      rotate: "Rotate to fit",
+      "scale-rotate": "Scale + rotate",
+      stretch: "Stretch to fit",
+    };
+    for (const value of IMAGE_CONSTRAINT_FITS) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = FIT_LABELS[value];
+      if (value === entity.constraintFit) opt.selected = true;
+      fitSel.appendChild(opt);
+    }
+    fitSel.addEventListener("change", () => {
+      this.applyEdit(() => {
+        entity.constraintFit = fitSel.value as ImageConstraintFit;
+      });
+    });
+    fitRow.append(fitLbl, fitSel);
+    sec.appendChild(fitRow);
 
     this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {
       this.applyEdit(() => {

@@ -413,6 +413,7 @@
         "flipX": { "type": "boolean", "description": "Mirror the image content left↔right. Default false." },
         "flipY": { "type": "boolean", "description": "Mirror the image content top↔bottom. Default false." },
         "aspectLocked": { "type": "boolean", "description": "Whether the aspect ratio is locked. Default true. Edit-time only: with it on, editing one of width/height writes a proportional value/formula to the other." },
+        "constraintFit": { "enum": ["rigid", "scale", "rotate", "scale-rotate", "stretch"], "description": "How constraints/dimensions may reflow the image; pick the narrowest that matches the intent, since spare freedom lets the solver satisfy a constraint the wrong way. \"rigid\" (default, omitted): size and rotation are held, so a corner constraint translates the image. \"scale\": the size may change uniformly (aspect exact — width and height are one degree of freedom) while the rotation is held, e.g. dimension a known distance on a scan to calibrate it. \"rotate\": rotation only, size held (level a tilted scan). \"scale-rotate\": both, a similarity fit for the exactly-determined case of pinning two corners. \"stretch\": width, height and angle are all free (non-uniform fit)." },
         "isConstruction": { "type": "boolean" },
         "layerId": { "type": "string" }
       }

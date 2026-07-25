@@ -284,9 +284,28 @@ Notes:
   The image also exposes constrainable **point keys** for use in constraints: the
   four corners `c0` (bottom-left anchor), `c1`, `c2`, `c3` (CCW) and `center`.
   A constraint on one of these (e.g. `coincident` of `c0` with a circle's `c`)
-  reflows the image through the solver. An image whose size/rotation aren't driven
-  by a binding is treated as **rigid** — such a constraint translates it (the
-  `w`/`h`/`angle` DOFs are held), so positioning it never distorts it.
+  reflows the image through the solver. How far it may reflow is `constraintFit`.
+  Pick the **narrowest** mode that matches the intent: spare freedom lets the
+  solver satisfy a constraint the wrong way (a free size can meet a "level this
+  edge" constraint by shrinking the image away, since `w·sin(angle) = 0` has a
+  root at `w = 0` as much as at `angle = 0`).
+  * `"rigid"` (default, omitted from the file) — the `w`/`h`/`angle` DOFs are
+    held, so a constraint **translates** the image and positioning never distorts
+    it. A scalar driven by a binding stays free in every mode.
+  * `"scale"` — the size may change **uniformly** (`w` and `h` are one degree of
+    freedom: `h` rides on `w` at the current ratio, so the aspect ratio is exact
+    rather than merely converged) while the rotation stays held. This is how you
+    *calibrate* a scan: put a driving dimension across a feature of known size
+    (image edges and corners are dimensionable) and the whole image scales to
+    suit. The angle is deliberately excluded — a free angle can satisfy a size
+    dimension by tilting instead of scaling.
+  * `"rotate"` — rotation only, size held: level a tilted scan by making one of
+    its edges `horizontal`/`vertical`, or align it to drawn geometry.
+  * `"scale-rotate"` — uniform size **and** rotation (a similarity fit): pin two
+    corners and the image lands on both. Exactly determined by two point
+    constraints; with fewer, both escape routes above stay open.
+  * `"stretch"` — `w`, `h` and `angle` are all free, so the image can be pulled to
+    fit non-uniformly.
 
 ## Constraints
 
