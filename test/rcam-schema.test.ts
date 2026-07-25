@@ -18,10 +18,11 @@ import { registerEmbeddedImage } from "../src/core/imageManager";
 import { applyFile, serializeDoc } from "../src/io/fileio";
 import { CONSTRAINT_GLYPH } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
-import { CADDocument } from "../src/model/document";
+import { CADDocument, isLaser, isRotary, MACHINE_KINDS } from "../src/model/document";
 import {
   ArcEntity,
   BezierEntity,
+  IMAGE_CONSTRAINT_FITS,
   CircleEntity,
   LineEntity,
   PolylineEntity,
@@ -236,6 +237,45 @@ describe("rcam v2 schema — serialized real document", () => {
       throw new Error(`serialized parametric doc does not match rcam-v2 schema:\n${msg}`);
     }
     expect(ok).toBe(true);
+  });
+
+  // Enum tripwires. The sample docs above can only cover the values they happen
+  // to use, so a value added to a TypeScript union but forgotten in the schema
+  // slips through — which is exactly what happened once before: the rotary
+  // refactor left `machineKind` at ["mill","laser"] and every rotary .rcam
+  // failed validation. These iterate the TS union itself, so the schema cannot
+  // fall behind the code no matter which value is added next.
+  it("every MachineKind in the TS union is accepted by the schema", () => {
+    for (const [kind] of MACHINE_KINDS) {
+      const doc = new CADDocument({ width: 100, height: 100 });
+      doc.machineKind = kind;
+      // A rotary kind needs its cylinder block; a beam needs a laser post.
+      if (isRotary(kind)) doc.rotary = { axisWord: "A", diameter: 30, wrapAxis: "y" };
+      if (isLaser(kind)) doc.postProcessor = "grbl-dynamic";
+      const data = serializeDoc(doc, `kind-${kind}`);
+      const ok = validate(data);
+      const msg = (validate.errors ?? [])
+        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+        .join("\n");
+      expect(ok, `machineKind "${kind}" rejected by the schema:\n${msg}`).toBe(true);
+    }
+  });
+
+  it("every ImageConstraintFit in the TS union is accepted by the schema", () => {
+    for (const fit of IMAGE_CONSTRAINT_FITS) {
+      const doc = new CADDocument({ width: 100, height: 100 });
+      const img = doc.add(new RasterImageEntity("img-fit", { x: 0, y: 0 }, 20, 10, 0));
+      img.constraintFit = fit;
+      const data = serializeDoc(doc, `fit-${fit}`) as { entities: { constraintFit?: string }[] };
+      const ok = validate(data);
+      const msg = (validate.errors ?? [])
+        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+        .join("\n");
+      expect(ok, `constraintFit "${fit}" rejected by the schema:\n${msg}`).toBe(true);
+      // "rigid" is the default and is deliberately omitted from the file.
+      const written = data.entities.find((e) => "constraintFit" in e)?.constraintFit;
+      expect(written).toBe(fit === "rigid" ? undefined : fit);
+    }
   });
 });
 
