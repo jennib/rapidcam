@@ -62,7 +62,6 @@ import { SlotTool } from "./tools/slotTool";
 import { TextTool } from "./tools/textTool";
 import { ToolManager, type ToolPointerEvent } from "./tools/tool";
 import { TrimTool } from "./tools/trimTool";
-import { showAiAssistantDialog } from "./ui/aiAssistantDialog";
 import { AlignBar } from "./ui/alignBar";
 import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
 import { GENERATORS, findFeatureForEntities, regenerateStaleFeatures } from "./generators/index";
@@ -302,10 +301,14 @@ export class App {
         },
         onOpenRecent: (e) => this.project.fileOpenRecent(e),
         onOpenExample: (e) => this.project.loadExample(e),
-        onAiAssistant: () =>
+        onAiAssistant: async () => {
+          // Lazy-loaded so the AI assistant (and its deps) code-split out of the
+          // initial bundle — it's a click-to-open, rarely-first feature.
+          const { showAiAssistantDialog } = await import("./ui/aiAssistantDialog");
           showAiAssistantDialog(this.doc, this.project.currentFileName, {
             onImport: (file, name) => this.project.importChecked(file, name),
-          }),
+          });
+        },
         onImportSvg: () => this.project.svgImport(),
         onImportDxf: () => this.project.dxfImport(),
         onExportDxf: () => this.project.dxfExport(),
