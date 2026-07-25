@@ -35,11 +35,12 @@ const wordRe = /([A-Za-z])\s*(-?\d*\.?\d+)/g;
 function parseWords(line: string): Map<string, number> {
   const clean = line.replace(/\(.*?\)/g, " ").split(";")[0];
   const words = new Map<string, number>();
-  let m: RegExpExecArray | null;
   wordRe.lastIndex = 0;
-  while ((m = wordRe.exec(clean)) !== null) {
+  let m = wordRe.exec(clean);
+  while (m !== null) {
     const v = parseFloat(m[2]);
     if (Number.isFinite(v)) words.set(m[1].toUpperCase(), v);
+    m = wordRe.exec(clean);
   }
   return words;
 }
