@@ -707,3 +707,5 @@ canonical, tested references:
 - `vcarve-sign.rcam` — `vcarve` + `chamfer` operations sharing one v-bit via the `tools` library.
 - `laser-coaster.rcam` — `machineKind: "laser"` with outline/fill engraves and a kerf-compensated cut.
 - `rotary-spiral-dowel.rcam` — `machineKind: "mill-rotary"` + the `rotary` cylinder block.
+- `tumbler-wrap.rcam` — `machineKind: "laser-rotary"`: the same `rotary` block with a beam
+  head, so the wrapped axis is substituted rather than wrapped.

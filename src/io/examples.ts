@@ -32,6 +32,7 @@ const ORDER = [
   "vcarve-sign.rcam",
   "laser-coaster.rcam", // Tier 4 — other machine kinds
   "rotary-spiral-dowel.rcam",
+  "tumbler-wrap.rcam",
 ];
 
 let cache: ExampleEntry[] | null = null;

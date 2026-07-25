@@ -51,10 +51,20 @@ describe("bundled examples load and post", () => {
       if (res.hasConstraints) expect(res.converged).toBe(true);
 
       if (doc.operations.length === 0) return;
-      if (doc.machineKind === "mill-rotary") {
+      if (doc.isRotary) {
         const { program, warnings } = generateRotaryProgram(doc);
         expect(warnings).toEqual([]);
-        expect(program).toMatch(/\bA-?\d/); // wrapped axis emitted in degrees
+        if (doc.isLaser) {
+          // A beam SUBSTITUTES the wrapped axis instead of wrapping it: surface
+          // millimetres on the ordinary linear word, and no 4th-axis word at all
+          // (GRBL, which drives most laser rotaries, would reject one).
+          expect(program).toMatch(/axis substitution/i);
+          expect(program.split("\n").filter((l) => /^G[0-3]\b/.test(l))).not.toEqual(
+            expect.arrayContaining([expect.stringMatching(/\b[AB]-?\d/)]),
+          );
+        } else {
+          expect(program).toMatch(/\bA-?\d/); // wrapped axis emitted in degrees
+        }
         expect(program).toContain("M30");
       } else {
         const g = generateGCode(doc.operations, doc);
