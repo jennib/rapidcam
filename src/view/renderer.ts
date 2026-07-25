@@ -35,6 +35,7 @@ import type {
 } from "./overlay";
 import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
+import { rotaryWrapHint, tickLabel } from "./rotaryOverlay";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -43,6 +44,12 @@ export class Renderer {
   stalePatternEntityIds: Set<string> = new Set();
   /** View preference (transient, not persisted): draw dimension annotations. */
   showDimensions = true;
+  /**
+   * View preference (transient, not persisted): draw the rotary wrap hint — the
+   * degree ruler, quarter-turn guides and seam edges that explain what the flat
+   * canvas becomes on the cylinder. Ignored unless the doc is `mill-rotary`.
+   */
+  showRotaryWrap = true;
   /**
    * Flat laser-toolpath preview: cut paths in world coords drawn over the canvas
    * (the laser analogue of the mill's 3D height-map preview). Null = off.
@@ -76,6 +83,8 @@ export class Renderer {
 
     this.drawGrid(doc, view);
     this.drawWorkArea(doc, view);
+    // Under the geometry: the wrap is context for what's drawn, never a mark on it.
+    if (this.showRotaryWrap) this.drawRotaryWrap(doc, view);
     this.drawOrigin(doc, view);
     this.drawRegionFills(doc, view);
     this.drawEntities(doc, view, overlay);
@@ -222,6 +231,107 @@ export class Renderer {
       ctx.strokeStyle = COLORS.stockBorder;
       ctx.lineWidth = 1.5;
       ctx.strokeRect(Math.round(rx) + 0.5, Math.round(ry) + 0.5, Math.round(rw), Math.round(rh));
+    }
+    ctx.restore();
+  }
+
+  // --- rotary wrap hint ----------------------------------------------------
+  /**
+   * Rotary (4th axis): the degree ruler along the wrapped axis, the quarter-turn
+   * guides, the A0 line and the seam edges. Explains, in the flat top view, what
+   * the canvas becomes once it is rolled onto the rod — see view/rotaryOverlay.ts
+   * for the model (and for why A0 tracks the work origin, not the canvas edge).
+   * No-op for every non-rotary document.
+   */
+  private drawRotaryWrap(doc: CADDocument, view: Viewport): void {
+    const hint = rotaryWrapHint(doc, view.scale);
+    if (!hint) return;
+    const ctx = this.ctx;
+    const wrapX = hint.wrapAxis === "x";
+    // Screen unit vectors for the two work axes, so the wrapped/linear layout is
+    // written once and both wrap axes fall out of it (world +y is screen −y).
+    const uWrap: Vec2 = wrapX ? { x: 1, y: 0 } : { x: 0, y: -1 };
+    const uLin: Vec2 = wrapX ? { x: 0, y: -1 } : { x: 1, y: 0 };
+    /** (wrapped mm, along-the-length mm) → screen px. */
+    const at = (w: number, l: number): Vec2 =>
+      view.worldToScreen(wrapX ? { x: w, y: l } : { x: l, y: w });
+    const off = (p: Vec2, u: Vec2, d: number): Vec2 => ({ x: p.x + u.x * d, y: p.y + u.y * d });
+    const stroke = (a: Vec2, b: Vec2) => {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    };
+
+    ctx.save();
+
+    // Quarter-turn guides across the design — where 90°/180°/270° land.
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = COLORS.rotaryWrapGuide;
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    for (const t of hint.ticks) {
+      if (!t.major || t.deg === 0) continue;
+      const a = at(t.coordMM, 0);
+      const b = at(t.coordMM, hint.length);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+
+    // A0 — where the rotary word reads zero. It follows the WORK ORIGIN rather
+    // than the canvas edge, which is exactly the part that isn't guessable.
+    ctx.strokeStyle = COLORS.rotaryWrap;
+    if (hint.zeroCoordMM >= 0 && hint.zeroCoordMM <= hint.span) {
+      ctx.setLineDash([10, 4, 2, 4]);
+      stroke(at(hint.zeroCoordMM, 0), at(hint.zeroCoordMM, hint.length));
+    }
+
+    // The seam: both wrapped extremes are the SAME line once the sheet is rolled up.
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 3]);
+    for (const s of hint.seams) stroke(view.worldToScreen(s.a), view.worldToScreen(s.b));
+
+    // Degree ruler, just OUTSIDE the far edge so it never sits over the design.
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.fillStyle = COLORS.rotaryWrap;
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.beginPath();
+    for (const t of hint.ticks) {
+      const p = at(t.coordMM, hint.length);
+      const q = off(p, uLin, t.major ? 9 : 4);
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+    }
+    ctx.stroke();
+    ctx.textAlign = wrapX ? "center" : "left";
+    ctx.textBaseline = wrapX ? "bottom" : "middle";
+    for (const t of hint.ticks) {
+      if (!t.major) continue;
+      const p = off(at(t.coordMM, hint.length), uLin, 12);
+      ctx.fillText(tickLabel(t), p.x, p.y);
+    }
+
+    // "seam" tags tucked just inside each wrapped extreme, at mid-length — clear
+    // of the corners, where the origin marker and the ruler head already live.
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    hint.seams.forEach((_, i) => {
+      const inward = i === 0 ? 1 : -1;
+      const p = off(at(i === 0 ? 0 : hint.span, hint.length / 2), uWrap, 9 * inward);
+      ctx.fillText("seam", p.x, p.y);
+    });
+
+    // Readout under the work area (the ruler owns the far edge).
+    const head = view.worldToScreen({ x: 0, y: 0 });
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(hint.legend, head.x, head.y + 8);
+    if (hint.warning) {
+      ctx.fillStyle = "#f5a623";
+      ctx.fillText(`⚠ ${hint.warning}`, head.x, head.y + 24);
     }
     ctx.restore();
   }

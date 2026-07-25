@@ -6,6 +6,10 @@ export interface ViewMenuCallbacks {
   previewLabel: () => string;
   onToggleDimensions: () => void;
   areDimensionsVisible: () => boolean;
+  /** Rotary wrap hint — only offered for a `mill-rotary` document (see rotaryOverlay.ts). */
+  onToggleRotaryWrap: () => void;
+  isRotaryWrapVisible: () => boolean;
+  isRotaryDoc: () => boolean;
 }
 
 export class ViewMenu {
@@ -69,6 +73,13 @@ export class ViewMenu {
       this.close();
       this.cb.onToggleDimensions();
     });
+    if (this.cb.isRotaryDoc()) {
+      const wrapOn = this.cb.isRotaryWrapVisible();
+      this.item(`${wrapOn ? "✓ " : "   "}Rotary Wrap Hint`, "", () => {
+        this.close();
+        this.cb.onToggleRotaryWrap();
+      });
+    }
     const checked = this.cb.is3DVisible();
     this.item((checked ? "✓ " : "   ") + this.cb.previewLabel(), "", () => {
       this.close();

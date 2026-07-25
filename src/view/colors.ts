@@ -64,6 +64,12 @@ export const COLORS = {
   // Flat laser toolpath preview (cut paths drawn over the 2D canvas).
   laserCut: "#ff4d4d",
   laserCutGlow: "rgba(255,77,77,0.35)",
+
+  // Rotary (4th-axis) wrap hint — the degree ruler, quarter-turn guides and seam
+  // edges drawn over a mill-rotary canvas. A magenta deliberately unused
+  // elsewhere, so a wrap guide never reads as geometry, a dimension or a ghost.
+  rotaryWrap: "#cf7fb8",
+  rotaryWrapGuide: "rgba(207,127,184,0.22)",
 };
 
 /**

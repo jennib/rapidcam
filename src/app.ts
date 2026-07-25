@@ -368,6 +368,12 @@ export class App {
           this.requestRender();
         },
         areDimensionsVisible: () => this.renderer.showDimensions,
+        onToggleRotaryWrap: () => {
+          this.renderer.showRotaryWrap = !this.renderer.showRotaryWrap;
+          this.requestRender();
+        },
+        isRotaryWrapVisible: () => this.renderer.showRotaryWrap,
+        isRotaryDoc: () => this.doc.isRotary,
       },
     });
     new LayersBar(dom.layersbar, this.doc, this.project.pushHistory);
