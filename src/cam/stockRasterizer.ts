@@ -103,7 +103,7 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
   // Expand pattern targets so the 3D preview matches the toolpath: an op on
   // patterned geometry renders all instances and follows the count.
-  const isLaser = doc.machineKind === "laser";
+  const isLaser = doc.isLaser;
   for (const op of ops) {
     rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT, isLaser);
   }

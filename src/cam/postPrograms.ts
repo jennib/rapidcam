@@ -56,7 +56,7 @@ export function postPrograms(
   }
 
   const programs: PostedProgram[] = [];
-  const isRotary = doc.machineKind === "mill-rotary";
+  const isRotary = doc.isRotary;
   const hasBottom = !!doc.flip && doc.operations.some((op) => (op.face ?? "top") === "bottom");
 
   if (isRotary) {

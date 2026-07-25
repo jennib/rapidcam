@@ -73,7 +73,7 @@ function baseOp(doc: CADDocument, spec: OpSuggestion): CAMOperation {
  * to `doc` — pocket regions are seeded against the live document geometry.
  */
 export function buildSuggestedOps(doc: CADDocument, sketch: Sketch): CAMOperation[] {
-  const isLaser = doc.machineKind === "laser";
+  const isLaser = doc.isLaser;
   const ops: CAMOperation[] = [];
 
   for (const spec of sketch.opSuggestions) {

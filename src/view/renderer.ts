@@ -208,7 +208,7 @@ export class Renderer {
     // distinct, lighter block — the material — so it's clear which region is stock
     // and which is spare work area (e.g. room for fixtures). Rotary ignores it.
     const r = doc.stockRect;
-    if (r && doc.machineKind !== "mill-rotary") {
+    if (r && !doc.isRotary) {
       const ra = view.worldToScreen({ x: r.x, y: r.y });
       const rb = view.worldToScreen({ x: r.x + r.width, y: r.y + r.height });
       const rx = Math.min(ra.x, rb.x);

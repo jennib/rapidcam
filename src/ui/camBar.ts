@@ -304,7 +304,7 @@ export class CamBar {
    * show-then-block. Re-run from renderOps so a machine-type change takes effect.
    */
   private updateModeButtons(): void {
-    const rotary = this.doc.machineKind === "mill-rotary";
+    const rotary = this.doc.isRotary;
     if (this.stitchBtn) this.stitchBtn.style.display = rotary ? "none" : "";
     if (this.flipBtn) this.flipBtn.style.display = rotary ? "none" : "";
   }
@@ -388,7 +388,7 @@ export class CamBar {
    *  19.05mm stock" — a quick sanity read (depth vs stock) after an otherwise
    *  instant export. Empty for a laser (no Z) or when nothing cuts. */
   private depthSummary(ops: CAMOperation[]): string {
-    if (this.doc.machineKind === "laser") return "";
+    if (this.doc.isLaser) return "";
     const depths = ops.map((o) => Math.abs(o.depth)).filter((d) => d > 0);
     if (depths.length === 0) return "";
     const du = this.doc.displayUnit;
@@ -404,7 +404,7 @@ export class CamBar {
     // Tools (end mills / V-bits) are a milling concept — hide "Manage Tools" for
     // a laser and show "Material Test" instead. Re-evaluated here so it follows a
     // machine-type change.
-    const laser = this.doc.machineKind === "laser";
+    const laser = this.doc.isLaser;
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
     if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
     // Tile/Two-sided are flat-mill-only — hidden for a rotary job.
@@ -648,7 +648,7 @@ export class CamBar {
     // All lengths/feeds shown in the document's unit and rounded (raw internal
     // mm otherwise leaked as "-19.0499999…mm").
     params.textContent =
-      this.doc.machineKind === "laser"
+      this.doc.isLaser
         ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${this.feedU(op.feedrate)}` +
           (op.laserFill
             ? " · fill"
@@ -660,7 +660,7 @@ export class CamBar {
     // chamfer) left in a laser document won't produce a toolpath — flag it here
     // rather than letting it surface only as a "; NOTE:" buried in the G-code.
     if (
-      this.doc.machineKind === "laser" &&
+      this.doc.isLaser &&
       op.type !== "profile" &&
       op.type !== "engrave" &&
       op.type !== "score"
@@ -676,7 +676,7 @@ export class CamBar {
     // actually cut something; a laser milling-only op or an unbound op won't.
     const cuts = (op.regions?.length ?? 0) + (op.entityIds?.length ?? 0) > 0;
     const laserSkips =
-      this.doc.machineKind === "laser" &&
+      this.doc.isLaser &&
       op.type !== "profile" &&
       op.type !== "engrave" &&
       op.type !== "score";
@@ -812,7 +812,7 @@ export class CamBar {
     // A laser document has no spindle/Z: the dialog hides the tool + cut/Z
     // sections and shows a laser section (power/passes/feed) instead, and the
     // op-type list narrows to the two that map to a beam (cut + engrave).
-    const isLaser = this.doc.machineKind === "laser";
+    const isLaser = this.doc.isLaser;
     const preSelectedEnts = this.doc.entities.filter((e) => e.selected && !e.isConstruction);
     const preSelected = new Set(preSelectedEnts.map((e) => e.id));
 
@@ -1410,8 +1410,8 @@ export class CamBar {
     if (isLaser) cutSec.style.display = "none";
     body.appendChild(cutSec);
 
-    // laser section (machineKind === "laser") — feed/power/passes/kerf. Hidden
-    // (and its updater neutralised) for a mill.
+    // laser section (a beam machine — see doc.isLaser) — feed/power/passes/kerf.
+    // Hidden (and its updater neutralised) for a mill.
     const laser = this.buildLaserSection(state);
     if (!isLaser) laser.root.style.display = "none";
     body.appendChild(laser.root);
@@ -1840,7 +1840,7 @@ export class CamBar {
       return;
     }
     if (!(await this.confirmMissingFonts())) return;
-    const isRotary = this.doc.machineKind === "mill-rotary";
+    const isRotary = this.doc.isRotary;
     // Double-sided jobs export two programs (top + mirrored bottom). Not for a
     // rotary job (flip and the wrap are mutually exclusive).
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
@@ -1862,7 +1862,7 @@ export class CamBar {
     const name = this.exportName(isRotary ? "all-rotary" : "all");
     const foot = stockFootprint(this.doc);
     const stockLabel =
-      this.doc.machineKind === "laser"
+      this.doc.isLaser
         ? `${foot.width} × ${foot.height}mm`
         : `${foot.width} × ${foot.height} × ${this.doc.stockThickness}mm`;
     const proceed = await openExportPreview({
@@ -1982,7 +1982,7 @@ export class CamBar {
 
   private async doSendToMachine(app: "gSender" | "ncSender"): Promise<void> {
     if (!(await this.confirmMissingFonts())) return;
-    const isRotary = this.doc.machineKind === "mill-rotary";
+    const isRotary = this.doc.isRotary;
     // A two-sided job can't run as one program — send side A now, side B after
     // the operator flips the stock. (Not for a rotary job.)
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {

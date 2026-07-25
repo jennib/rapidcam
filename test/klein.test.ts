@@ -328,18 +328,23 @@ test("validateRotary flags overlap past one full turn", () => {
   expect(w.some((m) => /past one full wrap|overlap/i.test(m))).toBe(true);
 });
 
-test("validateRotary flags a bad diameter, laser mode, and a flip clash", () => {
+test("validateRotary flags a bad diameter and a flip clash", () => {
   const doc = new CADDocument({ width: 200, height: 100 });
   doc.rotary = { axisWord: "A", diameter: 0, wrapAxis: "y" };
   expect(validateRotary(doc).some((m) => /diameter/i.test(m))).toBe(true);
 
-  doc.rotary = { axisWord: "A", diameter: 40, wrapAxis: "y" };
-  doc.machineKind = "laser";
-  expect(validateRotary(doc).some((m) => /mill-only/i.test(m))).toBe(true);
-  doc.machineKind = "mill";
-
   doc.flip = { axis: "h", registration: "none", pinDiameter: 6, pinDepth: 4, pins: [] };
+  doc.rotary = { axisWord: "A", diameter: 40, wrapAxis: "y" };
   expect(validateRotary(doc).some((m) => /flip/i.test(m))).toBe(true);
+});
+
+test("a beam machine on the rotary is NOT rejected — laser rotary is supported", () => {
+  const doc = new CADDocument({ width: 200, height: 100 });
+  doc.rotary = { axisWord: "A", diameter: 100 / Math.PI, wrapAxis: "y" };
+  doc.machineKind = "laser-rotary";
+  // Used to warn "Rotary wrap is mill-only"; a laser rotary now substitutes the
+  // wrapped axis instead of wrapping it (rotaryOutput), so there is nothing wrong.
+  expect(validateRotary(doc)).toEqual([]);
 });
 
 test("a clean setup validates with no warnings", () => {

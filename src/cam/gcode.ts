@@ -1627,7 +1627,7 @@ export function generateGCode(
 ): string {
   // Laser machines have no spindle/Z — route to the fixed-Z beam generator,
   // which reuses the same XY geometry but emits beam on/off instead.
-  if (doc.machineKind === "laser") {
+  if (doc.isLaser) {
     return generateLaserGCode(rawOps, doc, {
       customStart: opts.customStart,
       customEnd: opts.customEnd,

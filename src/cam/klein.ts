@@ -27,6 +27,7 @@
 
 import {
   type CADDocument,
+  isLaser,
   resolveOrigin,
   stockFootprint,
   type RotarySettings,
@@ -57,6 +58,25 @@ export function circumference(settings: RotarySettings): number {
 }
 
 /**
+ * How a rotary document's wrapped axis reaches the controller. Derived from the
+ * machine kind, not stored — there is exactly one right answer per head today:
+ *
+ * - `"rotary-word"` (mill): the wrapped coordinate is rewritten to `A`/`B`
+ *   **degrees** and arcs are linearised — a true 4th axis. See {@link wrapGCode}.
+ * - `"linear-substitute"` (laser): the wrapped axis is left as its ordinary
+ *   linear word in **surface millimetres**, and the machine is set up so one
+ *   revolution equals the circumference of travel on that axis (the rotary is
+ *   wired in place of that linear motor, with steps/mm rescaled). This is how
+ *   nearly every laser rotary works: GRBL 1.1 — which drives the common diode
+ *   lasers — has no 4th axis at all and would reject an `A` word. Nothing is
+ *   transformed at export, because the flat program is *already* in surface mm;
+ *   all the job needs is the cylinder-sized canvas and a setup banner.
+ */
+export function rotaryOutput(doc: CADDocument): "rotary-word" | "linear-substitute" {
+  return isLaser(doc.machineKind) ? "linear-substitute" : "rotary-word";
+}
+
+/**
  * Map a wrapped-axis coordinate (mm along the surface, in work coordinates) to a
  * rotary angle in degrees. Cumulative — never reduced mod 360 — so the axis turns
  * continuously and coordinates past one circumference spiral rather than fold back.
@@ -77,7 +97,19 @@ interface Move {
   i?: number;
   j?: number;
   f?: number;
+  /**
+   * Words we don't interpret but must NOT lose, re-emitted verbatim after the
+   * ones we rewrite. A motion line can legitimately carry more than geometry —
+   * above all a laser's inline `S` power (`G1 X.. Y.. F.. S255`), which the
+   * raster engrave toggles per dot. Since a wrapped line is *rebuilt* rather than
+   * edited, anything not carried here would vanish silently, and for a beam that
+   * means the power word disappearing out of the middle of a burn.
+   */
+  extra: string[];
 }
+
+/** Address letters {@link wrapGCode} interprets and re-emits itself. */
+const HANDLED_WORDS = new Set(["G", "X", "Y", "Z", "I", "J", "F"]);
 
 const WORD_RE = /([A-Za-z])(-?\d*\.?\d+)/g;
 
@@ -142,17 +174,19 @@ export function flattenArc(
 function parseMove(code: string): Move | null {
   WORD_RE.lastIndex = 0;
   const words: Record<string, number> = {};
+  const extra: string[] = [];
   let g: number | null = null;
   let m = WORD_RE.exec(code);
   while (m !== null) {
     const letter = m[1].toUpperCase();
     const value = parseFloat(m[2]);
     if (letter === "G") g = value;
-    else words[letter] = value;
+    else if (HANDLED_WORDS.has(letter)) words[letter] = value;
+    else extra.push(m[0]); // verbatim — e.g. a laser's S power
     m = WORD_RE.exec(code);
   }
   if (g === null || g < 0 || g > 3) return null;
-  return { g, x: words.X, y: words.Y, z: words.Z, i: words.I, j: words.J, f: words.F };
+  return { g, x: words.X, y: words.Y, z: words.Z, i: words.I, j: words.J, f: words.F, extra };
 }
 
 export interface WrapOptions {
@@ -220,12 +254,14 @@ export function wrapGCode(
     y: number,
     z: number | undefined,
     f: number | undefined,
+    extra: string[] = [],
   ): string => {
     const linCoord = wrapX ? y : x; // the axis kept linear
     const rotCoord = wrapX ? x : y; // the axis rolled to rotation
     let s = `G1 ${keep}${n(linCoord)} ${A}${n(ang(rotCoord))}`;
     if (z !== undefined) s += ` Z${n(z + zOffset)}`;
     if (f !== undefined) s += ` F${n(f)}`;
+    for (const w of extra) s += ` ${w}`;
     return s;
   };
 
@@ -285,7 +321,10 @@ export function wrapGCode(
           : first
             ? mv.f
             : undefined;
-        out.push(wrappedPoint(p.x, p.y, p.z, f) + (first ? comment : ""));
+        // An arc becomes several chords; its non-geometric words (a laser's S,
+        // say) belong to the whole move, so every chord carries them — the beam
+        // must not go dark part-way round.
+        out.push(wrappedPoint(p.x, p.y, p.z, f, mv.extra) + (first ? comment : ""));
         px = p.x;
         py = p.y;
         pz = pz2;
@@ -306,6 +345,7 @@ export function wrapGCode(
       } else if (mv.f !== undefined) {
         parts.push(`F${n(mv.f)}`);
       }
+      parts.push(...mv.extra);
       out.push(`${cmd} ${parts.join(" ")}${comment}`.trimEnd());
     }
 
@@ -324,6 +364,31 @@ export function wrapGCode(
 export interface RotaryProgram {
   program: string;
   warnings: string[];
+}
+
+/**
+ * Operator banner for an **axis-substituted** rotary job (the laser case): the
+ * program is the ordinary flat one, so everything the operator needs is setup —
+ * above all that the wrapped axis is in surface millimetres, and what one
+ * revolution of the rotary must therefore measure.
+ */
+function substituteBanner(doc: CADDocument, s: RotarySettings): string {
+  const c = circumference(s);
+  const wrapU = s.wrapAxis.toUpperCase();
+  const lengthAxis = s.wrapAxis === "y" ? "X" : "Y";
+  const foot = stockFootprint(doc);
+  const span = s.wrapAxis === "y" ? foot.height : foot.width;
+  return [
+    `; === Rotary / cylindrical (axis substitution) ===`,
+    `; Stock: cylinder ⌀${n(s.diameter)}mm  (circumference ${n(c)}mm = one full revolution)`,
+    `; The design's ${wrapU} is wrapped around the cylinder; ${lengthAxis} runs along its length.`,
+    `; ${wrapU} IS EMITTED IN SURFACE MILLIMETRES, NOT DEGREES — no 4th-axis word is used.`,
+    `;   Set the rotary so one revolution = ${n(c)}mm of ${wrapU} travel`,
+    `;   (${wrapU} steps/mm = steps-per-revolution / ${n(c)}).`,
+    `; ${wrapU}0 is at the ${wrapU} work origin — the design's 0° position on the cylinder.`,
+    `; Design ${wrapU} span ${n(span)}mm → ${n(wrapAngleDeg(span, s))}° of rotation.`,
+    `; Focus the beam on the top of the cylinder; no Z is emitted.`,
+  ].join("\n");
 }
 
 /** Operator banner explaining the wrap setup, prepended to the program. */
@@ -372,10 +437,8 @@ export function validateRotary(doc: CADDocument): string[] {
   if (!s) return [];
   const out: string[] = [];
 
-  if (doc.machineKind === "laser")
-    out.push(
-      "Rotary wrap is mill-only, but this document is set to a laser machine — switch to mill, or the wrap is ignored.",
-    );
+  // (There is deliberately no machine-kind check here: a laser rotary is a
+  // supported machine — see rotaryOutput — and this only runs for rotary docs.)
   if (doc.flip)
     out.push(
       "Rotary wrap and double-sided (flip) machining can't be combined — turn one of them off.",
@@ -396,10 +459,21 @@ export function validateRotary(doc: CADDocument): string[] {
 }
 
 /**
- * Generate the wrapped rotary program for a document: build the normal flat
- * program through the shared generator, then roll it around the cylinder. The
- * WCS origin is resolved exactly as for a flat job, so `A0` lands on the wrapped
- * axis's work origin. Requires `doc.rotary`.
+ * Generate the rotary program for a document: build the normal flat program
+ * through the shared generator (which already routes mill vs. laser), then hand
+ * the wrapped axis to the controller the way {@link rotaryOutput} says.
+ *
+ * `"rotary-word"` rolls the finished program around the cylinder. The WCS origin
+ * is resolved exactly as for a flat job, so `A0` lands on the wrapped axis's work
+ * origin.
+ *
+ * `"linear-substitute"` emits the flat program **untouched** — its wrapped-axis
+ * coordinates are already the surface millimetres the substituted axis wants —
+ * and prepends the setup banner. That the transform is a no-op is the whole point
+ * of the mode, not an omission: the value is the cylinder-locked canvas, the
+ * preview, and telling the operator what one revolution must measure.
+ *
+ * Requires `doc.rotary` (falls back to derived defaults).
  */
 export function generateRotaryProgram(doc: CADDocument, opts: GCodeOptions = {}): RotaryProgram {
   const s = doc.rotary ?? defaultRotarySettings(doc);
@@ -408,8 +482,9 @@ export function generateRotaryProgram(doc: CADDocument, opts: GCodeOptions = {})
   // so the wrap sees work coordinates — A0 at the wrapped-axis origin.
   void resolveOrigin(doc);
   const flat = generateGCode(doc.operations, doc, opts);
-  const program = toAsciiGcode(
-    `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s, { inverseTimeFeed: true })}`,
-  );
-  return { program, warnings };
+  const body =
+    rotaryOutput(doc) === "linear-substitute"
+      ? `${substituteBanner(doc, s)}\n\n${flat}`
+      : `${rotaryBanner(doc, s)}\n\n${wrapGCode(flat, s, { inverseTimeFeed: true })}`;
+  return { program: toAsciiGcode(body), warnings };
 }

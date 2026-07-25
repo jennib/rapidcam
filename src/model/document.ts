@@ -10,18 +10,48 @@ export type OriginY = "front" | "center" | "back";
 export type OriginZ = "top" | "bed";
 
 /**
- * The kind of machine the document outputs for. "mill" is the default 3-axis
- * spindle path (G-code with Z plunge/retract); "laser" is a fixed-Z 2D cutting
- * head (beam on/off, power + passes, no Z). "mill-rotary" is a mill with a 4th
- * (rotary) axis: it generates the ordinary flat mill program, then rolls it
- * around a cylinder — the per-job cylinder parameters live in {@link RotarySettings}
- * (`doc.rotary`), while this field is the *mode* switch (see cam/klein.ts). Other
- * fixed-Z cutters (waterjet, plasma) would join this union as additional
- * post-processors — see cam/laserposts/. Gates which G-code generator runs and
- * which op fields the UI shows; "mill-rotary" behaves like "mill" everywhere
- * except that export wraps the finished program.
+ * The kind of machine the document outputs for. Two independent axes of meaning,
+ * which is why the union reads the way it does:
+ *
+ * - **Head** — "mill" is the 3-axis spindle path (Z plunge/retract); "laser" is a
+ *   fixed-Z beam (on/off, power + passes, no Z). Other fixed-Z cutters (waterjet,
+ *   plasma) would join as additional post-processors — see cam/laserposts/. Test
+ *   this with {@link isLaser}, never `=== "laser"`, or the rotary laser silently
+ *   falls into the mill branch.
+ * - **Stock** — the "-rotary" kinds machine a *cylinder* rather than a flat blank:
+ *   the canvas becomes its unrolled surface, locked to π·diameter, with the
+ *   per-job cylinder in {@link RotarySettings} (`doc.rotary`). Test with
+ *   {@link isRotary}.
+ *
+ * The two combine, so the head behaviour is unchanged by the stock: "mill-rotary"
+ * behaves like "mill" everywhere except that export **wraps** the finished program
+ * to A/B degrees (cam/klein.ts), and "laser-rotary" behaves like "laser"
+ * everywhere *including* export — a laser rotary substitutes the wrapped axis on
+ * its ordinary linear word instead of wrapping (see cam/klein.ts `rotaryOutput`).
  */
-export type MachineKind = "mill" | "laser" | "mill-rotary";
+export type MachineKind = "mill" | "laser" | "mill-rotary" | "laser-rotary";
+
+/** Every beam (fixed-Z, no-spindle) machine kind — flat or on the rotary. */
+export function isLaser(kind: MachineKind): boolean {
+  return kind === "laser" || kind === "laser-rotary";
+}
+
+/** Every machine kind whose stock is a cylinder and whose canvas is its unrolled surface. */
+export function isRotary(kind: MachineKind): boolean {
+  return kind === "mill-rotary" || kind === "laser-rotary";
+}
+
+/**
+ * Every machine kind with its menu label, in picker order. The ONE list both
+ * machine pickers (New Project and Machine Settings) build from, so a new kind
+ * can't reach one dialog and miss the other.
+ */
+export const MACHINE_KINDS: readonly (readonly [MachineKind, string])[] = [
+  ["mill", "CNC Mill / Router"],
+  ["mill-rotary", "CNC Mill — Rotary / 4th axis"],
+  ["laser", "Laser"],
+  ["laser-rotary", "Laser — Rotary (cylinder)"],
+] as const;
 
 export interface OriginDef {
   x: OriginX;
@@ -80,8 +110,9 @@ export interface FlipSettings {
 export type RotaryAxisWord = "A" | "B";
 
 /**
- * Cylindrical / rotary wrap parameters — the per-job cylinder for a `mill-rotary`
- * machine. The *mode* is {@link MachineKind} (`doc.machineKind === "mill-rotary"`);
+ * Cylindrical / rotary parameters — the per-job cylinder for a rotary machine
+ * (`mill-rotary` or `laser-rotary`). The *mode* is {@link MachineKind} (see
+ * {@link isRotary});
  * these are the stock/wrap params it uses: one work axis stays linear (along the
  * cylinder length) and the perpendicular one is emitted as a rotary word in
  * degrees. Not compatible with `flip`. See cam/klein.ts for the generation logic
@@ -186,7 +217,7 @@ export function resolveOrigin(doc: CADDocument): { ox: number; oy: number; zOffs
  */
 export function stockFootprint(doc: CADDocument): { width: number; height: number } {
   const r = doc.stockRect;
-  if (r && doc.machineKind !== "mill-rotary") return { width: r.width, height: r.height };
+  if (r && !isRotary(doc.machineKind)) return { width: r.width, height: r.height };
   return { width: doc.canvas.width, height: doc.canvas.height };
 }
 import {
@@ -449,8 +480,18 @@ export class CADDocument {
    * diameter = wrapped-canvas-dimension / π). Read this — and {@link stockFootprint}
    * — instead of `canvas`/`stockThickness` in CAM, preview, and bounds code.
    */
+  /** Whether this document outputs to a beam head — flat laser or laser-rotary.
+   *  Prefer this over `machineKind === "laser"`; see {@link isLaser}. */
+  get isLaser(): boolean {
+    return isLaser(this.machineKind);
+  }
+  /** Whether the stock is a cylinder and the canvas its unrolled surface.
+   *  Prefer this over `machineKind === "mill-rotary"`; see {@link isRotary}. */
+  get isRotary(): boolean {
+    return isRotary(this.machineKind);
+  }
   get stock(): Stock {
-    if (this.machineKind === "mill-rotary") {
+    if (isRotary(this.machineKind)) {
       const wrapX = this.rotary?.wrapAxis === "x";
       const length = wrapX ? this.canvas.height : this.canvas.width;
       const circumference = wrapX ? this.canvas.width : this.canvas.height;
@@ -504,10 +545,10 @@ export class CADDocument {
    */
   flip: FlipSettings | null = null;
   /**
-   * Per-job cylinder parameters for a `mill-rotary` machine (see {@link MachineKind}),
-   * or `null` when unset — in which case a `mill-rotary` export falls back to
+   * Per-job cylinder parameters for a rotary machine (see {@link MachineKind}),
+   * or `null` when unset — in which case a rotary export falls back to
    * {@link RotarySettings} defaults derived from the stock. Ignored unless
-   * `machineKind === "mill-rotary"`. Not combinable with `flip`. See cam/klein.ts.
+   * {@link isRotary}. Not combinable with `flip`. See cam/klein.ts.
    */
   rotary: RotarySettings | null = null;
   /**

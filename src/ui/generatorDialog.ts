@@ -56,7 +56,7 @@ export function dialogWarnings(
     }
   }
 
-  if (doc.machineKind === "laser" && specs.some((s) => s.name === "clearance")) {
+  if (doc.isLaser && specs.some((s) => s.name === "clearance")) {
     const clearance = params.clearance;
     if (!clearance || clearance <= 0) {
       warnings.push(

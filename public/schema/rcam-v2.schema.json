@@ -60,8 +60,8 @@
       "description": "Post-processor id. For a mill (machineKind \"mill\"): \"linuxcnc\" | \"grbl\" (default \"linuxcnc\"). For a laser (machineKind \"laser\"): a laser controller — \"grbl-dynamic\" (M4, default), \"grbl-constant\" (M3), \"marlin\" (0–255), \"smoothie\" (inline S 0–1), or \"linuxcnc-laser\" (PWM spindle). Legacy laser files may store \"grbl\", which maps to grbl-dynamic."
     },
     "machineKind": {
-      "enum": ["mill", "laser", "mill-rotary"],
-      "description": "Machine the document outputs for. Default \"mill\" (spindle + Z). \"laser\" routes export through the fixed-Z beam generator (beam on/off, power + passes, no Z) and the operations use the laser fields (laserPower/laserPasses/kerfWidth/laserFill). \"mill-rotary\" behaves like \"mill\" everywhere except export, which wraps the finished flat program around the cylinder described by the top-level \"rotary\" block (required for this kind) — one work axis stays linear, the wrapped one is emitted as rotary-axis degrees."
+      "enum": ["mill", "laser", "mill-rotary", "laser-rotary"],
+      "description": "Machine the document outputs for. Two independent choices: the HEAD (\"mill\" = spindle + Z, the default; \"laser\" = fixed-Z beam, routing export through the beam generator — beam on/off, power + passes, no Z — with the operations using the laser fields laserPower/laserPasses/kerfWidth/laserFill) and the STOCK (a \"-rotary\" kind machines a cylinder, so the canvas is its unrolled surface and the top-level \"rotary\" block is required). The head behaviour is unchanged by the stock. \"mill-rotary\" behaves like \"mill\" except that export WRAPS the finished flat program around the cylinder — one work axis stays linear, the wrapped one is emitted as rotary-axis degrees. \"laser-rotary\" behaves like \"laser\" including at export: the wrapped axis is SUBSTITUTED, i.e. left as its ordinary linear word in surface millimetres, with the machine set up so one revolution equals the circumference of travel on that axis (GRBL, which drives most laser rotaries, has no 4th axis). Its posted program is therefore the flat one plus a setup banner."
     },
     "endPosition": {
       "oneOf": [
@@ -89,7 +89,7 @@
         { "$ref": "#/$defs/rotary" },
         { "type": "null" }
       ],
-      "description": "Optional cylindrical/rotary wrap setup. When present (mill mode), export rolls the flat program around a cylinder on a 4th axis. null/omitted = flat work."
+      "description": "Optional cylindrical/rotary setup — the cylinder the canvas is the unrolled surface of. Required for a \"-rotary\" machineKind, ignored otherwise. null/omitted = flat work."
     },
     "metadata": {
       "type": "object",
@@ -660,7 +660,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["axisWord", "diameter", "wrapAxis"],
-      "description": "Cylindrical/rotary wrap setup. Export rolls the flat program around a cylinder on a 4th axis: one work axis stays linear (cylinder length), the perpendicular one is emitted as a rotary word in degrees. Mill-only; not combinable with flip.",
+      "description": "Cylindrical/rotary setup: one work axis stays linear (the cylinder length), the perpendicular one runs around the circumference. How that wrapped axis is posted depends on the head (see machineKind) — a mill emits it as a rotary word in degrees; a laser substitutes it on its ordinary linear word in surface millimetres. Not combinable with flip.",
       "properties": {
         "axisWord": { "enum": ["A", "B"], "description": "Rotary axis word for the wrapped coordinate. \"A\" (about machine X) pairs with wrapAxis \"y\"; \"B\" (about Y) pairs with \"x\"." },
         "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Cylinder stock diameter, mm. 360° of rotation = π·diameter of surface travel." },

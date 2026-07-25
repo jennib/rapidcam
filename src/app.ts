@@ -362,7 +362,7 @@ export class App {
         onFit: () => this.fitView(),
         onToggle3D: () => this.toggle3DPreview(dom.canvasHost, dom.webglHost, dom.splitDivider),
         is3DVisible: () => this.preview3DVisible || this.laserPreviewVisible,
-        previewLabel: () => (this.doc.machineKind === "laser" ? "Laser Preview" : "3D Preview"),
+        previewLabel: () => (this.doc.isLaser ? "Laser Preview" : "3D Preview"),
         onToggleDimensions: () => {
           this.renderer.showDimensions = !this.renderer.showDimensions;
           this.requestRender();
@@ -482,7 +482,7 @@ export class App {
 
     // For laser machines, keep the flat cut-path overlay on the 2D canvas synced
     // with the 3D preview state.
-    if (this.doc.machineKind === "laser") {
+    if (this.doc.isLaser) {
       this.laserPreviewVisible = this.preview3DVisible;
       if (this.laserPreviewVisible)
         this.computeLaserPreview(); // instant on toggle
@@ -575,7 +575,7 @@ export class App {
   }
 
   private schedulePreviewUpdate(): void {
-    if (this.laserPreviewVisible && this.doc.machineKind !== "laser") {
+    if (this.laserPreviewVisible && !this.doc.isLaser) {
       this.laserPreviewVisible = false;
       this.renderer.laserPreview = null;
     }
@@ -598,13 +598,12 @@ export class App {
         const { ops, doc } = this.previewInput();
         // For a rotary job, wrap the preview onto the cylinder (diameter from the
         // per-job rotary settings, or the stock-derived default before one is set).
-        const rotary =
-          doc.machineKind === "mill-rotary"
-            ? (() => {
-                const s = doc.rotary ?? defaultRotarySettings(doc);
-                return { diameter: s.diameter, wrapAxis: s.wrapAxis };
-              })()
-            : null;
+        const rotary = doc.isRotary
+          ? (() => {
+              const s = doc.rotary ?? defaultRotarySettings(doc);
+              return { diameter: s.diameter, wrapAxis: s.wrapAxis };
+            })()
+          : null;
         this.webglPreview.render(rasterizeStock(ops, doc), rotary, ops.length > 0);
       }
     }, 250);

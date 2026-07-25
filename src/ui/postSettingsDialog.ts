@@ -4,7 +4,14 @@ import {
   getMachineHasCoolant,
   setMachineHasCoolant,
 } from "../core/prefs";
-import type { CADDocument, MachineKind, RotarySettings } from "../model/document";
+import {
+  type CADDocument,
+  isLaser,
+  isRotary,
+  MACHINE_KINDS,
+  type MachineKind,
+  type RotarySettings,
+} from "../model/document";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
 import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/klein";
 import { registerModal } from "./modal";
@@ -55,11 +62,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   // G-code generator runs and which toolpath fields the CAM dialog shows.
   const kindSelect = document.createElement("select");
   kindSelect.className = "unit post-settings-select";
-  for (const [v, l] of [
-    ["mill", "CNC Mill / Router"],
-    ["mill-rotary", "CNC Mill — Rotary / 4th axis"],
-    ["laser", "Laser"],
-  ] as const) {
+  for (const [v, l] of MACHINE_KINDS) {
     const o = document.createElement("option");
     o.value = v;
     o.textContent = l;
@@ -88,8 +91,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     coolantCheck,
   );
 
-  // Rotary (4th axis) — the per-job cylinder for a "mill-rotary" machine. Shown
-  // only when that machine type is selected; the params live on doc.rotary, the
+  // Rotary — the per-job cylinder for a rotary machine (mill or laser). Shown
+  // only when such a machine type is selected; the params live on doc.rotary, the
   // mode is the machine type itself (see cam/klein.ts).
   const rbase: RotarySettings = doc.rotary ?? defaultRotarySettings(doc);
   const wrapSelect = smallSelect(
@@ -119,17 +122,18 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   rotaryInfo.className = "post-settings-note";
   const rotaryNote = document.createElement("p");
   rotaryNote.className = "post-settings-note";
-  rotaryNote.innerHTML =
-    "The canvas is the unrolled cylinder surface, so the diameter <b>is</b> the stock: the wrapped stock " +
-    "dimension stays locked to the circumference (π·⌀). The rotary word (A/B, degrees) replaces the wrapped " +
-    "axis and arcs are flattened into the wrap. Set <b>Z0</b> per the reference chosen above.";
+  // Rows a BEAM rotary has no use for: it emits no Z (so no zero reference) and
+  // no rotary word, and it never flattens arcs because it never wraps them.
+  const zeroRow = labeledRow("Zero reference (Z0)", zeroSelect);
+  const rWordRow = labeledRow("Rotary axis word", rWordSelect);
+  const tolRow = labeledRow("Arc tolerance (mm)", tolInput);
   const rotarySection = document.createElement("div");
   rotarySection.append(
     labeledRow("Wrap axis", wrapSelect),
-    labeledRow("Rotary axis word", rWordSelect),
+    rWordRow,
     labeledRow("Cylinder diameter (mm)", diaInput),
-    labeledRow("Zero reference (Z0)", zeroSelect),
-    labeledRow("Arc tolerance (mm)", tolInput),
+    zeroRow,
+    tolRow,
     rotaryInfo,
     rotaryNote,
   );
@@ -143,15 +147,36 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   });
   const updateRotaryInfo = (): void => {
     const s = readRotary();
+    const laser = isLaser(kindSelect.value as MachineKind);
     const length = s.wrapAxis === "y" ? doc.canvas.width : doc.canvas.height;
-    const zeroNote =
-      s.zero === "center"
+    const wrapU = s.wrapAxis.toUpperCase();
+    const circ = circumference(s);
+    // A beam rotary substitutes the axis instead of wrapping it, so the number
+    // that matters to the operator is the machine setup: how much travel on the
+    // wrapped axis makes one revolution.
+    const tail = laser
+      ? `<b>${wrapU} is emitted in surface mm, not degrees</b> — set the rotary so one revolution = ` +
+        `${circ.toFixed(1)}mm of ${wrapU} travel (${wrapU} steps/mm = steps-per-rev ÷ ${circ.toFixed(1)}).`
+      : s.zero === "center"
         ? `Z0 = rotary <b>centre</b>: surface at Z${(s.diameter / 2).toFixed(1)} (radius); gSender visualizes natively.`
         : `Z0 = stock <b>surface</b>: touch off on top. gSender needs its "Visualize non-center zeros" toggle.`;
     rotaryInfo.innerHTML =
-      `⌀${s.diameter} → circumference <b>${circumference(s).toFixed(1)}mm</b> = 360° on ${s.axisWord} ` +
-      `(the wrapped stock dimension). Cylinder length ${length.toFixed(1)}mm on ${s.wrapAxis === "y" ? "X" : "Y"}.<br>` +
-      zeroNote;
+      `⌀${s.diameter} → circumference <b>${circ.toFixed(1)}mm</b> = 360°` +
+      `${laser ? "" : ` on ${s.axisWord}`} (the wrapped stock dimension). ` +
+      `Cylinder length ${length.toFixed(1)}mm on ${s.wrapAxis === "y" ? "X" : "Y"}.<br>` +
+      tail;
+  };
+  const updateRotaryNote = (): void => {
+    const laser = isLaser(kindSelect.value as MachineKind);
+    rotaryNote.innerHTML =
+      "The canvas is the unrolled cylinder surface, so the diameter <b>is</b> the stock: the wrapped stock " +
+      "dimension stays locked to the circumference (π·⌀). " +
+      (laser
+        ? "The wrapped axis is <b>substituted</b>, not wrapped: it posts as an ordinary linear word in surface " +
+          "millimetres, so the file runs on controllers with no 4th axis (GRBL). Focus the beam on the top of " +
+          "the cylinder."
+        : "The rotary word (A/B, degrees) replaces the wrapped axis and arcs are flattened into the wrap. " +
+          "Set <b>Z0</b> per the reference chosen above.");
   };
   // Pair the rotary word with the wrap axis the usual way.
   wrapSelect.addEventListener("change", () => {
@@ -179,22 +204,29 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     ppSelect.value = value;
   };
   ppSelect.addEventListener("change", () => {
-    if (kindSelect.value === "laser") laserPost = ppSelect.value;
+    if (isLaser(kindSelect.value as MachineKind)) laserPost = ppSelect.value;
     else millPost = ppSelect.value;
   });
 
   // Spindle/Z concepts don't apply to a laser; hide the tool-changer + coolant
   // rows in laser mode and swap the post-processor list to the laser controllers.
   const applyKindVisibility = () => {
-    const laser = kindSelect.value === "laser";
+    const kind = kindSelect.value as MachineKind;
+    const laser = isLaser(kind);
     fillPosts(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcRow.style.display = laser ? "none" : "";
     coolantRow.style.display = laser ? "none" : "";
-    // Rotary is a mill (spindle + Z), so the mill posts / tool-changer / coolant
-    // rows all apply; only the cylinder params are rotary-specific.
-    const rotary = kindSelect.value === "mill-rotary";
+    // The head decides posts / tool-changer / coolant; the stock decides whether
+    // the cylinder params show. A BEAM rotary hides the three mill-only rotary
+    // rows: it emits no Z (no zero reference) and substitutes the wrapped axis
+    // rather than wrapping it, so there is no rotary word and no arc flattening.
+    const rotary = isRotary(kind);
     rotarySection.style.display = rotary ? "" : "none";
-    if (rotary) updateRotaryInfo();
+    for (const row of [zeroRow, rWordRow, tolRow]) row.style.display = laser ? "none" : "";
+    if (rotary) {
+      updateRotaryInfo();
+      updateRotaryNote();
+    }
   };
   kindSelect.addEventListener("change", applyKindVisibility);
   applyKindVisibility();
@@ -224,7 +256,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     // The rotary cylinder params are the document's stock for a rotary machine;
     // clear them when the machine isn't rotary so a flat/laser file carries no
     // stale wrap settings.
-    const newRotary = kind === "mill-rotary" ? readRotary() : null;
+    const newRotary = isRotary(kind) ? readRotary() : null;
     // The canvas IS the unrolled cylinder surface, so the wrapped dimension is
     // locked to the circumference (π·⌀). Changing the diameter here resizes it.
     const wrapKey: "width" | "height" | null = newRotary
@@ -249,7 +281,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
       doc.rotary = newRotary;
       // A rotary cylinder has no bed — it's always surface-zeroed (see cam/klein.ts).
       // Normalise an errant bed Z-origin so the saved file stays honest.
-      if (kind === "mill-rotary") doc.origin.z = "top";
+      if (isRotary(kind)) doc.origin.z = "top";
       if (wrapKey !== null) doc.canvas[wrapKey] = lockedWrap!;
     }
     // Machine-wide preferences.

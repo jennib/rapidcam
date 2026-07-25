@@ -144,7 +144,7 @@ function nominalSets(doc: CADDocument, op: CAMOperation): NominalSet[] {
  * any) of its geometry. Non-blocking warnings; surfaced via Apollo pre-flight.
  */
 export function checkMachinability(doc: CADDocument): LintFinding[] {
-  if (doc.machineKind === "laser") return [];
+  if (doc.isLaser) return [];
   const findings: LintFinding[] = [];
 
   for (const op of doc.operations) {

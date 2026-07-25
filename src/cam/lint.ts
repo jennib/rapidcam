@@ -462,7 +462,7 @@ export function buildLintContext(
   const { width, height } = stockFootprint(doc);
   // Fixture footprints shifted into emitted (post-origin) coords to match the moves.
   const fixtures: Fixture[] =
-    doc.machineKind === "laser"
+    doc.isLaser
       ? []
       : fixturePolygons(doc).map((f) => ({
           poly: f.poly.map((p) => ({ x: p.x - ox, y: p.y - oy })),
@@ -478,7 +478,7 @@ export function buildLintContext(
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     fixtures,
-    machineKind: doc.machineKind === "laser" ? "laser" : "mill",
+    machineKind: doc.isLaser ? "laser" : "mill",
     doc,
   };
 }

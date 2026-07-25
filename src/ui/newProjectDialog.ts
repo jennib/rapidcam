@@ -1,11 +1,14 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
-import type {
-  MachineKind,
-  OriginDef,
-  OriginX,
-  OriginY,
-  OriginZ,
-  RotarySettings,
+import {
+  isLaser,
+  isRotary,
+  MACHINE_KINDS,
+  type MachineKind,
+  type OriginDef,
+  type OriginX,
+  type OriginY,
+  type OriginZ,
+  type RotarySettings,
 } from "../model/document";
 import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
 import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
@@ -128,7 +131,7 @@ export function openNewProjectDialog(
   let lastMachineKind: MachineKind | undefined;
   try {
     const lk = localStorage.getItem(StorageKeys.lastMachineKind);
-    if (lk === "mill" || lk === "laser" || lk === "mill-rotary") lastMachineKind = lk;
+    if (MACHINE_KINDS.some(([k]) => k === lk)) lastMachineKind = lk as MachineKind;
   } catch (_e) {
     // Ignore
   }
@@ -292,11 +295,7 @@ export function openNewProjectDialog(
 
   // -- machine --
   const macSec = sec("Machine");
-  const mkSel = sel([
-    ["mill", "CNC Mill / Router"],
-    ["mill-rotary", "CNC Mill — Rotary / 4th axis"],
-    ["laser", "Laser"],
-  ]);
+  const mkSel = sel(MACHINE_KINDS);
   mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
   const ppSel = sel(MILL_POST_OPTIONS);
@@ -340,12 +339,12 @@ export function openNewProjectDialog(
     ppSel.value = value;
   };
   ppSel.addEventListener("change", () => {
-    if (mkSel.value === "laser") laserPost = ppSel.value;
+    if (isLaser(mkSel.value as MachineKind)) laserPost = ppSel.value;
     else millPost = ppSel.value;
   });
   const applyMachineKind = () => {
-    const laser = mkSel.value === "laser";
-    const rotary = mkSel.value === "mill-rotary";
+    const laser = isLaser(mkSel.value as MachineKind);
+    const rotary = isRotary(mkSel.value as MachineKind);
     fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
     tcChk.disabled = laser;
     coolantChk.disabled = laser;
@@ -356,8 +355,9 @@ export function openNewProjectDialog(
     if (rotary) ozSel.value = "top";
     for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
     ozRow.style.opacity = noZChoice ? "0.45" : "";
-    // The surface-vs-axis Z0 choice only applies to a rotary cylinder.
-    zeroRow.style.display = rotary ? "" : "none";
+    // The surface-vs-axis Z0 choice only applies to a rotary cylinder being
+    // MILLED — a beam emits no Z at all, so it has no zero to reference.
+    zeroRow.style.display = rotary && !laser ? "" : "none";
     // A rotary job's stock is a cylinder: Length (along the axis) × Diameter, with
     // the wall/depth as the radial cut allowance. The circumference (π·diameter)
     // becomes the wrapped canvas dimension at creation.
@@ -394,7 +394,7 @@ export function openNewProjectDialog(
   createBtn.className = "btn tp-apply-btn";
   createBtn.textContent = "Create Project";
   createBtn.addEventListener("click", () => {
-    const rotary = mkSel.value === "mill-rotary";
+    const rotary = isRotary(mkSel.value as MachineKind);
     const t = parseLength(tInp.value, unit);
     if (!t || t <= 0) {
       highlight(tInp);
@@ -565,7 +565,7 @@ function dimInp(value: string): HTMLInputElement {
   return i;
 }
 
-function sel(opts: [string, string][]): HTMLSelectElement {
+function sel(opts: readonly (readonly [string, string])[]): HTMLSelectElement {
   const s = document.createElement("select");
   s.className = "unit";
   for (const [v, l] of opts) {
