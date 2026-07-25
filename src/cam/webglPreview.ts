@@ -1,4 +1,4 @@
-import type { HeightMap } from "./stockRasterizer";
+import { type HeightMap, LASER_BURN_DEPTH_MM } from "./stockRasterizer";
 
 // ---------------------------------------------------------------------------
 // GLSL sources
@@ -39,6 +39,8 @@ uniform vec2 uTexelSize;  // 1/gridW, 1/gridH
 uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
 uniform vec2 uStockXZ;    // stock width (X) and depth (Z) in mm
+uniform int uLaserMode;   // 1 = shade removed material as a laser burn, 0 = milled cut
+uniform float uBurnDepth; // mm of removed depth mapped to a full-black char (laser mode)
 
 in vec2 vUV;
 in float vHeight;
@@ -95,29 +97,45 @@ void main() {
   float gradZ = sobelZ / (8.0 * stepMM.y);
   vec3 normal = normalize(vec3(gradX, 1.0, gradZ));
 
-  // --- Albedo from how much material was removed (cuts read as fresh wood) ---
+  // --- Albedo from how much material was removed ---
   float cutDepth  = uStockT - vHeight;
-  float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
 
-  vec3 uncut    = vec3(0.42, 0.28, 0.12);  // planed top surface
-  vec3 machined = vec3(0.78, 0.60, 0.32);  // fresh-cut wood
-  vec3 deep     = vec3(0.06, 0.03, 0.012); // shadow at the base of deep cuts
-
-  vec3 albedo;
-  if (depthFrac < 0.006) {
-    albedo = uncut;
-  } else if (depthFrac < 0.06) {
-    albedo = mix(uncut, machined, depthFrac / 0.06);
-  } else if (depthFrac < 0.82) {
-    albedo = mix(machined, machined * 0.72, smoothstep(0.06, 0.82, depthFrac));
-  } else {
-    albedo = mix(machined * 0.72, deep, smoothstep(0.82, 1.0, depthFrac));
-  }
-
-  // Wood grain modulation — reconstruct world XZ (mm) from UV.
+  // Wood grain modulation — reconstruct world XZ (mm) from UV. Shared by both
+  // surface modes so the grain reads through a light laser scorch too.
   float wx = (vUV.x - 0.5) * uStockXZ.x;
   float wz = (0.5 - vUV.y) * uStockXZ.y;
-  albedo *= 0.86 + 0.22 * woodTone(vec2(wx, wz));
+  float grain = woodTone(vec2(wx, wz));
+
+  vec3 uncut = vec3(0.42, 0.28, 0.12);  // planed top surface
+  vec3 albedo;
+
+  if (uLaserMode == 1) {
+    // A laser SCORCHES the surface instead of gouging fresh wood: removed depth
+    // is a proxy for burn intensity. Faint areas amber-scorch (grain still shows
+    // through); dense areas char toward black. The near-flat relief + dark burn
+    // reads as a laser engrave, not a milled pocket.
+    float burn  = clamp(cutDepth / uBurnDepth, 0.0, 1.0);
+    vec3 wood   = uncut * (0.86 + 0.22 * grain);
+    vec3 scorch = vec3(0.14, 0.06, 0.028);   // light amber-brown burn
+    vec3 charry = vec3(0.022, 0.016, 0.012); // deep char, near black
+    vec3 burnt  = mix(scorch, charry, smoothstep(0.4, 1.0, burn));
+    albedo = mix(wood, burnt, smoothstep(0.03, 0.55, burn));
+  } else {
+    // Milled cuts read as fresh wood: deeper = lighter, then shadowed at the base.
+    float depthFrac = clamp(cutDepth / uStockT, 0.0, 1.0);
+    vec3 machined = vec3(0.78, 0.60, 0.32);  // fresh-cut wood
+    vec3 deep     = vec3(0.06, 0.03, 0.012); // shadow at the base of deep cuts
+    if (depthFrac < 0.006) {
+      albedo = uncut;
+    } else if (depthFrac < 0.06) {
+      albedo = mix(uncut, machined, depthFrac / 0.06);
+    } else if (depthFrac < 0.82) {
+      albedo = mix(machined, machined * 0.72, smoothstep(0.06, 0.82, depthFrac));
+    } else {
+      albedo = mix(machined * 0.72, deep, smoothstep(0.82, 1.0, depthFrac));
+    }
+    albedo *= 0.86 + 0.22 * grain;
+  }
 
   // --- Lighting: hemisphere ambient + key + fill + a soft, tight sheen ---
   vec3 keyDir  = normalize(vec3( 0.5, 1.15,  0.75));
@@ -129,7 +147,9 @@ void main() {
 
   vec3 viewDir = normalize(vec3(0.3, 1.0, 0.5));
   vec3 halfV   = normalize(keyDir + viewDir);
-  float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * 0.10;
+  // A charred surface is matte — drop most of the sheen in laser mode.
+  float sheenAmt = (uLaserMode == 1) ? 0.03 : 0.10;
+  float sheen  = pow(max(dot(normal, halfV), 0.0), 24.0) * sheenAmt;
 
   float diffuse = ambient + key * 0.85 + fill * 0.25;
   vec3 col = albedo * diffuse + vec3(sheen);
@@ -609,6 +629,8 @@ export class WebGLPreview {
   private stockW = 0;
   private stockH = 0;
   private stockT = 0;
+  /** Shade the flat top surface as a laser burn rather than a milled cut. */
+  private laserMode = false;
 
   // Orbit state
   private yaw = DEFAULT_YAW;
@@ -680,6 +702,7 @@ export class WebGLPreview {
     this.stockW = hm.stockW;
     this.stockH = hm.stockH;
     this.stockT = hm.stockT;
+    this.laserMode = hm.laser ?? false;
     this.rotary = rotary;
     this.rotaryRadius = rotary ? rotary.diameter / 2 : 0;
 
@@ -705,7 +728,8 @@ export class WebGLPreview {
     for (let i = 0; i < hm.data.length; i++) {
       if (hm.data[i] < minH) minH = hm.data[i];
     }
-    const hasCuts = minH < hm.stockT - 0.5;
+    // A laser burn is shallow (< the mill threshold), so any surface removal counts.
+    const hasCuts = minH < hm.stockT - (hm.laser ? 0.05 : 0.5);
     const msg = previewStatusMessage(hasCuts, hasToolpaths);
     this.statusEl.textContent = msg ?? "";
     this.statusEl.style.display = msg ? "block" : "none";
@@ -1032,6 +1056,8 @@ export class WebGLPreview {
       gl.uniform1i(gl.getUniformLocation(surf, "uWrapX"), wrapX ? 1 : 0);
     } else {
       set("uStockXZ", this.stockW, this.stockH);
+      gl.uniform1i(gl.getUniformLocation(surf, "uLaserMode"), this.laserMode ? 1 : 0);
+      set("uBurnDepth", LASER_BURN_DEPTH_MM);
     }
     
     // Upload camera-relative lighting uniforms (only used by cylProgram now)

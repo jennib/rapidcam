@@ -64,6 +64,18 @@ const TARGET_RES = 4; // 0.25 mm/cell — smooth walls for typical parts
 const MIN_RES = 2; // 0.5 mm/cell — historical floor, used only for huge stock
 const MAX_CELLS = 4_000_000; // caps the R32F texture + mesh at a safe size
 
+/**
+ * Visual-only surface relief (mm) for a laser engrave in the 3D preview.
+ *
+ * A laser scorches the surface rather than gouging it, so this stays shallow —
+ * deep enough to register as material removed (above webglPreview's cut
+ * threshold) and to give the burn edges a hint of relief, but not so deep it
+ * reads as a milled pocket. The burn is conveyed mainly by COLOUR in the shader
+ * (see the laser branch of the flat-surface fragment shader), which normalizes
+ * removed depth against this value to get a 0..1 burn intensity.
+ */
+export const LASER_BURN_DEPTH_MM = 0.4;
+
 export interface HeightMap {
   /** Surface height above table at each cell (mm).  0 = through-cut, stockT = uncut. */
   data: Float32Array;
@@ -72,6 +84,8 @@ export interface HeightMap {
   stockW: number; // doc canvas width  (mm)
   stockH: number; // doc canvas height (mm, the "depth" axis in 3-D)
   stockT: number; // stock thickness   (mm)
+  /** Shade the surface as a laser burn (scorch/char) rather than a milled cut. */
+  laser?: boolean;
 }
 
 export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap {
@@ -94,7 +108,7 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
     rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT, isLaser);
   }
 
-  return { data, gridW, gridH, stockW, stockH, stockT };
+  return { data, gridW, gridH, stockW, stockH, stockT, laser: isLaser };
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +525,7 @@ function rasVcarve(
 function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number, isLaser: boolean = false): void {
   const grid = getImageGrid(ent.imageId);
   if (!grid) return;
-  const maxDepth = Math.min(Math.abs(isLaser ? 2.0 : op.depth), stockT);
+  const maxDepth = Math.min(Math.abs(isLaser ? LASER_BURN_DEPTH_MM : op.depth), stockT);
   if (maxDepth <= 0) return;
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
@@ -607,8 +621,17 @@ function makeStampFn(
   isLaser: boolean = false,
 ): StampFn {
   if (isLaser) {
-    const dotR = ((op.rasterDotPitch ?? 0.1) / 2) * RES;
-    return (cx, cy, d) => stampDisc(data, w, h, cx, cy, dotR, d);
+    // The beam mark must be at least ~1 cell wide, or a swept vector line
+    // scatters into disconnected dots: a sub-cell disc (a 0.1 mm dot is ~0.2
+    // cells at RES 4) usually covers no integer cell, and none at all when the
+    // path runs between two cell rows — the "spotty" preview. Floor the radius
+    // at one cell so engraved lines/text render as continuous burns.
+    const dotR = Math.max(((op.rasterDotPitch ?? 0.1) / 2) * RES, 1.0);
+    // An engrave is a shallow surface scorch, so clamp its depth to the visual
+    // burn floor (matches the image path). A cut goes all the way through, so
+    // leave it uncapped.
+    const floorH = op.type === "engrave" ? stockT - LASER_BURN_DEPTH_MM : -Infinity;
+    return (cx, cy, d) => stampDisc(data, w, h, cx, cy, dotR, Math.max(d, floorH));
   }
   const R = op.diameter / 2;
   const Rcell = R * RES;
@@ -631,7 +654,10 @@ function makeStampFn(
 
 /** Step radius used for spacing stamps along a path sweep. */
 function effectiveToolR(op: CAMOperation, isLaser: boolean = false): number {
-  if (isLaser) return (op.rasterDotPitch ?? 0.1) / 2;
+  // The laser mark is floored at one cell wide (see makeStampFn), so stepping by
+  // a fraction of a cell keeps swept lines solid without oversampling far below
+  // the grid resolution (the old raw dot-pitch stepped ~10× finer than a cell).
+  if (isLaser) return Math.max((op.rasterDotPitch ?? 0.1) / 2, 1 / RES);
   if ((op.toolType ?? "end-mill") === "v-bit") {
     // At max depth the V-bit footprint is this wide; use it for dense-enough stepping.
     return Math.max(0.05, Math.abs(op.depth) * Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180)));
