@@ -8,7 +8,7 @@
  */
 
 import { test, expect, describe } from "vitest";
-import { dither, DITHER_MODES, type DitherMode } from "../src/cam/dither";
+import { dither, ditherRampRGBA, DITHER_MODES, type DitherMode } from "../src/cam/dither";
 
 const DIFFUSION: DitherMode[] = ["floyd-steinberg", "atkinson", "jarvis"];
 
@@ -103,4 +103,41 @@ test("output is deterministic (same input → identical map)", () => {
     const second = dither(dk, 32, 24, mode);
     expect(second).toEqual(first);
   }
+});
+
+describe("ditherRampRGBA (dialog pattern swatch)", () => {
+  const W = 120;
+  const H = 24;
+
+  test('"none" is a smooth monotonic ramp — light on the left, dark on the right', () => {
+    const buf = ditherRampRGBA("none", W, H);
+    const lum = (x: number): number => buf[x * 4]; // grey, so R=G=B
+    expect(lum(0)).toBeGreaterThan(lum(W - 1)); // bare (light) → burnt (dark)
+    // No 1-bit speckle: within a row the value only ever decreases left→right.
+    for (let x = 1; x < W; x++) expect(lum(x)).toBeLessThanOrEqual(lum(x - 1));
+    // Every pixel is a shade of grey (not the pure on/off of a dither).
+    const distinct = new Set(Array.from({ length: W }, (_, x) => lum(x)));
+    expect(distinct.size).toBeGreaterThan(10);
+  });
+
+  test("dithered ramps are 1-bit (only bare or burnt) and each method looks different", () => {
+    const bufs = DITHER_MODES.map((m) => ({ m, buf: ditherRampRGBA(m, W, H) }));
+    for (const { buf } of bufs) {
+      const vals = new Set([...buf].filter((_, i) => i % 4 === 0)); // R of each pixel
+      expect([...vals].every((v) => v === 35 || v === 235)).toBe(true); // burnt or bare, nothing between
+    }
+    // The whole point of the swatch: the methods produce visibly different patterns.
+    for (let i = 0; i < bufs.length; i++)
+      for (let j = i + 1; j < bufs.length; j++) {
+        let diff = 0;
+        for (let k = 0; k < bufs[i].buf.length; k += 4)
+          if (bufs[i].buf[k] !== bufs[j].buf[k]) diff++;
+        expect(diff, `${bufs[i].m} vs ${bufs[j].m} must differ`).toBeGreaterThan(0.1 * W * H);
+      }
+  });
+
+  test("degenerate sizes return an empty buffer", () => {
+    expect(ditherRampRGBA("floyd-steinberg", 0, 10).length).toBe(0);
+    expect(ditherRampRGBA("ordered", 10, 0).length).toBe(0);
+  });
 });

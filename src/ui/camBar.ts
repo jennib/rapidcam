@@ -23,7 +23,7 @@ import {
   type ToolType,
 } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
-import { type DitherMode, DITHER_MODES, DITHER_LABELS } from "../cam/dither";
+import { type DitherMode, DITHER_MODES, DITHER_LABELS, ditherRampRGBA } from "../cam/dither";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
@@ -2827,6 +2827,34 @@ export class CamBar {
       "Bayer pattern. Off = greyscale power modulation.";
     const rDitherRow = this.dField("Dithering", rDitherSel);
 
+    // Live pattern swatch — the difference between dither methods is the dot TEXTURE,
+    // which is invisible in the main preview (a ~0.1mm dot is sub-pixel and every
+    // method reproduces the same tone). This magnifies a tonal ramp to 1 pixel per
+    // dot so the characteristic grain of the selected method is obvious, and updates
+    // as the dropdown changes. "Off" shows the smooth greyscale ramp for contrast.
+    const SW = 232;
+    const SH = 40;
+    const rDitherSwatch = document.createElement("canvas");
+    rDitherSwatch.width = SW;
+    rDitherSwatch.height = SH;
+    rDitherSwatch.style.cssText = `width:${SW}px;height:${SH}px;image-rendering:pixelated;border-radius:4px;display:block;`;
+    rDitherSwatch.title = "Magnified pattern preview (1 pixel = 1 laser dot) — dark→light ramp";
+    const rDitherSwatchRow = document.createElement("div");
+    rDitherSwatchRow.className = "props-row";
+    rDitherSwatchRow.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;";
+    const rDitherSwatchCap = document.createElement("span");
+    rDitherSwatchCap.style.cssText = "opacity:0.6;font-size:11px;";
+    rDitherSwatchCap.textContent = "Pattern (magnified: 1 px = 1 dot)";
+    rDitherSwatchRow.append(rDitherSwatchCap, rDitherSwatch);
+
+    const renderDitherSwatch = (): void => {
+      const sctx = rDitherSwatch.getContext("2d");
+      if (!sctx) return;
+      const img = sctx.createImageData(SW, SH);
+      img.data.set(ditherRampRGBA(state.rasterDither, SW, SH));
+      sctx.putImageData(img, 0, 0);
+    };
+
     const invChk = document.createElement("input");
     invChk.type = "checkbox";
     invChk.className = "settings-checkbox";
@@ -2839,6 +2867,7 @@ export class CamBar {
     sec.appendChild(rDot.el);
     sec.appendChild(rMin.el);
     sec.appendChild(rDitherRow);
+    sec.appendChild(rDitherSwatchRow);
     sec.appendChild(rInvRow);
 
     // Air assist — emits the post's air command (M8/M9 by default) around this op.
@@ -2862,7 +2891,7 @@ export class CamBar {
       // Overscan serves both vector fill and raster rows.
       overscan.el.style.display =
         isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
-      for (const r of [rLine.el, rDot.el, rDitherRow, rInvRow])
+      for (const r of [rLine.el, rDot.el, rDitherRow, rDitherSwatchRow, rInvRow])
         r.style.display = isRaster ? "" : "none";
       // Min power tunes the greyscale power ramp; it's meaningless once dithering
       // fires every dot at full power, so hide it then.
@@ -2870,8 +2899,10 @@ export class CamBar {
     };
     rDitherSel.addEventListener("change", () => {
       state.rasterDither = rDitherSel.value as DitherMode;
+      renderDitherSwatch();
       update();
     });
+    renderDitherSwatch();
     fillChk.addEventListener("change", () => {
       state.laserFill = fillChk.checked;
       update();

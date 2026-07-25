@@ -158,3 +158,37 @@ export function dither(
   }
   return out;
 }
+
+/**
+ * Render a left→right darkness ramp (0 = light/bare material → 1 = dark/full burn)
+ * as an `w × h` RGBA buffer, dithered with `mode` — or a smooth greyscale gradient
+ * for `"none"`. This backs the toolpath dialog's magnified pattern swatch: one
+ * output pixel = one laser dot, so each method's characteristic dot texture is
+ * visible (in the real preview a dot is sub-pixel and every method reproduces the
+ * same tone, so they look identical). Pure/no-DOM so it is unit-tested; the caller
+ * wraps the buffer in an `ImageData`.
+ */
+export function ditherRampRGBA(mode: DitherMode, w: number, h: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(Math.max(0, w * h) * 4);
+  if (w <= 0 || h <= 0) return out;
+  const BARE = 235; // unburnt material (light grey)
+  const BURN = 35; // a burnt dot (near black)
+  const put = (i: number, v: number): void => {
+    out[i * 4] = v;
+    out[i * 4 + 1] = v;
+    out[i * 4 + 2] = v;
+    out[i * 4 + 3] = 255;
+  };
+  const rampAt = (x: number): number => (w > 1 ? x / (w - 1) : 0); // darkness 0..1
+
+  if (mode === "none") {
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) put(y * w + x, Math.round(BARE - rampAt(x) * (BARE - BURN)));
+    return out;
+  }
+  const dk = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) dk[y * w + x] = rampAt(x);
+  const map = dither(dk, w, h, mode);
+  for (let i = 0; i < w * h; i++) put(i, map[i] ? BURN : BARE);
+  return out;
+}
