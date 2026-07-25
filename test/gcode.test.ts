@@ -163,12 +163,11 @@ const p3 = { x: 100, y: 104 };
 }
 
 // 8) getPostProcessor registry ------------------------------------------------
-{
-  console.log("\n8) getPostProcessor registry");
-  check("'linuxcnc' returns LinuxCNC", getPostProcessor("linuxcnc") instanceof LinuxCNC);
-  check("'grbl' returns Grbl", getPostProcessor("grbl") instanceof Grbl);
-  check("unknown name defaults to LinuxCNC", getPostProcessor("unknown") instanceof LinuxCNC);
-}
+// (no block: this section declares no locals to scope, unlike the others)
+console.log("\n8) getPostProcessor registry");
+check("'linuxcnc' returns LinuxCNC", getPostProcessor("linuxcnc") instanceof LinuxCNC);
+check("'grbl' returns Grbl", getPostProcessor("grbl") instanceof Grbl);
+check("unknown name defaults to LinuxCNC", getPostProcessor("unknown") instanceof LinuxCNC);
 
 // 9) Arcs must not silently vanish (regression: arc showed in 3D preview but
 //    produced ZERO G-code with no warning). Engrave → real G3; profile → NOTE.

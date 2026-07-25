@@ -63,7 +63,7 @@ export function findFeatureForEntities(
   const ids = new Set(entityIds);
   for (const f of doc.features) {
     const group = doc.groups.find((g) => g.id === f.groupId);
-    if (group && group.entityIds.some((id) => ids.has(id))) return f;
+    if (group?.entityIds.some((id) => ids.has(id))) return f;
   }
   return null;
 }

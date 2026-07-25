@@ -221,7 +221,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     ...(doc.rotary ? { rotary: { ...doc.rotary } } : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
-    ...(snap.features && snap.features.length ? { features: snap.features as unknown[] } : {}),
+    ...(snap.features?.length ? { features: snap.features as unknown[] } : {}),
     layers: snap.layers as unknown[],
     activeLayerId: snap.activeLayerId,
     entities: entities as unknown[],
@@ -340,7 +340,7 @@ export async function openFile(): Promise<{
       const name = fileObj.name.replace(/\.rcam$/i, "");
       pushRecent({ name, savedAt: Date.now(), data: file });
       return { name, file, handle };
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }

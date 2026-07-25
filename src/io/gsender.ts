@@ -56,7 +56,7 @@ const TIMEOUT_MS = 5000;
 export function normalizeGsenderUrl(raw: string): string {
   let s = (raw || "").trim();
   if (!s) return "";
-  if (!/^https?:\/\//i.test(s)) s = "http://" + s;
+  if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
   return s.replace(/\/+$/, "");
 }
 

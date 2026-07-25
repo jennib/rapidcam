@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { ArcEntity, CircleEntity, PolylineEntity, RectEntity } from "../src/model/entities";
+import { type ArcEntity, CircleEntity, PolylineEntity, RectEntity } from "../src/model/entities";
 import { makeVariable } from "../src/model/variables";
 import { makeConstraint } from "../src/model/constraints";
 import { type CAMOperation, DEFAULTS } from "../src/cam/types";
@@ -176,7 +176,7 @@ test("panel with an inset draws a recessed inner panel, inset on all sides", () 
 
 test("panel commits the recessed panel onto its own 'Panel' layer", () => {
   const doc = new CADDocument({ width: 400, height: 400 });
-  const res = runGenerator(doc, GENERATORS["panel"], { width: 200, height: 120, panelInset: 20 });
+  const res = runGenerator(doc, GENERATORS.panel, { width: 200, height: 120, panelInset: 20 });
   const layer = doc.layers.find((l) => l.name === "Panel");
   expect(layer).toBeDefined();
 
@@ -204,7 +204,7 @@ test("panel does not suggest a pocket when the recessed panel has zero depth", (
 
 test("panel regenerates id-stably when resized", () => {
   const doc = new CADDocument({ width: 500, height: 500 });
-  const first = runGenerator(doc, GENERATORS["panel"], { width: 150, height: 100 });
+  const first = runGenerator(doc, GENERATORS.panel, { width: 150, height: 100 });
   const outerId = first.group.entityIds[0];
 
   const again = regenerateFeature(doc, first.feature.id, { width: 300 });
@@ -220,7 +220,7 @@ test("panel width can be driven by a document variable and resizes when it chang
   doc.addVariable(makeVariable("doorW", "400", "mm"));
   const res = runGenerator(
     doc,
-    GENERATORS["panel"],
+    GENERATORS.panel,
     { width: 400, height: 300 },
     { paramExprs: { width: "doorW" } },
   );
@@ -451,14 +451,14 @@ test("keyed entities keep their ids when the emit order changes", () => {
   try {
     const doc = new CADDocument({ width: 200, height: 200 });
     const res = runGenerator(doc, testGen, {});
-    const aId = res.feature.keyIds!["a"];
-    const bId = res.feature.keyIds!["b"];
+    const aId = res.feature.keyIds!.a;
+    const bId = res.feature.keyIds!.b;
 
     regenerateFeature(doc, res.feature.id, { swap: 1 });
     // Ids follow the KEY, not the emit position — radius identifies which
     // logical entity each id points at.
-    expect(res.feature.keyIds!["a"]).toBe(aId);
-    expect(res.feature.keyIds!["b"]).toBe(bId);
+    expect(res.feature.keyIds!.a).toBe(aId);
+    expect(res.feature.keyIds!.b).toBe(bId);
     const a = doc.entities.find((e) => e.id === aId) as CircleEntity;
     expect(a.radius).toBe(5);
   } finally {
@@ -499,10 +499,10 @@ test("keyIds persist through serialize → applyFile and don't alias snapshots",
   expect(reloaded.features[0].keyIds).toEqual(res.feature.keyIds);
 
   const snap = doc.snapshot();
-  const orig = res.feature.keyIds!["bottom"];
-  res.feature.keyIds!["bottom"] = "mutated";
+  const orig = res.feature.keyIds!.bottom;
+  res.feature.keyIds!.bottom = "mutated";
   doc.restore(snap);
-  expect(doc.features[0].keyIds!["bottom"]).toBe(orig);
+  expect(doc.features[0].keyIds!.bottom).toBe(orig);
 });
 
 test("sketch keys: duplicates and unconsumed keys throw at build time", () => {
