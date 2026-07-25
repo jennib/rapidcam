@@ -52,6 +52,8 @@ import { track } from "../analytics";
 import { StorageKeys } from "../core/storageKeys";
 import { maybeShowSharePrompt } from "./sharePrompt";
 import { registerModal, confirmDialog } from "./modal";
+import { openExportPreview } from "./exportPreviewDialog";
+import { stockFootprint } from "../model/document";
 import { toast } from "./toast";
 import {
   type OpCombo,
@@ -1854,16 +1856,28 @@ export class CamBar {
     } else {
       gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     }
-    if (!(await this.preflight(gcode))) return;
+    // The export preview is the confirm-before-you-cut screen: a backplot, the
+    // run-time estimate, the job summary, and the pre-flight findings in one place,
+    // with Export / Cancel. It replaces the plain pre-flight confirm on this path.
+    const name = this.exportName(isRotary ? "all-rotary" : "all");
+    const foot = stockFootprint(this.doc);
+    const stockLabel =
+      this.doc.machineKind === "laser"
+        ? `${foot.width} × ${foot.height}mm`
+        : `${foot.width} × ${foot.height} × ${this.doc.stockThickness}mm`;
+    const proceed = await openExportPreview({
+      gcode,
+      filename: name,
+      opCount: this.doc.operations.length,
+      stockLabel,
+      findings: lintGCode(gcode, buildLintContext(this.doc)),
+    });
+    if (!proceed) return;
     track("gcode_generated", {
       operation_count: this.doc.operations.length,
       ...(isRotary ? { rotary: true } : {}),
     });
-    // No success toast on a clean export: pre-flight issues already surface as a
-    // dialog, so a clean run stays quiet. The run-time estimate + confirmation are
-    // deferred to the planned export preview (per-op estimates still show on the
-    // toolpath cards, and the estimate is written into the G-code header).
-    this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
+    this.download(gcode, name);
     maybeShowSharePrompt();
   }
 
