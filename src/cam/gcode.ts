@@ -55,6 +55,7 @@ import { expandOpPatternTargets } from "./patternExpand";
 import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { Grbl } from "./postprocessors/grbl";
 import { generateLaserGCode } from "./lasergcode";
+import { insertTimeEstimateComment } from "./timeEstimate";
 
 export function getPostProcessor(name: string): PostProcessor {
   switch (name) {
@@ -1809,5 +1810,6 @@ export function generateGCode(
   }
 
   lines.push("M30 ; end program");
+  insertTimeEstimateComment(lines);
   return toAsciiGcode(lines.join("\n"));
 }

@@ -28,6 +28,7 @@ import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
 import { generateGCode } from "../cam/gcode";
+import { estimateGCodeTime, formatDuration } from "../cam/timeEstimate";
 import { lintGCode, buildLintContext } from "../cam/lint";
 import { sendToGsender } from "../io/gsender";
 import { sendToNcsender } from "../io/ncsender";
@@ -155,6 +156,13 @@ export class CamBar {
   private dragSrcIdx: number | null = null;
   /** Transient (not persisted) selection of toolpaths for a combined export. */
   private selectedOpIds = new Set<string>();
+  /** Per-op run-time estimates (seconds), keyed by a signature of the op + the
+   *  doc context that affects its G-code. Computing an estimate means posting the
+   *  op's G-code, which is costly for relief/raster — so it's cached and only run
+   *  off the render path (see scheduleOpEstimates), never synchronously in renderOps. */
+  private opTimeCache = new Map<string, number>();
+  private opEstEls = new Map<string, HTMLElement>();
+  private opEstTimer: ReturnType<typeof setTimeout> | null = null;
   private exportSelBtn: HTMLButtonElement | null = null;
   /** "Manage Tools" button — hidden in laser mode (tools are a mill concept). */
   private libBtn: HTMLButtonElement | null = null;
@@ -405,6 +413,7 @@ export class CamBar {
     for (const id of [...this.selectedOpIds]) if (!live.has(id)) this.selectedOpIds.delete(id);
 
     this.opsList.innerHTML = "";
+    this.opEstEls.clear();
     if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-state cam-ops-empty";
@@ -425,6 +434,47 @@ export class CamBar {
       this.opsList.appendChild(item);
     }
     this.updateExportSelBtn();
+    this.scheduleOpEstimates();
+  }
+
+  /** Signature for the op-time cache: the op plus the doc context that changes its
+   *  posted motion (stock thickness drives depth passes; machine kind picks the
+   *  generator). Origin only shifts coordinates, not lengths, so it's omitted. */
+  private opTimeKey(op: CAMOperation): string {
+    return `${this.doc.machineKind}|${this.doc.stockThickness}|${JSON.stringify(op)}`;
+  }
+
+  /**
+   * Fill in any missing per-op run-time estimates off the render path. Posting an
+   * op's G-code is expensive (relief/raster can be huge), so this is debounced and
+   * memoised: a burst of edits collapses to one pass, and cached ops are free.
+   * Results are written straight into the cards' estimate elements — no re-render.
+   */
+  private scheduleOpEstimates(): void {
+    const pending = this.doc.operations.filter(
+      (op) => this.opEstEls.has(op.id) && !this.opTimeCache.has(this.opTimeKey(op)),
+    );
+    if (pending.length === 0) return;
+    if (this.opEstTimer !== null) clearTimeout(this.opEstTimer);
+    this.opEstTimer = setTimeout(() => {
+      this.opEstTimer = null;
+      for (const op of pending) {
+        const key = this.opTimeKey(op);
+        let secs = this.opTimeCache.get(key);
+        if (secs === undefined) {
+          try {
+            secs = estimateGCodeTime(generateGCode([op], this.doc, this.gcodeOpts())).seconds;
+          } catch {
+            secs = 0; // a bad/empty op shouldn't break the list
+          }
+          this.opTimeCache.set(key, secs);
+        }
+        // The element may have been replaced by a newer render — update only if it's
+        // still the live one for this op.
+        const el = this.opEstEls.get(op.id);
+        if (el) el.textContent = `⏱ ~${formatDuration(secs)}`;
+      }
+    }, 150);
   }
 
   private highlightOp(id: string | null): void {
@@ -618,6 +668,26 @@ export class CamBar {
       item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
     }
     info.appendChild(params);
+
+    // Estimated run time for this op — filled in asynchronously (posting the op's
+    // G-code is costly), from the cache when available. Only shown for ops that
+    // actually cut something; a laser milling-only op or an unbound op won't.
+    const cuts = (op.regions?.length ?? 0) + (op.entityIds?.length ?? 0) > 0;
+    const laserSkips =
+      this.doc.machineKind === "laser" &&
+      op.type !== "profile" &&
+      op.type !== "engrave" &&
+      op.type !== "score";
+    if (cuts && !laserSkips) {
+      const est = document.createElement("div");
+      est.className = "tp-op-params tp-op-time";
+      est.style.opacity = "0.7";
+      const cached = this.opTimeCache.get(this.opTimeKey(op));
+      est.textContent = cached !== undefined ? `⏱ ~${formatDuration(cached)}` : "⏱ …";
+      est.title = "Estimated run time (constant-feed ballpark; excludes accel/dwell).";
+      info.appendChild(est);
+      this.opEstEls.set(op.id, est);
+    }
 
     // Roughing deeper than its finish op's surface gouges the final part — flag it.
     const gouge = this.reliefRoughGougeWarning(op);
@@ -1789,9 +1859,11 @@ export class CamBar {
       operation_count: this.doc.operations.length,
       ...(isRotary ? { rotary: true } : {}),
     });
-    const n = this.doc.operations.length;
-    const file = this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
-    toast(`Exported ${n} toolpath${n > 1 ? "s" : ""}${this.depthSummary(this.doc.operations)} → ${file}`);
+    // No success toast on a clean export: pre-flight issues already surface as a
+    // dialog, so a clean run stays quiet. The run-time estimate + confirmation are
+    // deferred to the planned export preview (per-op estimates still show on the
+    // toolpath cards, and the estimate is written into the G-code header).
+    this.download(gcode, this.exportName(isRotary ? "all-rotary" : "all"));
     maybeShowSharePrompt();
   }
 

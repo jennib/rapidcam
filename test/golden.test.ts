@@ -20,7 +20,12 @@ import type { RcamFile } from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+// The "; Estimated run time" header is a DERIVED comment (see timeEstimate.ts, its
+// own tests). Strip it before hashing so these goldens keep guarding motion/structure
+// only — an estimator tweak (e.g. a different rapid rate) must not trip a motion
+// tripwire, and the pre-estimate baselines stay valid.
+const stripEstimate = (g: string): string => g.replace(/^; Estimated run time:[^\n]*\n/m, "");
+const sha = (s: string) => createHash("sha256").update(stripEstimate(s)).digest("hex");
 
 function profileOp(
   id: string,

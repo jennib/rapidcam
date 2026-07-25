@@ -42,6 +42,7 @@ import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { groupContoursIntoRegions } from "./vcarve";
 import { fitArcs } from "./arcfit";
 import { expandOpPatternTargets } from "./patternExpand";
+import { insertTimeEstimateComment } from "./timeEstimate";
 import { n, toAsciiGcode, X, Y } from "./postprocessors/base";
 import { type LaserPost, getLaserPost } from "./laserposts";
 import { AIR_ON_DEFAULT, AIR_OFF_DEFAULT } from "./laserposts/base";
@@ -794,5 +795,6 @@ export function generateLaserGCode(
   if (endLines.length > 0) lines.push("; --- custom end ---", ...endLines);
 
   lines.push("M30 ; end program");
+  insertTimeEstimateComment(lines);
   return toAsciiGcode(lines.join("\n"));
 }
