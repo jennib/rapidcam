@@ -27,6 +27,8 @@
  * burns regardless of the order it's traced in.
  */
 
+import { dither, type DitherMode } from "./dither";
+
 /** A greyscale image as a row-major grid. `data[y*width + x]` ∈ [0,1], 0 = black. */
 export interface RasterGrid {
   width: number;
@@ -68,6 +70,13 @@ export interface RasterEngraveParams {
   flipX?: boolean;
   /** Mirror the sampled content top↔bottom. Default false. */
   flipY?: boolean;
+  /**
+   * Reproduce tone with a 1-bit dot pattern instead of per-dot power modulation.
+   * When set (and not `"none"`), every fired dot burns at `maxPower` and tone comes
+   * from dot density (see {@link ./dither}); `minPower`/`powerStep` no longer apply.
+   * Default `"none"` (greyscale power).
+   */
+  dither?: DitherMode;
 }
 
 /** One beam-on run within a scan row: burn from `x0` to `x1` (mm) at `power` (%). */
@@ -226,6 +235,29 @@ export interface RasterFieldParams {
 }
 
 /**
+ * Build the 1-bit dither map for a physical dot grid: convert each resampled tone
+ * to a darkness value (honouring `invert` and blanking background at/above the
+ * white threshold), then run the chosen algorithm. Shared by the laser G-code path
+ * ({@link rasterEngrave}) and the 3-D burn preview ({@link rasterField}) so both
+ * agree on exactly which dots fire. Grid order matches `dots` (row 0 = top).
+ */
+function ditherDots(
+  dots: Float32Array,
+  cols: number,
+  rows: number,
+  invert: boolean,
+  whiteThreshold: number,
+  mode: DitherMode,
+): Uint8Array {
+  const dk = new Float32Array(cols * rows);
+  for (let i = 0; i < dk.length; i++) {
+    const g = clamp01(invert ? 1 - dots[i] : dots[i]); // lightness (1 = white)
+    dk[i] = g >= whiteThreshold ? 0 : 1 - g; // darkness; blank the background
+  }
+  return dither(dk, cols, rows, mode);
+}
+
+/**
  * Resample + quantise `grid` to a physical level field at the given size. Returns
  * an empty field (`rows: []`) for degenerate inputs. Rows whose dots are all
  * blank are still included (a mill rides across them at the surface) — emptiness
@@ -249,6 +281,12 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   const rowPitch = heightMM / rowCount;
   const colPitch = widthMM / colCount;
   const dots = resampleGrid(grid, colCount, rowCount, params.flipX, params.flipY); // row 0 = top
+
+  // NOTE on dithering: the 3-D preview is a coarse height field (often coarser than
+  // the dot pitch), and the density-average of a dither pattern is exactly the
+  // source tone — so this field always renders continuous TONE, whether or not the
+  // laser op dithers. (Binarising here just smears sub-cell dots into a solid burn.)
+  // Dithering is shown where it's resolvable: the flat laser preview + the G-code.
 
   // darkness, quantised; blank (0) where the dot is at/above the white threshold.
   const levelFor = (gray: number): number => {
@@ -295,6 +333,14 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
   const colPitch = widthMM / colCount;
   const dots = resampleGrid(grid, colCount, rowCount, params.flipX, params.flipY); // row 0 = top
 
+  // Dithering: reproduce tone as a 1-bit dot pattern. A fired dot burns at maxPower,
+  // an unfired one is blank — density carries the tone, so minPower/powerStep are
+  // moot. Computed once over the whole dot grid (error diffusion needs the 2-D field).
+  const ditherMap =
+    params.dither && params.dither !== "none"
+      ? ditherDots(dots, colCount, rowCount, invert, whiteThreshold, params.dither)
+      : null;
+
   // Map a resampled tone (0=black) to a quantised beam power (%), or null to leave
   // the dot blank. `invert` flips tone first so "engrave the light parts" reads
   // white as dark.
@@ -321,7 +367,7 @@ export function rasterEngrave(grid: RasterGrid, params: RasterEngraveParams): Ra
       runStart = -1;
     };
     for (let c = 0; c < colCount; c++) {
-      const p = powerFor(dots[base + c]);
+      const p = ditherMap ? (ditherMap[base + c] ? maxPower : null) : powerFor(dots[base + c]);
       if (p === null) {
         closeRun(c);
       } else if (runStart < 0) {

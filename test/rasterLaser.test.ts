@@ -134,6 +134,64 @@ test("overscan brackets each lit run with beam-off run-up/run-down", () => {
   expect(g).toMatch(/G1 X13 Y[\d.]+ S0/); // run-down past the end, beam off
 });
 
+test("dithering fires full-power dots in a pattern instead of grading power", () => {
+  const id = registerGrid([[128, 128, 128, 128]]); // uniform mid-grey (~50%)
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const ent = doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 50, 40, 0)); // 200 rows @ 0.2mm
+
+  const raster = { rasterLineInterval: 0.2, rasterDotPitch: 0.2 } as const;
+  const greyG = generateLaserGCode([engraveOp([ent.id], raster)], doc);
+  const ditherG = generateLaserGCode(
+    [engraveOp([ent.id], { ...raster, rasterDither: "floyd-steinberg" })],
+    doc,
+  );
+
+  const powers = (g: string) =>
+    [...new Set([...g.matchAll(/G1 [^\n]*S(\d+)/g)].map((m) => Number(m[1])))].filter((v) => v > 0);
+  const litMoves = (g: string) => [...g.matchAll(/^G1 .*S[1-9]/gm)].length;
+
+  // Greyscale: a flat mid-grey is a single intermediate power, one run per row.
+  const greyPowers = powers(greyG);
+  expect(greyPowers).toHaveLength(1);
+  expect(litMoves(greyG)).toBe(200); // exactly one lit run per scan row
+
+  // Dithered: still a single power — but it's FULL power, broken into many dots per
+  // row (density carries the tone), so far more lit runs than the one-per-row grey.
+  const ditherPowers = powers(ditherG);
+  expect(ditherPowers).toHaveLength(1);
+  expect(ditherPowers[0]).toBeGreaterThan(greyPowers[0]); // 100% hotter than ~50%
+  expect(litMoves(ditherG)).toBeGreaterThan(200 * 5); // a pattern, not one run/row
+});
+
+test("flat preview tags raster runs with the row thickness so shading is density-aware", () => {
+  // A mid-grey dithered engrave: the renderer strokes each run at `thickness` (the
+  // physical row height), so the canvas coverage = burnt-area / image-area = tone.
+  // This pins the data the renderer needs and that the covered fraction ≈ mid-grey
+  // (so it shades to mid-tone rather than saturating to solid red).
+  const id = registerGrid([[128, 128, 128, 128]]); // uniform ~50%
+  const doc = new CADDocument({ width: 100, height: 100 });
+  const ent = doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 40, 30, 0));
+  const li = 0.5;
+
+  const paths = laserPreviewPaths(
+    [engraveOp([ent.id], { rasterLineInterval: li, rasterDotPitch: li, rasterDither: "atkinson" })],
+    doc,
+  );
+
+  expect(paths.length).toBeGreaterThan(0);
+  expect(paths.every((p) => p.thickness === li)).toBe(true); // every run sized truly
+
+  // Coverage = Σ(run length × row thickness) / image area. For a mid-grey the dot
+  // density is ~½, so this lands mid-range — the canvas will shade it ~mid, not solid.
+  const covered = paths.reduce(
+    (a, p) => a + Math.hypot(p.pts[1].x - p.pts[0].x, p.pts[1].y - p.pts[0].y) * (p.thickness ?? 0),
+    0,
+  );
+  const coverage = covered / (40 * 30);
+  expect(coverage).toBeGreaterThan(0.3);
+  expect(coverage).toBeLessThan(0.7);
+});
+
 test("missing pixels are reported, not silently dropped", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const e1 = doc.add(new RasterImageEntity("img-not-loaded", { x: 0, y: 0 }, 10, 10, 0));

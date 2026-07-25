@@ -23,6 +23,7 @@ import {
   type ToolType,
 } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
+import { type DitherMode, DITHER_MODES, DITHER_LABELS } from "../cam/dither";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
 import { generateMaterialTest } from "../cam/materialTest";
@@ -119,6 +120,7 @@ interface OpState {
   rasterDotPitch: number; // 0 = square dots (use the line interval)
   rasterMinPower: number;
   rasterInvert: boolean;
+  rasterDither: DitherMode; // laser 1-bit dot pattern ("none" = greyscale power)
   reliefGamma: number; // mill relief tone curve (1 = linear)
   pocketBoundaryMode: "regions" | "entities"; // UI toggle for pocket/vcarve modes
 }
@@ -828,6 +830,7 @@ export class CamBar {
       rasterDotPitch: existing?.rasterDotPitch ?? 0,
       rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
       rasterInvert: existing?.rasterInvert ?? false,
+      rasterDither: existing?.rasterDither ?? "none",
       reliefGamma: existing?.reliefGamma ?? 1,
     };
 
@@ -1642,7 +1645,12 @@ export class CamBar {
         airAssist: isLaser && state.airAssist ? true : undefined,
         rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
         rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
-        rasterMinPower: raster && state.rasterMinPower > 0 ? state.rasterMinPower : undefined,
+        rasterMinPower:
+          raster && state.rasterDither === "none" && state.rasterMinPower > 0
+            ? state.rasterMinPower
+            : undefined,
+        // Dithering is laser-only (a mill relief carves graded depth, not 1-bit dots).
+        rasterDither: raster && state.rasterDither !== "none" ? state.rasterDither : undefined,
         rasterInvert: reliefImageFields && state.rasterInvert ? true : undefined,
         // Tone curve is a mill-relief control (a laser raster uses min/max power instead).
         reliefGamma:
@@ -2801,6 +2809,24 @@ export class CamBar {
         state.rasterMinPower = Math.min(100, Math.max(0, v));
       },
     );
+    // Dithering — reproduce tone as a 1-bit dot pattern instead of per-dot power
+    // modulation (more predictable on diode lasers where power→burn is non-linear).
+    const rDitherSel = document.createElement("select");
+    rDitherSel.className = "dim";
+    for (const mode of ["none", ...DITHER_MODES] as DitherMode[]) {
+      const o = document.createElement("option");
+      o.value = mode;
+      o.textContent = DITHER_LABELS[mode];
+      rDitherSel.appendChild(o);
+    }
+    rDitherSel.value = state.rasterDither;
+    rDitherSel.title =
+      "Dithering renders tone as a pattern of full-power dots (density = darkness) " +
+      "rather than modulating power per dot. Floyd–Steinberg is the classic; Jarvis " +
+      "is smoother; Atkinson is higher-contrast (good on wood); Ordered is a fast " +
+      "Bayer pattern. Off = greyscale power modulation.";
+    const rDitherRow = this.dField("Dithering", rDitherSel);
+
     const invChk = document.createElement("input");
     invChk.type = "checkbox";
     invChk.className = "settings-checkbox";
@@ -2812,6 +2838,7 @@ export class CamBar {
     sec.appendChild(rLine.el);
     sec.appendChild(rDot.el);
     sec.appendChild(rMin.el);
+    sec.appendChild(rDitherRow);
     sec.appendChild(rInvRow);
 
     // Air assist — emits the post's air command (M8/M9 by default) around this op.
@@ -2835,9 +2862,16 @@ export class CamBar {
       // Overscan serves both vector fill and raster rows.
       overscan.el.style.display =
         isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
-      for (const r of [rLine.el, rDot.el, rMin.el, rInvRow])
+      for (const r of [rLine.el, rDot.el, rDitherRow, rInvRow])
         r.style.display = isRaster ? "" : "none";
+      // Min power tunes the greyscale power ramp; it's meaningless once dithering
+      // fires every dot at full power, so hide it then.
+      rMin.el.style.display = isRaster && state.rasterDither === "none" ? "" : "none";
     };
+    rDitherSel.addEventListener("change", () => {
+      state.rasterDither = rDitherSel.value as DitherMode;
+      update();
+    });
     fillChk.addEventListener("change", () => {
       state.laserFill = fillChk.checked;
       update();

@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Flat laser-preview harness</title>
+  <style>
+    html, body { margin: 0; background: #1e1f24; }
+    #host { width: 400px; height: 300px; position: relative; }
+    #cv { display: block; }
+  </style>
+</head>
+<body>
+  <div id="host"><canvas id="cv"></canvas></div>
+  <script type="module">
+    import { CADDocument } from "/src/model/document.ts";
+    import { RasterImageEntity } from "/src/model/entities.ts";
+    import { registerEmbeddedImage } from "/src/core/imageManager.ts";
+    import { laserPreviewPaths } from "/src/cam/lasergcode.ts";
+    import { Renderer } from "/src/view/renderer.ts";
+    import { Viewport } from "/src/view/viewport.ts";
+
+    const emptyOverlay = {
+      previews: [], snap: null, selectionRect: null, hover: null, hoverConstraint: null,
+    };
+
+    // Physical geometry of the engraved image (world mm).
+    const IMG = { x: 10, y: 10, w: 40, h: 30 };
+
+    /**
+     * Render the flat laser preview of a uniform-tone image engrave and store the
+     * mean brightness over the (inner) image region in window.__meanBrightness.
+     *
+     * opts: { tone 0..255 (0=black), dither "none"|"floyd-steinberg"|..., scale px/mm,
+     *         lineInterval mm, baseline (skip the preview → background only) }.
+     *
+     * The image ENTITY is not drawn — we render a clean doc with only the computed
+     * world-space preview paths, so the sampled brightness reflects the burn overlay
+     * against a constant background across every scenario (isolates coverage×alpha).
+     */
+    window.__renderFlatLaser = (opts = {}) => {
+      window.__err = "";
+      try {
+        const { tone = 128, dither = "none", scale = 3, lineInterval = 0.1, baseline = false } = opts;
+
+        // Build the op + image in one doc to compute the preview paths.
+        const src = new CADDocument({ width: 100, height: 100 });
+        src.machineKind = "laser";
+        const W = 8, H = 8;
+        const id = `flat-${tone}-${dither}-${Math.random().toString(36).slice(2)}`;
+        registerEmbeddedImage({
+          id, name: id, width: W, height: H,
+          data: btoa(String.fromCharCode(...new Array(W * H).fill(tone))),
+        });
+        const ent = src.add(new RasterImageEntity(id, { x: IMG.x, y: IMG.y }, IMG.w, IMG.h, 0));
+        const op = {
+          id: "e", name: "e", type: "engrave", entityIds: [ent.id], side: "outside",
+          toolType: "end-mill", toolNumber: 1, diameter: 0, feedrate: 3000, plungeRate: 300,
+          spindleSpeed: 0, safeZ: 5, depth: 0, stepdown: 1, stepover: 0.4,
+          laserPower: 100, rasterLineInterval: lineInterval, rasterDotPitch: lineInterval,
+          rasterMinPower: 0, rasterDither: dither,
+        };
+        const paths = laserPreviewPaths([op], src);
+
+        // Fixed backing store (dpr 1 in headless chromium).
+        const host = document.getElementById("host");
+        const canvas = document.getElementById("cv");
+        canvas.width = 400; canvas.height = 300;
+        canvas.style.width = "400px"; canvas.style.height = "300px";
+
+        const view = new Viewport();
+        view.setSize(400, 300);
+        view.scale = scale;
+        const cx = IMG.x + IMG.w / 2, cy = IMG.y + IMG.h / 2;
+        view.tx = 200 - cx * scale;   // centre the image on the canvas
+        view.ty = 150 + cy * scale;
+
+        // Render a CLEAN doc (no image entity) with just the preview overlay.
+        const renderDoc = new CADDocument({ width: 100, height: 100 });
+        renderDoc.machineKind = "laser";
+        const r = new Renderer(canvas);
+        r.laserPreview = baseline ? null : paths;
+        r.render(renderDoc, view, emptyOverlay);
+
+        // Mean brightness of the inner image rectangle (inset to avoid its edges).
+        const ctx = canvas.getContext("2d");
+        const a = view.worldToScreen({ x: IMG.x, y: IMG.y + IMG.h });      // top-left on screen
+        const b = view.worldToScreen({ x: IMG.x + IMG.w, y: IMG.y });      // bottom-right
+        const x = Math.round(Math.min(a.x, b.x)) + 4;
+        const y = Math.round(Math.min(a.y, b.y)) + 4;
+        const w = Math.max(1, Math.round(Math.abs(b.x - a.x)) - 8);
+        const h = Math.max(1, Math.round(Math.abs(b.y - a.y)) - 8);
+        const px = ctx.getImageData(x, y, w, h).data;
+        let sum = 0;
+        for (let i = 0; i < px.length; i += 4) sum += (px[i] + px[i + 1] + px[i + 2]) / 3;
+        window.__meanBrightness = sum / (px.length / 4);
+        return true;
+      } catch (e) {
+        window.__err = String((e && e.message) || e);
+        return false;
+      }
+    };
+
+    window.__harnessReady = true;
+  </script>
+</body>
+</html>

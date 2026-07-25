@@ -1,5 +1,6 @@
 import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
+import type { DitherMode } from "./dither";
 
 export type CAMOpType =
   | "profile"
@@ -291,6 +292,13 @@ export interface CAMOperation {
   rasterMinPower?: number;
   /** Raster engrave only: engrave the light areas instead of the dark (photo negative). Default false. */
   rasterInvert?: boolean;
+  /**
+   * Laser raster engrave only: reproduce tone with a 1-bit dot pattern instead of
+   * per-dot power modulation. When set (and not `"none"`), every fired dot burns at
+   * `laserPower` and tone comes from dot density — `rasterMinPower` no longer applies.
+   * Default `"none"` (greyscale power). Ignored on the mill-relief path.
+   */
+  rasterDither?: DitherMode;
   /**
    * Mill relief only: tone curve on the carved depth — `depth ∝ darkness ^ gamma`.
    * 1 = linear (default). >1 lifts the mid-tones (flatter/shallower background),

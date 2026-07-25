@@ -537,6 +537,10 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
     dotPitchMM: op.rasterDotPitch,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
+    // op.rasterDither is intentionally NOT applied here: the 3-D height field is
+    // coarser than the dot pitch, and a dither pattern's density-average is the
+    // source tone anyway, so this preview shows continuous tone for both greyscale
+    // and dithered laser ops. The dot pattern shows in the flat preview + G-code.
     flipX: ent.flipX,
     flipY: ent.flipY,
   });

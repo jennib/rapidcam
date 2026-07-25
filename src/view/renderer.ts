@@ -843,6 +843,17 @@ export class Renderer {
    * intensity so each opacity level is one batched stroke (thousands of runs
    * stay a handful of draw calls). Higher intensity ⇒ more opaque red, matching
    * the darker image areas that burn hardest.
+   *
+   * Each run is stroked at its TRUE physical row height (mm → px), not a fixed
+   * width. Scan rows tile without overlapping, so at any zoom the canvas's
+   * coverage anti-aliasing turns them into a per-pixel fill fraction:
+   *  - a solid greyscale engrave lights every dot (coverage ≈ 1) ⇒ tone comes from
+   *    the per-bucket alpha;
+   *  - a dithered engrave lights a fraction of dots at full power (bucket ≈ max) ⇒
+   *    tone comes from the coverage = local dot density.
+   * Either way the shown value is coverage × intensity, so a mid-grey dithered area
+   * reads as mid-tone instead of the solid red a fixed 1.25px line used to smear it
+   * into once dots fell below one screen pixel.
    */
   private drawRasterShaded(view: Viewport, paths: LaserPreviewPath[]): void {
     const ctx = this.ctx;
@@ -852,11 +863,17 @@ export class Renderer {
       const b = Math.round((p.intensity ?? 0) * BUCKETS);
       byBucket[b].push(p);
     }
-    ctx.lineWidth = 1.25;
+
+    // A raster op has one row height throughout; take it from the runs (0.1mm
+    // fallback if somehow untagged). The tiny floor keeps a sub-pixel row faintly
+    // visible without over-covering it (that floor is exactly what caused the smear).
+    const rowMM = paths.find((p) => p.thickness && p.thickness > 0)?.thickness ?? 0.1;
+    ctx.lineWidth = Math.max(0.2, rowMM * view.scale);
+    ctx.lineCap = "butt"; // rows tile edge-to-edge; round caps would over-cover run ends
     ctx.strokeStyle = COLORS.laserCut;
-    
-    // Use multiply blending so the dense raster passes darken the image underneath
-    // like a burn, rather than completely painting over it with a solid red block.
+
+    // Multiply so dense passes darken the image underneath like a burn instead of
+    // painting a solid red block over it.
     ctx.globalCompositeOperation = "multiply";
 
     for (let b = 0; b <= BUCKETS; b++) {
@@ -874,10 +891,11 @@ export class Renderer {
       }
       ctx.stroke();
     }
-    
-    // Restore default compositing and alpha
+
+    // Restore the shared defaults (drawLaserPreview set lineCap "round").
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
+    ctx.lineCap = "round";
   }
 
   // --- overlays ------------------------------------------------------------

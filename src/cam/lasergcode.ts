@@ -241,6 +241,7 @@ function rasterItemsForImage(ent: RasterImageEntity, op: CAMOperation): LaserIte
     maxPower: op.laserPower ?? DEFAULTS.laserPower,
     minPower: op.rasterMinPower ?? DEFAULTS.rasterMinPower,
     invert: op.rasterInvert,
+    dither: op.rasterDither,
     flipX: ent.flipX,
     flipY: ent.flipY,
   });
@@ -650,11 +651,15 @@ function arcPolyline(arc: ArcEntity): Vec2[] {
 /** A cut path for the flat preview, in model/world coordinates. `intensity`
  *  (0..1) is set for raster-engrave runs so the preview can shade each dot by
  *  its beam power (darker image area ⇒ higher power ⇒ stronger mark); it is
- *  undefined for vector cut/engrave paths, which draw at full strength. */
+ *  undefined for vector cut/engrave paths, which draw at full strength.
+ *  `thickness` (mm) is the physical scan-row height for a raster run, so the
+ *  renderer can stroke it at true size — that makes a dithered pattern's dots
+ *  average into correct tone by coverage when zoomed out, instead of smearing. */
 export interface LaserPreviewPath {
   pts: Vec2[];
   closed: boolean;
   intensity?: number;
+  thickness?: number;
 }
 
 /**
@@ -681,12 +686,17 @@ export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): Las
         // tonal contrast within the image regardless of the chosen power ceiling.
         // Runs are local; `it.xf` rotates each endpoint so the preview tilts too.
         const maxP = Math.max(1, op.laserPower ?? DEFAULTS.laserPower);
+        const rowThickness =
+          op.rasterLineInterval && op.rasterLineInterval > 0
+            ? op.rasterLineInterval
+            : DEFAULTS.rasterLineInterval;
         for (const row of it.rows)
           for (const run of row.runs)
             paths.push({
               pts: [xfPoint(it.xf, run.x0, row.y), xfPoint(it.xf, run.x1, row.y)],
               closed: false,
               intensity: Math.min(1, run.power / maxP),
+              thickness: rowThickness,
             });
       } else if (it.pts.length >= 2) paths.push({ pts: it.pts, closed: it.closed });
     }

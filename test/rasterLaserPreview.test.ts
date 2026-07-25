@@ -1,7 +1,8 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity } from "../src/model/entities";
+import { CircleEntity, RasterImageEntity } from "../src/model/entities";
 import { rasterizeStock } from "../src/cam/stockRasterizer";
+import { registerEmbeddedImage } from "../src/core/imageManager";
 import type { CAMOperation } from "../src/cam/types";
 
 /**
@@ -62,4 +63,32 @@ test("laser vector engrave rasterizes a continuous ring (not spotty dots)", () =
     if (hit) covered++;
   }
   expect(covered / SAMPLES).toBeGreaterThan(0.99);
+});
+
+test("a dithered laser image engrave previews as TONE, identical to greyscale (no black smear)", () => {
+  // Regression: the 3-D height field is coarser than the dot pitch, so binarising a
+  // dither pattern here fattened every dot to ≥1 cell and smeared a ~50%-density
+  // photo into a solid full-depth (near-black) burn. The field must show tone.
+  const grad = Array.from({ length: 32 }, (_, x) => Math.round((x / 31) * 255)); // black→white
+  registerEmbeddedImage({
+    id: "img-dither-prev",
+    name: "grad",
+    width: 32,
+    height: 1,
+    data: btoa(String.fromCharCode(...grad)),
+  });
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.machineKind = "laser";
+  doc.stockThickness = 6;
+  const ent = doc.add(new RasterImageEntity("img-dither-prev", { x: 10, y: 10 }, 40, 30, 0));
+
+  const base = engraveOp({ entityIds: [ent.id], rasterLineInterval: 0.5, rasterDotPitch: 0.5 });
+  const grey = rasterizeStock([base], doc);
+  const dithered = rasterizeStock([{ ...base, rasterDither: "floyd-steinberg" }], doc);
+
+  // The preview shows graded depths (a gradient of burn), not two levels (uncut / full).
+  const distinctDepths = new Set([...grey.data]);
+  expect(distinctDepths.size).toBeGreaterThan(3);
+  // And dithering leaves the 3-D field unchanged — tone, not a solid block.
+  expect(dithered.data).toEqual(grey.data);
 });
