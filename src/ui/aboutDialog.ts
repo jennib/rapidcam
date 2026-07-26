@@ -33,7 +33,7 @@ export function showAboutDialog(): void {
 
   const version = document.createElement("p");
   version.className = "about-version";
-  version.textContent = "Version 1.5.0  ·  © 2026 RapidCAM";
+  version.textContent = "Version 1.6.0  ·  © 2026 RapidCAM";
 
   const bmc = document.createElement("a");
   bmc.href = "https://www.buymeacoffee.com/jennibm";

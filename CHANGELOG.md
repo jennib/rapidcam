@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-07-25
+
+Lasers get the rotary. A beam machine can now work on cylinder stock — tumblers,
+bottles, pens — with the unrolled canvas, wrap hint and carved-cylinder preview the
+mill already had. Alongside it: every export opens a confirm-before-you-cut preview
+with a backplot and a run-time estimate, photo engraving can dither, placed images
+can be sized by constraints, and an Align toolbar centres one shape inside another.
+
 ### Added
 - **Laser rotary machining** — a new machine type, **Laser — Rotary (cylinder)**, engraves and cuts around a rod: tumblers, bottles, pens, bats. It combines the beam head with the cylinder stock model, so everything the rotary mill already had now applies to a laser — New Project asks for the stock as **Length × Diameter**, the wrapped canvas dimension stays locked to π·diameter (so the design covers exactly one revolution), the canvas shows the **wrap hint**, and the 3-D preview renders the burn on a **cylinder**. Export posts by **axis substitution** rather than wrapping: the wrapped axis stays an ordinary linear word in *surface millimetres*, and the program carries a banner stating what one revolution must measure so you can set the rotary's steps/mm from it (`Y steps/mm = steps-per-revolution / 251.327`). That is deliberate, not a shortcut — GRBL 1.1, which drives the great majority of laser rotaries, has no 4th axis and would reject an `A` word, and the drawing is already in the surface millimetres a substituted axis wants. The mill-only rotary controls (rotary axis word, Z0 reference, arc tolerance) hide for a beam, which emits none of them. Adds `"laser-rotary"` to `machineKind` in the `.rcam` format and JSON Schema.
 - **Rotary wrap hint on the canvas** — a `mill-rotary` document now shows, in the flat top view, what it becomes on the rod: a **degree ruler** down the wrapped axis (quarter turns labelled, finer graduations as you zoom in), faint **quarter-turn guides** across the design, the two **seam** edges that meet when the sheet is rolled up, and a readout of the cylinder (`A ⟳ Ø50.0 mm · 360° = 157.1 mm · length 200.0 mm`). The ruler is drawn from the same numbers the post emits, so it also exposes the non-obvious part: **A0 sits at the work origin, not at the canvas edge** — a centred origin means the design runs −180°…+180°, and the A0 line is drawn through it. If the canvas ever stops being exactly one turn (a hand-edited file that broke the diameter↔canvas lock), the hint says so and keeps counting past 360°. Toggle it from **View ▸ Rotary Wrap Hint** (offered only for a rotary machine).
@@ -19,6 +27,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Text is dimensionable** — a text entity now exposes its ink-box corners (`bl`/`br`/`tr`/`tl`), edge midpoints, and `centre` as snap/pick points, so you can dimension a text block's width/height or its distance from a nearby edge, and constrain those points like a rectangle's. The points are derived from the anchor plus the live glyph extents, so a constraint on one translates the (rigid) text and re-solves as the string is edited.
 
 ### Fixed
+- The 3-D preview shades a **rotary laser** as a burn. The cylinder surface shader carried its own copy of the albedo ramp, and that copy only had the milled-wood branch, so a laser rotary rendered as a freshly machined dowel instead of a scorched one. Both surfaces now share one shading routine, so a burn looks the same on a board as on a rod.
+- An **area-fill engrave previews solid** instead of hollow. The preview rasterized every engrave as a stroke of its outline whatever `laserFill` said, so filled lettering posted a solid burn but previewed as outlines. The preview now asks the laser generator for the geometry it will actually burn, so the picture and the program agree.
 - The rotary wrap no longer drops inline words it doesn't interpret when it rewrites a motion line — above all a laser's `S` power (`G1 X.. Y.. F.. S255`), which would have vanished from every wrapped cut move and left the beam un-commanded. Words on an arc are now carried onto every chord it flattens into, so the beam can't drop out part-way round.
 - Editing a text entity's string/font/size/angle from the Properties panel now re-solves, so a centring or alignment constraint re-flows to fit the change.
 - Text centred against the bundled default font now stays centred when a design is reopened (the solve waited for the async font to load).
