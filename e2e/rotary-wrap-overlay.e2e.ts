@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { StorageKeys } from "../src/core/storageKeys";
 
 /**
  * The on-canvas rotary wrap hint (degree ruler, quarter-turn guides, seam edges),
@@ -37,6 +38,14 @@ test("rotary wrap hint: painted for a rotary doc, and togglable from the View me
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  // Record a consent decision BEFORE the app boots, so the banner never renders.
+  // It and the welcome screen are both TOP-LAYER elements, so whichever paints
+  // above swallows clicks meant for the other — and which one that is shifts
+  // with the viewport and with how tall the dialog renders (CI's font metrics
+  // made the New Project dialog tall enough for the banner to eat its Create
+  // button). Removing the banner outright makes these specs independent of that;
+  // consent-clickthrough.e2e.ts is the spec that deliberately exercises it.
+  await page.addInitScript((key) => localStorage.setItem(key, "denied"), StorageKeys.analyticsConsent);
   await page.goto("/");
   await expect
     .poll(() =>
@@ -51,11 +60,6 @@ test("rotary wrap hint: painted for a rotary doc, and togglable from the View me
   await npd.getByRole("button", { name: "Create Project" }).click();
   await expect(npd).toHaveCount(0);
   expect(await wrapPixelCount(page)).toBe(0);
-
-  // Clear the consent banner so it can't swallow later clicks.
-  const consent = page.locator("#analytics-consent-banner");
-  await consent.getByRole("button", { name: "No thanks" }).click();
-  await expect(consent).toHaveCount(0);
 
   // Switch the machine to the rotary: the ruler, guides and seams appear.
   await page.locator("#topbar").getByRole("button", { name: "Settings" }).click();
