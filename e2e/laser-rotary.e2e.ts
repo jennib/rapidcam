@@ -98,19 +98,31 @@ test("laser rotary: cylinder stock, beam-only settings, substituted-axis program
   await settings.getByRole("button", { name: "Save" }).click();
   await expect(settings).toHaveCount(0);
 
-  // And the posted program substitutes the axis instead of wrapping it.
+  // And the posted program substitutes the axis instead of wrapping it. Geometry
+  // and the op go in through `doc.restore()` so they're built by the app's own
+  // constructors: a dynamic import() can resolve to a different module instance
+  // once Vite has HMR-invalidated the file, and entities from a duplicate class
+  // fail every `instanceof` in the generator — producing an empty program that
+  // would quietly satisfy the "no A word" assertion below.
   const program = await page.evaluate(async () => {
     const app = (window as any).__app;
-    const ents = await import("/src/model/entities.ts");
-    const klein = await import("/src/cam/klein.ts");
-    const c = app.doc.add(new ents.CircleEntity({ x: 100, y: app.doc.canvas.height / 2 }, 25));
-    app.doc.operations = [
+    const doc = app.doc.snapshot();
+    doc.entities.push({
+      type: "circle",
+      id: "c-live",
+      center: { x: 100, y: app.doc.canvas.height / 2 },
+      radius: 25,
+      selected: false,
+      isConstruction: false,
+      layerId: "layer-0",
+    });
+    doc.operations = [
       {
         id: "op1",
         name: "cut",
         type: "profile",
         side: "outside",
-        entityIds: [c.id],
+        entityIds: ["c-live"],
         toolType: "end-mill",
         toolNumber: 1,
         diameter: 0,
@@ -125,13 +137,17 @@ test("laser rotary: cylinder stock, beam-only settings, substituted-axis program
         laserPasses: 1,
       },
     ];
+    app.doc.restore(doc);
+    const klein = await import("/src/cam/klein.ts");
     return klein.generateRotaryProgram(app.doc).program;
   });
   const motion = program
     .split("\n")
     .map((l: string) => l.trim())
     .filter((l: string) => /^G[0-3]\b/.test(l));
+  // Guard the guard: an empty program would pass every negative assertion below.
   expect(motion.length).toBeGreaterThan(1);
+  expect(motion.some((l: string) => /^G[23]\b/.test(l))).toBe(true); // the circle really posted
   expect(motion.some((l: string) => /\b[AB]-?[\d.]/.test(l))).toBe(false); // no 4th-axis word
   expect(motion.some((l: string) => /\bZ-?[\d.]/.test(l))).toBe(false); // no Z on a beam
   expect(program).toMatch(/axis substitution/i);

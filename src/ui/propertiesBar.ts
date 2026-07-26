@@ -20,8 +20,6 @@ import {
   type Bounds,
   CircleEntity,
   type Entity,
-  IMAGE_CONSTRAINT_FITS,
-  type ImageConstraintFit,
   LineEntity,
   PolylineEntity,
   RasterImageEntity,
@@ -322,6 +320,10 @@ export class PropertiesBar {
     lockRow.className = "props-row";
     const lockLbl = document.createElement("span");
     lockLbl.textContent = "Lock aspect";
+    lockLbl.title =
+      "Keep the image's proportions. Applies to both edits and constraints: " +
+      "typing one of width/height writes a proportional value to the other, and a " +
+      "constraint-driven resize scales uniformly.";
     const lockCb = document.createElement("input");
     lockCb.type = "checkbox";
     lockCb.checked = entity.aspectLocked;
@@ -333,46 +335,46 @@ export class PropertiesBar {
     lockRow.append(lockLbl, lockCb);
     sec.appendChild(lockRow);
 
-    // How far constraints/dimensions may reflow the image. Rigid (the default)
-    // keeps a corner constraint a pure move; "scale" turns a driving dimension on
-    // the image into a calibration; "stretch" lets it be pulled to fit.
+    // What constraints/dimensions may change about the image. Both off (the
+    // default) is a rigid body — a corner constraint just moves it. Resize turns
+    // a driving dimension on the image into a calibration; rotate lets an edge be
+    // levelled. They're separate because each freedom lets the solver satisfy the
+    // OTHER's constraint the wrong way (tilt instead of scale; shrink instead of
+    // turn), so granting only what the intent needs keeps the fit honest.
     const fitRow = document.createElement("div");
     fitRow.className = "props-row";
     const fitLbl = document.createElement("span");
-    fitLbl.textContent = "Constraints";
+    fitLbl.textContent = "Constraints may";
     fitLbl.title =
-      "What a constraint or dimension on this image may change. Pick the narrowest " +
-      "one that matches your intent — spare freedom lets the solver satisfy a " +
-      "constraint the wrong way.\n" +
-      "Move only: the image is rigid — it translates.\n" +
-      "Scale to fit: it resizes uniformly, aspect kept exactly (rotation held) — " +
-      "dimension a known distance to calibrate a scan.\n" +
-      "Rotate to fit: it turns, size held — level a tilted scan.\n" +
-      "Scale + rotate: both — pin two corners and it lands on both.\n" +
-      "Stretch to fit: width, height and angle are all free.";
-    const fitSel = document.createElement("select");
-    fitSel.className = "dim";
-    fitSel.style.flex = "1";
-    const FIT_LABELS: Record<ImageConstraintFit, string> = {
-      rigid: "Move only",
-      scale: "Scale to fit",
-      rotate: "Rotate to fit",
-      "scale-rotate": "Scale + rotate",
-      stretch: "Stretch to fit",
-    };
-    for (const value of IMAGE_CONSTRAINT_FITS) {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = FIT_LABELS[value];
-      if (value === entity.constraintFit) opt.selected = true;
-      fitSel.appendChild(opt);
-    }
-    fitSel.addEventListener("change", () => {
-      this.applyEdit(() => {
-        entity.constraintFit = fitSel.value as ImageConstraintFit;
+      "What a constraint or dimension is allowed to change about this image.\n" +
+      "Neither: the image is rigid — constraints move it.\n" +
+      "Resize: e.g. dimension a known distance on a scan to calibrate it " +
+      "(uniformly, unless Lock aspect is off).\n" +
+      "Rotate: e.g. make an edge horizontal to level a tilted scan.\n" +
+      "Grant only what you need — spare freedom lets the solver satisfy a " +
+      "constraint the wrong way (tilting to meet a size, or shrinking to meet an " +
+      "angle).";
+    const fitControls = document.createElement("span");
+    fitControls.style.cssText = "display:flex;gap:10px;align-items:center;";
+    const freedom: [string, "constraintResize" | "constraintRotate"][] = [
+      ["resize", "constraintResize"],
+      ["rotate", "constraintRotate"],
+    ];
+    for (const [label, prop] of freedom) {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display:flex;gap:4px;align-items:center;font-size:11px;";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = entity[prop];
+      cb.addEventListener("change", () => {
+        this.applyEdit(() => {
+          entity[prop] = cb.checked;
+        });
       });
-    });
-    fitRow.append(fitLbl, fitSel);
+      wrap.append(cb, document.createTextNode(label));
+      fitControls.appendChild(wrap);
+    }
+    fitRow.append(fitLbl, fitControls);
     sec.appendChild(fitRow);
 
     this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {

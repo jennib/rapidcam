@@ -780,6 +780,18 @@ button.cbtn.solve {
   flex: 1 1 0;
 }
 
+/* The rule above sizes TEXT fields (width:0 + flex so they fill the row). A
+   checkbox has an intrinsic size and must keep it, or it stretches into a wide
+   slab — and collapses to nothing inside a nested flex label. */
+.props-content input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  padding: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 .props-content input:focus {
   border-color: var(--accent);
 }

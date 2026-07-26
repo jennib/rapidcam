@@ -1071,40 +1071,6 @@ export class TextEntity extends Entity {
 // ---------------------------------------------------------------------------
 
 /**
- * How geometric constraints and dimensions may reflow a placed image.
- *
- * - `"rigid"` (default): size and rotation are held, so a constraint on a corner
- *   *translates* the image. An image's corners are nonlinear in w/h/angle, so an
- *   image left free reflows ambiguously under a single point constraint — rigid
- *   is what makes "pin this corner to that hole" mean the obvious thing.
- * - `"scale"`: the image may change size *uniformly* — w and h are one degree of
- *   freedom (see {@link RasterImageEntity.setScalar}), so the aspect ratio is
- *   exact by construction — while its rotation is still held. This is the
- *   calibrate case: dimension a known distance on a scanned drawing and the whole
- *   image scales to suit. Rotation stays out of it deliberately: a free angle can
- *   satisfy a size dimension by tilting instead (a 10mm gap is also a 32mm edge
- *   seen at 72°), which is never what "this feature is 10mm" meant.
- * - `"rotate"`: rotation only, size held — levelling a tilted scan against a
- *   drawn edge. The mirror of `"scale"`, and for the same reason: a free size can
- *   satisfy a rotation constraint by shrinking the image to nothing (`w·sinθ = 0`
- *   has a root at `w = 0` just as much as at `θ = 0`).
- * - `"scale-rotate"`: uniform size *and* rotation — a similarity fit, for the
- *   exactly-determined case of pinning two corners. Leaving it under-constrained
- *   leaves both of the above escape routes open, so prefer the narrower fit that
- *   matches the intent.
- * - `"stretch"`: w, h and angle are all free — the image can be pulled to fit
- *   non-uniformly (aspect not preserved).
- */
-export const IMAGE_CONSTRAINT_FITS = [
-  "rigid",
-  "scale",
-  "rotate",
-  "scale-rotate",
-  "stretch",
-] as const;
-export type ImageConstraintFit = (typeof IMAGE_CONSTRAINT_FITS)[number];
-
-/**
  * A placed raster image, for greyscale laser engraving. Holds only a reference
  * (`imageId`) into the image registry — the pixels live there and are embedded in
  * the .rcam file like fonts. The image occupies a `widthMM × heightMM` rectangle
@@ -1121,11 +1087,37 @@ export class RasterImageEntity extends Entity {
   flipX: boolean;
   /** Mirror the image content top↔bottom (about its horizontal centreline). */
   flipY: boolean;
-  /** Whether the aspect ratio is locked when modifying width/height (an edit-time
-   *  convenience — a formula in one side writes a proportional one to the other). */
+  /**
+   * Whether the image's proportions are locked. Governs BOTH edit surfaces, so
+   * the flag can't mean one thing in the panel and another in the solver:
+   * typing in width/height writes a proportional value/formula to the other side,
+   * and a constraint-driven resize scales uniformly ({@link constraintResize}).
+   */
   aspectLocked = true;
-  /** How constraints/dimensions may reflow the image. See {@link ImageConstraintFit}. */
-  constraintFit: ImageConstraintFit = "rigid";
+  /**
+   * Whether geometric constraints and dimensions may **resize** the image.
+   *
+   * Off by default, which makes an image a rigid body: its corners are nonlinear
+   * in w/h/angle, so an image left free reflows ambiguously under a single point
+   * constraint, and "pin this corner to that hole" should just move it. Turning
+   * it on is the calibrate case — dimension a known distance on a scanned drawing
+   * and the whole image scales to suit. With {@link aspectLocked} the two size
+   * scalars become ONE degree of freedom (see {@link setScalar}), so the ratio is
+   * exact by construction rather than converged.
+   */
+  constraintResize = false;
+  /**
+   * Whether geometric constraints and dimensions may **rotate** the image — e.g.
+   * levelling a tilted scan by making one of its edges horizontal.
+   *
+   * Kept independent of {@link constraintResize} because each freedom lets the
+   * solver satisfy the *other's* constraint the wrong way: a free angle meets a
+   * size dimension by tilting (a 10mm gap is also a 32mm edge seen at 72°), and a
+   * free size meets a levelling constraint by shrinking the image away (`w·sinθ`
+   * has a root at `w = 0` as much as at `θ = 0`). Grant only the freedom the
+   * intent needs and neither escape route is open.
+   */
+  constraintRotate = false;
 
   constructor(
     imageId: string,
@@ -1227,7 +1219,8 @@ export class RasterImageEntity extends Entity {
     e.isConstruction = this.isConstruction;
     e.layerId = this.layerId;
     e.aspectLocked = this.aspectLocked;
-    e.constraintFit = this.constraintFit;
+    e.constraintResize = this.constraintResize;
+    e.constraintRotate = this.constraintRotate;
     return e;
   }
 
@@ -1282,14 +1275,14 @@ export class RasterImageEntity extends Entity {
   }
   override setScalar(key: string, v: number): void {
     if (key === "w") {
-      // In the uniform-scale fits the two size scalars are ONE degree of freedom:
-      // h rides on w at the current ratio. Because h/w is unchanged by this write,
-      // the ratio is an exact invariant of every solver step — the aspect is
-      // preserved by construction rather than by a ratio constraint the solver
-      // would have to converge (and could trade off against). The solver holds h
-      // fixed in these modes (see fixImageScalars), so nothing writes it back out
-      // from under this.
-      const uniform = this.constraintFit === "scale" || this.constraintFit === "scale-rotate";
+      // A constraint-driven resize with the aspect locked makes the two size
+      // scalars ONE degree of freedom: h rides on w at the current ratio. Because
+      // h/w is unchanged by this write, the ratio is an exact invariant of every
+      // solver step — the aspect is preserved by construction rather than by a
+      // ratio constraint the solver would have to converge (and could trade off
+      // against). The solver holds h fixed in that case (see fixImageScalars), so
+      // nothing writes it back out from under this.
+      const uniform = this.constraintResize && this.aspectLocked;
       const ratio = this.widthMM > 0 ? this.heightMM / this.widthMM : 0;
       this.widthMM = Math.max(0.001, v);
       if (uniform && ratio > 0) this.heightMM = Math.max(0.001, this.widthMM * ratio);

@@ -18,7 +18,7 @@ import { bindingResidualAt, bindingTarget } from "../model/bindings";
 import { type Constraint, constraintResiduals, type Geo } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
-import type { EntityId, ImageConstraintFit } from "../model/entities";
+import type { EntityId } from "../model/entities";
 import { ArcEntity, type Entity, RasterImageEntity } from "../model/entities";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
@@ -395,15 +395,15 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
  * the Properties panel, and the solver can't unwind it afterwards because the
  * route back crosses the constraints.
  *
- * Only angles this solve could actually have wound are touched: the fit must hand
- * the angle to the solver, and no formula binding may drive it — a binding reads
- * the raw value, so there 720° is a real, intended 720°.
+ * Only angles this solve could actually have wound are touched: the image must
+ * allow constraint-driven rotation, and no formula binding may drive it — a
+ * binding reads the raw value, so there 720° is a real, intended 720°.
  */
 function normalizeImageAngles(doc: CADDocument): void {
   const TWO_PI = Math.PI * 2;
   for (const ent of doc.entities) {
     if (!(ent instanceof RasterImageEntity) || Math.abs(ent.angle) <= Math.PI) continue;
-    if (!FREE_IMAGE_SCALARS[ent.constraintFit].includes("angle")) continue;
+    if (!ent.constraintRotate) continue;
     if (doc.bindings.some((b) => b.entityId === ent.id && b.scalarKey === "angle")) continue;
     ent.angle -= TWO_PI * Math.round(ent.angle / TWO_PI);
   }
@@ -457,29 +457,34 @@ const scalarKey = (id: string, key: string): string => `scalar:${id}:${key}`;
 const sumSq = (v: number[]): number => v.reduce((s, x) => s + x * x, 0);
 
 /**
- * Fix the image size/rotation DOFs (w/h/angle) that the image's
- * {@link ImageConstraintFit} doesn't hand to the solver — the default being all
- * three, so an image is a **rigid** body and a corner/centre constraint
- * translates it rather than distorting it to fit (its corners are nonlinear in
- * w/h/angle, so an image left free reflows ambiguously).
+ * The image size/rotation DOFs (w/h/angle) the image hands to the solver.
  *
- * `"scale"` frees w alone — h rides on w inside `setScalar`, so the pair is a
- * single uniform-scale DOF and the aspect can't drift; `"rotate"` frees the angle
- * alone; `"scale-rotate"` frees both; `"stretch"` frees all three. A scalar driven
- * by a formula binding is always free, whatever the fit, so parametric formulas
- * keep working.
+ * Nothing by default, so an image is a **rigid** body and a corner/centre
+ * constraint translates it rather than distorting it to fit (its corners are
+ * nonlinear in w/h/angle, so an image left free reflows ambiguously).
+ * `constraintResize` adds the size — w alone when the aspect is locked, since h
+ * then rides on w inside `setScalar` and the pair is a single uniform-scale DOF
+ * whose ratio can't drift — and `constraintRotate` adds the angle.
  */
-const FREE_IMAGE_SCALARS: Record<ImageConstraintFit, readonly string[]> = {
-  rigid: [],
-  scale: ["w"],
-  rotate: ["angle"],
-  "scale-rotate": ["w", "angle"],
-  stretch: ["w", "h", "angle"],
-};
+export function freeImageScalars(ent: RasterImageEntity): string[] {
+  const free: string[] = [];
+  if (ent.constraintResize) {
+    free.push("w");
+    if (!ent.aspectLocked) free.push("h");
+  }
+  if (ent.constraintRotate) free.push("angle");
+  return free;
+}
+
+/**
+ * Fix every image scalar {@link freeImageScalars} doesn't release. A scalar
+ * driven by a formula binding is always free regardless, so parametric formulas
+ * keep working on a rigid image.
+ */
 function fixImageScalars(doc: CADDocument, fixed: Set<string>): void {
   for (const ent of doc.entities) {
     if (!(ent instanceof RasterImageEntity)) continue;
-    const free = FREE_IMAGE_SCALARS[ent.constraintFit];
+    const free = freeImageScalars(ent);
     for (const s of ent.dofScalars())
       if (
         !free.includes(s.key) &&

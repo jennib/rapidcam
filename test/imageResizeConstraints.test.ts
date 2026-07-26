@@ -1,17 +1,16 @@
 /**
- * Resizing a placed image THROUGH the constraint engine — the `constraintFit`
- * modes. "rigid" (the default, covered in imageConstraints.test.ts) is a pure
- * move; these cover "scale" (uniform, the calibrate case) and "stretch".
+ * Resizing a placed image THROUGH the constraint engine.
+ *
+ * An image's freedom is two independent permissions — `constraintResize` and
+ * `constraintRotate` — with `aspectLocked` deciding whether a resize is uniform.
+ * Both off (the default, covered in imageConstraints.test.ts) is a rigid body
+ * that constraints merely move.
  */
 import { expect, test } from "vitest";
 import { makeConstraint } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
 import { CADDocument } from "../src/model/document";
-import {
-  CircleEntity,
-  type ImageConstraintFit,
-  RasterImageEntity,
-} from "../src/model/entities";
+import { CircleEntity, RasterImageEntity } from "../src/model/entities";
 import { applyFile, serializeDoc } from "../src/io/fileio";
 import { computeEntityDofStatus, solve } from "../src/solver/solver";
 
@@ -19,6 +18,16 @@ const near = (p: { x: number; y: number }, x: number, y: number, d = 3) => {
   expect(p.x).toBeCloseTo(x, d);
   expect(p.y).toBeCloseTo(y, d);
 };
+
+/** Grant an image the freedoms a constraint solve is allowed to use. */
+function allow(
+  img: RasterImageEntity,
+  opts: { resize?: boolean; rotate?: boolean; aspect?: boolean },
+): void {
+  img.constraintResize = opts.resize ?? false;
+  img.constraintRotate = opts.rotate ?? false;
+  if (opts.aspect !== undefined) img.aspectLocked = opts.aspect;
+}
 
 /** Pin a point of any entity to an absolute position. */
 function pin(doc: CADDocument, entityId: string, key: string, x: number, y: number) {
@@ -30,7 +39,7 @@ function pin(doc: CADDocument, entityId: string, key: string, x: number, y: numb
 test("scale fit: pinning two corners resizes the image uniformly onto them", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0)); // 2:1
-  img.constraintFit = "scale-rotate";
+  allow(img, { resize: true, rotate: true });
   pin(doc, img.id, "c0", 30, 40);
   pin(doc, img.id, "c1", 90, 40); // the bottom edge must become 60mm long
 
@@ -47,7 +56,7 @@ test("scale fit: pinning two corners resizes the image uniformly onto them", () 
 test("scale-rotate fit: two corners off-axis turn the image as well as scale it", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0));
-  img.constraintFit = "scale-rotate";
+  allow(img, { resize: true, rotate: true });
   pin(doc, img.id, "c0", 10, 10);
   pin(doc, img.id, "c1", 10, 50); // bottom edge now points straight up: 40mm at 90°
 
@@ -67,7 +76,7 @@ test("scale-rotate fit: two corners off-axis turn the image as well as scale it"
 test("scale fit: a driving dimension across the image calibrates it (the scan case)", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 80, 40, 0));
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   pin(doc, img.id, "c0", 0, 0); // hold the anchor so only the size can move
   // "This edge of the scan is 100mm" — a horizontal dimension across the bottom
   // edge, exactly what the Dimension tool builds when you click one.
@@ -98,7 +107,7 @@ test("scale fit: a driving dimension across the image calibrates it (the scan ca
 test("scale fit: a dimension on the HEIGHT edge drives the same single scale DOF", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 80, 40, 0));
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   pin(doc, img.id, "c0", 0, 0);
   doc.dimensions.push(
     makeDimension("vertical", {
@@ -123,7 +132,7 @@ test("scale fit: a dimension on the HEIGHT edge drives the same single scale DOF
 test("stretch fit: three pinned corners pull the image non-uniformly", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 20, 0));
-  img.constraintFit = "stretch";
+  allow(img, { resize: true, aspect: false });
   pin(doc, img.id, "c0", 0, 0);
   pin(doc, img.id, "c1", 60, 0); // width → 60
   pin(doc, img.id, "c3", 0, 15); // height → 15
@@ -137,7 +146,7 @@ test("stretch fit: three pinned corners pull the image non-uniformly", () => {
 test("scale fit refuses to shear: a stretch-shaped pin set can't be met exactly", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 20, 0));
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   pin(doc, img.id, "c0", 0, 0);
   pin(doc, img.id, "c1", 60, 0);
   pin(doc, img.id, "c3", 0, 15); // impossible without breaking the 1:1 aspect
@@ -153,7 +162,7 @@ test("scale fit refuses to shear: a stretch-shaped pin set can't be met exactly"
 test("a corner constraint onto other geometry scales the image to reach it", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0));
-  img.constraintFit = "scale-rotate";
+  allow(img, { resize: true, rotate: true });
   const hole = doc.add(new CircleEntity({ x: 120, y: 60 }, 4));
   doc.addConstraint(makeConstraint("fixed", { entities: [hole.id] }));
   pin(doc, img.id, "c0", 0, 0);
@@ -176,7 +185,7 @@ test("rotate fit: levelling an edge turns the image (a tilted scan straightened)
   const doc = new CADDocument({ width: 300, height: 300 });
   const tilt = 0.35; // ~20° off level, as a scan lands on the bed
   const img = doc.add(new RasterImageEntity("img", { x: 20, y: 20 }, 60, 30, tilt));
-  img.constraintFit = "rotate";
+  allow(img, { rotate: true });
   // "this edge should be horizontal" — the generic constraint bar builds exactly
   // this for two selected points.
   doc.addConstraint(
@@ -202,7 +211,7 @@ test("a free size can satisfy a rotation constraint by collapsing — which is w
   // intended angle→0. Under-constrained, the solver may take either root.
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 20, y: 20 }, 60, 30, 0.35));
-  img.constraintFit = "scale-rotate";
+  allow(img, { resize: true, rotate: true });
   doc.addConstraint(
     makeConstraint("horizontal", {
       points: [
@@ -231,7 +240,7 @@ test("a formula binding still drives size in every fit, including rigid", () => 
   expect(img.heightMM).toBeCloseTo(10, 3); // rigid: no aspect coupling
 
   // In a uniform-scale fit the same binding scales the height with it.
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   img.widthMM = 20;
   img.heightMM = 10;
   expect(solve(doc).converged).toBe(true);
@@ -239,11 +248,11 @@ test("a formula binding still drives size in every fit, including rigid", () => 
   expect(img.heightMM).toBeCloseTo(30, 3);
 });
 
-test("DOF accounting: rigid = 2 (move), scale = 3 (+ size), scale-rotate = 4, stretch = 5", () => {
-  const dofFor = (fit: ImageConstraintFit) => {
+test("DOF accounting: each permission adds exactly the freedom it names", () => {
+  const dofFor = (opts: { resize?: boolean; rotate?: boolean; aspect?: boolean }) => {
     const doc = new CADDocument({ width: 300, height: 300 });
     const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0));
-    img.constraintFit = fit;
+    allow(img, opts);
     // One coincident constraint to a fixed hole = 2 equations, so the reported
     // DOF is the image's own freedom minus 2.
     const hole = doc.add(new CircleEntity({ x: 50, y: 50 }, 4));
@@ -258,16 +267,18 @@ test("DOF accounting: rigid = 2 (move), scale = 3 (+ size), scale-rotate = 4, st
     );
     return solve(doc).dof + 2;
   };
-  expect(dofFor("rigid")).toBe(2);
-  expect(dofFor("scale")).toBe(3);
-  expect(dofFor("scale-rotate")).toBe(4);
-  expect(dofFor("stretch")).toBe(5);
+  expect(dofFor({})).toBe(2); // move only
+  expect(dofFor({ resize: true })).toBe(3); // + one uniform-scale DOF
+  expect(dofFor({ rotate: true })).toBe(3); // + the angle
+  expect(dofFor({ resize: true, rotate: true })).toBe(4);
+  expect(dofFor({ resize: true, aspect: false })).toBe(4); // w and h independently
+  expect(dofFor({ resize: true, rotate: true, aspect: false })).toBe(5); // everything
 });
 
-test("the fit mode round-trips through save/load (and rigid stays out of the file)", () => {
+test("the permissions round-trip through save/load (and rigid stays out of the file)", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0));
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   pin(doc, img.id, "c0", 30, 40);
   pin(doc, img.id, "c1", 90, 40);
 
@@ -275,49 +286,77 @@ test("the fit mode round-trips through save/load (and rigid stays out of the fil
   const doc2 = new CADDocument({ width: 1, height: 1 });
   applyFile(doc2, file);
   const img2 = doc2.entities.find((e) => e.type === "image") as RasterImageEntity;
-  expect(img2.constraintFit).toBe("scale");
+  expect(img2.constraintResize).toBe(true);
+  expect(img2.constraintRotate).toBe(false);
   expect(solve(doc2).converged).toBe(true);
   expect(img2.widthMM).toBeCloseTo(60, 3);
 
   // Default stays absent, so existing files are byte-identical and legacy files
   // (no field) load as rigid.
-  img.constraintFit = "rigid";
+  allow(img, {});
   const rigidEnt = JSON.parse(JSON.stringify(serializeDoc(doc, "fit"))).entities.find(
     (e: { type: string }) => e.type === "image",
   );
-  expect(rigidEnt.constraintFit).toBeUndefined();
+  expect(rigidEnt.constraintResize).toBeUndefined();
+  expect(rigidEnt.constraintRotate).toBeUndefined();
   const doc3 = new CADDocument({ width: 1, height: 1 });
   applyFile(doc3, serializeDoc(doc, "fit"));
-  expect((doc3.entities.find((e) => e.type === "image") as RasterImageEntity).constraintFit).toBe(
-    "rigid",
-  );
+  const img3 = doc3.entities.find((e) => e.type === "image") as RasterImageEntity;
+  expect([img3.constraintResize, img3.constraintRotate]).toEqual([false, false]);
 });
 
-test("an unknown fit in a hand-written file loads as rigid, not as a broken solve", () => {
+test("a junk permission in a hand-written file loads as rigid, not as a broken solve", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0));
   const file = serializeDoc(doc, "fit") as unknown as {
-    entities: { type: string; constraintFit?: string }[];
+    entities: { type: string; constraintResize?: unknown }[];
   };
-  file.entities.find((e) => e.type === "image")!.constraintFit = "squish";
+  file.entities.find((e) => e.type === "image")!.constraintResize = "yes please";
 
   const doc2 = new CADDocument({ width: 1, height: 1 });
   applyFile(doc2, file as unknown as Parameters<typeof applyFile>[1]);
   const img2 = doc2.entities.find((e) => e.type === "image") as RasterImageEntity;
-  expect(img2.constraintFit).toBe("rigid");
+  expect(img2.constraintResize).toBe(false); // coerced, not truthy-tested
   expect(() => solve(doc2)).not.toThrow();
 });
 
-test("duplicating an image carries its fit mode", () => {
+test("duplicating an image carries its permissions and aspect lock", () => {
   const img = new RasterImageEntity("img", { x: 0, y: 0 }, 20, 10, 0);
-  img.constraintFit = "stretch";
-  expect(img.duplicate().constraintFit).toBe("stretch");
+  allow(img, { resize: true, rotate: true, aspect: false });
+  const copy = img.duplicate();
+  expect([copy.constraintResize, copy.constraintRotate, copy.aspectLocked]).toEqual([
+    true,
+    true,
+    false,
+  ]);
+});
+
+test("Lock aspect governs the SOLVER too, not just typed edits", () => {
+  // The contradiction this model removes: an image can no longer claim locked
+  // proportions in the panel while the solver quietly distorts it.
+  const mk = (aspect: boolean) => {
+    const doc = new CADDocument({ width: 300, height: 300 });
+    const img = doc.add(new RasterImageEntity("img", { x: 0, y: 0 }, 20, 20, 0));
+    allow(img, { resize: true, aspect });
+    pin(doc, img.id, "c0", 0, 0);
+    pin(doc, img.id, "c1", 60, 0); // width → 60
+    pin(doc, img.id, "c3", 0, 15); // height → 15, only reachable non-uniformly
+    return { img, r: solve(doc) };
+  };
+  const locked = mk(true);
+  expect(locked.r.converged).toBe(false); // can't distort, so it can't comply
+  expect(locked.img.widthMM / locked.img.heightMM).toBeCloseTo(1, 9);
+
+  const free = mk(false);
+  expect(free.r.converged).toBe(true);
+  expect(free.img.widthMM).toBeCloseTo(60, 3);
+  expect(free.img.heightMM).toBeCloseTo(15, 3);
 });
 
 test("scale fit leaves an unconstrained image exactly where it is", () => {
   const doc = new CADDocument({ width: 300, height: 300 });
   const img = doc.add(new RasterImageEntity("img", { x: 5, y: 7 }, 20, 10, 0.3));
-  img.constraintFit = "scale";
+  allow(img, { resize: true });
   solve(doc);
   near(img.position, 5, 7, 6);
   expect(img.widthMM).toBeCloseTo(20, 6);

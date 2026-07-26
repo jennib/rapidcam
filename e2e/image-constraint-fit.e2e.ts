@@ -2,20 +2,43 @@ import { expect, test } from "@playwright/test";
 
 /**
  * Calibrating a placed image through the constraint engine, driven in a real
- * browser: the Properties "Constraints" control writes `constraintFit`, and a
- * driving dimension across the image then scales it.
+ * browser: the Properties "Constraints may" checkboxes write the image's
+ * permissions, and a driving dimension across the image then scales it.
  *
  * Worth doing live even though test/imageResizeConstraints.test.ts covers the
- * engine: the solver decides an image's freedom with `instanceof
- * RasterImageEntity`, so it only behaves in the app if the entity really is the
- * app's own class. The dynamic `import()` below resolves to the very module the
- * app loaded (same dev-server URL, same module instance), which is what makes
- * that check meaningful — importing a second copy would silently pass.
+ * engine, because the solver decides an image's freedom with `instanceof
+ * RasterImageEntity` — it only behaves if the entity really is the class the
+ * app's own modules closed over.
+ *
+ * Which is exactly why the geometry is injected through `doc.restore()` rather
+ * than by constructing entities from a dynamic `import()`. Vite serves an
+ * HMR-invalidated module under a versioned URL, so a second import can hand back
+ * a DIFFERENT class object than the running app holds; entities built from it
+ * fail every `instanceof` and silently vanish from the Properties panel and the
+ * toolpaths. `restore` builds them with the app's own constructors from plain
+ * JSON, so what this test drives is unambiguously what a user would have.
  */
 
 /* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 
-test("image: 'Scale to fit' + a driving dimension calibrates the image", async ({ page }) => {
+/** A snapshot entity for an 80×40 image, selected, with no pixels registered. */
+const IMAGE_SNAP = {
+  type: "image",
+  id: "img-live",
+  imageId: "img-none",
+  position: { x: 20, y: 20 },
+  widthMM: 80,
+  heightMM: 40,
+  angle: 0,
+  flipX: false,
+  flipY: false,
+  aspectLocked: true,
+  selected: true,
+  isConstruction: false,
+  layerId: "layer-0",
+};
+
+test("image: allowing resize + a driving dimension calibrates the image", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
   await expect
@@ -29,60 +52,63 @@ test("image: 'Scale to fit' + a driving dimension calibrates the image", async (
   await npd.getByRole("button", { name: "Create Project" }).click();
   await expect(npd).toHaveCount(0);
 
-  // Place an 80×40 image and select it.
-  await page.evaluate(async () => {
+  // Place the image and select it, via the app's own entity constructors.
+  await page.evaluate((snap) => {
     const app = (window as any).__app;
-    const ents = await import("/src/model/entities.ts");
-    const img = new ents.RasterImageEntity("img-live", { x: 20, y: 20 }, 80, 40, 0);
-    app.doc.add(img);
-    for (const e of app.doc.entities) e.selected = e === img;
+    const doc = app.doc.snapshot();
+    doc.entities.push(snap);
+    app.doc.restore(doc);
     app.doc.emitChange();
-  });
-
-  const fitSelect = page.locator(".props-row", { hasText: "Constraints" }).locator("select");
-  await expect(fitSelect).toBeVisible();
-  await expect(fitSelect).toHaveValue("rigid"); // images stay rigid until asked
-  await expect(fitSelect.locator("option")).toHaveText([
-    "Move only",
-    "Scale to fit",
-    "Rotate to fit",
-    "Scale + rotate",
-    "Stretch to fit",
-  ]);
-
-  await fitSelect.selectOption("scale");
+  }, IMAGE_SNAP);
   expect(
-    await page.evaluate(
-      () => (window as any).__app.doc.entities.find((e: any) => e.type === "image").constraintFit,
-    ),
-  ).toBe("scale");
+    await page.evaluate(() => (window as any).__app.doc.selected.map((e: any) => e.type)),
+  ).toEqual(["image"]);
+
+  const fitRow = page.locator(".props-row", { hasText: "Constraints may" });
+  await expect(fitRow).toBeVisible();
+  await expect(fitRow.locator("label")).toHaveText(["resize", "rotate"]);
+  const resize = fitRow.locator("label", { hasText: "resize" }).locator("input");
+  const rotate = fitRow.locator("label", { hasText: "rotate" }).locator("input");
+  await expect(resize).not.toBeChecked(); // images stay rigid until asked
+  await expect(rotate).not.toBeChecked();
+
+  await resize.check();
+  expect(
+    await page.evaluate(() => {
+      const img = (window as any).__app.doc.entities.find((e: any) => e.type === "image");
+      return [img.constraintResize, img.constraintRotate, img.aspectLocked];
+    }),
+  ).toEqual([true, false, true]); // resize allowed, uniform, rotation still held
 
   // Hold the anchor corner, then declare the bottom edge to be 100mm — the
   // calibrate gesture (the Dimension tool builds exactly this from an edge click).
-  const after = await page.evaluate(async () => {
+  const after = await page.evaluate(() => {
     const app = (window as any).__app;
-    const dims = await import("/src/model/dimensions.ts");
-    const cons = await import("/src/model/constraints.ts");
     const img = app.doc.entities.find((e: any) => e.type === "image");
-    app.doc.addConstraint(
-      cons.makeConstraint("fixedPoint", {
-        points: [{ entityId: img.id, key: "c0" }],
-        params: [20, 20],
-      }),
-    );
-    app.doc.dimensions.push(
-      dims.makeDimension("horizontal", {
-        points: [
-          { entityId: img.id, key: "c0" },
-          { entityId: img.id, key: "c1" },
-        ],
-        value: 100,
-        offset: 12,
-        driving: true,
-      }),
-    );
+    const doc = app.doc.snapshot();
+    doc.constraints.push({
+      id: "c-pin",
+      type: "fixedPoint",
+      points: [{ entityId: img.id, key: "c0" }],
+      entities: [],
+      params: [20, 20],
+    });
+    doc.dimensions.push({
+      id: "d-cal",
+      type: "horizontal",
+      points: [
+        { entityId: img.id, key: "c0" },
+        { entityId: img.id, key: "c1" },
+      ],
+      entities: [],
+      value: 100,
+      offset: 12,
+      driving: true,
+    });
+    app.doc.restore(doc);
     app.runSolve();
-    return { w: img.widthMM, h: img.heightMM, angle: img.angle, x: img.position.x };
+    const out = app.doc.entities.find((e: any) => e.type === "image");
+    return { w: out.widthMM, h: out.heightMM, angle: out.angle, x: out.position.x };
   });
 
   expect(after.w).toBeCloseTo(100, 3); // scaled to the declared size …

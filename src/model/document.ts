@@ -235,8 +235,6 @@ import {
   PointEntity,
   TextEntity,
   RasterImageEntity,
-  type ImageConstraintFit,
-  IMAGE_CONSTRAINT_FITS,
 } from "./entities";
 import type { CAMOperation, ToolDef } from "../cam/types";
 
@@ -411,8 +409,9 @@ type EntitySnapshot =
       heightExpr?: string;
       angleExpr?: string;
       aspectLocked?: boolean;
-      /** Omitted for the "rigid" default — see {@link ImageConstraintFit}. */
-      constraintFit?: ImageConstraintFit;
+      /** Both omitted when false (the rigid default) — see RasterImageEntity. */
+      constraintResize?: boolean;
+      constraintRotate?: boolean;
       selected: boolean;
       isConstruction: boolean;
       layerId?: string;
@@ -1128,7 +1127,8 @@ export class CADDocument {
               flipX: e.flipX,
               flipY: e.flipY,
               aspectLocked: e.aspectLocked,
-              ...(e.constraintFit !== "rigid" ? { constraintFit: e.constraintFit } : {}),
+              ...(e.constraintResize ? { constraintResize: true } : {}),
+              ...(e.constraintRotate ? { constraintRotate: true } : {}),
               selected: e.selected,
               isConstruction: e.isConstruction,
               layerId: e.layerId,
@@ -1251,14 +1251,11 @@ export class CADDocument {
             es.id,
           );
           (e as RasterImageEntity).aspectLocked = es.aspectLocked ?? true;
-          // Sanitised, not trusted: applyFile doesn't schema-validate, so a
-          // hand-written/generated .rcam could carry any string here — and an
-          // unknown fit would have no entry in the solver's free-scalar table.
-          (e as RasterImageEntity).constraintFit = IMAGE_CONSTRAINT_FITS.includes(
-            es.constraintFit as ImageConstraintFit,
-          )
-            ? (es.constraintFit as ImageConstraintFit)
-            : "rigid";
+          // Coerced, not trusted: applyFile doesn't schema-validate, so a
+          // hand-written/generated .rcam could carry anything here. Absent or
+          // non-true means the image stays rigid.
+          (e as RasterImageEntity).constraintResize = es.constraintResize === true;
+          (e as RasterImageEntity).constraintRotate = es.constraintRotate === true;
           // Migrate legacy direct-drive image formulas (widthExpr/heightExpr/angleExpr,
           // pre-unification) to the general scalar-binding channel.
           const mig: [string | undefined, string, number][] = [

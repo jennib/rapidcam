@@ -22,7 +22,6 @@ import { CADDocument, isLaser, isRotary, MACHINE_KINDS } from "../src/model/docu
 import {
   ArcEntity,
   BezierEntity,
-  IMAGE_CONSTRAINT_FITS,
   CircleEntity,
   LineEntity,
   PolylineEntity,
@@ -239,12 +238,12 @@ describe("rcam v2 schema — serialized real document", () => {
     expect(ok).toBe(true);
   });
 
-  // Enum tripwires. The sample docs above can only cover the values they happen
-  // to use, so a value added to a TypeScript union but forgotten in the schema
+  // Enum/flag tripwires. The sample docs above can only cover the values they
+  // happen to use, so a value added in TypeScript but forgotten in the schema
   // slips through — which is exactly what happened once before: the rotary
   // refactor left `machineKind` at ["mill","laser"] and every rotary .rcam
-  // failed validation. These iterate the TS union itself, so the schema cannot
-  // fall behind the code no matter which value is added next.
+  // failed validation. These enumerate the code's own possibilities, so the
+  // schema cannot fall behind no matter what is added next.
   it("every MachineKind in the TS union is accepted by the schema", () => {
     for (const [kind] of MACHINE_KINDS) {
       const doc = new CADDocument({ width: 100, height: 100 });
@@ -261,20 +260,30 @@ describe("rcam v2 schema — serialized real document", () => {
     }
   });
 
-  it("every ImageConstraintFit in the TS union is accepted by the schema", () => {
-    for (const fit of IMAGE_CONSTRAINT_FITS) {
-      const doc = new CADDocument({ width: 100, height: 100 });
-      const img = doc.add(new RasterImageEntity("img-fit", { x: 0, y: 0 }, 20, 10, 0));
-      img.constraintFit = fit;
-      const data = serializeDoc(doc, `fit-${fit}`) as { entities: { constraintFit?: string }[] };
-      const ok = validate(data);
-      const msg = (validate.errors ?? [])
-        .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
-        .join("\n");
-      expect(ok, `constraintFit "${fit}" rejected by the schema:\n${msg}`).toBe(true);
-      // "rigid" is the default and is deliberately omitted from the file.
-      const written = data.entities.find((e) => "constraintFit" in e)?.constraintFit;
-      expect(written).toBe(fit === "rigid" ? undefined : fit);
+  it("every image constraint-permission combination is accepted by the schema", () => {
+    for (const resize of [false, true]) {
+      for (const rotate of [false, true]) {
+        const doc = new CADDocument({ width: 100, height: 100 });
+        const img = doc.add(new RasterImageEntity("img-fit", { x: 0, y: 0 }, 20, 10, 0));
+        img.constraintResize = resize;
+        img.constraintRotate = rotate;
+        const label = `resize=${resize} rotate=${rotate}`;
+        const data = serializeDoc(doc, "fit") as {
+          entities: { type: string; constraintResize?: boolean; constraintRotate?: boolean }[];
+        };
+        const ok = validate(data);
+        const msg = (validate.errors ?? [])
+          .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
+          .join("\n");
+        expect(ok, `${label} rejected by the schema:\n${msg}`).toBe(true);
+        // False is the rigid default and is deliberately omitted, so an image
+        // that nobody has unlocked serializes exactly as it always did.
+        const e = data.entities.find((x) => x.type === "image")!;
+        expect([e.constraintResize, e.constraintRotate], label).toEqual([
+          resize || undefined,
+          rotate || undefined,
+        ]);
+      }
     }
   });
 });
