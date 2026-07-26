@@ -1,8 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { RectEntity, CircleEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
-import { buildOpenUrl } from "../cli/open";
 
 function docWithNestedSlot(): string {
   const doc = new CADDocument({ width: 300, height: 200 }, "mm");
@@ -16,18 +15,7 @@ function docWithNestedSlot(): string {
 }
 
 test("Pocket boundary mode respects explicit entities over region flood-fill", async ({ page }) => {
-  const url = await buildOpenUrl(docWithNestedSlot(), "http://localhost:5173/");
-  await page.goto(url);
-
-  // Wait for the app to finish loading the URL file
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const app = (window as any).__app;
-        return app?.project?.doc?.entities?.length > 1;
-      }),
-    )
-    .toBe(true);
+  await openDoc(page, docWithNestedSlot());
 
   // Select the outer rectangle via evaluate
   await page.evaluate(() => {
@@ -49,12 +37,6 @@ test("Pocket boundary mode respects explicit entities over region flood-fill", a
   // Select Pocket from the Type dropdown
   await dialog.locator('select.unit').first().selectOption({ value: 'pocket' });
   await expect(dialog).toBeVisible();
-
-  // Remove analytics banner if present so it doesn't intercept clicks
-  await page.evaluate(() => {
-    const el = document.getElementById('analytics-consent-banner');
-    if (el) el.remove();
-  });
 
   // Switch to Explicit Entities mode
   await page.locator('.tp-boundary-mode').waitFor({ state: 'attached' });

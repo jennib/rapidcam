@@ -1,6 +1,5 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
-import { expect, test } from "@playwright/test";
-import { StorageKeys } from "../src/core/storageKeys";
+import { expect, test, waitForApp } from "./appFixture";
 
 /**
  * Laser on a rotary, driven in a real browser. The generator math is unit-covered
@@ -26,20 +25,8 @@ test("laser rotary: cylinder stock, beam-only settings, substituted-axis program
   page,
 }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
-  // Record a consent decision BEFORE the app boots, so the banner never renders.
-  // It and the welcome screen are both TOP-LAYER elements, so whichever paints
-  // above swallows clicks meant for the other — and which one that is shifts
-  // with the viewport and with how tall the dialog renders (CI's font metrics
-  // made the New Project dialog tall enough for the banner to eat its Create
-  // button). Removing the banner outright makes these specs independent of that;
-  // consent-clickthrough.e2e.ts is the spec that deliberately exercises it.
-  await page.addInitScript((key) => localStorage.setItem(key, "denied"), StorageKeys.analyticsConsent);
   await page.goto("/");
-  await expect
-    .poll(() =>
-      page.evaluate(() => "__app" in window && Boolean((window as { __app?: unknown }).__app)),
-    )
-    .toBe(true);
+  await waitForApp(page);
 
   await page.locator(".welcome-backdrop .welcome-card", { hasText: "New Project" }).click();
   const npd = page.locator("#npd-backdrop");

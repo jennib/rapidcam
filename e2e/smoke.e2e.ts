@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, waitForApp } from "./appFixture";
 
 /**
  * Boot smoke test: proves the app initialises, renders its editor shell, and
@@ -7,12 +7,7 @@ import { expect, test } from "@playwright/test";
  */
 test("app boots and the editor shell is interactive", async ({ page }) => {
   await page.goto("/");
-
-  // The app installs its dev hook once fully initialised.
-  await expect
-    .poll(() => page.evaluate(() => "__app" in window && Boolean((window as unknown as { __app: unknown }).__app)))
-    .toBe(true);
-
+  await waitForApp(page);
 
   // First run shows the welcome screen; start a blank project to enter the editor.
   const welcome = page.locator(".welcome-backdrop");
@@ -20,15 +15,8 @@ test("app boots and the editor shell is interactive", async ({ page }) => {
   await welcome.locator(".welcome-card", { hasText: "New Project" }).click();
   await expect(welcome).toHaveCount(0);
 
-  // "New Project" opens the New Project dialog; dismiss the consent banner
-  // that overlays it before clicking the dialog button underneath.
   const newProjectDialog = page.locator("#npd-backdrop");
   await expect(newProjectDialog).toBeVisible();
-
-  const consent = page.locator("#analytics-consent-banner");
-  await consent.getByRole("button", { name: "No thanks" }).click();
-  await expect(consent).toHaveCount(0);
-
   await newProjectDialog.getByRole("button", { name: "Create Project" }).click();
   await expect(newProjectDialog).toHaveCount(0);
 

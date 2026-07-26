@@ -1,10 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { makeConstraint } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
 import { serializeDoc } from "../src/io/fileio";
-import { buildOpenUrl } from "../cli/open";
 
 /**
  * Regression guard for the dim-editor retry-after-rejection path — the one place
@@ -91,23 +91,7 @@ function liveDimValue(page: Page, id: string): Promise<number> {
 test("a rejected dimension edit, then a corrected retry, actually applies the corrected value", async ({
   page,
 }) => {
-  const url = await buildOpenUrl(trianglePinnedBase(), "http://localhost:5173/");
-  await page.goto(url);
-
-  // Wait for the design to load (both triangle sides present).
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as unknown as { __app?: { project?: { doc?: { entities?: unknown[] } } } }).__app
-            ?.project?.doc?.entities?.length ?? 0,
-      ),
-    )
-    .toBeGreaterThanOrEqual(2);
-
-  // Clear the consent banner if it's up (it sits at the edge, but keep the DOM clean).
-  const consent = page.locator("#analytics-consent-banner");
-  if (await consent.count()) await consent.getByRole("button", { name: "No thanks" }).click();
+  await openDoc(page, trianglePinnedBase());
 
   const caDimId = await openCaDimEditor(page);
   const input = page.locator("input.dim-edit");

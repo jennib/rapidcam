@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, waitForApp } from "./appFixture";
 
 /**
  * Guard for the aiDocsPlugin dev middleware (vite.config.ts).
@@ -15,11 +15,7 @@ test("app still boots with the middleware active (module requests pass through)"
   page,
 }) => {
   await page.goto("/");
-  await expect
-    .poll(() =>
-      page.evaluate(() => "__app" in window && Boolean((window as unknown as { __app: unknown }).__app)),
-    )
-    .toBe(true);
+  await waitForApp(page);
 
   // The welcome screen's example gallery is fed by the `?raw` glob import —
   // if the middleware swallowed module requests, these cards cannot render.

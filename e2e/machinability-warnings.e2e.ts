@@ -1,8 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { PolylineEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
-import { buildOpenUrl } from "../cli/open";
 
 function makeDoc(): string {
   const doc = new CADDocument({ width: 300, height: 200 }, "mm");
@@ -96,17 +95,7 @@ function makeDoc(): string {
 }
 
 test("machinability linter correctly flags unreachable and hairline pockets", async ({ page }) => {
-  const url = await buildOpenUrl(makeDoc(), "http://localhost:5173/");
-  await page.goto(url);
-
-  // Wait for window.__app
-  await expect
-    .poll(() => page.evaluate(() => Boolean((window as any).__app)))
-    .toBe(true);
-
-  // Dismiss consent if visible
-  const consent = page.locator("#analytics-consent-banner");
-  if (await consent.count()) await consent.getByRole("button", { name: "No thanks" }).click();
+  await openDoc(page, makeDoc());
 
   // Switch to CAM tab
   const camTab = page.locator(".rtab", { hasText: "CAM" });

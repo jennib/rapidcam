@@ -1,8 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
-import { buildOpenUrl } from "../cli/open";
 
 function makeInchDoc(): string {
   const doc = new CADDocument({ width: 300, height: 200 }, "in");
@@ -12,17 +11,7 @@ function makeInchDoc(): string {
 }
 
 test("CAM Add-Toolpath dialog labels and inputs use displayUnit (in)", async ({ page }) => {
-  const url = await buildOpenUrl(makeInchDoc(), "http://localhost:5173/");
-  await page.goto(url);
-
-  // Wait for window.__app
-  await expect
-    .poll(() => page.evaluate(() => Boolean((window as any).__app)))
-    .toBe(true);
-
-  // Dismiss consent if visible
-  const consent = page.locator("#analytics-consent-banner");
-  if (await consent.count()) await consent.getByRole("button", { name: "No thanks" }).click();
+  await openDoc(page, makeInchDoc());
 
   // Select all entities in the document so checkOpSelection passes when saving
   await page.evaluate(() => {

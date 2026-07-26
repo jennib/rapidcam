@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { StorageKeys } from "../src/core/storageKeys";
+import { expect, test, waitForApp } from "./appFixture";
 
 /**
  * The on-canvas rotary wrap hint (degree ruler, quarter-turn guides, seam edges),
@@ -38,20 +37,8 @@ test("rotary wrap hint: painted for a rotary doc, and togglable from the View me
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  // Record a consent decision BEFORE the app boots, so the banner never renders.
-  // It and the welcome screen are both TOP-LAYER elements, so whichever paints
-  // above swallows clicks meant for the other — and which one that is shifts
-  // with the viewport and with how tall the dialog renders (CI's font metrics
-  // made the New Project dialog tall enough for the banner to eat its Create
-  // button). Removing the banner outright makes these specs independent of that;
-  // consent-clickthrough.e2e.ts is the spec that deliberately exercises it.
-  await page.addInitScript((key) => localStorage.setItem(key, "denied"), StorageKeys.analyticsConsent);
   await page.goto("/");
-  await expect
-    .poll(() =>
-      page.evaluate(() => "__app" in window && Boolean((window as { __app?: unknown }).__app)),
-    )
-    .toBe(true);
+  await waitForApp(page);
 
   // A plain mill project first: no rotary, so nothing of the hint may appear.
   await page.locator(".welcome-backdrop .welcome-card", { hasText: "New Project" }).click();
