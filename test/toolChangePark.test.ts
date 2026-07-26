@@ -63,6 +63,7 @@ test("no park on the first op (no change) or when there's only one tool", () => 
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2));
   const b = doc.add(new CircleEntity({ x: 60, y: 60 }, 2));
   const g = generateGCode([drillOp("o1", [a.id], 1), drillOp("o2", [b.id], 1)], doc);
+  expect(g).toMatch(/^G1 Z/m); // guard: both drills really posted
   expect(g).not.toMatch(/park for tool change/); // same tool → no change → no park
 });
 

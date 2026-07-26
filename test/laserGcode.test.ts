@@ -309,6 +309,7 @@ test("no air-assist commands when the op doesn't request it", () => {
   const doc = laserDoc();
   doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
   const g = generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"] })], doc);
+  expect(g).toMatch(/^G1 /m); // guard: the engrave really posted
   expect(g).not.toMatch(/^M8/m);
 });
 
@@ -340,5 +341,6 @@ test("fill without overscan emits no beam-off S0 modulation", () => {
   const op = baseOp({ type: "engrave", entityIds: ["R1"], laserFill: true, laserFillSpacing: 2 });
 
   const g = generateLaserGCode([op], doc);
+  expect(g).toMatch(/^G1 /m); // guard: the fill really produced scan runs
   expect(g).not.toMatch(/ S0$/m);
 });

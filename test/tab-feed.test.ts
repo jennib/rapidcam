@@ -62,6 +62,7 @@ describe("tabbed profile feed restoration", () => {
   it("emits ASCII-only G-code (comments included)", () => {
     const { doc, op } = tabbedProfileDoc();
     const gcode = generateGCode([op], doc);
+    expect(gcode).toMatch(/^G1 /m); // guard: an empty program is trivially ASCII
     const nonAscii = gcode.match(/[^\x20-\x7E\n\r]/g);
     expect(nonAscii).toBeNull();
   });

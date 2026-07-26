@@ -58,6 +58,7 @@ test("no metadata header lines when metadata is empty", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   doc.add(new RectEntity({ x: 0, y: 0 }, { x: 50, y: 50 }));
   const g = generateGCode([profileOp(doc)], doc);
+  expect(g).toMatch(/^G1 /m); // guard: a real program, so the missing headers mean something
   expect(g).not.toMatch(/; Job:/);
   expect(g).not.toMatch(/; Revision:/);
 });

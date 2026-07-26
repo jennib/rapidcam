@@ -97,8 +97,11 @@ test("no fixture layer → no fixture finding", () => {
   const doc = new CADDocument({ width: 200, height: 150 });
   const part = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 130 }));
   doc.operations = [profileOp([part.id])];
-  const findings = lintGCode(generateGCode(doc.operations, doc), buildLintContext(doc));
-  expect(findings.some((f) => f.code === "fixture-collision")).toBe(false);
+  const g = generateGCode(doc.operations, doc);
+  expect(g).toMatch(/^G1 /m); // guard: a real program was linted
+  expect(lintGCode(g, buildLintContext(doc)).some((f) => f.code === "fixture-collision")).toBe(
+    false,
+  );
 });
 
 test("a rapid clears a clamp shorter than safe Z, but collides when it's taller", () => {
@@ -122,6 +125,9 @@ test("laser jobs skip the fixture (Z-collision) check", () => {
   const part = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 180, y: 130 }));
   withClamp(doc, [90, 8, 110, 30], 20);
   doc.operations = [{ ...profileOp([part.id]), laserPower: 80 }];
-  const findings = lintGCode(generateGCode(doc.operations, doc), buildLintContext(doc));
-  expect(findings.some((f) => f.code === "fixture-collision")).toBe(false);
+  const g = generateGCode(doc.operations, doc);
+  expect(g).toMatch(/^G1 /m); // guard: a real program was linted
+  expect(lintGCode(g, buildLintContext(doc)).some((f) => f.code === "fixture-collision")).toBe(
+    false,
+  );
 });

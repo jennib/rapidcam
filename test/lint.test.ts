@@ -171,12 +171,14 @@ function docWith(op: Partial<CAMOperation>): { doc: CADDocument; op: CAMOperatio
 test("clean profile job produces no findings", () => {
   const { doc, op } = docWith({});
   const g = generateGCode([op], doc);
+  expect(g).toMatch(/^G1 /m); // guard: there IS a toolpath to find fault with
   expect(lintGCode(g, buildLintContext(doc))).toEqual([]);
 });
 
 test("clean pocket job produces no findings", () => {
   const { doc, op } = docWith({ type: "pocket" });
   const g = generateGCode([op], doc);
+  expect(g).toMatch(/^G1 /m); // guard: there IS a toolpath to find fault with
   expect(lintGCode(g, buildLintContext(doc))).toEqual([]);
 });
 

@@ -33,6 +33,7 @@ test("no coolant on any op: no M7/M8/M9 emitted", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
   const g = generateGCode([drillOp([a.id])], doc);
+  expect(g).toMatch(/^G1 Z/m); // guard: a real drill program, so the absence below counts
   expect(g).not.toMatch(/\bM7\b|\bM8\b|\bM9\b/);
 });
 
@@ -88,6 +89,7 @@ test("coolantSupported:false suppresses coolant even if an op requests it", () =
   const g = generateGCode([drillOp([a.id], { coolant: "flood" })], doc, {
     coolantSupported: false,
   });
+  expect(g).toMatch(/^G1 Z/m); // guard: the op really posted
   expect(g).not.toMatch(/\bM7\b|\bM8\b|\bM9\b/);
 });
 
@@ -107,6 +109,7 @@ test("empty custom blocks inject nothing", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
   const a = doc.add(new CircleEntity({ x: 20, y: 20 }, 2.5));
   const g = generateGCode([drillOp([a.id])], doc, { customStart: "", customEnd: "   \n " });
+  expect(g).toMatch(/^G1 Z/m); // guard: the op really posted
   expect(g).not.toMatch(/custom start|custom end/);
 });
 
