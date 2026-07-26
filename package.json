@@ -19,6 +19,7 @@
     "mcp": "tsx mcp/server.ts",
     "test:e2e": "playwright test",
     "validate": "npm run lint && npm run typecheck && npm test && npm run build",
+    "validate:all": "npm run validate && npm run test:e2e",
     "clean": "node clean.js"
   },
   "devDependencies": {
