@@ -17,5 +17,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "cli", "mcp"]
+  "include": ["src", "test", "cli", "mcp", "e2e"]
 }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { CADDocument } from "../src/model/document";
 import { RectEntity, CircleEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";

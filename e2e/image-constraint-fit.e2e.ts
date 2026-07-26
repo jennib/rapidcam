@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 import { expect, test } from "@playwright/test";
 import { StorageKeys } from "../src/core/storageKeys";
 
@@ -19,8 +20,6 @@ import { StorageKeys } from "../src/core/storageKeys";
  * toolpaths. `restore` builds them with the app's own constructors from plain
  * JSON, so what this test drives is unambiguously what a user would have.
  */
-
-/* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 
 /** A snapshot entity for an 80×40 image, selected, with no pixels registered. */
 const IMAGE_SNAP = {

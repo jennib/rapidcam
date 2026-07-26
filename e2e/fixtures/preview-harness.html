@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>WebGL preview harness</title>
@@ -94,7 +94,9 @@
 
       const host = document.getElementById("host");
       host.style.display = ""; // re-show if a prior render hid it (multi-render tests)
-      host.querySelectorAll("canvas,button,.webgl-status").forEach((n) => n.remove());
+      host.querySelectorAll("canvas,button,.webgl-status").forEach((n) => {
+        n.remove();
+      });
       try {
         const p = new WebGLPreview(host);
         p.render({ data, gridW, gridH, stockW, stockH, stockT, laser: !!opts.laser }, rotary);
@@ -128,7 +130,7 @@
         img.src = url;
         return true;
       } catch (e) {
-        window.__err = String((e && e.message) || e);
+        window.__err = String(e?.message || e);
         return false;
       }
     };

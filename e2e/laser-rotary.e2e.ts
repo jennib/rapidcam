@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 import { expect, test } from "@playwright/test";
 import { StorageKeys } from "../src/core/storageKeys";
 
@@ -8,8 +9,6 @@ import { StorageKeys } from "../src/core/storageKeys";
  * rotary rows which mean nothing to a beam (rotary axis word, Z0 reference, arc
  * tolerance) are actually hidden rather than merely irrelevant.
  */
-
-/* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 
 /** Row labels actually on screen — `display:none` rows excluded. */
 async function visibleRows(scope: import("@playwright/test").Locator, sel: string) {
@@ -146,7 +145,11 @@ test("laser rotary: cylinder stock, beam-only settings, substituted-axis program
       },
     ];
     app.doc.restore(doc);
-    const klein = await import("/src/cam/klein.ts");
+    // The specifier is a browser URL that Vite resolves at runtime, not a path
+    // tsc can follow — holding it in a variable keeps the literal away from the
+    // compiler while the annotation still types the module from the real source.
+    const kleinUrl = "/src/cam/klein.ts";
+    const klein: typeof import("../src/cam/klein") = await import(kleinUrl);
     return klein.generateRotaryProgram(app.doc).program;
   });
   const motion = program

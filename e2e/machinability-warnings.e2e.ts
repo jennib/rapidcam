@@ -28,9 +28,12 @@ function makeDoc(): string {
     spindleSpeed: 18000,
     depth: -5,
     safeZ: 5,
+    stepover: 0.4,
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
     stepdown: 5,
     regions: [],
-    selected: true,
   });
 
   // 6.0mm hole (completely unreachable for a 6mm tool)
@@ -53,9 +56,12 @@ function makeDoc(): string {
     spindleSpeed: 18000,
     depth: -5,
     safeZ: 5,
+    stepover: 0.4,
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
     stepdown: 5,
     regions: [],
-    selected: true,
   });
 
   // 8.0mm hole (clean fit for a 6mm tool)
@@ -78,9 +84,12 @@ function makeDoc(): string {
     spindleSpeed: 18000,
     depth: -5,
     safeZ: 5,
+    stepover: 0.4,
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
     stepdown: 5,
     regions: [],
-    selected: true,
   });
 
   return JSON.stringify(serializeDoc(doc, "machinability-test"));

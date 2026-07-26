@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Flat laser-preview harness</title>
@@ -62,7 +62,6 @@
         const paths = laserPreviewPaths([op], src);
 
         // Fixed backing store (dpr 1 in headless chromium).
-        const host = document.getElementById("host");
         const canvas = document.getElementById("cv");
         canvas.width = 400; canvas.height = 300;
         canvas.style.width = "400px"; canvas.style.height = "300px";
@@ -95,7 +94,7 @@
         window.__meanBrightness = sum / (px.length / 4);
         return true;
       } catch (e) {
-        window.__err = String((e && e.message) || e);
+        window.__err = String(e?.message || e);
         return false;
       }
     };
