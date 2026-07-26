@@ -1,13 +1,20 @@
+import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { RcamFile } from "../src/io/fileio";
 
 /**
- * Covers the autosave-draft store's localStorage-backed path — the fallback used
- * when IndexedDB is unavailable (private mode, or a non-DOM environment like this
- * one, where `indexedDB` is undefined). The IndexedDB happy path (which keeps
- * embedded images so an image-bearing design restores faithfully) is exercised
- * live in the browser; here we pin the metadata pointer, the quota-safe strip on
- * the fallback write, round-trip load, and corruption tolerance.
+ * Covers both of the autosave-draft store's paths.
+ *
+ * The localStorage fallback (IndexedDB unavailable — private mode) strips fonts
+ * and images to fit the ~5 MB quota, which is lossy but non-fatal and matches
+ * the pre-upgrade behaviour.
+ *
+ * The IndexedDB happy path is the one that exists to FIX that loss: it keeps the
+ * whole document, pixels included, so an image-bearing design restores
+ * faithfully. That was a real data-loss bug — a relief/engrave design came back
+ * from "Restore draft" with its picture gone — so it is pinned here rather than
+ * left to live browser checks. `fake-indexeddb` supplies the API this
+ * environment lacks; a fresh `IDBFactory` per test keeps databases isolated.
  */
 
 function fakeLocalStorage(): Storage {
@@ -105,5 +112,78 @@ describe("draftStore (localStorage fallback)", () => {
     );
     const data = await loadDraftData();
     expect(data?.name).toBe("widget");
+  });
+});
+
+describe("draftStore (IndexedDB happy path)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", fakeLocalStorage());
+    // A fresh factory per test: isolated databases, no cross-test leakage.
+    vi.stubGlobal("indexedDB", new IDBFactory());
+  });
+
+  test("an image-bearing draft restores with its pixels intact", async () => {
+    const { saveDraft, loadDraftData } = await import("../src/io/draftStore");
+    await saveDraft("widget", sampleFile());
+
+    const data = await loadDraftData();
+    // The whole point of the IndexedDB upgrade. On the localStorage fallback
+    // these are stripped to fit the quota, which is what silently ate a
+    // relief/engrave design's picture on restore.
+    expect(data?.images).toEqual([{ id: "img1", data: "BBBBBBBB" }]);
+    expect(data?.fonts).toEqual([{ family: "Foo", data: "AAAA" }]);
+    expect(data?.entities).toHaveLength(1);
+    expect(data?.name).toBe("widget");
+  });
+
+  test("a multi-megabyte image is stored whole, not truncated to a quota", async () => {
+    const { saveDraft, loadDraftData } = await import("../src/io/draftStore");
+    // Comfortably past the ~5 MB localStorage ceiling the old cache stripped for.
+    const pixels = "x".repeat(6 * 1024 * 1024);
+    const file = { ...sampleFile(), images: [{ id: "big", data: pixels }] } as RcamFile;
+
+    await saveDraft("huge", file);
+    const data = await loadDraftData();
+    expect((data?.images as { data: string }[])?.[0].data).toHaveLength(pixels.length);
+  });
+
+  test("the payload goes to IndexedDB, and only a small pointer to localStorage", async () => {
+    const { saveDraft, getDraftMeta } = await import("../src/io/draftStore");
+    await saveDraft("widget", sampleFile());
+
+    // The welcome screen reads this synchronously at first paint, so it must
+    // still be written on the IndexedDB path.
+    expect(getDraftMeta()?.name).toBe("widget");
+    // ...but carry no document: the pointer stays small by design.
+    const pointer = JSON.parse(localStorage.getItem(POINTER_KEY) as string);
+    expect(pointer.data).toBeUndefined();
+  });
+
+  test("IndexedDB wins over a stale legacy pointer", async () => {
+    const { saveDraft, loadDraftData } = await import("../src/io/draftStore");
+    await saveDraft("current", { ...sampleFile(), name: "from-idb" } as RcamFile);
+    // A pre-upgrade draft left behind in localStorage must not shadow it.
+    localStorage.setItem(
+      POINTER_KEY,
+      JSON.stringify({
+        name: "stale",
+        savedAt: 1,
+        data: { ...sampleFile(), name: "from-localstorage" },
+      }),
+    );
+    expect((await loadDraftData())?.name).toBe("from-idb");
+  });
+
+  test("clearDraft drops the IndexedDB payload, not just the pointer", async () => {
+    const { saveDraft, clearDraft, loadDraftData } = await import("../src/io/draftStore");
+    await saveDraft("widget", sampleFile());
+    clearDraft();
+
+    // The pointer clears synchronously; the IndexedDB delete is best-effort in
+    // the background, so poll rather than assuming it has landed.
+    await vi.waitFor(async () => {
+      expect(await loadDraftData()).toBeNull();
+    });
   });
 });
