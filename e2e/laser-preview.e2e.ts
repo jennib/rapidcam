@@ -57,3 +57,32 @@ test("laser 3D preview shades engraves as a burn (darker than a mill cut)", asyn
   expect(laserBrightness).toBeLessThan(millBrightness);
   expect(millBrightness - laserBrightness).toBeGreaterThan(3);
 });
+
+test("a ROTARY laser burns on the cylinder too, not just the flat board", async ({ page }) => {
+  // The cylinder surface shader used to carry its own copy of the albedo ramp,
+  // which silently kept only the milled-wood branch — so a laser rotary rendered
+  // as a freshly machined dowel. Both shaders now share one `surfaceAlbedo`, and
+  // the laser uniforms are uploaded for both programs. Same comparison as above,
+  // through the wrapped path.
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("/e2e/fixtures/preview-harness.html");
+  await expect.poll(() => page.evaluate(() => window.__harnessReady === true)).toBe(true);
+
+  const okLaser = await page.evaluate(
+    () => window.__renderPreview?.({ laser: true, rotary: true }) === true,
+  );
+  expect(await page.evaluate(() => window.__err ?? ""), "cylinder laser shader must link").toBe("");
+  expect(okLaser, "rotary laser preview must render without throwing").toBe(true);
+  const laserBrightness = await meanBrightness(page);
+
+  const okMill = await page.evaluate(
+    () => window.__renderPreview?.({ shallow: true, rotary: true }) === true,
+  );
+  expect(okMill, "rotary mill baseline must render without throwing").toBe(true);
+  const millBrightness = await meanBrightness(page);
+
+  expect(laserBrightness).toBeGreaterThan(0); // guard: something actually rendered
+  expect(millBrightness).toBeGreaterThan(0);
+  expect(laserBrightness).toBeLessThan(millBrightness);
+  expect(millBrightness - laserBrightness).toBeGreaterThan(3);
+});
