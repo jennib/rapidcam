@@ -102,13 +102,12 @@ test("machinability linter correctly flags unreachable and hairline pockets", as
   await camTab.click();
   await expect(camTab).toHaveClass(/active/);
 
-  // Select the operations in the UI for combined export
+  // Every operation goes into the combined export. Which op sits at which index
+  // is not part of what this test asserts, so select them all rather than naming
+  // positions — the count assertion is what proves they loaded.
   const selects = page.locator(".tp-select");
-  // Ensure the operations have loaded
   await expect(selects).toHaveCount(3);
-  await selects.nth(0).check();
-  await selects.nth(1).check();
-  await selects.nth(2).check();
+  for (const box of await selects.all()) await box.check();
 
   // Click Export Selected button
   const exportSelBtn = page.locator(".cam-export-sel-btn");

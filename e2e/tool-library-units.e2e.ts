@@ -30,20 +30,22 @@ test("Tool Library dialog labels and inputs use displayUnit (in)", async ({ page
   // Wait for the tool list to populate
   await expect(dialog.locator(".tlib-list-item").first()).toBeVisible();
 
-  // Check the first tool's summary label in the sidebar (e.g. ⌀0.25in end-mill)
+  // The sidebar summary carries the diameter in inches, e.g. "⌀0.250in End Mill".
+  // Matched as a shape, not as the substring "in " — that would also be satisfied
+  // by any tool name containing the letters, which is most of them.
   const firstToolDesc = dialog.locator(".tlib-list-item div").nth(1);
-  await expect(firstToolDesc).toContainText("in "); // e.g. ⌀0.250in End Mill
+  await expect(firstToolDesc).toHaveText(/⌀\d+\.\d+in\b/);
 
   // Verify unit labels in the right side form
   await expect(dialog.getByText(/Diameter \(in\)/).first()).toBeVisible();
   await expect(dialog.getByText(/Feed \(in\/min\)/).first()).toBeVisible();
 
-  // Default tool diameter is usually 6mm or 6.35mm. Check the input value is a short formatted string
-  // If it's 6.35mm, in inches it should be "0.250"
+  // The default diameter must arrive already converted and rounded — the bug this
+  // guards is a raw float tail like "0.24999999999999997". Asserted as the shape
+  // formatLength produces for inches (3 decimals, e.g. "0.250" from 6.35mm) rather
+  // than by string length, which "abcde" also satisfies.
   const diamInput = dialog.locator(".tp-field", { hasText: "Diameter (in)" }).locator("input");
-  // Just ensure it doesn't have a massive float tail
-  const diamValue = await diamInput.inputValue();
-  expect(diamValue.length).toBeLessThanOrEqual(5); // e.g. "0.250" or "0.236"
+  await expect(diamInput).toHaveValue(/^\d+\.\d{3}$/);
 
   // Edit Diameter to 0.5 in (which is 12.7 mm)
   await diamInput.fill("0.5");

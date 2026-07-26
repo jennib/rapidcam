@@ -47,8 +47,10 @@ export const test = base.extend({
 /** Resolve once main.ts has published its dev hook, i.e. the app is fully wired. */
 export async function waitForApp(page: Page): Promise<void> {
   await expect
-    .poll(() =>
-      page.evaluate(() => "__app" in window && Boolean((window as { __app?: unknown }).__app)),
+    .poll(
+      () =>
+        page.evaluate(() => "__app" in window && Boolean((window as { __app?: unknown }).__app)),
+      { message: "app never published window.__app — it threw during boot, or this is a prod build" },
     )
     .toBe(true);
 }
@@ -65,13 +67,15 @@ export async function openDoc(page: Page, rcamText: string): Promise<void> {
   await page.goto(await buildOpenUrl(rcamText, APP_URL));
   await waitForApp(page);
   await expect
-    .poll(() =>
-      page.evaluate((originId) => {
-        const doc = (
-          window as unknown as { __app?: { project?: { doc?: { entities?: { id: string }[] } } } }
-        ).__app?.project?.doc;
-        return doc?.entities?.filter((e) => e.id !== originId).length ?? 0;
-      }, ORIGIN_ENTITY_ID),
+    .poll(
+      () =>
+        page.evaluate((originId) => {
+          const doc = (
+            window as unknown as { __app?: { project?: { doc?: { entities?: { id: string }[] } } } }
+          ).__app?.project?.doc;
+          return doc?.entities?.filter((e) => e.id !== originId).length ?? 0;
+        }, ORIGIN_ENTITY_ID),
+      { message: "the design never loaded from the share URL (0 entities beyond the WCS origin)" },
     )
     .toBeGreaterThan(0);
 }
