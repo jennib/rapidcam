@@ -941,6 +941,9 @@ export class CamBar {
     // type
     const typeSelect = document.createElement("select");
     typeSelect.className = "unit";
+    // Nine selects in this dialog share `.unit`, so positional selectors are the
+    // only handle e2e had on this one. Named so it survives layout changes.
+    typeSelect.dataset.testid = "op-type-select";
     const combos: [OpCombo, string][] = isLaser
       ? [
           ["profile-outside", "Cut (outside)"],
