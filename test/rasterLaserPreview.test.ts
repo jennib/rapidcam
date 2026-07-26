@@ -1,7 +1,7 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { CircleEntity, RasterImageEntity } from "../src/model/entities";
-import { rasterizeStock } from "../src/cam/stockRasterizer";
+import { CircleEntity, RasterImageEntity, RectEntity } from "../src/model/entities";
+import { LASER_BURN_DEPTH_MM, rasterizeStock } from "../src/cam/stockRasterizer";
 import { registerEmbeddedImage } from "../src/core/imageManager";
 import type { CAMOperation } from "../src/cam/types";
 
@@ -91,4 +91,37 @@ test("a dithered laser image engrave previews as TONE, identical to greyscale (n
   expect(distinctDepths.size).toBeGreaterThan(3);
   // And dithering leaves the 3-D field unchanged — tone, not a solid block.
   expect(dithered.data).toEqual(grey.data);
+});
+
+test("an area-fill engrave burns SOLID in the preview, not just its outline", () => {
+  // The preview must remove the material the beam removes. The rasterizer used
+  // to stroke only the entity outline for an engrave, whatever `laserFill` said,
+  // so a solid fill previewed as hollow lettering while the posted program
+  // filled it — the picture and the program disagreed. It now asks the laser
+  // generator for the geometry it will actually burn (laserFillGeometry).
+  const mk = (fill: boolean) => {
+    const doc = new CADDocument({ width: 60, height: 60 });
+    doc.machineKind = "laser";
+    const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 40, y: 40 }));
+    const op = engraveOp({
+      entityIds: [r.id],
+      ...(fill ? { laserFill: true, laserFillSpacing: 0.2 } : {}),
+    });
+    const hm = rasterizeStock([op], doc);
+    // Centre of the 20mm square — interior, well clear of the outline stroke.
+    const cx = Math.round((30 / 60) * (hm.gridW - 1));
+    const cy = Math.round((30 / 60) * (hm.gridH - 1));
+    let cutCells = 0;
+    for (const v of hm.data) if (v < hm.stockT - 1e-6) cutCells++;
+    return { centre: hm.stockT - hm.data[cy * hm.gridW + cx], cutCells };
+  };
+
+  const outline = mk(false);
+  const filled = mk(true);
+  // Guard: the outline case really did burn something, so the contrast is real.
+  expect(outline.cutCells).toBeGreaterThan(0);
+  expect(outline.centre).toBe(0); // hollow — only the ring is burned
+  expect(filled.centre).toBeCloseTo(LASER_BURN_DEPTH_MM, 6); // solid to the burn depth
+  // A filled 20x20 square covers far more cells than its outline alone.
+  expect(filled.cutCells).toBeGreaterThan(outline.cutCells * 4);
 });

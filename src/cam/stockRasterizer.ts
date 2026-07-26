@@ -14,6 +14,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
+import { laserFillGeometry } from "./lasergcode";
 import { type CADDocument, stockFootprint } from "../model/document";
 import {
   LineEntity,
@@ -136,6 +137,20 @@ function rasterizeOp(
   const stamp = makeStampFn(op, data, gridW, gridH, stockT, isLaser);
   const stepR = effectiveToolR(op, isLaser);
   const lineSegIds = new Set<string>();
+
+  // Area-fill engrave: the beam floods the interior, so the height field must
+  // too. This asks the LASER GENERATOR for the very geometry it will burn
+  // (cam/lasergcode.ts), rather than deriving a second opinion here — left to
+  // the per-entity walk below, a solid fill stroked only its outlines and
+  // previewed as hollow lettering while the posted program filled it solid.
+  if (isLaser && op.type === "engrave" && op.laserFill) {
+    const { outlines, segments } = laserFillGeometry(op, entityMap as Map<string, Entity>);
+    for (const ring of outlines)
+      sweepPolyline(op, data, gridW, gridH, stockT, ring, true, stamp, stepR);
+    for (const [a, b] of segments)
+      sweepPolyline(op, data, gridW, gridH, stockT, [a, b], false, stamp, stepR);
+    return;
+  }
 
   // Region pockets (mirrors gcode.ts): resolve each parametric region from live
   // geometry and pocket it with enclosed loops as islands.

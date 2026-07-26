@@ -220,6 +220,49 @@ function fillSegments(outer: Vec2[], holes: Vec2[][], spacing: number): Vec2[][]
   return segs;
 }
 
+/** What an area-fill engrave actually burns: region outlines plus the flood. */
+export interface LaserFillGeometry {
+  /** Closed rings burned as crisp edges — outer boundaries and their holes. */
+  outlines: Vec2[][];
+  /** Beam-on scan segments flooding the interiors (each `[a, b]`), world mm. */
+  segments: Vec2[][];
+  /** Ids of targeted entities that aren't closed, so can't be filled. */
+  skipped: string[];
+}
+
+/**
+ * Resolve what an `laserFill` engrave burns, in world mm: every targeted closed
+ * contour grouped even–odd into solids-with-holes (so letter counters stay
+ * clear), each region outlined, and the interiors flooded with scan segments.
+ *
+ * Exported because the 3-D preview must remove exactly the material the beam
+ * removes. When the height-map rasterizer computed its own idea of an engrave it
+ * only ever stroked the outline, so a solid fill previewed as hollow lettering —
+ * the program and the picture disagreed. One implementation, one answer.
+ */
+export function laserFillGeometry(
+  op: CAMOperation,
+  entityMap: Map<string, Entity>,
+): LaserFillGeometry {
+  const contours: Vec2[][] = [];
+  const skipped: string[] = [];
+  for (const id of op.entityIds) {
+    const ent = entityMap.get(id);
+    if (!ent || ent.isConstruction) continue;
+    const cs = fillableContours(ent);
+    if (cs) contours.push(...cs);
+    else skipped.push(ent.id);
+  }
+  const spacing = Math.max(0.01, op.laserFillSpacing ?? DEFAULTS.laserFillSpacing);
+  const outlines: Vec2[][] = [];
+  const segments: Vec2[][] = [];
+  for (const region of groupContoursIntoRegions(contours)) {
+    outlines.push(region.outer, ...region.holes);
+    segments.push(...fillSegments(region.outer, region.holes, spacing));
+  }
+  return { outlines, segments, skipped };
+}
+
 /**
  * Build the raster-engrave primitive for one image entity: resolve its greyscale
  * pixels, sweep them into power-modulated scan rows at the op's resolution, and
@@ -329,26 +372,15 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
   // with holes (so letter counters stay clear), outline each, then flood the
   // interior with scan-line segments. Replaces the centreline dispatch below.
   if (op.type === "engrave" && op.laserFill) {
-    const contours: Vec2[][] = [];
-    for (const id of op.entityIds) {
-      const ent = entityMap.get(id);
-      if (!ent || ent.isConstruction) continue;
-      const cs = fillableContours(ent);
-      if (cs) contours.push(...cs);
-      else items.push({ kind: "note", text: `${ent.id} skipped — fill needs a closed shape` });
-    }
-    const spacing = Math.max(0.01, op.laserFillSpacing ?? DEFAULTS.laserFillSpacing);
-    const overscan = Math.max(0, op.laserOverscan ?? 0);
+    const { outlines, segments, skipped } = laserFillGeometry(op, entityMap);
+    for (const id of skipped)
+      items.push({ kind: "note", text: `${id} skipped — fill needs a closed shape` });
     // Outline every region first (crisp edges), then flood. Keeping the flood
     // last matters for overscan on modal heads: its per-block S leaves power at 0,
     // which is fine right before the op's beam-off but would starve a later cut.
-    const segs: Vec2[][] = [];
-    for (const region of groupContoursIntoRegions(contours)) {
-      items.push({ kind: "poly", pts: region.outer, closed: true });
-      for (const h of region.holes) items.push({ kind: "poly", pts: h, closed: true });
-      segs.push(...fillSegments(region.outer, region.holes, spacing));
-    }
-    if (segs.length > 0) items.push({ kind: "fill", segs, overscan });
+    for (const ring of outlines) items.push({ kind: "poly", pts: ring, closed: true });
+    if (segments.length > 0)
+      items.push({ kind: "fill", segs: segments, overscan: Math.max(0, op.laserOverscan ?? 0) });
     return items;
   }
 
