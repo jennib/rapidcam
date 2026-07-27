@@ -23,6 +23,14 @@ import {
   type ToolType,
 } from "../cam/types";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
+import {
+  addPreset,
+  newPresetId,
+  presetsFor,
+  type LaserPreset,
+  type LaserPresetKind,
+} from "../cam/laserPresets";
+import { openLaserPresetsDialog } from "./laserPresetsDialog";
 import { type DitherMode, DITHER_MODES, DITHER_LABELS, ditherRampRGBA } from "../cam/dither";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openMaterialTestDialog } from "./materialTestDialog";
@@ -170,6 +178,7 @@ export class CamBar {
   private libBtn: HTMLButtonElement | null = null;
   /** "Material Test" button — shown only in laser mode. */
   private testBtn: HTMLButtonElement | null = null;
+  private presetBtn: HTMLButtonElement | null = null;
   /** Tile (stitch) + Two-sided (flip) buttons — hidden for a rotary machine (flat-mill only). */
   private stitchBtn: HTMLButtonElement | null = null;
   private flipBtn: HTMLButtonElement | null = null;
@@ -238,6 +247,18 @@ export class CamBar {
     testBtn.addEventListener("click", () => this.runMaterialTest());
     btnRow.appendChild(testBtn);
     this.testBtn = testBtn;
+
+    // Housekeeping for the recipes saved out of the toolpath dialog. Sits beside
+    // Material Test because that is where the numbers come from: run the grid,
+    // save the cell that worked, manage them here.
+    const presetBtn = document.createElement("button");
+    presetBtn.className = "cam-add-btn cam-presets-btn";
+    presetBtn.style.flex = "1";
+    presetBtn.textContent = "Presets";
+    presetBtn.title = "Manage saved laser material presets (power / speed / passes)";
+    presetBtn.addEventListener("click", () => openLaserPresetsDialog(this.doc.displayUnit));
+    btnRow.appendChild(presetBtn);
+    this.presetBtn = presetBtn;
 
     this.content.appendChild(btnRow);
 
@@ -407,6 +428,7 @@ export class CamBar {
     const laser = this.doc.isLaser;
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
     if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
+    if (this.presetBtn) this.presetBtn.style.display = laser ? "" : "none";
     // Tile/Two-sided are flat-mill-only — hidden for a rotary job.
     this.updateModeButtons();
 
@@ -2847,6 +2869,7 @@ export class CamBar {
     sec.appendChild(passes.el);
     sec.appendChild(kerf.el);
 
+
     // Fill (area engrave) — engrave only. Floods closed shapes with scan lines.
     const fillChk = document.createElement("input");
     fillChk.type = "checkbox";
@@ -2969,10 +2992,130 @@ export class CamBar {
     });
     sec.appendChild(this.dField("Air assist (M8/M9)", airChk));
 
+    // --- material presets ----------------------------------------------------
+    // Recipes are per-machine and per-material, so the picker only offers ones
+    // saved for THIS job kind: a cut recipe dropped onto a score op would be
+    // roughly five times the power it wants. Inserted above the fields it fills
+    // in, and the inputs are repopulated on apply (the same repopulate-on-load
+    // contract `applyToolDef` uses for the tool library).
+    const presetKind = (): LaserPresetKind =>
+      state.combo === "engrave" ? "engrave" : state.combo === "score" ? "score" : "cut";
+
+    const applyPreset = (p: LaserPreset): void => {
+      state.feedrate = p.feedrate;
+      state.laserPower = p.laserPower;
+      state.laserPasses = p.laserPasses;
+      if (p.kerfWidth !== undefined) state.kerfWidth = p.kerfWidth;
+      if (p.airAssist !== undefined) state.airAssist = p.airAssist;
+      feed.inp.value = this.feedView(p.feedrate);
+      power.inp.value = String(p.laserPower);
+      passes.inp.value = String(p.laserPasses);
+      if (p.kerfWidth !== undefined) kerf.inp.value = this.lenView(p.kerfWidth);
+      if (p.airAssist !== undefined) airChk.checked = p.airAssist;
+    };
+
+    const presetRow = document.createElement("div");
+    presetRow.className = "tp-field tp-preset-row";
+    const presetLabel = document.createElement("label");
+    presetLabel.textContent = "Material preset";
+    const presetBtns = document.createElement("div");
+    presetBtns.style.cssText = "display:flex;gap:6px;flex:1;";
+
+    const loadPresetBtn = document.createElement("button");
+    loadPresetBtn.type = "button";
+    loadPresetBtn.className = "btn tp-preset-load";
+    loadPresetBtn.textContent = "Load preset";
+    const savePresetBtn = document.createElement("button");
+    savePresetBtn.type = "button";
+    savePresetBtn.className = "btn tp-preset-save";
+    savePresetBtn.textContent = "Save as preset…";
+    savePresetBtn.title = "Save this op's power, speed and passes as a reusable recipe";
+    presetBtns.append(loadPresetBtn, savePresetBtn);
+    presetRow.append(presetLabel, presetBtns);
+
+    const presetPicker = document.createElement("div");
+    presetPicker.className = "tp-preset-picker";
+    presetPicker.style.cssText =
+      "display:none;margin:0 0 8px;max-height:150px;overflow-y:auto;" +
+      "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
+
+    const refreshPresets = (): void => {
+      presetPicker.innerHTML = "";
+      const available = presetsFor(presetKind());
+      if (available.length === 0) {
+        const mt = document.createElement("div");
+        mt.className = "tp-preset-empty";
+        mt.style.cssText = "padding:8px;font-size:11px;color:var(--text-dim);line-height:1.5;";
+        // No starter numbers on purpose — see cam/laserPresets.ts.
+        mt.textContent =
+          `No ${presetKind()} presets saved yet. Dial in power and speed (the ` +
+          `Material Test button generates a grid), then "Save as preset…".`;
+        presetPicker.appendChild(mt);
+        return;
+      }
+      for (const p of available) {
+        const row = document.createElement("div");
+        row.className = "tp-preset-item";
+        row.style.cssText =
+          "display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;" +
+          "border-bottom:1px solid var(--border);font-size:11px;";
+        row.addEventListener("mouseover", () => {
+          row.style.background = "var(--panel-2)";
+        });
+        row.addEventListener("mouseout", () => {
+          row.style.background = "";
+        });
+        const nameSpan = document.createElement("span");
+        nameSpan.style.flex = "1";
+        nameSpan.textContent = p.name;
+        const detailSpan = document.createElement("span");
+        detailSpan.style.color = "var(--text-dim)";
+        detailSpan.textContent = `${p.laserPower}% · ${this.feedU(p.feedrate)} · ${p.laserPasses}×`;
+        row.append(nameSpan, detailSpan);
+        row.addEventListener("click", () => {
+          applyPreset(p);
+          presetPicker.style.display = "none";
+          pickerOpen = false;
+        });
+        presetPicker.appendChild(row);
+      }
+    };
+
+    let pickerOpen = false;
+    loadPresetBtn.addEventListener("click", () => {
+      pickerOpen = !pickerOpen;
+      if (pickerOpen) refreshPresets();
+      presetPicker.style.display = pickerOpen ? "" : "none";
+    });
+
+    savePresetBtn.addEventListener("click", () => {
+      const suggested = state.name?.trim() || `${presetKind()} preset`;
+      const name = window.prompt("Name this material preset", suggested)?.trim();
+      if (!name) return;
+      addPreset({
+        id: newPresetId(),
+        name,
+        kind: presetKind(),
+        feedrate: state.feedrate,
+        laserPower: state.laserPower,
+        laserPasses: state.laserPasses,
+        kerfWidth: state.kerfWidth,
+        airAssist: state.airAssist,
+      });
+      if (pickerOpen) refreshPresets();
+    });
+
+    sec.insertBefore(presetRow, feed.el);
+    sec.insertBefore(presetPicker, feed.el);
+
     const update = () => {
       const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
       const isEngrave = state.combo === "engrave";
       const isRaster = isEngrave && this.opTargetsImage(state.entityIds);
+      // The op type decides which recipes are eligible, so a picker left open
+      // across a type change is showing the wrong kind — and a cut recipe
+      // clicked onto an engrave op would set roughly five times its power.
+      if (pickerOpen) refreshPresets();
       kerf.el.style.display = isCut ? "" : "none";
       // Vector fill applies to closed shapes, not images — hide it for a raster.
       fillRow.style.display = isEngrave && !isRaster ? "" : "none";

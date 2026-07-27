@@ -22,6 +22,9 @@ export const StorageKeys = {
   analyticsReplayConsent: "rapidcam_analytics_replay_consent",
   /** Serialized user tool library. */
   toolLibrary: "rapidcam-tool-library",
+  /** Saved laser material recipes (power/speed/passes per material + job kind).
+   *  Personal to the machine — never referenced by id from a saved .rcam. */
+  laserPresets: "rapidcam:laser-presets",
   /** Custom G-code program-start snippet. */
   gcodeCustomStart: "rapidcam:gcode:customStart",
   /** Custom G-code program-end snippet. */

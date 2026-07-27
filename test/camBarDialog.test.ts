@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { CamBar } from "../src/ui/camBar";
 import { CADDocument } from "../src/model/document";
 import { RectEntity } from "../src/model/entities";
@@ -146,6 +146,100 @@ describe("Add-Toolpath dialog: display units", () => {
     expect(row(dialog, "Depth").querySelector("label")?.textContent).toContain("(mm)");
     const diam = row(dialog, "Diameter").querySelector("input") as HTMLInputElement;
     expect(Number(diam.value)).toBeCloseTo(6, 6);
+  });
+});
+
+describe("Add-Toolpath dialog: laser material presets", () => {
+  function laserDoc(): CADDocument {
+    const doc = millDoc();
+    doc.machineKind = "laser";
+    return doc;
+  }
+  const picker = (d: HTMLElement) => d.querySelector(".tp-preset-picker") as HTMLElement;
+  const loadBtn = (d: HTMLElement) => d.querySelector(".tp-preset-load") as HTMLButtonElement;
+  const saveBtn = (d: HTMLElement) => d.querySelector(".tp-preset-save") as HTMLButtonElement;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("the preset row rides in the laser section, hidden on a mill document", () => {
+    const laserDialog = openDialog(laserDoc());
+    expect(laserDialog.querySelector(".tp-preset-row")).toBeTruthy();
+
+    document.body.innerHTML = "";
+    const millDialog = openDialog(millDoc());
+    // The row exists but its whole section is display:none for a spindle job.
+    const section = millDialog.querySelector(".tp-preset-row")?.closest(".tp-dialog-section");
+    expect((section as HTMLElement).style.display).toBe("none");
+  });
+
+  test("an empty library says how to make one instead of offering numbers", () => {
+    const dialog = openDialog(laserDoc());
+    loadBtn(dialog).click();
+
+    const empty = picker(dialog).querySelector(".tp-preset-empty");
+    expect(empty).toBeTruthy();
+    // No fabricated starter recipe: power/speed are machine-specific.
+    expect(empty?.textContent).toMatch(/Material Test/);
+    expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(0);
+  });
+
+  test("saving a preset then loading it fills the fields back in", () => {
+    const dialog = openDialog(laserDoc());
+
+    // Dial in values the way a user would, then save them.
+    const power = row(dialog, "Power").querySelector("input") as HTMLInputElement;
+    const passes = row(dialog, "Passes").querySelector("input") as HTMLInputElement;
+    power.value = "42";
+    power.dispatchEvent(new Event("change"));
+    passes.value = "3";
+    passes.dispatchEvent(new Event("change"));
+
+    vi.stubGlobal("prompt", () => "3mm ply");
+    saveBtn(dialog).click();
+
+    // A fresh dialog starts back at the defaults...
+    document.body.innerHTML = "";
+    const fresh = openDialog(laserDoc());
+    const freshPower = row(fresh, "Power").querySelector("input") as HTMLInputElement;
+    expect(freshPower.value).not.toBe("42");
+
+    // ...until the saved recipe is applied, which must repopulate the inputs and
+    // not merely mutate state behind them.
+    loadBtn(fresh).click();
+    const item = picker(fresh).querySelector(".tp-preset-item") as HTMLElement;
+    expect(item.textContent).toContain("3mm ply");
+    item.click();
+
+    expect((row(fresh, "Power").querySelector("input") as HTMLInputElement).value).toBe("42");
+    expect((row(fresh, "Passes").querySelector("input") as HTMLInputElement).value).toBe("3");
+  });
+
+  test("a cut recipe is never offered on an engrave op", () => {
+    const dialog = openDialog(laserDoc());
+    vi.stubGlobal("prompt", () => "ply CUT 100%");
+    saveBtn(dialog).click(); // default combo is profile-outside -> kind "cut"
+
+    // Positive control: it IS offered on the cut op that saved it.
+    loadBtn(dialog).click();
+    expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(1);
+
+    // Switching type with the picker still OPEN must re-filter it in place. A
+    // stale cut recipe left on screen is clickable, and applying one to an
+    // engrave op sets roughly five times the power that job wants.
+    selectType(dialog, "engrave");
+    expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(0);
+    expect(picker(dialog).querySelector(".tp-preset-empty")?.textContent).toMatch(/engrave/);
+  });
+
+  test("cancelling the name prompt saves nothing", () => {
+    const dialog = openDialog(laserDoc());
+    vi.stubGlobal("prompt", () => null);
+    saveBtn(dialog).click();
+
+    loadBtn(dialog).click();
+    expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(0);
   });
 });
 
