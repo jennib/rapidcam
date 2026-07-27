@@ -48,6 +48,12 @@ import { type LaserPost, getLaserPost } from "./laserposts";
 import { AIR_ON_DEFAULT, AIR_OFF_DEFAULT } from "./laserposts/base";
 
 export interface LaserGCodeOptions {
+  /**
+   * Laser controller id. Machine configuration, so it arrives as an option
+   * rather than off the document (see SETTINGS_MODEL.md). Unset = the default
+   * beam post, which keeps direct generator calls working without a profile.
+   */
+  postProcessor?: string;
   /** Machine-wide custom lines injected after the G21/G90/G17 setup block. */
   customStart?: string;
   /** Machine-wide custom lines injected after the final beam-off, before M30. */
@@ -702,8 +708,13 @@ export interface LaserPreviewPath {
  * will trace. Coordinates are in model space (no WCS offset); the renderer maps
  * them to screen.
  */
-export function laserPreviewPaths(rawOps: CAMOperation[], doc: CADDocument): LaserPreviewPath[] {
-  const post = getLaserPost(doc.postProcessor);
+export function laserPreviewPaths(
+  rawOps: CAMOperation[],
+  doc: CADDocument,
+  /** Machine's laser post; unset = the default beam post. */
+  postProcessor?: string,
+): LaserPreviewPath[] {
+  const post = getLaserPost(postProcessor);
   const paths: LaserPreviewPath[] = [];
   for (const raw of rawOps) {
     const op = expandOpPatternTargets(raw, doc);
@@ -751,7 +762,7 @@ export function generateLaserGCode(
   const ops = rawOps.map((op) => expandOpPatternTargets(op, doc));
   const { ox, oy } = resolveOrigin(doc); // Z origin is irrelevant for a laser
   const foot = stockFootprint(doc);
-  const post = getLaserPost(doc.postProcessor);
+  const post = getLaserPost(opts.postProcessor);
   const maxPower = opts.laserMaxPower;
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];

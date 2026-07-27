@@ -3,6 +3,14 @@ import {
   setCustomGcode,
   getMachineHasCoolant,
   setMachineHasCoolant,
+  getPostFor,
+  setPostFor,
+  getHasToolChanger,
+  setHasToolChanger,
+  getRotaryAxisWord,
+  setRotaryAxisWord,
+  getArcTolerance,
+  setArcTolerance,
 } from "../core/prefs";
 import {
   type CADDocument,
@@ -12,7 +20,7 @@ import {
   type MachineKind,
   type RotarySettings,
 } from "../model/document";
-import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+import { laserPostOptions } from "../cam/laserposts";
 import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/klein";
 import { registerModal } from "./modal";
 
@@ -80,7 +88,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
 
   const tcCheck = document.createElement("input");
   tcCheck.type = "checkbox";
-  tcCheck.checked = doc.hasToolChanger;
+  tcCheck.checked = getHasToolChanger();
   const tcRow = checkRow("Automatic tool changer (emit T/M6)", tcCheck);
 
   const coolantCheck = document.createElement("input");
@@ -107,7 +115,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
       ["A", "A (rotates about X)"],
       ["B", "B (rotates about Y)"],
     ],
-    rbase.axisWord,
+    getRotaryAxisWord(),
   );
   const diaInput = smallNumber(rbase.diameter, "0.5");
   const zeroSelect = smallSelect(
@@ -117,7 +125,7 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     ],
     rbase.zero ?? "surface",
   );
-  const tolInput = smallNumber(rbase.arcTolerance ?? ARC_TOL_DEFAULT, "0.01");
+  const tolInput = smallNumber(getArcTolerance(), "0.01");
   const rotaryInfo = document.createElement("div");
   rotaryInfo.className = "post-settings-note";
   const rotaryNote = document.createElement("p");
@@ -187,12 +195,10 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     el.addEventListener("input", updateRotaryInfo);
 
   // Remember each machine type's post pick so toggling doesn't lose it.
-  let millPost = MILL_POST_OPTIONS.some(([v]) => v === doc.postProcessor)
-    ? doc.postProcessor
-    : "linuxcnc";
-  let laserPost = laserPostOptions().some(([v]) => v === doc.postProcessor)
-    ? doc.postProcessor
-    : DEFAULT_LASER_POST.id;
+  // Both posts are held at once: machine type belongs to the DESIGN, so a laser
+  // document must not find a mill controller stored (see SETTINGS_MODEL.md).
+  let millPost = getPostFor("mill");
+  let laserPost = getPostFor("laser");
   const fillPosts = (opts: [string, string][], value: string) => {
     ppSelect.innerHTML = "";
     for (const [v, l] of opts) {
@@ -267,16 +273,12 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     const lockedWrap = newRotary ? Math.PI * newRotary.diameter : null;
     const canvasChanged = wrapKey !== null && Math.abs(doc.canvas[wrapKey] - lockedWrap!) > 1e-6;
     const rotaryChanged = JSON.stringify(doc.rotary ?? null) !== JSON.stringify(newRotary);
-    if (
-      doc.postProcessor !== ppSelect.value ||
-      doc.hasToolChanger !== tcCheck.checked ||
-      doc.machineKind !== kind ||
-      rotaryChanged ||
-      canvasChanged
-    ) {
+    // Only the JOB half goes on the document and onto the undo stack. Machine
+    // type stays here because head x stock is a property of the design (laser
+    // ops do not map onto mill ops); the controller, tool changer and the two
+    // machine-ish rotary fields are profile, below. See SETTINGS_MODEL.md.
+    if (doc.machineKind !== kind || rotaryChanged || canvasChanged) {
       opts.pushHistory();
-      doc.postProcessor = ppSelect.value;
-      doc.hasToolChanger = tcCheck.checked;
       doc.machineKind = kind;
       doc.rotary = newRotary;
       // A rotary cylinder has no bed — it's always surface-zeroed (see cam/klein.ts).
@@ -284,7 +286,11 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
       if (isRotary(kind)) doc.origin.z = "top";
       if (wrapKey !== null) doc.canvas[wrapKey] = lockedWrap!;
     }
-    // Machine-wide preferences.
+    // Machine profile (localStorage) — never written into the .rcam.
+    setPostFor(isLaser(kind) ? "laser" : "mill", ppSelect.value);
+    setHasToolChanger(tcCheck.checked);
+    setRotaryAxisWord(rWordSelect.value as "A" | "B");
+    setArcTolerance(Math.max(0.001, Number(tolInput.value) || ARC_TOL_DEFAULT));
     setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
     close();

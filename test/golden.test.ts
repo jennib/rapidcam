@@ -59,7 +59,9 @@ function enclosureGcode(): string {
   ) as RcamFile;
   const doc = new CADDocument({ width: 10, height: 10 });
   applyFile(doc, file);
-  return generateGCode(doc.operations, doc);
+  // Pin the controller here rather than relying on the fixture: the post is
+  // machine configuration now, so the tripwire must state which one it hashes.
+  return generateGCode(doc.operations, doc, { postProcessor: "grbl" });
 }
 
 // Rotary wrap — the wrapped / inverse-time (G93) path.

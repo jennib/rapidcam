@@ -5,6 +5,7 @@
  */
 
 import { track } from "./analytics";
+import { getPostFor } from "./core/prefs";
 import { buildSideA, buildSideB, opFace } from "./cam/flip";
 import { defaultRotarySettings } from "./cam/klein";
 import { laserPreviewPaths } from "./cam/lasergcode";
@@ -576,7 +577,7 @@ export class App {
   /** Recompute the flat laser overlay now (cut-path geometry → renderer). */
   private computeLaserPreview(): void {
     if (!this.laserPreviewVisible) return;
-    this.renderer.laserPreview = laserPreviewPaths(this.doc.operations, this.doc);
+    this.renderer.laserPreview = laserPreviewPaths(this.doc.operations, this.doc, getPostFor("laser"));
     this.requestRender();
   }
 

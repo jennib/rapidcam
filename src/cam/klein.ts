@@ -476,7 +476,17 @@ export function validateRotary(doc: CADDocument): string[] {
  * Requires `doc.rotary` (falls back to derived defaults).
  */
 export function generateRotaryProgram(doc: CADDocument, opts: GCodeOptions = {}): RotaryProgram {
-  const s = doc.rotary ?? defaultRotarySettings(doc);
+  // RotarySettings is a mixed object: diameter / wrapAxis / zero describe the
+  // JOB (they are the cylinder stock and how the design lies on it), while the
+  // axis word and arc tolerance describe the MACHINE. The machine half arrives
+  // via options and is merged in here, so everything downstream keeps reading a
+  // single `settings` object. See SETTINGS_MODEL.md.
+  const base = doc.rotary ?? defaultRotarySettings(doc);
+  const s: RotarySettings = {
+    ...base,
+    axisWord: opts.rotaryAxisWord ?? base.axisWord,
+    arcTolerance: opts.arcTolerance ?? base.arcTolerance,
+  };
   const warnings = validateRotary(doc);
   // Origin resolution is shared with flat export (X()/Y() already subtract it),
   // so the wrap sees work coordinates — A0 at the wrapped-axis origin.

@@ -1612,6 +1612,20 @@ export interface GCodeOptions {
   coolantSupported?: boolean;
   /** Laser only: controller max power (GRBL `$30`) that 100% maps to. Default 1000. */
   laserMaxPower?: number;
+  /**
+   * Post-processor id for this machine. Machine configuration, so it arrives as
+   * an option rather than off the document — a `.rcam` is a drawing and must not
+   * carry the author's controller (see SETTINGS_MODEL.md). Unset falls back to
+   * the head's default, which keeps direct generator calls (tests, fixtures)
+   * working without a profile.
+   */
+  postProcessor?: string;
+  /** Machine has an automatic tool changer: emit T/M6 rather than pausing. */
+  hasToolChanger?: boolean;
+  /** Rotary only: which axis word this machine's 4th axis answers to. */
+  rotaryAxisWord?: "A" | "B";
+  /** Rotary only: chord tolerance (mm) for flattening arcs into the wrap. */
+  arcTolerance?: number;
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
@@ -1632,6 +1646,7 @@ export function generateGCode(
       customStart: opts.customStart,
       customEnd: opts.customEnd,
       laserMaxPower: opts.laserMaxPower,
+      postProcessor: opts.postProcessor,
     });
   }
 
@@ -1644,7 +1659,10 @@ export function generateGCode(
 
   const { ox, oy, zOffset } = resolveOrigin(doc);
   const foot = stockFootprint(doc);
-  const pp = getPostProcessor(doc.postProcessor ?? "linuxcnc");
+  // Machine configuration, not document state: the post arrives via options so
+  // a shared design never carries the author's controller. Unset = the mill
+  // default, which keeps direct generator calls working without a profile.
+  const pp = getPostProcessor(opts.postProcessor ?? "linuxcnc");
 
   const xLabel = { left: "Left", center: "Center", right: "Right" }[doc.origin.x];
   const yLabel = { front: "Front", center: "Center", back: "Back" }[doc.origin.y];
@@ -1724,7 +1742,7 @@ export function generateGCode(
         lines.push("M5 ; spindle stop");
       }
 
-      if (doc.hasToolChanger) {
+      if (opts.hasToolChanger) {
         lines.push(`T${op.toolNumber} M6 ; tool change`);
       } else if (!isFirst && toolChanged) {
         // Rapid to the park position (work coords, already at safe Z) so the

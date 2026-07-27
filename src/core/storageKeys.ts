@@ -25,6 +25,20 @@ export const StorageKeys = {
   /** Saved laser material recipes (power/speed/passes per material + job kind).
    *  Personal to the machine — never referenced by id from a saved .rcam. */
   laserPresets: "rapidcam:laser-presets",
+  /** Post-processor for a spindle head. Stored per head type because machine
+   *  type is a property of the DESIGN — one flat post would meet a laser
+   *  design with a mill controller. Moved off the document in .rcam v3. */
+  postMill: "rapidcam:machine:postMill",
+  /** Post-processor for a beam head. See {@link postMill}. */
+  postLaser: "rapidcam:machine:postLaser",
+  /** Machine has an automatic tool changer (emit T/M6). Moved off the document
+   *  in .rcam v3 — it is a router capability, not a property of a drawing. */
+  hasToolChanger: "rapidcam:machine:hasToolChanger",
+  /** Which axis word this machine's 4th axis answers to ("A" | "B"). */
+  rotaryAxisWord: "rapidcam:machine:rotaryAxisWord",
+  /** Chord tolerance (mm) for flattening arcs into a rotary wrap — a controller
+   *  capability, so machine-wide rather than per design. */
+  rotaryArcTolerance: "rapidcam:machine:rotaryArcTolerance",
   /** Custom G-code program-start snippet. */
   gcodeCustomStart: "rapidcam:gcode:customStart",
   /** Custom G-code program-end snippet. */

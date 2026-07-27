@@ -10,8 +10,15 @@ import {
   type OriginZ,
   type RotarySettings,
 } from "../model/document";
-import { getMachineHasCoolant, setMachineHasCoolant } from "../core/prefs";
-import { laserPostOptions, DEFAULT_LASER_POST } from "../cam/laserposts";
+import {
+  getMachineHasCoolant,
+  setMachineHasCoolant,
+  getPostFor,
+  setPostFor,
+  getHasToolChanger,
+  setHasToolChanger,
+} from "../core/prefs";
+import { laserPostOptions } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
 import { registerModal } from "./modal";
 
@@ -304,7 +311,7 @@ export function openNewProjectDialog(
   const tcChk = document.createElement("input");
   tcChk.type = "checkbox";
   tcChk.className = "settings-checkbox";
-  tcChk.checked = initial.hasToolChanger ?? defaults.hasToolChanger ?? false;
+  tcChk.checked = getHasToolChanger();
   const tcRow = row("Auto tool changer", tcChk);
   macSec.appendChild(tcRow);
   // Coolant is a machine capability (global preference), not a per-project
@@ -321,13 +328,10 @@ export function openNewProjectDialog(
   // (LinuxCNC/GRBL) vs laser controllers (cam/laserposts). Remember each side's
   // pick so toggling back and forth doesn't lose it. A laser has no spindle/Z, so
   // the tool-changer and coolant toggles are grayed out.
-  const initialPP = initial.postProcessor ?? defaults.postProcessor;
-  let millPost =
-    initialPP && MILL_POST_OPTIONS.some(([v]) => v === initialPP) ? initialPP : "grbl";
-  let laserPost =
-    initialPP && laserPostOptions().some(([v]) => v === initialPP)
-      ? initialPP
-      : DEFAULT_LASER_POST.id;
+  // Seed both posts from the machine profile, not from a document/default blob:
+  // the controller belongs to the router (see SETTINGS_MODEL.md).
+  let millPost = getPostFor("mill");
+  let laserPost = getPostFor("laser");
   const fillOptions = (opts: [string, string][], value: string) => {
     ppSel.innerHTML = "";
     for (const [v, l] of opts) {
@@ -484,8 +488,12 @@ export function openNewProjectDialog(
       /* ignore */
     }
 
-    // Persist the machine coolant capability (global, applies to all projects).
+    // Machine profile (localStorage, global) — the controller and tool changer
+    // are capabilities of the router, not properties of the new drawing, so they
+    // are persisted here rather than onto the document. See SETTINGS_MODEL.md.
     setMachineHasCoolant(coolantChk.checked);
+    setPostFor(isLaser(cfg.machineKind) ? "laser" : "mill", ppSel.value);
+    setHasToolChanger(tcChk.checked);
 
     close();
     onConfirm(cfg);

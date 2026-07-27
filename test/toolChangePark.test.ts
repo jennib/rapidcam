@@ -69,9 +69,10 @@ test("no park on the first op (no change) or when there's only one tool", () => 
 
 test("an automatic tool changer uses M6 and ignores the park position", () => {
   const { doc, ops } = twoToolDoc();
-  doc.hasToolChanger = true;
   doc.toolChangePosition = { x: 0, y: 90 };
-  const g = generateGCode(ops, doc);
+  // An ATC is a machine capability, passed as an option rather than stored on
+  // the drawing (see SETTINGS_MODEL.md).
+  const g = generateGCode(ops, doc, { hasToolChanger: true });
   expect(g).toMatch(/T2 M6 ; tool change/);
   expect(g).not.toMatch(/park for tool change/);
 });

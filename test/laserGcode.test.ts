@@ -244,9 +244,12 @@ test("machineKind and laser op fields round-trip through serialize/apply", () =>
 // 12) Selectable laser post-processors ----------------------------------------
 function engraveLine(postId?: string) {
   const doc = laserDoc();
-  if (postId) doc.postProcessor = postId;
   doc.entities.push(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1"));
-  return generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"], laserPower: 80 })], doc);
+  // The controller is MACHINE configuration, supplied as an option — it is no
+  // longer a document field (see SETTINGS_MODEL.md).
+  return generateLaserGCode([baseOp({ type: "engrave", entityIds: ["L1"], laserPower: 80 })], doc, {
+    postProcessor: postId,
+  });
 }
 
 test("GRBL constant post emits M3 (not M4) at full scale", () => {

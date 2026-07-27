@@ -49,7 +49,16 @@ import { formatExportName, timeStamp } from "../cam/exportName";
 import { zipStore } from "../io/zip";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import { opPatternTargetCount } from "../cam/patternExpand";
-import { getCustomGcode, getMachineHasCoolant, getGsenderUrl, getNcsenderUrl } from "../core/prefs";
+import {
+  getCustomGcode,
+  getMachineHasCoolant,
+  getGsenderUrl,
+  getNcsenderUrl,
+  getPostFor,
+  getHasToolChanger,
+  getRotaryAxisWord,
+  getArcTolerance,
+} from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
 import { regionAtPoint, resolveRegion, interiorPoint } from "../cam/regions";
@@ -1807,10 +1816,24 @@ export class CamBar {
 
   // --- G-code generation -----------------------------------------------------
 
-  /** Map the machine-wide custom-G-code preference into generator options. */
+  /**
+   * The machine's contribution to a generated program. Everything here is
+   * machine configuration read from the local profile, never from the document
+   * — a `.rcam` is a drawing and must not carry the author's controller (see
+   * SETTINGS_MODEL.md). The post is chosen by the DOCUMENT's head type, since
+   * machine type is a property of the design.
+   */
   private gcodeOpts() {
     const g = getCustomGcode();
-    return { customStart: g.start, customEnd: g.end, coolantSupported: getMachineHasCoolant() };
+    return {
+      customStart: g.start,
+      customEnd: g.end,
+      coolantSupported: getMachineHasCoolant(),
+      postProcessor: getPostFor(this.doc.isLaser ? "laser" : "mill"),
+      hasToolChanger: getHasToolChanger(),
+      rotaryAxisWord: getRotaryAxisWord(),
+      arcTolerance: getArcTolerance(),
+    };
   }
 
   /**
