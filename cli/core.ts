@@ -26,7 +26,7 @@ let validator: SchemaValidator | null = null;
 export function makeSchemaValidator(): SchemaValidator {
   if (validator) return validator;
   const schema = JSON.parse(
-    readFileSync(join(repoRoot, "public", "schema", "rcam-v2.schema.json"), "utf8"),
+    readFileSync(join(repoRoot, "public", "schema", "rcam-v3.schema.json"), "utf8"),
   );
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   const compiled = ajv.compile(schema);

@@ -2,7 +2,7 @@
  * RapidCAM MCP server — gives AI agents (Claude Code, Claude Desktop, any MCP
  * client) the full author → check → look loop over .rcam files:
  *
- *   get_format_guide   the complete authoring guide (docs/rcam-format-v2.md)
+ *   get_format_guide   the complete authoring guide (docs/rcam-format-v3.md)
  *   list_examples      bundled golden example projects
  *   get_example        one example's .rcam JSON
  *   validate_rcam      schema + load + reference + constraint-solve checks
@@ -44,7 +44,7 @@ server.registerTool(
     description:
       "The complete .rcam v2 authoring guide (markdown): entity/constraint/dimension vocabulary, CAM operations, machine kinds, and gotchas. Read this before authoring a file.",
   },
-  async () => text(readFileSync(join(repoRoot, "docs", "rcam-format-v2.md"), "utf8")),
+  async () => text(readFileSync(join(repoRoot, "docs", "rcam-format-v3.md"), "utf8")),
 );
 
 server.registerTool(

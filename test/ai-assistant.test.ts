@@ -30,7 +30,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
 const schema = JSON.parse(
-  readFileSync(join(repoRoot, "public", "schema", "rcam-v2.schema.json"), "utf8"),
+  readFileSync(join(repoRoot, "public", "schema", "rcam-v3.schema.json"), "utf8"),
 );
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 const compiled = ajv.compile(schema);
@@ -66,7 +66,7 @@ describe("buildAiPrompt", () => {
     expect(p).toContain("BEGIN RCAM FORMAT GUIDE");
     // The guide really is the whole document, not a stub.
     expect(p).toContain("## Constraints");
-    expect(p).toContain("rcam-v2.schema.json");
+    expect(p).toContain("rcam-v3.schema.json");
   });
 
   it("modify mode embeds the current design JSON and the user request", () => {
@@ -387,6 +387,6 @@ describe("buildErrorReport", () => {
     expect(report).toContain("RapidCAM import report — test file");
     expect(report).toContain("## Errors");
     expect(report).toContain("single JSON code block");
-    expect(report).toContain("rcam-format-v2.md");
+    expect(report).toContain("rcam-format-v3.md");
   });
 });

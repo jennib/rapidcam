@@ -264,11 +264,11 @@ Projects are saved as `.rcam` files — plain JSON, all lengths in millimetres,
 Y-up. The current format is **version 2** (version-1 files open and are upgraded
 automatically). It's documented for external tooling:
 
-- [`docs/rcam-format-v2.md`](docs/rcam-format-v2.md) — authoring guide (entity
+- [`docs/rcam-format-v3.md`](docs/rcam-format-v3.md) — authoring guide (entity
   point-key vocabularies, constraint/dimension semantics, CAM operations, gotchas).
-- [`public/schema/rcam-v2.schema.json`](public/schema/rcam-v2.schema.json) — machine-readable
+- [`public/schema/rcam-v3.schema.json`](public/schema/rcam-v3.schema.json) — machine-readable
   JSON Schema (draft 2020-12) for validating generated files. Published at its
-  canonical URL **https://rapidcam.app/schema/rcam-v2.schema.json**.
+  canonical URL **https://rapidcam.app/schema/rcam-v3.schema.json**.
 
 Both are kept honest by a drift-guard test that validates every bundled
 [example](examples/) against the schema (`npm test -- rcam-schema`).

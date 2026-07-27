@@ -1,21 +1,21 @@
-# RapidCAM `.rcam` file format — version 2
+# RapidCAM `.rcam` file format — version 3
 
 This is the authoring guide and stability contract for the RapidCAM project file
 format. A `.rcam` file is plain JSON. The machine-readable contract lives in
-[`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json) (JSON Schema, draft
+[`public/schema/rcam-v3.schema.json`](../public/schema/rcam-v3.schema.json) (JSON Schema, draft
 2020-12); this document is the human- (and AI-) readable companion that explains
 the parts a schema can't — the vocabulary of point keys, what each constraint
 means, and the gotchas.
 
 This guide is published at
-**`https://rapidcam.app/docs/rcam-format-v2.md`**, and the bundled example
+**`https://rapidcam.app/docs/rcam-format-v3.md`**, and the bundled example
 projects are listed at **`https://rapidcam.app/examples/index.json`** (see also
 [`/llms.txt`](https://rapidcam.app/llms.txt)).
 
 The schema's canonical published URL is
-**`https://rapidcam.app/schema/rcam-v2.schema.json`** (this is also its `$id`).
+**`https://rapidcam.app/schema/rcam-v3.schema.json`** (this is also its `$id`).
 In the repository it lives at
-[`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json), which
+[`public/schema/rcam-v3.schema.json`](../public/schema/rcam-v3.schema.json), which
 is what gets served at that URL.
 
 If you are an automated tool (including an LLM) generating `.rcam` files: validate
@@ -41,7 +41,8 @@ vocabularies is unchanged.
 
 ## Stability promise
 
-- Every file declares `"version": 2`. The loader auto-upgrades `"version": 1`.
+- Every file declares `"version": 3`. The loader auto-upgrades `"version": 1`
+  and `"version": 2`; migrations chain, so a v1 file becomes v2 then v3.
 - The loader is **tolerant of additive growth**: unknown fields are ignored, and
   most top-level sections default sensibly when absent (see *Minimum viable file*).
   New, optional capabilities may be added without bumping the version. Anything
@@ -62,14 +63,12 @@ vocabularies is unchanged.
 
 ```jsonc
 {
-  "version": 2,
+  "version": 3,
   "name": "My Part",
   "canvas": { "width": 120, "height": 80 },   // mm
   "displayUnit": "mm",                          // "mm" | "in" (display only)
   "stockThickness": 10,                         // mm, default 10
-  "hasToolChanger": false,
   "origin": { "x": "left", "y": "front", "z": "top" },
-  "postProcessor": "linuxcnc",                  // mill: "linuxcnc" | "grbl"; laser: see below
   "machineKind": "mill",                         // "mill" | "laser" | "mill-rotary" | "laser-rotary", default "mill"
   "endPosition": null,                          // optional park position; see below
   "metadata": { "job": "", "revision": "", "notes": "" }, // optional job info; see below
@@ -95,7 +94,7 @@ that loads cleanly and draws a circle:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "Minimal",
   "canvas": { "width": 100, "height": 100 },
   "displayUnit": "mm",
@@ -107,8 +106,8 @@ that loads cleanly and draws a circle:
 }
 ```
 
-Defaults applied when omitted: `stockThickness` → 10, `hasToolChanger` → false,
-`origin` → front-left-top, `postProcessor` → `"linuxcnc"`, `machineKind` → `"mill"`,
+Defaults applied when omitted: `stockThickness` → 10,
+`origin` → front-left-top, `machineKind` → `"mill"`,
 `endPosition` → `null`, `layers` → one `"layer-0"` "Default" layer,
 `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
 
@@ -137,9 +136,15 @@ the top-level `rotary` block (see below). The head behaviour is unchanged by it:
   must measure; what the rotary machine kind buys you is the cylinder-sized
   canvas, the wrap hint, the preview, and that banner.
 
-`postProcessor` names the controller. For a **mill** it's `"linuxcnc"` or
-`"grbl"`. For a **laser** it's one of the laser controllers, each a separate
-editable post in `src/cam/laserposts/`:
+**The controller is NOT in the file.** As of v3 a `.rcam` is a drawing, so it
+carries the design and not the author's machine: the post-processor, the
+automatic-tool-changer flag, the rotary axis word and the arc tolerance all live
+in the opener's local machine profile and are applied when G-code is generated.
+A design you receive is cut with *your* controller, not the sender's.
+
+For reference, the posts a machine can be configured with — for a **mill**,
+`"linuxcnc"` or `"grbl"`; for a **laser**, one of the controllers below, each a
+separate editable post in `src/cam/laserposts/`:
 
 | id | controller |
 |----|------------|
@@ -189,13 +194,18 @@ Z is depth below the **top of the cylinder** (touch off the stock top) and
 nothing is transformed, because the canvas is already in the surface millimetres
 the substituted axis wants, and no Z is emitted at all.
 
-Fields: `axisWord` (`"A"` rotates about machine X and pairs with `wrapAxis`
-`"y"`; `"B"` about Y pairs with `"x"`), `diameter` (mm), `wrapAxis` (`"y"` =
-Y wraps to rotation and X runs along the length — the default pairing; `"x"` =
-swapped), optional `zero` (`"surface"` (default) or `"center"` — see Zeroing
-below), and optional `arcTolerance` (chord tolerance in mm, default 0.1). The
-last three are **mill-only**: a beam emits no rotary word, no Z, and never
-flattens an arc because it never wraps one. Not combinable with `flip`.
+Fields in the FILE describe the job, because the cylinder *is* the stock:
+`diameter` (mm), `wrapAxis` (`"y"` = Y wraps to rotation and X runs along the
+length — the default pairing; `"x"` = swapped), and optional `zero`
+(`"surface"` (default) or `"center"` — see Zeroing below). `zero` is
+**mill-only**: a beam emits no Z to zero.
+
+The rotary **axis word** (`"A"` about machine X, pairing with `wrapAxis` `"y"`;
+`"B"` about Y, pairing with `"x"`) and the **arc tolerance** (chord tolerance in
+mm, default 0.1) describe the machine, not the design, so as of v3 they are not
+stored in the file — they come from the local machine profile. Both are
+mill-only anyway: a beam emits no rotary word and never flattens an arc because
+it never wraps one. Not combinable with `flip`.
 `null`/omitted = flat work. See
 `examples/rotary-spiral-dowel.rcam` — a straight line across the wrapped axis
 becomes a ring, a diagonal becomes a helix.
@@ -686,7 +696,7 @@ be rendered or cut.
 npm test -- rcam-schema
 ```
 
-External tools can validate against [`public/schema/rcam-v2.schema.json`](../public/schema/rcam-v2.schema.json)
+External tools can validate against [`public/schema/rcam-v3.schema.json`](../public/schema/rcam-v3.schema.json)
 with any JSON Schema (draft 2020-12) validator. The schema enforces structure and
 enumerations; it cannot tell you whether a constraint system converges or a pocket
 seed lands inside its region — for that you need to load the file in RapidCAM.

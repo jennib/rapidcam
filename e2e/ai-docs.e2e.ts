@@ -34,14 +34,14 @@ test("bare document fetches are served with the right content", async ({ request
   expect(full.headers()["content-type"]).toContain("text/plain");
   const fullText = await full.text();
   for (const url of [
-    "https://rapidcam.app/docs/rcam-format-v2.md",
-    "https://rapidcam.app/schema/rcam-v2.schema.json",
+    "https://rapidcam.app/docs/rcam-format-v3.md",
+    "https://rapidcam.app/schema/rcam-v3.schema.json",
     "https://rapidcam.app/docs/ai-integration.md",
   ]) {
     expect(fullText).toContain(`Canonical URL: ${url}`);
   }
 
-  const guide = await request.get("/docs/rcam-format-v2.md");
+  const guide = await request.get("/docs/rcam-format-v3.md");
   expect(guide.ok()).toBe(true);
   expect(guide.headers()["content-type"]).toContain("markdown");
   expect(await guide.text()).toContain("## CAM operations");

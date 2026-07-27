@@ -4,7 +4,7 @@ RapidCAM is built so AI tools — chat assistants and autonomous agents alike �
 can author, check, and iterate on real, machinable designs. This guide covers
 every integration surface. It is published at
 **`https://rapidcam.app/docs/ai-integration.md`**; the file-format contract it
-builds on lives in the [.rcam format guide](rcam-format-v2.md).
+builds on lives in the [.rcam format guide](rcam-format-v3.md).
 
 The design principle behind all of it: **optimize the AI's second attempt, not
 its first.** A language model authoring CAD blind will make mistakes; what
@@ -82,8 +82,8 @@ indexed by [`/llms.txt`](https://rapidcam.app/llms.txt):
 |-----|----------|
 | `https://rapidcam.app/llms.txt` | index of all of the below |
 | `https://rapidcam.app/llms-full.txt` | **single-fetch bundle**: the index, format guide, JSON Schema, and this guide inlined in one file — for fetch tools that cannot follow links out of a fetched page |
-| `https://rapidcam.app/docs/rcam-format-v2.md` | the authoring guide: entity/constraint/dimension vocabulary, CAM operations, gotchas |
-| `https://rapidcam.app/schema/rcam-v2.schema.json` | machine-readable JSON Schema (draft 2020-12; this URL is its `$id`) |
+| `https://rapidcam.app/docs/rcam-format-v3.md` | the authoring guide: entity/constraint/dimension vocabulary, CAM operations, gotchas |
+| `https://rapidcam.app/schema/rcam-v3.schema.json` | machine-readable JSON Schema (draft 2020-12; this URL is its `$id`) |
 | `https://rapidcam.app/docs/ai-integration.md` | this document |
 | `https://rapidcam.app/examples/index.json` | list of bundled golden examples |
 | `https://rapidcam.app/examples/<name>.rcam` | any listed example (all schema-validated on every commit) |
@@ -164,7 +164,7 @@ changes and hand back as above.
 
 ## Tips for LLM authors
 
-The [format guide](rcam-format-v2.md) is the contract; these are the
+The [format guide](rcam-format-v3.md) is the contract; these are the
 highest-leverage habits:
 
 - **All lengths are millimetres and all angles radians (CCW), always** —

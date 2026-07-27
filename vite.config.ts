@@ -21,14 +21,14 @@ export function llmsFullText(): string {
     `\n\n${"=".repeat(78)}\nSECTION: ${title}\nCanonical URL: ${url}\n${"=".repeat(78)}\n\n`;
   return (
     read("public/llms.txt") +
-    banner(".rcam format guide", "https://rapidcam.app/docs/rcam-format-v2.md") +
-    read("docs/rcam-format-v2.md") +
+    banner(".rcam format guide", "https://rapidcam.app/docs/rcam-format-v3.md") +
+    read("docs/rcam-format-v3.md") +
     banner(
       ".rcam JSON Schema (draft 2020-12)",
-      "https://rapidcam.app/schema/rcam-v2.schema.json",
+      "https://rapidcam.app/schema/rcam-v3.schema.json",
     ) +
     "```json\n" +
-    read("public/schema/rcam-v2.schema.json") +
+    read("public/schema/rcam-v3.schema.json") +
     "\n```" +
     banner("AI integration guide", "https://rapidcam.app/docs/ai-integration.md") +
     read("docs/ai-integration.md") +

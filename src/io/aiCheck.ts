@@ -360,7 +360,7 @@ export function buildErrorReport(result: AiCheckResult, name = "pasted file"): s
   }
   lines.push(
     "",
-    "Reference: format guide https://rapidcam.app/docs/rcam-format-v2.md — schema https://rapidcam.app/schema/rcam-v2.schema.json",
+    "Reference: format guide https://rapidcam.app/docs/rcam-format-v3.md — schema https://rapidcam.app/schema/rcam-v3.schema.json",
   );
   return lines.join("\n");
 }

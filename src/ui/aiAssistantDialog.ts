@@ -42,7 +42,7 @@ export function loadSchemaValidator(): Promise<SchemaValidator | null> {
       const [{ default: Ajv2020 }, { formatSchemaIssue }, schema] = await Promise.all([
         import("ajv/dist/2020"),
         import("../io/aiCheck"),
-        fetch("/schema/rcam-v2.schema.json").then((r) => {
+        fetch("/schema/rcam-v3.schema.json").then((r) => {
           if (!r.ok) throw new Error(`schema fetch failed: ${r.status}`);
           return r.json();
         }),

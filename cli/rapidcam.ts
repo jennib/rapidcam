@@ -30,8 +30,8 @@ Usage:
                                            fragment; prints to stdout unless -o is given
 
 The published authoring contract for .rcam files:
-  guide   https://rapidcam.app/docs/rcam-format-v2.md
-  schema  https://rapidcam.app/schema/rcam-v2.schema.json`;
+  guide   https://rapidcam.app/docs/rcam-format-v3.md
+  schema  https://rapidcam.app/schema/rcam-v3.schema.json`;
 
 function argValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);

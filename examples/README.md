@@ -7,8 +7,8 @@ at the top and work down.
 
 > Writing `.rcam` files by hand or with tooling? These files are the canonical,
 > schema-tested references for the v2 format. See the
-> [format authoring guide](../docs/rcam-format-v2.md) and
-> [JSON Schema](../public/schema/rcam-v2.schema.json).
+> [format authoring guide](../docs/rcam-format-v3.md) and
+> [JSON Schema](../public/schema/rcam-v3.schema.json).
 
 ### Tier 1 — first contact (drawing + dimensions)
 

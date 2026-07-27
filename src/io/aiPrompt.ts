@@ -11,7 +11,7 @@
  * attempt.
  */
 
-import formatGuide from "../../docs/rcam-format-v2.md?raw";
+import formatGuide from "../../docs/rcam-format-v3.md?raw";
 import { getPostFor, getHasToolChanger } from "../core/prefs";
 import type { CADDocument } from "../model/document";
 import { serializeDoc, stripEmbeddedFonts } from "./fileio";
@@ -124,7 +124,7 @@ export function buildAiPrompt(
   }
 
   parts.push(
-    `## Reference\n\nThe complete .rcam format guide is embedded between the markers below. The machine-readable JSON Schema is at https://rapidcam.app/schema/rcam-v2.schema.json and golden examples at https://rapidcam.app/examples/index.json (fetch them only if you need more detail than the guide).\n\n${GUIDE_BEGIN}\n${formatGuide}\n${GUIDE_END}`,
+    `## Reference\n\nThe complete .rcam format guide is embedded between the markers below. The machine-readable JSON Schema is at https://rapidcam.app/schema/rcam-v3.schema.json and golden examples at https://rapidcam.app/examples/index.json (fetch them only if you need more detail than the guide).\n\n${GUIDE_BEGIN}\n${formatGuide}\n${GUIDE_END}`,
   );
 
   const task = request?.trim()

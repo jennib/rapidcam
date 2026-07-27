@@ -13,10 +13,10 @@ integration guide, inlined as one plain-text document.
 
 ## File format (.rcam)
 
-- [Format guide](https://rapidcam.app/docs/rcam-format-v2.md): the human- and
+- [Format guide](https://rapidcam.app/docs/rcam-format-v3.md): the human- and
   AI-readable authoring guide — point-key vocabulary, constraint semantics,
   CAM operations, and gotchas the schema can't express
-- [JSON Schema, draft 2020-12](https://rapidcam.app/schema/rcam-v2.schema.json):
+- [JSON Schema, draft 2020-12](https://rapidcam.app/schema/rcam-v3.schema.json):
   the machine-readable contract (this URL is also the schema's `$id`)
 - [Examples index](https://rapidcam.app/examples/index.json): bundled golden
   example projects, each validated against the schema on every commit; fetch

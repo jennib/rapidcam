@@ -36,8 +36,8 @@ describe("llms.txt contract", () => {
   );
 
   it("links to at least the format guide, schema, and examples index", () => {
-    expect(linked).toContain("/docs/rcam-format-v2.md");
-    expect(linked).toContain("/schema/rcam-v2.schema.json");
+    expect(linked).toContain("/docs/rcam-format-v3.md");
+    expect(linked).toContain("/schema/rcam-v3.schema.json");
     expect(linked).toContain("/examples/index.json");
   });
 
@@ -66,14 +66,14 @@ describe("llms-full.txt single-fetch bundle", () => {
     expect(full.startsWith(llmsTxt.trimEnd().slice(0, 40))).toBe(true);
     // …and inlines each linked document under a canonical-URL banner.
     for (const url of [
-      "https://rapidcam.app/docs/rcam-format-v2.md",
-      "https://rapidcam.app/schema/rcam-v2.schema.json",
+      "https://rapidcam.app/docs/rcam-format-v3.md",
+      "https://rapidcam.app/schema/rcam-v3.schema.json",
       "https://rapidcam.app/docs/ai-integration.md",
     ]) {
       expect(full).toContain(`Canonical URL: ${url}`);
     }
     // The schema section is the real schema, fenced as JSON.
-    expect(full).toContain('"$id": "https://rapidcam.app/schema/rcam-v2.schema.json"');
+    expect(full).toContain('"$id": "https://rapidcam.app/schema/rcam-v3.schema.json"');
     // Spot-check body content from both guides made it in.
     expect(full).toContain("## CAM operations");
     expect(full).toContain("## Stable URLs for web-connected AIs");
