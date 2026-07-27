@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "RapidCAM Logo",
   "canvas": {
     "width": 192,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 3,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -233,6 +231,7 @@
     }
   ],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [],
   "tools": []

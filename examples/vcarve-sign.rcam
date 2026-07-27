@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "V-Carve Sign",
   "canvas": {
     "width": 220,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 18,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -126,16 +124,19 @@
     }
   ],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [
     {
+      "side": "outside",
+      "stepdown": 5,
+      "stepover": 0.4,
       "id": "op1",
       "name": "V-carve lettering",
       "type": "vcarve",
       "entityIds": [
         "ent2"
       ],
-      "side": "outside",
       "toolId": "tool-vbit-60",
       "toolType": "v-bit",
       "toolNumber": 1,
@@ -146,18 +147,18 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -5,
-      "stepdown": 5,
-      "stepover": 0.4,
       "vStep": 0.4
     },
     {
+      "side": "outside",
+      "stepdown": 3.5,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Chamfer border",
       "type": "chamfer",
       "entityIds": [
         "ent1"
       ],
-      "side": "outside",
       "toolId": "tool-vbit-60",
       "toolType": "v-bit",
       "toolNumber": 1,
@@ -168,19 +169,19 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -3.5,
-      "stepdown": 3.5,
-      "stepover": 0.4,
       "chamferWidth": 2,
       "chamferSide": "inside"
     },
     {
+      "side": "outside",
+      "stepdown": 3,
+      "stepover": 0.4,
       "id": "op3",
       "name": "Cut out board",
       "type": "profile",
       "entityIds": [
         "ent1"
       ],
-      "side": "outside",
       "toolId": "tool-em-6",
       "toolType": "end-mill",
       "toolNumber": 2,
@@ -190,8 +191,6 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -19,
-      "stepdown": 3,
-      "stepover": 0.4,
       "tabs": {
         "enabled": true,
         "count": 4,

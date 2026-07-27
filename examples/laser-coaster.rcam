@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Laser Coaster",
   "canvas": {
     "width": 110,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 3,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl-dynamic",
   "machineKind": "laser",
   "groups": [],
   "layers": [
@@ -161,9 +159,13 @@
     }
   ],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [
     {
+      "side": "outside",
+      "stepdown": 3,
+      "stepover": 0.4,
       "id": "op1",
       "name": "Engrave rings",
       "type": "engrave",
@@ -171,7 +173,6 @@
         "ent2",
         "ent3"
       ],
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -180,19 +181,19 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -3,
-      "stepdown": 3,
-      "stepover": 0.4,
       "laserPower": 45,
       "laserPasses": 1
     },
     {
+      "side": "outside",
+      "stepdown": 3,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Fill-engrave lettering",
       "type": "engrave",
       "entityIds": [
         "ent4"
       ],
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -201,8 +202,6 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -3,
-      "stepdown": 3,
-      "stepover": 0.4,
       "laserPower": 60,
       "laserPasses": 1,
       "laserFill": true,
@@ -210,13 +209,15 @@
       "laserOverscan": 2
     },
     {
+      "side": "outside",
+      "stepdown": 3,
+      "stepover": 0.4,
       "id": "op3",
       "name": "Cut coaster",
       "type": "profile",
       "entityIds": [
         "ent1"
       ],
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -225,8 +226,6 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -3,
-      "stepdown": 3,
-      "stepover": 0.4,
       "laserPower": 90,
       "laserPasses": 2,
       "kerfWidth": 0.15,

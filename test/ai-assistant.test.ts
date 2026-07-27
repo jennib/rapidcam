@@ -41,7 +41,6 @@ function docWithTool(): CADDocument {
   const doc = new CADDocument({ width: 200, height: 150 });
   doc.stockThickness = 12;
   doc.machineKind = "mill";
-  doc.postProcessor = "grbl";
   const tool: ToolDef = {
     id: "tool-1",
     name: "1/4 in end mill",

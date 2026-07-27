@@ -48,7 +48,6 @@ function laserRotaryDoc(): CADDocument {
   const doc = new CADDocument({ width: 200, height: CIRC });
   doc.machineKind = "laser-rotary";
   doc.rotary = { ...CYL };
-  doc.postProcessor = "grbl-dynamic";
   const c = doc.add(new CircleEntity({ x: 100, y: CIRC / 2 }, 30));
   doc.operations = [laserCutOp([c.id])];
   return doc;

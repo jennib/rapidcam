@@ -12,7 +12,7 @@ import { reconcileLoadedPatterns } from "../model/patternEngine";
 import { reconcileLoadedFeatures } from "../generators";
 import { DEFAULTS } from "../cam/types";
 
-export const RCAM_VERSION = 2 as const;
+export const RCAM_VERSION = 3 as const;
 
 export interface RcamFile {
   version: typeof RCAM_VERSION;
@@ -22,9 +22,7 @@ export interface RcamFile {
   stockThickness?: number;
   /** Optional positioned flat stock within the work area (canvas). Omitted = fills the work area. */
   stockRect?: { x: number; y: number; width: number; height: number } | null;
-  hasToolChanger?: boolean;
   origin?: { x: string; y: string; z: string };
-  postProcessor?: string;
   /** Machine kind ("mill" | "laser"). Omitted/absent in old files = "mill". */
   machineKind?: string;
   /** Optional end-of-program park position (work coords, mm). Omitted when off. */
@@ -40,11 +38,9 @@ export interface RcamFile {
   } | null;
   /** Optional cylindrical/rotary wrap setup. Omitted for flat work. */
   rotary?: {
-    axisWord: "A" | "B";
     diameter: number;
     wrapAxis: "x" | "y";
     zero?: "surface" | "center";
-    arcTolerance?: number;
   } | null;
   /** Optional job metadata (job/revision/notes). Omitted when all fields empty. */
   metadata?: { job?: string; revision?: string; notes?: string };
@@ -91,7 +87,7 @@ function cleanMetadata(
  * drop transient editor state (`isConstructionMode`, the `selected*` fields, and
  * each entity's `selected` flag). v1 had no embedded fonts, so none are added.
  */
-export function migrateV1ToV2(old: Record<string, unknown>): RcamFile {
+export function migrateV1ToV2(old: Record<string, unknown>): Record<string, unknown> {
   const {
     isConstructionMode: _m,
     selectedPoints: _sp,
@@ -103,8 +99,33 @@ export function migrateV1ToV2(old: Record<string, unknown>): RcamFile {
   } = old as Record<string, unknown> & { entities?: Record<string, unknown>[] };
   return {
     ...(rest as object),
-    version: RCAM_VERSION,
+    version: 2,
     entities: (entities ?? []).map(({ selected: _s, ...keep }) => keep),
+  } as Record<string, unknown>;
+}
+
+/**
+ * v2 → v3: machine configuration left the file. A `.rcam` is a drawing, so it
+ * carries the design and not the author's controller — `postProcessor`,
+ * `hasToolChanger` and the machine half of the rotary block (`axisWord`,
+ * `arcTolerance`) are dropped and read from the local machine profile instead.
+ * See SETTINGS_MODEL.md. Everything dropped here is recoverable from the
+ * opener's own machine, which is the point.
+ */
+export function migrateV2ToV3(old: Record<string, unknown>): RcamFile {
+  const {
+    postProcessor: _pp,
+    hasToolChanger: _tc,
+    rotary,
+    ...rest
+  } = old as Record<string, unknown> & { rotary?: Record<string, unknown> };
+  const jobRotary = rotary
+    ? (({ axisWord: _a, arcTolerance: _at, ...keep }) => keep)(rotary)
+    : undefined;
+  return {
+    ...(rest as object),
+    version: RCAM_VERSION,
+    ...(jobRotary ? { rotary: jobRotary } : {}),
   } as RcamFile;
 }
 
@@ -117,11 +138,15 @@ export function parseRcam(text: string): RcamFile {
   }
 }
 
-/** Coerce a parsed object to the current version, migrating v1. Throws otherwise. */
+/**
+ * Coerce a parsed object to the current version. Migrations CHAIN — a v1 file
+ * goes v1 → v2 → v3 — so adding a version only ever means adding one step.
+ */
 export function normalizeRcam(raw: unknown): RcamFile {
   const v = (raw as { version?: unknown }).version;
   if (v === RCAM_VERSION) return raw as RcamFile;
-  if (v === 1) return migrateV1ToV2(raw as Record<string, unknown>);
+  if (v === 1) return migrateV2ToV3(migrateV1ToV2(raw as Record<string, unknown>));
+  if (v === 2) return migrateV2ToV3(raw as Record<string, unknown>);
   throw new Error(`Unsupported .rcam version: ${String(v)}`);
 }
 
@@ -211,14 +236,22 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     displayUnit: doc.displayUnit,
     stockThickness: doc.stockThickness,
     ...(doc.stockRect ? { stockRect: { ...doc.stockRect } } : {}),
-    hasToolChanger: doc.hasToolChanger,
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
-    postProcessor: doc.postProcessor,
     ...(doc.machineKind !== "mill" ? { machineKind: doc.machineKind } : {}),
     ...(doc.endPosition ? { endPosition: { ...doc.endPosition } } : {}),
     ...(doc.toolChangePosition ? { toolChangePosition: { ...doc.toolChangePosition } } : {}),
     ...(doc.flip ? { flip: { ...doc.flip, pins: doc.flip.pins.map((p) => ({ ...p })) } } : {}),
-    ...(doc.rotary ? { rotary: { ...doc.rotary } } : {}),
+    // Only the JOB half of the rotary setup is written: the cylinder is the
+    // stock, but the axis word and arc tolerance are the machine's (v3).
+    ...(doc.rotary
+      ? {
+          rotary: {
+            diameter: doc.rotary.diameter,
+            wrapAxis: doc.rotary.wrapAxis,
+            ...(doc.rotary.zero ? { zero: doc.rotary.zero } : {}),
+          },
+        }
+      : {}),
     ...(cleanMetadata(doc.metadata) ? { metadata: cleanMetadata(doc.metadata)! } : {}),
     groups: snap.groups as unknown[],
     ...(snap.features?.length ? { features: snap.features as unknown[] } : {}),
@@ -291,14 +324,15 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     canvas: file.canvas,
     stockThickness: file.stockThickness,
     stockRect: file.stockRect ?? null,
-    hasToolChanger: file.hasToolChanger,
     origin: file.origin as DocSnapshot["origin"],
-    postProcessor: file.postProcessor,
     machineKind: file.machineKind as DocSnapshot["machineKind"],
     endPosition: file.endPosition ?? null,
     toolChangePosition: file.toolChangePosition ?? null,
     flip: file.flip ?? null,
-    rotary: file.rotary ?? null,
+    // axisWord is machine configuration and no longer stored; seed a placeholder
+    // so the shape is complete. generateRotaryProgram overrides it from the
+    // machine profile, so this value never reaches a program.
+    rotary: file.rotary ? { axisWord: "A" as const, ...file.rotary } : null,
     metadata: cleanMetadata(file.metadata) ?? {},
     isConstructionMode: false,
     selectedPoints: [],

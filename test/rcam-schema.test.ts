@@ -18,7 +18,7 @@ import { registerEmbeddedImage } from "../src/core/imageManager";
 import { applyFile, serializeDoc } from "../src/io/fileio";
 import { CONSTRAINT_GLYPH } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
-import { CADDocument, isLaser, isRotary, MACHINE_KINDS } from "../src/model/document";
+import { CADDocument, isRotary, MACHINE_KINDS } from "../src/model/document";
 import {
   ArcEntity,
   BezierEntity,
@@ -75,7 +75,8 @@ describe("rcam v2 schema", () => {
 
   it("rejects a file with the wrong version", () => {
     expect(validate({ ...minimalDoc(), version: 1 })).toBe(false);
-    expect(validate({ ...minimalDoc(), version: 3 })).toBe(false);
+    expect(validate({ ...minimalDoc(), version: 2 })).toBe(false);
+    expect(validate({ ...minimalDoc(), version: 4 })).toBe(false);
   });
 
   it("rejects an entity carrying the dropped UI `selected` field", () => {
@@ -250,7 +251,6 @@ describe("rcam v2 schema — serialized real document", () => {
       doc.machineKind = kind;
       // A rotary kind needs its cylinder block; a beam needs a laser post.
       if (isRotary(kind)) doc.rotary = { axisWord: "A", diameter: 30, wrapAxis: "y" };
-      if (isLaser(kind)) doc.postProcessor = "grbl-dynamic";
       const data = serializeDoc(doc, `kind-${kind}`);
       const ok = validate(data);
       const msg = (validate.errors ?? [])
@@ -549,10 +549,10 @@ function camOp(extra: Record<string, unknown>): any {
   };
 }
 
-/** Smallest document an external author must emit for a valid v2 file. */
+/** Smallest document an external author must emit for a valid v3 file. */
 function minimalDoc(): any {
   return {
-    version: 2,
+    version: 3,
     name: "Minimal",
     canvas: { width: 100, height: 100 },
     displayUnit: "mm",

@@ -435,9 +435,7 @@ export interface DocSnapshot {
   canvas?: CanvasSize;
   stockThickness?: number;
   stockRect?: StockRect | null;
-  hasToolChanger?: boolean;
   origin?: OriginDef;
-  postProcessor?: string;
   machineKind?: MachineKind;
   endPosition?: EndPosition | null;
   toolChangePosition?: EndPosition | null;
@@ -509,15 +507,11 @@ export class CADDocument {
       thickness: this.stockThickness,
     };
   }
-  /** Whether the machine has an automatic tool changer (emits T/M6 commands in G-code). */
-  hasToolChanger = false;
   /**
    * Work-coordinate-system origin expressed as named positions.
    * Default = front-left-top (the most common CNC router convention).
    */
   origin: OriginDef = { x: "left", y: "front", z: "top" };
-  /** Post-processor to use when generating G-code. */
-  postProcessor = "linuxcnc";
   /**
    * Which machine the document outputs for. Default "mill" (spindle + Z). When
    * "laser", export routes through the laser generator (beam on/off, no Z) and
@@ -1167,9 +1161,7 @@ export class CADDocument {
       canvas: { ...this.canvas },
       stockThickness: this.stockThickness,
       stockRect: this.stockRect ? { ...this.stockRect } : null,
-      hasToolChanger: this.hasToolChanger,
       origin: { ...this.origin },
-      postProcessor: this.postProcessor,
       machineKind: this.machineKind,
       endPosition: this.endPosition ? { ...this.endPosition } : null,
       toolChangePosition: this.toolChangePosition ? { ...this.toolChangePosition } : null,
@@ -1323,9 +1315,7 @@ export class CADDocument {
     if (s.canvas) this.canvas = { ...s.canvas };
     if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
     this.stockRect = s.stockRect ? { ...s.stockRect } : null;
-    if (s.hasToolChanger !== undefined) this.hasToolChanger = s.hasToolChanger;
     if (s.origin) this.origin = { ...s.origin };
-    if (s.postProcessor) this.postProcessor = s.postProcessor;
     this.machineKind = s.machineKind ?? "mill";
     this.endPosition = s.endPosition ? { x: s.endPosition.x, y: s.endPosition.y } : null;
     this.toolChangePosition = s.toolChangePosition

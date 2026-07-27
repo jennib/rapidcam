@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Enclosure Lid",
   "canvas": {
     "width": 150,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 10,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -94,14 +92,17 @@
   ],
   "dimensions": [],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [
     {
+      "side": "inside",
+      "stepdown": 2,
+      "stepover": 0.4,
       "id": "op1",
       "name": "Pocket recess",
       "type": "pocket",
       "entityIds": [],
-      "side": "inside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 6,
@@ -110,8 +111,6 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -4,
-      "stepdown": 2,
-      "stepover": 0.4,
       "pocketStrategy": "offset",
       "regions": [
         {
@@ -127,13 +126,15 @@
       ]
     },
     {
+      "side": "outside",
+      "stepdown": 2.5,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Profile outline",
       "type": "profile",
       "entityIds": [
         "ent1"
       ],
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 6,
@@ -142,8 +143,6 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -12,
-      "stepdown": 2.5,
-      "stepover": 0.4,
       "tabs": {
         "enabled": true,
         "count": 4,

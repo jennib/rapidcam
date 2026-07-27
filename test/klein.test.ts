@@ -364,14 +364,20 @@ test("defaultRotarySettings makes the design span exactly one wrap", () => {
 
 // --- persistence -------------------------------------------------------------
 
-test("rotary settings round-trip through .rcam serialize/apply", () => {
+test("the JOB half of rotary settings round-trips; the machine half is not stored", () => {
   const doc = new CADDocument({ width: 200, height: 100 });
-  doc.rotary = { axisWord: "B", diameter: 63.5, wrapAxis: "x", arcTolerance: 0.05 };
+  doc.rotary = { axisWord: "B", diameter: 63.5, wrapAxis: "x", zero: "center", arcTolerance: 0.05 };
   const file = serializeDoc(doc, "wrap");
+
+  // The cylinder IS the stock, so diameter/wrapAxis/zero are the design. The
+  // axis word and arc tolerance describe the machine and left the file in v3
+  // (SETTINGS_MODEL.md) — generateRotaryProgram supplies them from the profile.
+  expect(file.rotary).toEqual({ diameter: 63.5, wrapAxis: "x", zero: "center" });
 
   const doc2 = new CADDocument({ width: 10, height: 10 });
   applyFile(doc2, file);
-  expect(doc2.rotary).toEqual(doc.rotary);
+  expect(doc2.rotary).toMatchObject({ diameter: 63.5, wrapAxis: "x", zero: "center" });
+  expect(doc2.rotary?.arcTolerance).toBeUndefined();
 });
 
 test("a flat document serializes without a rotary key", () => {

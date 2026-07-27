@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Rotary Spiral Dowel",
   "canvas": {
     "width": 150,
@@ -7,16 +7,13 @@
   },
   "displayUnit": "mm",
   "stockThickness": 12,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "linuxcnc",
   "machineKind": "mill-rotary",
   "rotary": {
-    "axisWord": "A",
     "diameter": 30,
     "wrapAxis": "y"
   },
@@ -133,9 +130,13 @@
   ],
   "dimensions": [],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [
     {
+      "side": "outside",
+      "stepdown": 0.75,
+      "stepover": 0.4,
       "id": "op1",
       "name": "Rings & spiral flutes",
       "type": "engrave",
@@ -145,7 +146,6 @@
         "ent3",
         "ent4"
       ],
-      "side": "outside",
       "toolId": "tool-bn-3",
       "toolType": "ball-nose",
       "toolNumber": 1,
@@ -154,18 +154,18 @@
       "plungeRate": 250,
       "spindleSpeed": 12000,
       "safeZ": 5,
-      "depth": -1.5,
-      "stepdown": 0.75,
-      "stepover": 0.4
+      "depth": -1.5
     },
     {
+      "side": "outside",
+      "stepdown": 0.6,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Engrave name",
       "type": "engrave",
       "entityIds": [
         "ent5"
       ],
-      "side": "outside",
       "toolId": "tool-vb-30",
       "toolType": "v-bit",
       "toolNumber": 2,
@@ -175,9 +175,7 @@
       "plungeRate": 300,
       "spindleSpeed": 18000,
       "safeZ": 5,
-      "depth": -0.6,
-      "stepdown": 0.6,
-      "stepover": 0.4
+      "depth": -0.6
     }
   ],
   "tools": [

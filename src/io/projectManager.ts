@@ -114,8 +114,6 @@ export class ProjectManager {
         this.doc.stockThickness = cfg.stockThickness;
         this.doc.displayUnit = cfg.displayUnit;
         this.doc.origin = { ...cfg.origin };
-        this.doc.hasToolChanger = cfg.hasToolChanger;
-        this.doc.postProcessor = cfg.postProcessor;
         this.doc.machineKind = cfg.machineKind;
         this.doc.rotary = cfg.rotary ?? null;
         this.currentFileName = cfg.name;

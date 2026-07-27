@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Tumbler Wrap",
   "canvas": {
     "width": 120,
@@ -7,16 +7,13 @@
   },
   "displayUnit": "mm",
   "stockThickness": 1.2,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl-dynamic",
   "machineKind": "laser-rotary",
   "rotary": {
-    "axisWord": "A",
     "diameter": 80,
     "wrapAxis": "y"
   },
@@ -273,6 +270,9 @@
   "patterns": [],
   "operations": [
     {
+      "side": "outside",
+      "stepdown": 1,
+      "stepover": 0.4,
       "id": "op1",
       "name": "Engrave rings",
       "type": "engrave",
@@ -282,7 +282,6 @@
       ],
       "feedrate": 1500,
       "laserPower": 40,
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -290,11 +289,12 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -1,
-      "stepdown": 1,
-      "stepover": 0.4,
       "laserPasses": 1
     },
     {
+      "side": "outside",
+      "stepdown": 1,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Engrave 30° ticks",
       "type": "engrave",
@@ -314,7 +314,6 @@
       ],
       "feedrate": 1500,
       "laserPower": 40,
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -322,11 +321,12 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -1,
-      "stepdown": 1,
-      "stepover": 0.4,
       "laserPasses": 1
     },
     {
+      "side": "outside",
+      "stepdown": 1,
+      "stepover": 0.4,
       "id": "op3",
       "name": "Fill-engrave name",
       "type": "engrave",
@@ -338,7 +338,6 @@
       "laserFill": true,
       "laserFillSpacing": 0.2,
       "laserOverscan": 2,
-      "side": "outside",
       "toolType": "end-mill",
       "toolNumber": 1,
       "diameter": 0.2,
@@ -346,8 +345,6 @@
       "spindleSpeed": 0,
       "safeZ": 5,
       "depth": -1,
-      "stepdown": 1,
-      "stepover": 0.4,
       "laserPasses": 1
     }
   ],

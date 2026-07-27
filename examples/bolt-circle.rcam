@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Bolt Circle Flange",
   "canvas": {
     "width": 150,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 8,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -225,6 +223,7 @@
       "value": 8
     }
   ],
+  "bindings": [],
   "patterns": [
     {
       "id": "pat1",

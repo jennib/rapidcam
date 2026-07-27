@@ -12,6 +12,7 @@
  */
 
 import formatGuide from "../../docs/rcam-format-v2.md?raw";
+import { getPostFor, getHasToolChanger } from "../core/prefs";
 import type { CADDocument } from "../model/document";
 import { serializeDoc, stripEmbeddedFonts } from "./fileio";
 
@@ -41,7 +42,7 @@ function describeTools(doc: CADDocument): string {
 function describeMachineContext(doc: CADDocument): string {
   const lines: string[] = [];
   lines.push(`- Machine kind: ${doc.machineKind}`);
-  lines.push(`- Post-processor: ${doc.postProcessor}`);
+  lines.push(`- Post-processor: ${getPostFor(doc.isLaser ? "laser" : "mill")}`);
   lines.push(
     `- Work area (canvas): ${doc.canvas.width} × ${doc.canvas.height} mm — keep all geometry inside it`,
   );
@@ -59,7 +60,7 @@ function describeMachineContext(doc: CADDocument): string {
       " (informational — coordinates in the file are always canvas-frame mm)",
   );
   lines.push(`- Display unit: ${doc.displayUnit} (values in the file stay mm regardless)`);
-  lines.push(`- Tool changer: ${doc.hasToolChanger ? "yes" : "no"}`);
+  lines.push(`- Tool changer: ${getHasToolChanger() ? "yes" : "no"}`);
   if (doc.rotary) {
     const r = doc.rotary;
     lines.push(

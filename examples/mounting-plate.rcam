@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Mounting Plate",
   "canvas": {
     "width": 170,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 10,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -370,6 +368,7 @@
     }
   ],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [],
   "tools": []

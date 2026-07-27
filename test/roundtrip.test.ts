@@ -48,9 +48,7 @@ import {
 function buildKitchenSink(): CADDocument {
   const doc = new CADDocument({ width: 200, height: 150 }, "in");
   doc.stockThickness = 12;
-  doc.hasToolChanger = true;
   doc.origin = { x: "center", y: "center", z: "bed" };
-  doc.postProcessor = "grbl";
 
   // Custom layer + make it active.
   doc.layers.push({ id: "layer-1", name: "Cuts", color: "#ff3344", visible: false, locked: true });
@@ -254,7 +252,7 @@ test("fsTypeAllowsEmbedding follows the OS/2 restricted-license bit", () => {
 
 test("stripEmbeddedFonts drops fonts but keeps the rest of the file", () => {
   const file: RcamFile = {
-    version: 2,
+    version: 3,
     name: "F",
     canvas: { width: 1, height: 1 },
     displayUnit: "mm",

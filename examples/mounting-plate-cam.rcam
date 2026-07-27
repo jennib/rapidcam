@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "Mounting Plate + CAM",
   "canvas": {
     "width": 170,
@@ -7,13 +7,11 @@
   },
   "displayUnit": "mm",
   "stockThickness": 10,
-  "hasToolChanger": false,
   "origin": {
     "x": "left",
     "y": "front",
     "z": "top"
   },
-  "postProcessor": "grbl",
   "groups": [],
   "layers": [
     {
@@ -370,9 +368,13 @@
     }
   ],
   "variables": [],
+  "bindings": [],
   "patterns": [],
   "operations": [
     {
+      "side": "outside",
+      "stepdown": 3,
+      "stepover": 0.4,
       "id": "op1",
       "name": "Drill holes",
       "type": "drill",
@@ -382,7 +384,6 @@
         "ent6",
         "ent7"
       ],
-      "side": "outside",
       "toolId": "tool-drill-8",
       "toolType": "drill",
       "toolNumber": 1,
@@ -392,18 +393,18 @@
       "plungeRate": 120,
       "spindleSpeed": 6000,
       "safeZ": 5,
-      "depth": -12,
-      "stepdown": 3,
-      "stepover": 0.4
+      "depth": -12
     },
     {
+      "side": "outside",
+      "stepdown": 2,
+      "stepover": 0.4,
       "id": "op2",
       "name": "Profile outline",
       "type": "profile",
       "entityIds": [
         "ent1"
       ],
-      "side": "outside",
       "toolId": "tool-em-6",
       "toolType": "end-mill",
       "toolNumber": 2,
@@ -413,8 +414,6 @@
       "spindleSpeed": 18000,
       "safeZ": 5,
       "depth": -12,
-      "stepdown": 2,
-      "stepover": 0.4,
       "tabs": {
         "enabled": true,
         "count": 4,

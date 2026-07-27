@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rapidcam.app/schema/rcam-v2.schema.json",
-  "title": "RapidCAM Project (.rcam) — version 2",
+  "title": "RapidCAM Project (.rcam) — version 3",
   "description": "Contract for the RapidCAM v2 file format. A .rcam file is JSON describing a design (not an editor session): unlike v1 it carries no selection/UI state, and it may embed the fonts its text entities use. All lengths are in millimetres, in a Y-up world frame, regardless of displayUnit. See docs/rcam-format-v2.md for the authoring guide.",
   "type": "object",
   "additionalProperties": false,
@@ -16,8 +16,8 @@
   ],
   "properties": {
     "version": {
-      "const": 2,
-      "description": "Format version. Must be exactly 2. The loader upgrades version-1 files automatically."
+      "const": 3,
+      "description": "Format version. Must be exactly 3. The loader upgrades version-1 and version-2 files automatically. v3 removed machine configuration from the file: a .rcam is a drawing, so it no longer carries the author's post-processor, tool changer, rotary axis word or arc tolerance — those come from the opener's own machine profile."
     },
     "name": {
       "type": "string",
@@ -50,15 +50,7 @@
       ],
       "description": "Optional positioned flat stock blank within the work area (canvas). Omitted/null = the stock fills the work area (legacy). Ignored for a rotary cylinder."
     },
-    "hasToolChanger": {
-      "type": "boolean",
-      "description": "Whether the machine has an automatic tool changer (emits T/M6). Default false."
-    },
     "origin": { "$ref": "#/$defs/origin" },
-    "postProcessor": {
-      "enum": ["linuxcnc", "grbl", "grbl-dynamic", "grbl-constant", "marlin", "smoothie", "linuxcnc-laser"],
-      "description": "Post-processor id. For a mill (machineKind \"mill\"): \"linuxcnc\" | \"grbl\" (default \"linuxcnc\"). For a laser (machineKind \"laser\"): a laser controller — \"grbl-dynamic\" (M4, default), \"grbl-constant\" (M3), \"marlin\" (0–255), \"smoothie\" (inline S 0–1), or \"linuxcnc-laser\" (PWM spindle). Legacy laser files may store \"grbl\", which maps to grbl-dynamic."
-    },
     "machineKind": {
       "enum": ["mill", "laser", "mill-rotary", "laser-rotary"],
       "description": "Machine the document outputs for. Two independent choices: the HEAD (\"mill\" = spindle + Z, the default; \"laser\" = fixed-Z beam, routing export through the beam generator — beam on/off, power + passes, no Z — with the operations using the laser fields laserPower/laserPasses/kerfWidth/laserFill) and the STOCK (a \"-rotary\" kind machines a cylinder, so the canvas is its unrolled surface and the top-level \"rotary\" block is required). The head behaviour is unchanged by the stock. \"mill-rotary\" behaves like \"mill\" except that export WRAPS the finished flat program around the cylinder — one work axis stays linear, the wrapped one is emitted as rotary-axis degrees. \"laser-rotary\" behaves like \"laser\" including at export: the wrapped axis is SUBSTITUTED, i.e. left as its ordinary linear word in surface millimetres, with the machine set up so one revolution equals the circumference of travel on that axis (GRBL, which drives most laser rotaries, has no 4th axis). Its posted program is therefore the flat one plus a setup banner."
@@ -660,14 +652,12 @@
     "rotary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["axisWord", "diameter", "wrapAxis"],
+      "required": ["diameter", "wrapAxis"],
       "description": "Cylindrical/rotary setup: one work axis stays linear (the cylinder length), the perpendicular one runs around the circumference. How that wrapped axis is posted depends on the head (see machineKind) — a mill emits it as a rotary word in degrees; a laser substitutes it on its ordinary linear word in surface millimetres. Not combinable with flip.",
       "properties": {
-        "axisWord": { "enum": ["A", "B"], "description": "Rotary axis word for the wrapped coordinate. \"A\" (about machine X) pairs with wrapAxis \"y\"; \"B\" (about Y) pairs with \"x\"." },
         "diameter": { "type": "number", "exclusiveMinimum": 0, "description": "Cylinder stock diameter, mm. 360° of rotation = π·diameter of surface travel." },
         "wrapAxis": { "enum": ["x", "y"], "description": "Which work axis rolls around the cylinder. \"y\" (default): Y wraps to rotation, X runs along the length. \"x\": swapped." },
-        "zero": { "enum": ["surface", "center"], "description": "Where Z0 sits. \"surface\" (default): Z0 = top of the cylinder surface, cuts negative; gSender needs its \"Visualize non-center zeros\" toggle to visualize it. \"center\": Z0 = rotary axis (centreline), surface at Z = radius — the native rotary convention gSender visualizes with no toggle. Omitted = \"surface\"." },
-        "arcTolerance": { "type": "number", "exclusiveMinimum": 0, "description": "Chord tolerance (mm) for flattening arcs into the wrap. Default 0.1." }
+        "zero": { "enum": ["surface", "center"], "description": "Where Z0 sits. \"surface\" (default): Z0 = top of the cylinder surface, cuts negative; gSender needs its \"Visualize non-center zeros\" toggle to visualize it. \"center\": Z0 = rotary axis (centreline), surface at Z = radius — the native rotary convention gSender visualizes with no toggle. Omitted = \"surface\"." }
       }
     },
 
