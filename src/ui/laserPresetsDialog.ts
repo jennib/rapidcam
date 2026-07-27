@@ -15,7 +15,7 @@ import {
   type LaserPresetKind,
 } from "../cam/laserPresets";
 import { confirmDialog, registerModal } from "./modal";
-import { formatFeed, toMM, type Unit } from "../core/units";
+import { formatFeed, formatLength, toMM, type Unit } from "../core/units";
 
 const KIND_LABELS: Record<LaserPresetKind, string> = {
   cut: "Cut",
@@ -168,7 +168,8 @@ export function openLaserPresetsDialog(unit: Unit): void {
       rowEl.appendChild(top);
 
       const nums = document.createElement("div");
-      nums.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
+      nums.className = "lpre-nums";
+      nums.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;";
       nums.append(
         numberField("Power (%)", p.laserPower, String, (v) => {
           p.laserPower = Math.min(100, Math.max(0, v));
@@ -185,6 +186,42 @@ export function openLaserPresetsDialog(unit: Unit): void {
           },
         ),
       );
+
+      // Kerf is a cut-only compensation, and only cut recipes carry one — an
+      // engrave preset showing a kerf box would invite setting a value that is
+      // never applied.
+      if (p.kind === "cut") {
+        nums.appendChild(
+          numberField(
+            `Kerf (${unit})`,
+            p.kerfWidth ?? 0,
+            (v) => formatLength(v, unit),
+            (v) => {
+              p.kerfWidth = Math.max(0, toMM(v, unit));
+            },
+          ),
+        );
+      }
+
+      // Air assist rides with the recipe because it changes the cut as much as
+      // power does — the same numbers with the blower off char and catch.
+      const airChk = document.createElement("input");
+      airChk.type = "checkbox";
+      airChk.className = "settings-checkbox lpre-air";
+      airChk.checked = p.airAssist ?? false;
+      airChk.addEventListener("change", () => {
+        p.airAssist = airChk.checked;
+        persist();
+      });
+      const airWrap = document.createElement("label");
+      airWrap.style.cssText =
+        "display:flex;align-items:center;gap:5px;font-size:11px;padding-bottom:4px;";
+      const airCap = document.createElement("span");
+      airCap.style.opacity = "0.65";
+      airCap.textContent = "Air assist";
+      airWrap.append(airChk, airCap);
+      nums.appendChild(airWrap);
+
       rowEl.appendChild(nums);
       list.appendChild(rowEl);
     }

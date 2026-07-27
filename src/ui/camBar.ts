@@ -3092,14 +3092,18 @@ export class CamBar {
       const suggested = state.name?.trim() || `${presetKind()} preset`;
       const name = window.prompt("Name this material preset", suggested)?.trim();
       if (!name) return;
+      const kind = presetKind();
       addPreset({
         id: newPresetId(),
         name,
-        kind: presetKind(),
+        kind,
         feedrate: state.feedrate,
         laserPower: state.laserPower,
         laserPasses: state.laserPasses,
-        kerfWidth: state.kerfWidth,
+        // Kerf compensation is cut-only — the dialog hides that row for engrave
+        // and score, so recording it for those would bake in a stale number the
+        // user never saw, and restore it silently on apply.
+        ...(kind === "cut" ? { kerfWidth: state.kerfWidth } : {}),
         airAssist: state.airAssist,
       });
       if (pickerOpen) refreshPresets();
