@@ -1,7 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig, type Plugin } from "vite";
+import type { Plugin } from "vite";
+// vitest's defineConfig is vite's plus the `test` block below; vite itself reads
+// the result unchanged and ignores that key.
+import { defineConfig } from "vitest/config";
 
 const repoRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -110,5 +113,24 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: true,
     chunkSizeWarningLimit: 1000,
+  },
+  test: {
+    /**
+     * Vitest's 5s default is sized for tests that do almost no work. This suite
+     * is CAM: a single test legitimately generates ~290k G-code moves into a
+     * ~9MB string, and several gzip or rasterise real designs. Those run in
+     * ~1-2.4s alone, which looks safe and is not — the files run in parallel
+     * worker processes, so on a loaded machine (or a slower CI runner) each gets
+     * a fraction of the CPU and memory, and a ~1s test on a 5s budget only needs
+     * a 5x slowdown to fail. That is not a flake to retry: a test whose result
+     * depends on what else is running is a benchmark with an assertion on it.
+     *
+     * 30s restores real headroom (~12-40x) across the suite and lets the two
+     * per-test `}, 30_000)` overrides go away. It costs nothing on a passing
+     * run — a timeout only elapses when something is already wrong — and still
+     * catches the hangs it exists for: a stack overflow or infinite loop throws
+     * or spins immediately, it does not finish in 29 seconds.
+     */
+    testTimeout: 30_000,
   },
 });

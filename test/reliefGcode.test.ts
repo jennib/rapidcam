@@ -236,10 +236,10 @@ test("a large relief generates without overflowing the stack (no spread-push)", 
     );
   }).not.toThrow();
   expect((g.match(/^G1 /gm) || []).length).toBeGreaterThan(150_000);
-  // Generating ~290k moves is genuinely heavy: ~0.7s solo, but it can exceed
-  // the default 5s timeout when the full suite competes for CPU. Give it room
-  // (a real stack overflow throws immediately, so this won't mask that bug).
-}, 30_000);
+  // Generating ~290k moves is genuinely heavy (~2.4s alone). It used to carry a
+  // per-test `30_000` override for that; the suite-wide testTimeout in
+  // vite.config.ts now covers it, so the magic number lives in one place.
+});
 
 test("output size: a gradient relief stays bounded by the dot grid × passes", () => {
   const grad = Array.from({ length: 256 }, (_, x) => x);
