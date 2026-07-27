@@ -62,13 +62,14 @@ test("laser rotary: cylinder stock, beam-only settings, substituted-axis program
       isRotary: d.isRotary,
       stock: d.stock,
       canvasH: d.canvas.height,
-      post: d.postProcessor,
     };
   });
   expect(doc).toMatchObject({ machineKind: "laser-rotary", isLaser: true, isRotary: true });
   expect(doc.stock.kind).toBe("cylinder");
   expect(doc.canvasH).toBeCloseTo(Math.PI * doc.stock.diameter, 6);
-  expect(doc.post).toMatch(/grbl|marlin|smoothie|linuxcnc-laser/); // a laser controller
+  // The controller used to be asserted off the document. It is machine
+  // configuration now (.rcam v3), so the meaningful check is that a BEAM post
+  // actually drove the program — covered by the `M4 S` assertion at the end.
 
   // Machine Settings: the cylinder rows show, the mill-only rotary rows don't.
   await page.locator("#topbar").getByRole("button", { name: "Settings" }).click();

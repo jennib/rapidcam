@@ -1,4 +1,5 @@
 import { expect, test, waitForApp } from "./appFixture";
+import { RCAM_VERSION } from "../src/io/fileio";
 
 /**
  * Guard for the aiDocsPlugin dev middleware (vite.config.ts).
@@ -55,5 +56,8 @@ test("bare document fetches are served with the right content", async ({ request
   const example = await request.get(`/examples/${names[0]}`);
   expect(example.ok()).toBe(true);
   const doc = (await example.json()) as { version: number };
-  expect(doc.version).toBe(2);
+  // Asserted against the constant, not a literal: the bundled examples are
+  // regenerated on every format bump, and a hard-coded number here goes stale
+  // silently until CI catches it (it did, at v3).
+  expect(doc.version).toBe(RCAM_VERSION);
 });
