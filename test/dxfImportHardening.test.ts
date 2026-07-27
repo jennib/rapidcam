@@ -24,13 +24,21 @@ test("nested-block fan-out is bounded, not exponential (no OOM)", () => {
     blocks.push(0, "ENDBLK");
   }
 
-  const { entities, warnings } = importDxf(dxf([0, "INSERT", 2, "b7", 10, 0, 20, 0], blocks));
+  // A small ceiling on purpose. The property under test is that the budget FIRES
+  // and bounds a 10^8 expansion — which a 5,000-entity cap proves exactly as well
+  // as the production 1,000,000 one, and without allocating 502MB to do it. That
+  // allocation, times vitest's parallel workers, is what actually made this test
+  // (and unrelated ones) time out on a loaded machine.
+  const CAP = 5_000;
+  const { entities, warnings } = importDxf(dxf([0, "INSERT", 2, "b7", 10, 0, 20, 0], blocks), {
+    maxEntities: CAP,
+  });
   // Boundedness is proven by the budget itself, not by a stopwatch: the cap held
   // and the warning fired. There used to be an `expect(elapsed).toBeLessThan(20s)`
   // here as well, guarding "bounded output but still exponential work" — but the
   // test timeout already catches that at a looser threshold, and an assertion on
   // wall-clock time fails on a loaded machine while the code is perfectly correct.
-  expect(entities.length).toBeLessThanOrEqual(1_000_000);
+  expect(entities.length).toBeLessThanOrEqual(CAP);
   expect(warnings.some((w) => w.includes("entity limit"))).toBe(true);
 });
 

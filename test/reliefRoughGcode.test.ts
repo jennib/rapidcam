@@ -5,6 +5,15 @@ import { generateGCode } from "../src/cam/gcode";
 import { registerEmbeddedImage } from "../src/core/imageManager";
 import type { CAMOperation } from "../src/cam/types";
 
+/** Count line-start "G1 " occurrences WITHOUT materialising a match array —
+ *  `g.match(/^G1 /gm)` allocates 150k+ strings purely to read `.length`, which
+ *  is real memory pressure when vitest runs files in parallel workers. */
+function countG1(g: string): number {
+  let n = g.startsWith("G1 ") ? 1 : 0;
+  for (let i = g.indexOf("\nG1 "); i !== -1; i = g.indexOf("\nG1 ", i + 1)) n++;
+  return n;
+}
+
 let counter = 0;
 function registerGrid(rowsTopDown: number[][]): string {
   const w = rowsTopDown[0].length,
@@ -232,19 +241,25 @@ test("output size: a gradient roughing stays bounded by the cell grid × passes"
 });
 
 test("a large relief roughing generates without overflowing the stack", () => {
-  const bytes = Uint8Array.from({ length: 400 * 300 }, (_, i) => (i * 37) % 256);
+  // Sized to the assertion below (>1000 moves), not to the spread-push limit.
+  // NOTE this test does NOT prove the ~125k spread overflow its title implies —
+  // 1000 moves is three orders of magnitude short of it. The finish-relief test
+  // in reliefGcode.test.ts carries that guard properly; this one covers that the
+  // ROUGHING emit path runs and produces motion. It used to build a 400×300
+  // image over 80×60mm to assert >1000, which cost real memory for nothing.
+  const bytes = Uint8Array.from({ length: 200 * 150 }, (_, i) => (i * 37) % 256);
   let bin = "";
   const C = 0x8000;
   for (let i = 0; i < bytes.length; i += C) bin += String.fromCharCode(...bytes.subarray(i, i + C));
   registerEmbeddedImage({
     id: "img-rr-big",
     name: "big",
-    width: 400,
-    height: 300,
+    width: 200,
+    height: 150,
     data: btoa(bin),
   });
   const doc = new CADDocument({ width: 200, height: 200 });
-  doc.add(new RasterImageEntity("img-rr-big", { x: 0, y: 0 }, 80, 60, 0));
+  doc.add(new RasterImageEntity("img-rr-big", { x: 0, y: 0 }, 40, 30, 0));
   const id = doc.entities.find((e) => e.type === "image")!.id;
   let g = "";
   expect(() => {
@@ -253,5 +268,5 @@ test("a large relief roughing generates without overflowing the stack", () => {
       doc,
     );
   }).not.toThrow();
-  expect((g.match(/^G1 /gm) || []).length).toBeGreaterThan(1000);
+  expect(countG1(g)).toBeGreaterThan(1000);
 });

@@ -5,6 +5,15 @@ import { generateGCode } from "../src/cam/gcode";
 import { registerEmbeddedImage } from "../src/core/imageManager";
 import type { CAMOperation } from "../src/cam/types";
 
+/** Count line-start "G1 " occurrences WITHOUT materialising a match array —
+ *  `g.match(/^G1 /gm)` allocates 150k+ strings purely to read `.length`, which
+ *  is real memory pressure when vitest runs files in parallel workers. */
+function countG1(g: string): number {
+  let n = g.startsWith("G1 ") ? 1 : 0;
+  for (let i = g.indexOf("\nG1 "); i !== -1; i = g.indexOf("\nG1 ", i + 1)) n++;
+  return n;
+}
+
 let counter = 0;
 function registerGrid(rowsTopDown: number[][]): string {
   const w = rowsTopDown[0].length,
@@ -218,8 +227,12 @@ test("a large relief generates without overflowing the stack (no spread-push)", 
   for (let i = 0; i < bytes.length; i += C) bin += String.fromCharCode(...bytes.subarray(i, i + C));
   registerEmbeddedImage({ id: "img-big", name: "big", width: 400, height: 300, data: btoa(bin) });
 
+  // 60×45mm rather than 80×60: moves scale with area, and this still emits ~205k
+  // — comfortably past the ~125k spread limit the guard is about — while costing
+  // ~100MB of heap instead of 188MB. That allocation, times vitest's parallel
+  // workers, is what made this and unrelated tests time out on a loaded machine.
   const doc = new CADDocument({ width: 200, height: 200 });
-  doc.add(new RasterImageEntity("img-big", { x: 0, y: 0 }, 80, 60, 0));
+  doc.add(new RasterImageEntity("img-big", { x: 0, y: 0 }, 60, 45, 0));
   const id = doc.entities.find((e) => e.type === "image")!.id;
   let g = "";
   expect(() => {
@@ -235,7 +248,7 @@ test("a large relief generates without overflowing the stack (no spread-push)", 
       doc,
     );
   }).not.toThrow();
-  expect((g.match(/^G1 /gm) || []).length).toBeGreaterThan(150_000);
+  expect(countG1(g)).toBeGreaterThan(150_000);
   // Generating ~290k moves is genuinely heavy (~2.4s alone). It used to carry a
   // per-test `30_000` override for that; the suite-wide testTimeout in
   // vite.config.ts now covers it, so the magic number lives in one place.

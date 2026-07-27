@@ -370,13 +370,22 @@ interface ParseCtx {
    *  the `depth > 8` guard stops infinite recursion, but not exponential
    *  expansion (a block of many INSERTs of a block of many INSERTs…). */
   budget: number;
+  /** The ceiling `budget` started at — quoted in the warning. */
+  maxEntities: number;
   budgetWarned: boolean;
 }
 
 /** Hard ceiling on total emitted entities — defends against a malformed or
  *  hostile DXF whose nested blocks would otherwise expand to an OOM. Real
- *  drawings are far below this. */
+ *  drawings are far below this. Overridable per call (see DxfImportOptions):
+ *  the guard is that the budget FIRES, which a small ceiling proves just as
+ *  well as this one and without allocating half a gigabyte to do it. */
 const MAX_ENTITIES = 1_000_000;
+
+export interface DxfImportOptions {
+  /** Ceiling on emitted entities. Defaults to {@link MAX_ENTITIES}. */
+  maxEntities?: number;
+}
 
 const SKIP_SILENTLY = new Set(["SEQEND", "VIEWPORT", "ATTDEF", "ATTRIB"]);
 
@@ -396,7 +405,7 @@ function parseEntityRange(
     if (ctx.budget <= 0) {
       if (!ctx.budgetWarned) {
         ctx.warnings.push(
-          `DXF exceeds the ${MAX_ENTITIES.toLocaleString()}-entity limit — remaining entities skipped`,
+          `DXF exceeds the ${ctx.maxEntities.toLocaleString()}-entity limit — remaining entities skipped`,
         );
         ctx.budgetWarned = true;
       }
@@ -604,10 +613,11 @@ function readUnits(tags: Tag[], warnings: string[]): number {
 // Entry point
 // ---------------------------------------------------------------------------
 
-export function importDxf(text: string): DxfImportResult {
+export function importDxf(text: string, opts: DxfImportOptions = {}): DxfImportResult {
   if (text.startsWith("AutoCAD Binary DXF")) {
     throw new Error("binary DXF is not supported — re-export as ASCII DXF");
   }
+  const maxEntities = opts.maxEntities ?? MAX_ENTITIES;
   const tags = tokenize(text);
   const warnings: string[] = [];
 
@@ -654,7 +664,8 @@ export function importDxf(text: string): DxfImportResult {
     warnings,
     skipped: new Map(),
     extrusionWarned: false,
-    budget: MAX_ENTITIES,
+    budget: maxEntities,
+    maxEntities,
     budgetWarned: false,
   };
   const entities: Entity[] = [];
