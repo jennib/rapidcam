@@ -1,4 +1,3 @@
-/* biome-ignore-all lint/suspicious/noExplicitAny: page-context handles are untyped. */
 import { expect, test, waitForApp } from "./appFixture";
 
 /**

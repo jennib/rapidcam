@@ -29,7 +29,6 @@ test("a preset saved through the native prompt loads back and reaches the manage
   await page.locator(".rtab", { hasText: "CAM" }).click();
 
   await page.evaluate(() => {
-    // biome-ignore lint/suspicious/noExplicitAny: page-context handle is untyped.
     for (const e of (window as any).__app.project.doc.entities) e.selected = true;
   });
   await page.locator(".cam-add-btn", { hasText: "+ Add Toolpath" }).click();
