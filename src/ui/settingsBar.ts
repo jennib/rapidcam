@@ -69,10 +69,14 @@ export class SettingsBar {
     this.content.className = "settings-content";
     this.host.appendChild(this.content);
 
-    // Work area — the drawing/travel frame. For a rotary job it's the unrolled
+    // Sheet — the drawing frame the stock and clamps sit within, NOT the
+    // machine's bed (which does not exist yet; see SETTINGS_MODEL.md). It was
+    // called "work area", whose own comment read "the drawing/travel frame" —
+    // drawing OR travel, unresolved, which is exactly why it kept being mistaken
+    // for a machine fact. For a rotary job it's the unrolled
     // cylinder surface, so these two fields relabel to Length + Diameter (see
     // refresh/commitSize); the group title also follows in refresh().
-    this.canvasGroup = this.group("Work area");
+    this.canvasGroup = this.group("Sheet");
     this.widthInput = this.dimInput();
     this.widthField = this.field("Width", this.widthInput);
     this.canvasGroup.appendChild(this.widthField);
@@ -137,7 +141,7 @@ export class SettingsBar {
     // Settings dialog, not this per-project panel.)
 
     // Program end — optional park position at program end (before M30).
-    const endGroup = this.group("Program End");
+    const endGroup = this.group("End Position");
     this.endReturnCheck = document.createElement("input");
     this.endReturnCheck.type = "checkbox";
     this.endReturnCheck.className = "settings-checkbox";
@@ -469,7 +473,7 @@ export class SettingsBar {
       if (document.activeElement !== diaInput) diaInput.value = formatLength(dia, u);
       if (document.activeElement !== lenInput) lenInput.value = formatLength(len, u);
     } else {
-      this.setGroupTitle(this.canvasGroup, "Work area");
+      this.setGroupTitle(this.canvasGroup, "Sheet");
       this.setFieldLabel(this.widthField, "Width");
       this.setFieldLabel(this.heightField, "Height");
       if (document.activeElement !== this.widthInput)

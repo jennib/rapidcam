@@ -243,8 +243,8 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     "Custom G-code injected into every program — start: after the G21/G90/G17 " +
     "setup; end: after the spindle stop, before M30.";
 
-  const startArea = textareaField("Program start", current.start, "e.g. G54 ; work offset");
-  const endArea = textareaField("Program end", current.end, "e.g. G0 X0 Y0 ; park");
+  const startArea = textareaField("Program start G-code", current.start, "e.g. G54 ; work offset");
+  const endArea = textareaField("Program end G-code", current.end, "e.g. G0 X0 Y0 ; park");
 
 
   const buttons = document.createElement("div");
