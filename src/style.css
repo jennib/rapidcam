@@ -1822,7 +1822,10 @@ button.cbtn.solve {
   font-size: 16px;
   color: var(--text);
 }
-.post-settings-note {
+/* Dim explanatory note inside a dialog. Two selectors, one rule: the style is a
+   shared idiom, but `.post-settings-note` is named for where it started. */
+.post-settings-note,
+.npd-note {
   margin: 0;
   font-size: 12px;
   color: var(--text-dim);

@@ -10,22 +10,8 @@ import {
   type OriginZ,
   type RotarySettings,
 } from "../model/document";
-import {
-  getMachineHasCoolant,
-  setMachineHasCoolant,
-  getPostFor,
-  setPostFor,
-  getHasToolChanger,
-  setHasToolChanger,
-} from "../core/prefs";
-import { laserPostOptions } from "../cam/laserposts";
 import { StorageKeys } from "../core/storageKeys";
 import { registerModal } from "./modal";
-
-const MILL_POST_OPTIONS: [string, string][] = [
-  ["grbl", "GRBL / FluidNC"],
-  ["linuxcnc", "LinuxCNC"],
-];
 
 export interface NewProjectConfig {
   name: string;
@@ -34,8 +20,6 @@ export interface NewProjectConfig {
   stockThickness: number; // mm — radial wall / max cut depth for a rotary job
   displayUnit: Unit;
   origin: OriginDef;
-  hasToolChanger: boolean;
-  postProcessor: string;
   machineKind: MachineKind;
   /**
    * Per-job cylinder params, present only for a `mill-rotary` machine. `width`
@@ -305,59 +289,26 @@ export function openNewProjectDialog(
   const mkSel = sel(MACHINE_KINDS);
   mkSel.value = initial.machineKind ?? lastMachineKind ?? defaults.machineKind ?? "mill";
   macSec.appendChild(row("Machine type", mkSel));
-  const ppSel = sel(MILL_POST_OPTIONS);
-  const ppRow = row("Post-processor", ppSel);
-  macSec.appendChild(ppRow);
-  const tcChk = document.createElement("input");
-  tcChk.type = "checkbox";
-  tcChk.className = "settings-checkbox";
-  tcChk.checked = getHasToolChanger();
-  const tcRow = row("Auto tool changer", tcChk);
-  macSec.appendChild(tcRow);
-  // Coolant is a machine capability (global preference), not a per-project
-  // setting, so it's read/written directly to prefs rather than NewProjectConfig.
-  const coolantChk = document.createElement("input");
-  coolantChk.type = "checkbox";
-  coolantChk.className = "settings-checkbox";
-  coolantChk.checked = getMachineHasCoolant();
-  const coolantRow = row("Machine has coolant", coolantChk);
-  macSec.appendChild(coolantRow);
+  // Machine TYPE stays: head x stock is a property of the design (laser ops do
+  // not map onto mill ops, and a rotary canvas is an unrolled cylinder). The
+  // controller, tool changer and coolant are the router's and live in the
+  // machine profile — asking for them here is what made two dialogs disagree.
+  // See SETTINGS_MODEL.md.
+  const macNote = document.createElement("p");
+  macNote.className = "npd-note";
+  macNote.textContent =
+    "Controller, tool changer and coolant are set once in Machine Settings — they belong to your machine, not to this drawing.";
+  macSec.appendChild(macNote);
   body.appendChild(macSec);
 
-  // The post-processor dropdown swaps option sets by machine type: mill posts
-  // (LinuxCNC/GRBL) vs laser controllers (cam/laserposts). Remember each side's
-  // pick so toggling back and forth doesn't lose it. A laser has no spindle/Z, so
-  // the tool-changer and coolant toggles are grayed out.
-  // Seed both posts from the machine profile, not from a document/default blob:
-  // the controller belongs to the router (see SETTINGS_MODEL.md).
-  let millPost = getPostFor("mill");
-  let laserPost = getPostFor("laser");
-  const fillOptions = (opts: [string, string][], value: string) => {
-    ppSel.innerHTML = "";
-    for (const [v, l] of opts) {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = l;
-      ppSel.appendChild(o);
-    }
-    ppSel.value = value;
-  };
-  ppSel.addEventListener("change", () => {
-    if (isLaser(mkSel.value as MachineKind)) laserPost = ppSel.value;
-    else millPost = ppSel.value;
-  });
   const applyMachineKind = () => {
     const laser = isLaser(mkSel.value as MachineKind);
     const rotary = isRotary(mkSel.value as MachineKind);
-    fillOptions(laser ? laserPostOptions() : MILL_POST_OPTIONS, laser ? laserPost : millPost);
-    tcChk.disabled = laser;
-    coolantChk.disabled = laser;
     // A laser has no Z; a rotary cylinder is always surface-zeroed on its top
     // (no bed) — in both cases the Z-origin choice is fixed, so lock the select.
     const noZChoice = laser || rotary;
     ozSel.disabled = noZChoice;
     if (rotary) ozSel.value = "top";
-    for (const r of [tcRow, coolantRow]) r.style.opacity = laser ? "0.45" : "";
     ozRow.style.opacity = noZChoice ? "0.45" : "";
     // The surface-vs-axis Z0 choice only applies to a rotary cylinder being
     // MILLED — a beam emits no Z at all, so it has no zero to reference.
@@ -454,8 +405,6 @@ export function openNewProjectDialog(
         // A rotary cylinder is always surface-zeroed on its top (no bed).
         z: rotary ? "top" : (ozSel.value as OriginZ),
       },
-      hasToolChanger: tcChk.checked,
-      postProcessor: ppSel.value,
       machineKind: mkSel.value as MachineKind,
       ...(rotarySettings ? { rotary: rotarySettings } : {}),
     };
@@ -468,8 +417,6 @@ export function openNewProjectDialog(
           stockThickness: cfg.stockThickness,
           displayUnit: cfg.displayUnit,
           origin: cfg.origin,
-          hasToolChanger: cfg.hasToolChanger,
-          postProcessor: cfg.postProcessor,
           machineKind: cfg.machineKind,
           ...(cfg.rotary ? { rotary: cfg.rotary } : {}),
         };
@@ -491,9 +438,7 @@ export function openNewProjectDialog(
     // Machine profile (localStorage, global) — the controller and tool changer
     // are capabilities of the router, not properties of the new drawing, so they
     // are persisted here rather than onto the document. See SETTINGS_MODEL.md.
-    setMachineHasCoolant(coolantChk.checked);
-    setPostFor(isLaser(cfg.machineKind) ? "laser" : "mill", ppSel.value);
-    setHasToolChanger(tcChk.checked);
+
 
     close();
     onConfirm(cfg);
