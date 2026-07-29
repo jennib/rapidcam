@@ -1626,6 +1626,12 @@ export interface GCodeOptions {
   rotaryAxisWord?: "A" | "B";
   /** Rotary only: chord tolerance (mm) for flattening arcs into the wrap. */
   arcTolerance?: number;
+  /**
+   * Machine travel envelope (mm), or null/absent when the user hasn't set one.
+   * Not used to GENERATE anything — it reaches the pre-flight fit check, which
+   * is part of producing a program, so it rides the same machine channel.
+   */
+  bed?: { width: number; height: number } | null;
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */

@@ -39,6 +39,10 @@ export const StorageKeys = {
   /** Chord tolerance (mm) for flattening arcs into a rotary wrap — a controller
    *  capability, so machine-wide rather than per design. */
   rotaryArcTolerance: "rapidcam:machine:rotaryArcTolerance",
+  /** Machine travel envelope "WxH" in mm, or absent when the user hasn't said.
+   *  Absent is the DEFAULT and must stay usable: requiring a bed size before you
+   *  can draw is the setup friction this app exists to avoid. */
+  machineBed: "rapidcam:machine:bed",
   /** Custom G-code program-start snippet. */
   gcodeCustomStart: "rapidcam:gcode:customStart",
   /** Custom G-code program-end snippet. */

@@ -28,6 +28,7 @@ const POST_LASER_KEY = StorageKeys.postLaser;
 const TOOL_CHANGER_KEY = StorageKeys.hasToolChanger;
 const ROTARY_AXIS_WORD_KEY = StorageKeys.rotaryAxisWord;
 const ARC_TOLERANCE_KEY = StorageKeys.rotaryArcTolerance;
+const BED_KEY = StorageKeys.machineBed;
 
 /** Fallbacks when the profile has never been configured on this computer. */
 export const DEFAULT_POST_MILL = "linuxcnc";
@@ -233,6 +234,42 @@ export function setCustomGcode(g: CustomGcode): void {
     else localStorage.removeItem(START_KEY);
     if (end) localStorage.setItem(END_KEY, end);
     else localStorage.removeItem(END_KEY);
+  } catch {
+    /* private mode / storage disabled — preference simply doesn't persist */
+  }
+}
+
+/** The machine's travel envelope in mm, or null when the user hasn't told us. */
+export interface MachineBed {
+  width: number;
+  height: number;
+}
+
+/**
+ * The configured travel envelope, or **null when unset — which is the default
+ * and stays fully usable.** Requiring a bed size before you can draw is exactly
+ * the setup friction this app avoids; unset simply means the fit check is not
+ * offered. Never guess a size on the user's behalf.
+ */
+export function getBed(): MachineBed | null {
+  try {
+    const raw = localStorage.getItem(BED_KEY);
+    if (!raw) return null;
+    const [w, h] = raw.split("x").map(Number);
+    // Reject junk rather than surfacing NaN as a machine dimension.
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) return { width: w, height: h };
+  } catch {
+    /* storage disabled — treat as unset */
+  }
+  return null;
+}
+
+/** Store the travel envelope; pass null (or a non-positive size) to clear it. */
+export function setBed(bed: MachineBed | null): void {
+  try {
+    if (bed && bed.width > 0 && bed.height > 0) {
+      localStorage.setItem(BED_KEY, `${bed.width}x${bed.height}`);
+    } else localStorage.removeItem(BED_KEY);
   } catch {
     /* private mode / storage disabled — preference simply doesn't persist */
   }

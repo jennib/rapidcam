@@ -65,7 +65,7 @@ export function postPrograms(
     programs.push({
       name: `${baseName}-rotary.nc`,
       gcode: program,
-      lint: lintGCode(program, buildLintContext(doc)),
+      lint: lintGCode(program, buildLintContext(doc, { bed: opts.bed })),
     });
   } else if (hasBottom) {
     const flip = doc.flip!;
@@ -76,14 +76,14 @@ export function postPrograms(
       gcode: sideA,
       lint: lintGCode(
         sideA,
-        buildLintContext(doc, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : {}),
+        buildLintContext(doc, { bed: opts.bed, ...(hasPins ? { extraDepthBelowBottom: flip.pinDepth } : {}) }),
       ),
     });
     if (sideB) {
       programs.push({
         name: `${baseName}-sideB.nc`,
         gcode: sideB,
-        lint: lintGCode(sideB, buildLintContext(doc)),
+        lint: lintGCode(sideB, buildLintContext(doc, { bed: opts.bed })),
       });
     }
   } else {
@@ -91,7 +91,7 @@ export function postPrograms(
     programs.push({
       name: `${baseName}.nc`,
       gcode,
-      lint: lintGCode(gcode, buildLintContext(doc)),
+      lint: lintGCode(gcode, buildLintContext(doc, { bed: opts.bed })),
     });
   }
 

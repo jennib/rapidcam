@@ -11,6 +11,8 @@ import {
   setRotaryAxisWord,
   getArcTolerance,
   setArcTolerance,
+  getBed,
+  setBed,
 } from "../core/prefs";
 import {
   type CADDocument,
@@ -98,6 +100,26 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     "Machine has coolant (show coolant options & emit M7/M8/M9)",
     coolantCheck,
   );
+
+  // Travel envelope. BLANK MEANS UNSET and must stay usable — requiring a bed
+  // size before you can draw is the setup friction this app avoids. When set it
+  // buys one pre-flight check: does this job need more travel than the machine
+  // has? Position is deliberately not checked (see cam/lint.ts checkBedTravel).
+  const bed0 = getBed();
+  const bedXInput = smallNumber(bed0?.width ?? 0, "1");
+  const bedYInput = smallNumber(bed0?.height ?? 0, "1");
+  if (!bed0) {
+    bedXInput.value = "";
+    bedYInput.value = "";
+  }
+  bedXInput.placeholder = "unset";
+  bedYInput.placeholder = "unset";
+  const bedRowX = labeledRow("Bed travel X (mm)", bedXInput);
+  const bedRowY = labeledRow("Bed travel Y (mm)", bedYInput);
+  const bedNote = document.createElement("p");
+  bedNote.className = "post-settings-note";
+  bedNote.textContent =
+    "Optional. Leave blank if you'd rather not say — it only adds a pre-flight warning when a job needs more travel than your machine has.";
 
   // Rotary — the per-job cylinder for a rotary machine (mill or laser). Shown
   // only when such a machine type is selected; the params live on doc.rotary, the
@@ -291,6 +313,10 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     setHasToolChanger(tcCheck.checked);
     setRotaryAxisWord(rWordSelect.value as "A" | "B");
     setArcTolerance(Math.max(0.001, Number(tolInput.value) || ARC_TOL_DEFAULT));
+    // Blank (or junk) clears it back to unset rather than storing a zero.
+    const bw = Number(bedXInput.value);
+    const bh = Number(bedYInput.value);
+    setBed(bw > 0 && bh > 0 ? { width: bw, height: bh } : null);
     setMachineHasCoolant(coolantCheck.checked);
     setCustomGcode({ start: startArea.value, end: endArea.value });
     close();
@@ -307,6 +333,9 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     ppField,
     tcRow,
     coolantRow,
+    bedRowX,
+    bedRowY,
+    bedNote,
     rotarySection,
     note,
     startArea.field,

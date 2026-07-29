@@ -50,6 +50,11 @@ export interface LintContext {
   zBottom: number;
   /** Workholding keep-outs in emitted (post-origin) coords; empty when none. */
   fixtures?: Fixture[];
+  /**
+   * Machine travel envelope (mm), or absent when the user hasn't configured one
+   * — absent is the default and simply skips the fit check.
+   */
+  bed?: { width: number; height: number } | null;
   machineKind: "mill" | "laser";
   /**
    * Source document, for document-level checks that reason about geometry and
@@ -393,6 +398,52 @@ function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
 }
 
 /**
+ * ERROR: the job needs more travel than the machine has.
+ *
+ * What is measured is how far the program travels FROM THE WORK ORIGIN, because
+ * the move stream is anchored there (X0 Y0 = wherever the operator touched off,
+ * see the parser's initial position). So a program reaching X900 genuinely needs
+ * 900mm of X travel, and no choice of zero changes that.
+ *
+ * What is NOT knowable here is where the work origin sits on the table — nothing
+ * in the file records it. So this cannot say "you will hit the left rail"; it can
+ * only say "this needs more travel than the machine has". Necessary, not
+ * sufficient: passing means the job *could* fit, not that it is placed safely.
+ *
+ * Skipped entirely when no bed is configured, which is the default.
+ */
+function checkBedTravel(moves: Move[], ctx: LintContext): LintFinding | null {
+  const bed = ctx.bed;
+  if (!bed || moves.length === 0) return null;
+  let xMin = Number.POSITIVE_INFINITY,
+    xMax = Number.NEGATIVE_INFINITY,
+    yMin = Number.POSITIVE_INFINITY,
+    yMax = Number.NEGATIVE_INFINITY;
+  for (const m of moves) {
+    // Both ends of every move: a span is defined by where the tool actually goes.
+    xMin = Math.min(xMin, m.px, m.x);
+    xMax = Math.max(xMax, m.px, m.x);
+    yMin = Math.min(yMin, m.py, m.y);
+    yMax = Math.max(yMax, m.py, m.y);
+  }
+  const spanX = xMax - xMin;
+  const spanY = yMax - yMin;
+  const overX = spanX > bed.width + EPS;
+  const overY = spanY > bed.height + EPS;
+  if (!overX && !overY) return null;
+  const parts: string[] = [];
+  if (overX) parts.push(`${r(spanX)}mm of X travel (machine has ${r(bed.width)}mm)`);
+  if (overY) parts.push(`${r(spanY)}mm of Y travel (machine has ${r(bed.height)}mm)`);
+  return {
+    code: "exceeds-machine-travel",
+    severity: "error",
+    message:
+      `This job needs ${parts.join(" and ")}. It cannot run on this machine wherever you zero it. ` +
+      `Shrink the part, split the job (Tile), or correct the bed size in Machine Settings.`,
+  };
+}
+
+/**
  * WARNING: an operation bound to no geometry. It emits no motion, so the
  * move-stream checks can't see it — but it silently cuts nothing (typically the
  * shape it was bound to was deleted later). Doc-level, so it needs `ctx.doc`.
@@ -432,6 +483,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
     findings.push(checkOverDeep(moves, ctx));
     findings.push(checkFastPlunge(moves));
     findings.push(checkFixtures(moves, ctx));
+    findings.push(checkBedTravel(moves, ctx));
     findings.push(checkMissingToolChange(gcode));
     // Document-level: geometry the ops' tools can't reach (silent at toolpath
     // time — the offset just swallows narrow features). Needs the doc, so
@@ -456,6 +508,8 @@ export function buildLintContext(
      * spoilboard). Lowers the effective `zBottom` by this much.
      */
     extraDepthBelowBottom?: number;
+    /** Machine travel envelope; omit/null to skip the fit check. */
+    bed?: { width: number; height: number } | null;
   } = {},
 ): LintContext {
   const { ox, oy, zOffset } = resolveOrigin(doc);
@@ -478,6 +532,7 @@ export function buildLintContext(
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     fixtures,
+    bed: opts.bed ?? null,
     machineKind: doc.isLaser ? "laser" : "mill",
     doc,
   };

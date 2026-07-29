@@ -58,6 +58,7 @@ import {
   getHasToolChanger,
   getRotaryAxisWord,
   getArcTolerance,
+  getBed,
 } from "../core/prefs";
 import { isFontResolvable } from "../core/fontManager";
 import { groupLinesIntoClosedChains, collectClosedLoops, pointInPolygon } from "../cam/loops";
@@ -1833,6 +1834,7 @@ export class CamBar {
       hasToolChanger: getHasToolChanger(),
       rotaryAxisWord: getRotaryAxisWord(),
       arcTolerance: getArcTolerance(),
+      bed: getBed(),
     };
   }
 
@@ -1846,7 +1848,7 @@ export class CamBar {
     gcode: string,
     ctxOpts?: { extraDepthBelowBottom?: number },
   ): Promise<boolean> {
-    const findings = lintGCode(gcode, buildLintContext(this.doc, ctxOpts));
+    const findings = lintGCode(gcode, buildLintContext(this.doc, { ...ctxOpts, bed: getBed() }));
     if (findings.length === 0) return true;
     const errors = findings.filter((f) => f.severity === "error").length;
     const warnings = findings.length - errors;
@@ -1918,7 +1920,7 @@ export class CamBar {
       filename: name,
       opCount: this.doc.operations.length,
       stockLabel,
-      findings: lintGCode(gcode, buildLintContext(this.doc)),
+      findings: lintGCode(gcode, buildLintContext(this.doc, { bed: getBed() })),
     });
     if (!proceed) return;
     track("gcode_generated", {
