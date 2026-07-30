@@ -49,10 +49,10 @@ function describeMachineContext(doc: CADDocument): string {
   if (doc.stockRect) {
     const s = doc.stockRect;
     lines.push(
-      `- Stock: ${s.width} × ${s.height} mm positioned at (${s.x}, ${s.y}) within the work area (emit it as top-level \`stockRect\`)`,
+      `- Stock: ${s.width} × ${s.height} mm positioned at (${s.x}, ${s.y}) within the sheet (emit it as top-level \`stockRect\`)`,
     );
   } else {
-    lines.push("- Stock: fills the work area (omit `stockRect`)");
+    lines.push("- Stock: fills the sheet (omit `stockRect`)");
   }
   lines.push(`- Stock thickness: ${doc.stockThickness} mm`);
   lines.push(

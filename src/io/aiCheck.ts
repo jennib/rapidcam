@@ -180,7 +180,7 @@ function boundsIssues(doc: CADDocument): AiIssue[] {
     {
       severity: "warning",
       check: "bounds",
-      message: `${outside.length} entit${outside.length === 1 ? "y extends" : "ies extend"} outside the ${doc.canvas.width}×${doc.canvas.height} mm work area: ${outside.slice(0, 8).join(", ")}${outside.length > 8 ? ", …" : ""}`,
+      message: `${outside.length} entit${outside.length === 1 ? "y extends" : "ies extend"} outside the ${doc.canvas.width}×${doc.canvas.height} mm sheet: ${outside.slice(0, 8).join(", ")}${outside.length > 8 ? ", …" : ""}`,
     },
   ];
 }

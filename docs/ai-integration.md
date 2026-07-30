@@ -23,7 +23,7 @@ transport.
 **Step 1 — Copy a prompt.** The dialog builds a self-contained prompt and
 copies it to the clipboard. It bundles:
 
-- your machine context: machine kind, post-processor, work area, stock size
+- your machine context: machine kind, post-processor, sheet size, stock size
   and thickness, origin, rotary/flip setup — everything the AI must respect
   and would otherwise guess;
 - your tool library, so operations reference real tools by `toolId`;
@@ -55,7 +55,7 @@ Every pasted file passes through, in order:
 | Loader | anything RapidCAM itself cannot open |
 | References | operations/constraints/dimensions/bindings pointing at entities that don't exist; unknown `toolId`s |
 | Solver | contradictory constraint systems that don't converge |
-| Bounds | geometry outside the work area |
+| Bounds | geometry outside the sheet |
 | Toolpath dry-run | operations that would silently produce **no cutting moves** (e.g. a profile over geometry that doesn't close) |
 | Lint | Apollo pre-flight findings over the dry-run program(s) — toolpaths outside the stock, over-deep cuts, fast plunges, missing tool-change pauses — reported as **warnings**, so machinability advice never blocks an import |
 

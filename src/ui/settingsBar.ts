@@ -85,14 +85,14 @@ export class SettingsBar {
     this.canvasGroup.appendChild(this.heightField);
     this.content.appendChild(this.canvasGroup);
 
-    // Stock — an optional flat blank positioned inside the work area. "Fills work
-    // area" (default) = the whole frame is stock; unchecking reveals a sized/offset
+    // Stock — an optional flat blank positioned inside the SHEET. "Fills sheet"
+    // (default) = the whole frame is stock; unchecking reveals a sized/offset
     // blank (doc.stockRect). Hidden for a rotary job (the cylinder is the stock).
     this.stockRectGroup = this.group("Stock");
     this.stockFillsCheck = document.createElement("input");
     this.stockFillsCheck.type = "checkbox";
     this.stockFillsCheck.className = "settings-checkbox";
-    this.stockRectGroup.appendChild(this.field("Fills work area", this.stockFillsCheck));
+    this.stockRectGroup.appendChild(this.field("Fills sheet", this.stockFillsCheck));
     this.stockWInput = this.dimInput();
     this.stockHInput = this.dimInput();
     this.stockXInput = this.dimInput();
@@ -398,7 +398,7 @@ export class SettingsBar {
   }
 
   /**
-   * Commit the positioned-stock rectangle. "Fills work area" (checked) clears it
+   * Commit the positioned-stock rectangle. "Fills sheet" (checked) clears it
    * (doc.stockRect = null → the material is the whole work area). Otherwise the
    * rect is read from the fields, defaulting any blank/invalid entry to the current
    * stock (or the full work area on first use).
