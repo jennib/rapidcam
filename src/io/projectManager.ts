@@ -1,4 +1,11 @@
-import { type CADDocument, type DocSnapshot, ORIGIN_ENTITY_ID } from "../model/document";
+import {
+  type CADDocument,
+  type DocSnapshot,
+  ORIGIN_ENTITY_ID,
+  deriveSheet,
+  isRotary,
+} from "../model/document";
+import { getBed } from "../core/prefs";
 import { History } from "../model/history";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
 import { exportSvg } from "./svgExport";
@@ -110,12 +117,36 @@ export class ProjectManager {
         this.history = new History<DocSnapshot>();
         this.cb.onCloseEditors();
         this.doc.clear();
-        this.doc.canvas = { width: cfg.width, height: cfg.height };
         this.doc.stockThickness = cfg.stockThickness;
         this.doc.displayUnit = cfg.displayUnit;
         this.doc.origin = { ...cfg.origin };
         this.doc.machineKind = cfg.machineKind;
         this.doc.rotary = cfg.rotary ?? null;
+        // What the dialog asks for under "Stock" IS the stock. It used to land on
+        // doc.canvas (the sheet) — self-consistent under the old model, where a
+        // null stockRect meant "stock fills the sheet", but wrong now that the
+        // sheet is derived: you would get a sheet exactly the size of the blank,
+        // with no room to draw the clamps that overhang it.
+        //
+        // A rotary job keeps the old assignment: cfg.width/height are the cylinder
+        // length and its circumference, and the canvas IS that unrolled surface,
+        // so there is no separate blank to position and nothing to derive.
+        if (isRotary(cfg.machineKind)) {
+          this.doc.canvas = { width: cfg.width, height: cfg.height };
+          this.doc.stockRect = null;
+        } else {
+          this.doc.stockRect = { x: 0, y: 0, width: cfg.width, height: cfg.height };
+          const sheet = deriveSheet(this.doc, getBed());
+          if (sheet) this.doc.canvas = { ...sheet };
+          // Centre the blank on the generated sheet so the margin is even and
+          // there is equal room for hold-downs on every side.
+          this.doc.stockRect = {
+            x: (this.doc.canvas.width - cfg.width) / 2,
+            y: (this.doc.canvas.height - cfg.height) / 2,
+            width: cfg.width,
+            height: cfg.height,
+          };
+        }
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
         dropDraft();

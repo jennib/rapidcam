@@ -15,7 +15,12 @@
 
 import type { Vec2 } from "../core/vec2";
 import { bindingResidualAt, bindingTarget } from "../model/bindings";
-import { type Constraint, constraintResiduals, type Geo } from "../model/constraints";
+import {
+  type Constraint,
+  constraintResiduals,
+  type Geo,
+  lineRefEntityId,
+} from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
 import type { EntityId } from "../model/entities";
@@ -173,7 +178,18 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   }
 
   const vars: Variable[] = [];
+  // Which entity each variable belongs to, and the reverse. Used to partition the
+  // system into independent subsystems below; `Variable` itself is just get/set.
+  const entVarIdx = new Map<string, number[]>();
+  const noteVar = (entId: string, idx: number): void => {
+    const list = entVarIdx.get(entId);
+    if (list) list.push(idx);
+    else entVarIdx.set(entId, [idx]);
+  };
   const anchorVars: Variable[] = [];
+  // Anchor j pulls on variable index anchorVarIdx[j] — needed to file each anchor
+  // into the right subsystem.
+  const anchorVarIdx: number[] = [];
   // Per-variable multiplier on anchorW. Arc angle DOFs (sa, ea) are scaled by
   // radius so their anchor cost is normalised to mm of endpoint displacement —
   // without this, rotating a large-radius arc is numerically cheaper than
@@ -184,24 +200,32 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
       if (fixed.has(`${ent.id}:${p.key}`)) continue;
       const vx = pointComponent(ent, p.key, "x");
       const vy = pointComponent(ent, p.key, "y");
+      noteVar(ent.id, vars.length);
+      noteVar(ent.id, vars.length + 1);
+      const ix = vars.length;
       vars.push(vx, vy);
       // Always anchor non-pinned DOFs to prefer minimal-change solutions in
       // under-constrained systems (e.g. editing a dimension without dragging).
       if (!pinnedComponents.has(`${ent.id}:${p.key}:x`)) {
         anchorVars.push(vx);
+        anchorVarIdx.push(ix);
         anchorScales.push(1);
       }
       if (!pinnedComponents.has(`${ent.id}:${p.key}:y`)) {
         anchorVars.push(vy);
+        anchorVarIdx.push(ix + 1);
         anchorScales.push(1);
       }
     }
     for (const s of ent.dofScalars()) {
       if (fixed.has(scalarKey(ent.id, s.key))) continue;
       const vs = scalarComponent(ent, s.key);
+      noteVar(ent.id, vars.length);
+      const is = vars.length;
       vars.push(vs);
       if (!pinnedScalars.has(scalarKey(ent.id, s.key))) {
         anchorVars.push(vs);
+        anchorVarIdx.push(is);
         const scale =
           ent instanceof ArcEntity && (s.key === "sa" || s.key === "ea") ? ent.radius : 1;
         anchorScales.push(scale);
@@ -319,69 +343,211 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
   if (n === 0 || residuals().length === 0) return finish();
 
-  // --- Levenberg-Marquardt -------------------------------------------------
-  const setX = (x: number[]) =>
-    vars.forEach((v, i) => {
-      v.set(x[i]);
-    });
-  const evalR = (x: number[]): number[] => {
-    setX(x);
-    return residuals();
+  // --- partition into independent subsystems ---------------------------------
+  // Variables interact ONLY through a shared residual, so the constraint graph
+  // splits into connected components that can be solved one at a time. That is
+  // the difference between one 1000-variable problem and 500 two-variable ones:
+  // every per-iteration cost here is superlinear in subsystem size — the normal
+  // equations JtJ are O(n^2*m) and the dense solve is O(n^3) — so shrinking n is
+  // worth far more than shaving constants.
+  //
+  // The partition OVER-approximates on purpose: a residual is assumed to depend
+  // on every variable of every entity it names, even when it really touches one
+  // DOF. Over-merging only costs speed; under-merging would silently solve the
+  // wrong geometry. test/solverPartition.test.ts checks the Jacobian sparsity
+  // really does respect the split rather than trusting this comment.
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (a: number): number => {
+    let r = a;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[a] !== r) {
+      const next = parent[a];
+      parent[a] = r;
+      a = next;
+    }
+    return r;
+  };
+  const link = (ids: readonly string[]): void => {
+    let first = -1;
+    for (const id of ids) {
+      for (const vi of entVarIdx.get(id) ?? []) {
+        if (first < 0) first = vi;
+        else {
+          const ra = find(first);
+          const rb = find(vi);
+          if (ra !== rb) parent[ra] = rb;
+        }
+      }
+    }
+  };
+  // A polyline SEGMENT is referenced as `${polylineId}#${vertexId}`, not as a bare
+  // entity id — lineRefEntityId recovers the underlying entity. Without it those
+  // refs resolve to no variables, the constraint is filed under no subsystem, and
+  // it silently stops being applied. Three polyline tests caught exactly that.
+  const refsOf = (c: { entities?: string[]; points?: { entityId: string }[] }): string[] => [
+    ...(c.entities ?? []).map(lineRefEntityId),
+    ...(c.points ?? []).map((pt) => pt.entityId),
+  ];
+  for (const c of active) link(refsOf(c));
+  for (const d of drivingDims) link(refsOf(d));
+  for (const b of doc.bindings) link([b.entityId]);
+  for (const c of centerCons) link(refsOf(c));
+
+  /** Component root for a residual source, or -1 when it touches no free variable. */
+  const rootOfRefs = (ids: readonly string[]): number => {
+    for (const id of ids) {
+      const list = entVarIdx.get(id);
+      if (list && list.length > 0) return find(list[0]);
+    }
+    return -1;
   };
 
-  let x = vars.map((v) => v.get());
-  let fx = evalR(x);
-  let cost = sumSq(fx);
-  let lambda = 1e-3;
-
-  for (let iter = 0; iter < MAX_ITER && cost > COST_TOL; iter++) {
-    const J = jacobian(evalR, x, fx);
-    const m = fx.length;
-
-    // Normal equations: A = JᵀJ (n×n), g = Jᵀfx (n).
-    const A: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
-    const g = new Array<number>(n).fill(0);
-    for (let i = 0; i < n; i++) {
-      for (let k = 0; k < m; k++) g[i] += J[k][i] * fx[k];
-      for (let j = 0; j < n; j++) {
-        let s = 0;
-        for (let k = 0; k < m; k++) s += J[k][i] * J[k][j];
-        A[i][j] = s;
-      }
-    }
-
-    let improved = false;
-    for (let t = 0; t < LAMBDA_TRIES; t++) {
-      const damped = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-9 : v)));
-      const dx = solveLinearSystem(
-        damped,
-        g.map((v) => -v),
-      );
-      if (!dx) {
-        lambda *= 10;
-        continue;
-      }
-      const xn = x.map((v, i) => v + dx[i]);
-      const fxn = evalR(xn);
-      const cn = sumSq(fxn);
-      if (cn < cost) {
-        x = xn;
-        fx = fxn;
-        cost = cn;
-        lambda = Math.max(lambda * 0.3, 1e-12);
-        improved = true;
-        break;
-      }
-      lambda *= 10;
-    }
-    if (!improved) break; // stuck — likely over-constrained / conflicting
-    // For dimension/constraint solves (no drag pins), exit as soon as the hard
-    // constraints converge — no need to keep grinding toward COST_TOL, which
-    // may never be reached when anchorW is tiny and displacement is large.
-    if (!pins && norm(fx.slice(0, equations)) < 1e-4) break;
+  const comps = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    const list = comps.get(r);
+    if (list) list.push(i);
+    else comps.set(r, [i]);
   }
 
-  setX(x); // make sure the solution is the final state
+  const cActive = new Map<number, typeof active>();
+  const cDims = new Map<number, typeof drivingDims>();
+  const cBind = new Map<number, { b: (typeof doc.bindings)[number]; i: number }[]>();
+  const cCenter = new Map<number, { c: (typeof centerCons)[number]; i: number }[]>();
+  const cPins = new Map<number, typeof pinEntries>();
+  const cAnchors = new Map<number, number[]>();
+  const push = <T>(m: Map<number, T[]>, k: number, v: T): void => {
+    if (k < 0) return;
+    const list = m.get(k);
+    if (list) list.push(v);
+    else m.set(k, [v]);
+  };
+  for (const c of active) push(cActive, rootOfRefs(refsOf(c)), c);
+  for (const d of drivingDims) push(cDims, rootOfRefs(refsOf(d)), d);
+  doc.bindings.forEach((b, i) => {
+    push(cBind, rootOfRefs([b.entityId]), { b, i });
+  });
+  centerCons.forEach((c, i) => {
+    push(cCenter, rootOfRefs(refsOf(c)), { c, i });
+  });
+  for (const pe of pinEntries) push(cPins, rootOfRefs([pe.ent.id]), pe);
+  for (let j = 0; j < anchorVars.length; j++) push(cAnchors, find(anchorVarIdx[j]), j);
+
+  // --- Levenberg-Marquardt, once per subsystem -------------------------------
+  for (const [root, idx] of comps) {
+    const cv = idx.map((i) => vars[i]);
+    const cn = cv.length;
+    const ca = cActive.get(root) ?? [];
+    const cd = cDims.get(root) ?? [];
+    const cb = cBind.get(root) ?? [];
+    const cc = cCenter.get(root) ?? [];
+    const cp = cPins.get(root) ?? [];
+    const can = cAnchors.get(root) ?? [];
+
+    // A subsystem with no constraint of any kind already sits at its anchors, so
+    // its cost starts at zero and the loop below would exit immediately anyway.
+    // Skipping keeps a large unconstrained import (DXF, traced outline) genuinely
+    // free rather than merely fast.
+    if (ca.length === 0 && cd.length === 0 && cb.length === 0 && cc.length === 0 && cp.length === 0)
+      continue;
+
+    const compConstraintVec = (): number[] => {
+      const out: number[] = [];
+      for (const c of ca) for (const v of constraintResiduals(c, geo)) out.push(v);
+      for (const d of cd) for (const v of dimensionResiduals(d, geo)) out.push(v);
+      for (const bi of cb)
+        for (const v of bindingResidualAt(bi.b, geo, bindingTargets[bi.i])) out.push(v);
+      for (const ci of cc) {
+        const target = centerTargets[ci.i];
+        if (!target) continue;
+        const mover = byId.get(ci.c.points[0].entityId);
+        if (!mover) continue;
+        let mp: Vec2;
+        try {
+          mp = mover.getPoint(ci.c.points[0].key);
+        } catch {
+          continue;
+        }
+        const axis = ci.c.params?.[0];
+        if (axis !== 1) out.push(mp.x - target.x);
+        if (axis !== 0) out.push(mp.y - target.y);
+      }
+      return out;
+    };
+    const compResiduals = (): number[] => {
+      const out = compConstraintVec();
+      for (const pe of cp) {
+        const pos = pe.ent.getPoint(pe.key);
+        out.push(PIN_WEIGHT * (pos.x - pe.target.x));
+        out.push(PIN_WEIGHT * (pos.y - pe.target.y));
+      }
+      for (const j of can) {
+        out.push(anchorW * anchorScales[j] * (anchorVars[j].get() - anchorStart[j]));
+      }
+      return out;
+    };
+    const compEquations = compConstraintVec().length;
+
+    const setCX = (xs: number[]) =>
+      cv.forEach((v, i) => {
+        v.set(xs[i]);
+      });
+    const evalCR = (xs: number[]): number[] => {
+      setCX(xs);
+      return compResiduals();
+    };
+
+    let x = cv.map((v) => v.get());
+    let fx = evalCR(x);
+    let cost = sumSq(fx);
+    let lambda = 1e-3;
+
+    for (let iter = 0; iter < MAX_ITER && cost > COST_TOL; iter++) {
+      const J = jacobian(evalCR, x, fx);
+      const m = fx.length;
+
+      const A: number[][] = Array.from({ length: cn }, () => new Array<number>(cn).fill(0));
+      const g = new Array<number>(cn).fill(0);
+      for (let i = 0; i < cn; i++) {
+        for (let k = 0; k < m; k++) g[i] += J[k][i] * fx[k];
+        for (let j = 0; j < cn; j++) {
+          let acc = 0;
+          for (let k = 0; k < m; k++) acc += J[k][i] * J[k][j];
+          A[i][j] = acc;
+        }
+      }
+
+      let improved = false;
+      for (let t = 0; t < LAMBDA_TRIES; t++) {
+        const damped = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-9 : v)));
+        const dx = solveLinearSystem(
+          damped,
+          g.map((v) => -v),
+        );
+        if (!dx) {
+          lambda *= 10;
+          continue;
+        }
+        const xn = x.map((v, i) => v + dx[i]);
+        const fxn = evalCR(xn);
+        const cnew = sumSq(fxn);
+        if (cnew < cost) {
+          x = xn;
+          fx = fxn;
+          cost = cnew;
+          lambda = Math.max(lambda * 0.3, 1e-12);
+          improved = true;
+          break;
+        }
+        lambda *= 10;
+      }
+      if (!improved) break;
+      if (!pins && norm(fx.slice(0, compEquations)) < 1e-4) break;
+    }
+    setCX(x);
+  }
+
   normalizeImageAngles(doc);
 
   return finish();
