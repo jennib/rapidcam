@@ -1,5 +1,7 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
 import type { CADDocument, OriginX, OriginY, OriginZ, RotarySettings } from "../model/document";
+import { deriveSheet } from "../model/document";
+import { getBed } from "../core/prefs";
 import { defaultRotarySettings } from "../cam/klein";
 
 export class SettingsBar {
@@ -9,6 +11,8 @@ export class SettingsBar {
   private widthField!: HTMLElement;
   private heightField!: HTMLElement;
   private stockInput!: HTMLInputElement;
+  /** Set once the user types a sheet size; suppresses {@link autoSheet}. */
+  private sheetIsManual = false;
   private stockRectGroup!: HTMLElement;
   private stockFillsCheck!: HTMLInputElement;
   private stockWInput!: HTMLInputElement;
@@ -421,10 +425,32 @@ export class SettingsBar {
         height: h !== null && h > 0 ? h : (cur?.height ?? this.doc.canvas.height),
       };
     }
+    this.autoSheet();
     this.doc.emitChange();
   }
 
+  /**
+   * Regrow the sheet to fit the stock (or to the bed, when one is configured).
+   *
+   * The stock is authoritative and is never touched here — the dependency runs
+   * one way. Skipped once the user has typed a sheet size of their own, and for a
+   * rotary document, whose canvas is the unrolled cylinder and already derived
+   * (deriveSheet returns null to say so).
+   */
+  private autoSheet(): void {
+    if (this.sheetIsManual) return;
+    const next = deriveSheet(this.doc, getBed());
+    if (!next) return;
+    if (this.doc.canvas.width === next.width && this.doc.canvas.height === next.height) return;
+    this.doc.canvas = { ...next };
+  }
+
   private commitSize(): void {
+    // Typing a sheet size is an override: from here on the sheet is yours and
+    // stock edits stop resizing it (the user asked for "auto UNLESS I enter a
+    // value"). Deliberately not persisted — it is a per-session intent, not a
+    // property of the drawing.
+    this.sheetIsManual = true;
     const u = this.doc.displayUnit;
     const w = parseLength(this.widthInput.value, u);
     const h = parseLength(this.heightInput.value, u);

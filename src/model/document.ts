@@ -220,6 +220,38 @@ export function stockFootprint(doc: CADDocument): { width: number; height: numbe
   if (r && !isRotary(doc.machineKind)) return { width: r.width, height: r.height };
   return { width: doc.canvas.width, height: doc.canvas.height };
 }
+
+/** Room left around the stock when the sheet is generated for you, mm per side. */
+export const SHEET_MARGIN = 50;
+
+/**
+ * The sheet size implied by the stock (and the machine, when it is known).
+ *
+ * The stock is what the user typed and is never derived from anything — the
+ * dependency runs one way only. The sheet is the frame you draw in, so it is
+ * generated:
+ *
+ * - **A bed is configured** → the sheet IS the bed. You are drawing on a
+ *   representation of your actual table, and the stock sits somewhere on it.
+ * - **No bed** → the stock plus {@link SHEET_MARGIN} on every side. The margin
+ *   exists because clamps overhang the stock edge: hold-downs are drawn as
+ *   geometry on a fixture layer, so there has to be sheet outside the blank to
+ *   draw them on.
+ *
+ * Returns null for a ROTARY document, which has no derivable sheet: its canvas
+ * is the unrolled cylinder surface and its wrapped dimension is already locked to
+ * the circumference (π·⌀), which is itself derived from the stock. Rotary already
+ * worked this way; callers must leave it alone.
+ */
+export function deriveSheet(
+  doc: CADDocument,
+  bed?: { width: number; height: number } | null,
+): { width: number; height: number } | null {
+  if (isRotary(doc.machineKind)) return null;
+  if (bed && bed.width > 0 && bed.height > 0) return { width: bed.width, height: bed.height };
+  const { width, height } = stockFootprint(doc);
+  return { width: width + SHEET_MARGIN * 2, height: height + SHEET_MARGIN * 2 };
+}
 import {
   type Entity,
   type EntityId,
