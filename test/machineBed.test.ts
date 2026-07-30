@@ -109,3 +109,31 @@ describe("pre-flight travel check", () => {
     expect(f?.message).toMatch(/Tile|Machine Settings/);
   });
 });
+
+describe("rotary jobs are exempt", () => {
+  test("a cylinder wider than the bed is NOT flagged — the axis spins, it doesn't travel", async () => {
+    // A laser rotary emits the wrap on an ordinary LINEAR word in surface mm, so
+    // a ⌀300 cylinder looks like ~940mm of Y travel. Physically the rotary is
+    // wired in place of that motor and turns on the spot. Warning here would call
+    // a perfectly good job impossible.
+    const { CADDocument } = await import("../src/model/document");
+    const { buildLintContext } = await import("../src/cam/lint");
+    const doc = new CADDocument({ width: 200, height: Math.PI * 300 });
+    doc.machineKind = "laser-rotary";
+    doc.rotary = { axisWord: "A", diameter: 300, wrapAxis: "y" };
+
+    const built = buildLintContext(doc, { bed: { width: 400, height: 400 } });
+    expect(built.bed, "a rotary job must not carry a bed into the fit check").toBeNull();
+  });
+
+  test("a flat job on the same machine still gets the check", async () => {
+    // Positive control: proves the exemption is keyed on rotary, not just off.
+    const { CADDocument } = await import("../src/model/document");
+    const { buildLintContext } = await import("../src/cam/lint");
+    const doc = new CADDocument({ width: 200, height: 200 });
+    expect(buildLintContext(doc, { bed: { width: 400, height: 400 } }).bed).toEqual({
+      width: 400,
+      height: 400,
+    });
+  });
+});

@@ -532,7 +532,15 @@ export function buildLintContext(
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     fixtures,
-    bed: opts.bed ?? null,
+    // A ROTARY job's wrapped axis is not bed travel, so the fit check must not
+    // see it. On a laser rotary the wrap is emitted on an ordinary LINEAR word in
+    // surface millimetres (cam/klein.ts "linear-substitute" — the rotary is wired
+    // in place of that motor with steps/mm rescaled), so a large cylinder looks
+    // like metres of travel while the axis just spins in place. On a mill rotary
+    // the wrap becomes A/B degrees, which this parser doesn't read at all. Either
+    // way the number would be meaningless, so skip the check rather than warn
+    // about travel the machine never makes.
+    bed: doc.isRotary ? null : (opts.bed ?? null),
     machineKind: doc.isLaser ? "laser" : "mill",
     doc,
   };
