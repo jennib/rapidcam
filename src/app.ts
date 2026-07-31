@@ -933,6 +933,9 @@ export class App {
     }
     const e = this.toolEvent(ev, screen);
     if (this.doc.regionHoverHandler) this.doc.regionHoverHandler(e.worldRaw);
+    const prevHover = this.currentHover;
+    const prevHoverConstraint = this.currentHoverConstraint;
+
     this.currentHover =
       this.tools.active.id === "select" || this.tools.active.id === "offset"
         ? (this.doc.hitTest(e.worldRaw, this.view.toWorldLen(HOVER_TOLERANCE_PX))?.id ?? null)
@@ -946,7 +949,22 @@ export class App {
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);
     this.updateCursor();
-    this.requestRender();
+
+    // Only repaint when something on the canvas would actually differ. A full
+    // scene repaint is by far the most expensive thing a mouse move can trigger
+    // — ~75ms on a 2000-entity document, against ~5ms for all the hit-testing
+    // and picking put together — so moving the pointer across empty space, or
+    // within the same entity, should cost nothing.
+    //
+    // Deliberately narrow. The skip applies only while IDLE-HOVERING: with a
+    // button down a tool is mid-gesture (rubber band, in-progress line, snap
+    // marker) and paints a preview this method cannot see, since pointerMove
+    // returns void and no tool can report that it drew something. Anything other
+    // than a plain hover still repaints exactly as before.
+    const idleHover = ev.buttons === 0;
+    const hoverChanged =
+      this.currentHover !== prevHover || this.currentHoverConstraint !== prevHoverConstraint;
+    if (!idleHover || hoverChanged) this.requestRender();
   };
 
   private onPointerUp = (ev: PointerEvent): void => {

@@ -52,6 +52,11 @@ for (const n of [500, 2000]) {
 
     // Select it first, then drag — a click-to-select model means a bare
     // press-and-move is a rubber band, not a grab.
+    // Pure hover first: no button, pointer wandering over the document.
+    const th = Date.now();
+    for (let i = 1; i <= 20; i++) await page.mouse.move(start.x + i * 3, start.y + i * 2);
+    console.log(`  HOVER ${(( Date.now() - th) / 20).toFixed(0)}ms/move`);
+
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.up();
