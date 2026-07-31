@@ -8,6 +8,83 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-07-31
+
+Machine settings find their home. A drawing is now a drawing: `.rcam` v3 drops machine
+configuration from the file, so a shared design reconciles against whatever router opens
+it, and the three overlapping dialogs that each asked a piece of the same question now
+ask it once. The machine can describe itself in return — an optional bed size buys a
+pre-flight travel check — and the stock finally leads, with the sheet derived from it
+rather than the other way round. Alongside that: saved laser material presets, a
+constraint solver that no longer folds on a big document (a 500-hole drag went from two
+minutes to under half a second), and two DXF import fixes.
+
+### Added
+- **Optional machine bed, with a pre-flight travel check.** Tell the app how much travel
+  your machine has and a job that needs more is reported before you cut it. **Unset is
+  the default and stays fully usable** — blank means blank: no finding, no nag, no
+  guessed size, pinned as a test rather than left to implementation. Requiring a bed size
+  before you can draw is exactly the setup friction this app exists to avoid. The bed
+  rides `GCodeOptions`, the channel that already carries the machine's contribution to a
+  program, so every lint context receives it with no new plumbing.
+- **Saved laser material presets** — power, speed, passes, kerf and air assist per
+  material, stored on the machine and loadable straight into a toolpath. The Material
+  Test grid already burned a power×speed sweep; there was no way to keep the cell that
+  worked. Deliberately **seeds nothing**: a ⅛" end mill is a ⅛" end mill on any router,
+  but "3 mm ply cuts at 100% and 300 mm/min" is true only of the tube, lens, material
+  batch and machine it was measured on, and a laser running too slowly at high power
+  starts a fire rather than spoiling a part. Presets are a personal shortcut and are
+  never referenced by id from a saved `.rcam`, so a shared design carries the numbers it
+  was cut with, not a dangling pointer to a recipe the opener never had.
+
+### Changed
+- **`.rcam` v3 — the file is a drawing, not a job ticket.** `postProcessor`,
+  `hasToolChanger` and the machine half of the rotary block (`axisWord`, `arcTolerance`)
+  leave the file; the machine profile owns them. The rotary block is **split** rather
+  than dropped, because it was always two things wearing one name — diameter, wrap axis
+  and zero *are* the job (the cylinder is the stock) and stay. Everything v3 drops is
+  recoverable from the opener's own machine, which is what makes dropping it safe.
+  Migrations now chain (v1 → v2 → v3), and all 13 bundled files were regenerated through
+  the real parse → migrate → serialize path rather than hand-edited.
+- **The sheet is derived from the stock, not the other way round.** Stock is what you
+  typed — never derived, never adjusted. The sheet is generated: the bed when one is
+  configured, otherwise the stock plus a 50 mm margin on every side (clamps overhang the
+  blank and are drawn as geometry, so there has to be sheet to draw them on). Typing a
+  sheet size overrides it for the session. A bed smaller than the stock still wins —
+  that's a real problem the travel check should report, not one to hide.
+- **"Work area" is now "Sheet"**, and Project Settings' "Program End" group is "End
+  Position" so it stops colliding with Machine Settings' "Program end" G-code snippet.
+  One name was being asked to mean both the drawing frame and the machine's bed; its own
+  comment read "the drawing/travel frame", unresolved in the source, which is exactly why
+  it kept reading as a machine setting.
+- **New Project stops asking for machine configuration.** Post-processor, auto tool
+  changer and coolant are Machine Settings' to own; two dialogs asking the same question
+  is what made "where do I find this" unanswerable. Machine *type* stays, because head ×
+  stock is a property of the design. A note says where the others went rather than
+  letting three controls silently vanish.
+- **Fixture pre-flight says what to do, not just that something is wrong.** A rapid over
+  a clamp names the figure ("Clearing them needs Z ≥ 12 mm"); a cutting move says it
+  can't be lifted and deliberately offers no height, because raising Z there would only
+  make the tool miss the part. A clamp with no height set now asks for one instead of
+  printing "Infinity".
+- **Big documents stay interactive.** The constraint solver built one global system no
+  matter how the document was actually connected — a 500-hole plate is 500 independent
+  2-variable problems being solved as a single ~1500-variable one. It now partitions
+  into connected components and runs the existing solver per component, no new maths.
+  The DOF-status pass got the same treatment, and an idle hover no longer repaints a
+  scene that hasn't changed:
+
+  | | before | after |
+  |---|---|---|
+  | drag, 500 holes | 119,214 ms | 391 ms |
+  | DOF status, 2000 holes | 2,998 ms | 45 ms |
+  | hover, 2000 entities | 268 ms | 16 ms |
+
+- **Two permanent "select something" hints removed** — "Select geometry to add a
+  constraint" and "Select an item + the shape to centre it in" said what the disabled
+  buttons beside them already said. The constraint bar's element is shared with real
+  messages, so only the placeholder went and the no-selection branch now clears it.
+
 ### Fixed
 - **An imported DXF outline can be profiled again.** DXF outlines arrive as runs of
   *open* polyline joined by separate arcs (a bulged segment becomes a true arc on
@@ -36,6 +113,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   geometry reaches the document, because the gap-welding repair pass that follows works
   to absolute millimetre tolerances and only means anything at the right scale.
   Files that *do* declare `$INSUNITS` are unaffected and never prompt.
+- **A rotary job no longer trips the travel check.** A laser rotary emits the wrapped
+  axis on an ordinary linear word in surface millimetres, so a ⌀300 cylinder looks like
+  ~940 mm of Y travel while the axis turns on the spot — the check would have called a
+  perfectly good tumbler job impossible on any 400 mm laser. The bed is now withheld for
+  rotary documents rather than reporting travel the machine never makes.
+- **The laser preset manager can edit everything saving captures** — kerf width and air
+  assist were recorded and restored but not editable, so a wrong kerf could only be
+  corrected by re-saving the whole recipe. Kerf now appears on cut recipes only, matching
+  the toolpath dialog, and is written only where it means something.
+- **The work-area → sheet rename reached the control inside the group**, which had been
+  left saying "Fills work area" under a heading reading "Sheet", plus two agent-facing
+  strings published in `llms-full.txt` that were still telling agents the old name.
 
 ## [1.6.0] — 2026-07-25
 
