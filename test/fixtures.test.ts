@@ -3,7 +3,7 @@
  * keep-outs. Pre-flight (buildLintContext + lintGCode) flags any move that would
  * drive the tool over a clamp below its height. No fixture layer → no change.
  */
-import { test, expect } from "vitest";
+import { describe, test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { RectEntity, CircleEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
@@ -130,4 +130,45 @@ test("laser jobs skip the fixture (Z-collision) check", () => {
   expect(lintGCode(g, buildLintContext(doc)).some((f) => f.code === "fixture-collision")).toBe(
     false,
   );
+});
+
+describe("fixture diagnostic tells you what to do about it", () => {
+  /** Emitted-coords context with one clamp `height` above the stock top. */
+  const ctxWith = (height: number) => ({
+    bounds: { xMin: -1e5, xMax: 1e5, yMin: -1e5, yMax: 1e5 },
+    zTop: 0,
+    zBottom: -20,
+    machineKind: "mill" as const,
+    fixtures: [{ poly: [{ x: 40, y: 40 }, { x: 60, y: 40 }, { x: 60, y: 60 }, { x: 40, y: 60 }], height }],
+  });
+
+  test("a RAPID over a clamp names the Z that would clear it", () => {
+    // Travel can be lifted, so the actionable number is the height needed.
+    const g = ["G21", "G90", "G0 Z2", "G0 X0 Y50", "G0 X100 Y50", "M30"].join("\n");
+    const f = lintGCode(g, ctxWith(12)).find((x) => x.code === "fixture-collision");
+    expect(f?.message).toMatch(/rapid/i);
+    expect(f?.message).toMatch(/Z ≥ 12(\.0+)?mm/);
+  });
+
+  test("a CUTTING move says lifting cannot help, and offers no height", () => {
+    // Raising Z would simply stop it cutting the part — a clearance figure here
+    // would be actively misleading.
+    const g = ["G21", "G90", "G0 X0 Y50", "G1 Z-5 F100", "G1 X100 Y50 F500", "M30"].join("\n");
+    const f = lintGCode(g, ctxWith(12)).find((x) => x.code === "fixture-collision");
+    expect(f?.message).toMatch(/cutting move/i);
+    expect(f?.message).toMatch(/cannot be lifted clear/i);
+    expect(f?.message).not.toMatch(/Z ≥/);
+  });
+
+  test("a clamp with no height set says so instead of inventing a number", () => {
+    // fixturePolygons maps an unset height to +Infinity: nothing can be known to
+    // clear an unknown obstacle, so no clearance may be suggested.
+    const g = ["G21", "G90", "G0 Z2", "G0 X0 Y50", "G0 X100 Y50", "M30"].join("\n");
+    const f = lintGCode(g, ctxWith(Number.POSITIVE_INFINITY)).find(
+      (x) => x.code === "fixture-collision",
+    );
+    expect(f?.message).toMatch(/no height set/i);
+    expect(f?.message).not.toMatch(/Z ≥/);
+    expect(f?.message).not.toMatch(/Infinity/);
+  });
 });

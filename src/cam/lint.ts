@@ -373,27 +373,60 @@ function segHitsPoly(
 function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
   const fixtures = ctx.fixtures;
   if (!fixtures || fixtures.length === 0) return null;
-  let count = 0;
+  let rapids = 0;
+  let cuts = 0;
   let first: number | undefined;
+  // Highest clamp top actually struck, in emitted Z. Reporting the number the
+  // operator would have to clear is the useful half of this check — "raise safe
+  // Z above the clamp" does not say how far, and guessing is how you find out
+  // the expensive way.
+  let needZ = Number.NEGATIVE_INFINITY;
+  let unknownHeight = false;
   for (const m of moves) {
     const lowZ = Math.min(m.pz, m.z);
     for (const f of fixtures) {
-      if (lowZ >= ctx.zTop + f.height - EPS) continue; // clears the clamp top
+      const clearAt = ctx.zTop + f.height;
+      if (lowZ >= clearAt - EPS) continue; // clears the clamp top
       if (segHitsPoly(m.px, m.py, m.x, m.y, f.poly)) {
-        count++;
+        // A G0 is travel and could be lifted over the clamp; a cutting move
+        // cannot be, because lifting it would simply not cut the part. The two
+        // have completely different remedies, so they are counted separately.
+        if (m.motion === 0) rapids++;
+        else cuts++;
         if (first === undefined) first = m.line;
+        if (Number.isFinite(f.height)) needZ = Math.max(needZ, clearAt);
+        else unknownHeight = true;
         break;
       }
     }
   }
+  const count = rapids + cuts;
   if (count === 0) return null;
+
+  const what =
+    cuts > 0 && rapids > 0
+      ? `${cuts} cutting move${cuts > 1 ? "s" : ""} and ${rapids} rapid${rapids > 1 ? "s" : ""}`
+      : cuts > 0
+        ? `${cuts} cutting move${cuts > 1 ? "s" : ""}`
+        : `${rapids} rapid${rapids > 1 ? "s" : ""}`;
+
+  // Cutting into workholding is not a clearance problem and no amount of Z will
+  // fix it — say so plainly rather than offering a height that would only make
+  // the tool miss the part.
+  const advice =
+    cuts > 0
+      ? "A cutting move cannot be lifted clear — it has to cut there. Move the clamp off the toolpath, or cut that region in a second setup."
+      : unknownHeight
+        ? "One of these clamps has no height set, so there is no way to know what would clear it. Set a height on the fixture layer."
+        : `Clearing them needs Z ≥ ${r(needZ)}mm. Raise safe Z to at least that, or move the clamp off the travel path.`;
+
   return {
     code: "fixture-collision",
     severity: "error",
     line: first,
     message:
-      `The toolpath crosses the workholding: ${count} move${count > 1 ? "s" : ""} take the tool over a fixture/clamp ` +
-      `(first at line ${first}) below the clamp height. Move the clamp clear of the toolpaths, raise safe Z above the clamp, or keep cuts off it.`,
+      `The toolpath crosses the workholding: ${what} pass over a fixture/clamp below its top ` +
+      `(first at line ${first}). ${advice}`,
   };
 }
 
