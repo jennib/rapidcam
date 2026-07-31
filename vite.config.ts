@@ -112,7 +112,21 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     sourcemap: true,
-    chunkSizeWarningLimit: 1000,
+    /**
+     * Set just above the current main chunk (~1044 kB) so real growth still
+     * warns, rather than silenced outright.
+     *
+     * The default 1000 kB had been firing on every build for weeks and was
+     * measured rather than obeyed: it counts UNCOMPRESSED bytes, while what
+     * crosses the wire is ~295 kB gzipped. On a production build served by
+     * `vite preview`, with the browser cache disabled and the server warmed,
+     * time-to-interactive (the welcome screen on screen) was 306ms unthrottled,
+     * 591ms on fast 4G and 1,279ms on slow 4G. There is no user-visible problem
+     * to fix, and code-splitting for its own sake would add real complexity for
+     * no measured benefit. Re-measure with scripts/load-probe.e2e.ts before
+     * acting on this warning.
+     */
+    chunkSizeWarningLimit: 1100,
   },
   test: {
     /**
