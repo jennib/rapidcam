@@ -356,60 +356,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // DOF. Over-merging only costs speed; under-merging would silently solve the
   // wrong geometry. test/solverPartition.test.ts checks the Jacobian sparsity
   // really does respect the split rather than trusting this comment.
-  const parent = new Int32Array(n);
-  for (let i = 0; i < n; i++) parent[i] = i;
-  const find = (a: number): number => {
-    let r = a;
-    while (parent[r] !== r) r = parent[r];
-    while (parent[a] !== r) {
-      const next = parent[a];
-      parent[a] = r;
-      a = next;
-    }
-    return r;
-  };
-  const link = (ids: readonly string[]): void => {
-    let first = -1;
-    for (const id of ids) {
-      for (const vi of entVarIdx.get(id) ?? []) {
-        if (first < 0) first = vi;
-        else {
-          const ra = find(first);
-          const rb = find(vi);
-          if (ra !== rb) parent[ra] = rb;
-        }
-      }
-    }
-  };
-  // A polyline SEGMENT is referenced as `${polylineId}#${vertexId}`, not as a bare
-  // entity id — lineRefEntityId recovers the underlying entity. Without it those
-  // refs resolve to no variables, the constraint is filed under no subsystem, and
-  // it silently stops being applied. Three polyline tests caught exactly that.
-  const refsOf = (c: { entities?: string[]; points?: { entityId: string }[] }): string[] => [
-    ...(c.entities ?? []).map(lineRefEntityId),
-    ...(c.points ?? []).map((pt) => pt.entityId),
-  ];
-  for (const c of active) link(refsOf(c));
-  for (const d of drivingDims) link(refsOf(d));
-  for (const b of doc.bindings) link([b.entityId]);
-  for (const c of centerCons) link(refsOf(c));
-
-  /** Component root for a residual source, or -1 when it touches no free variable. */
-  const rootOfRefs = (ids: readonly string[]): number => {
-    for (const id of ids) {
-      const list = entVarIdx.get(id);
-      if (list && list.length > 0) return find(list[0]);
-    }
-    return -1;
-  };
-
-  const comps = new Map<number, number[]>();
-  for (let i = 0; i < n; i++) {
-    const r = find(i);
-    const list = comps.get(r);
-    if (list) list.push(i);
-    else comps.set(r, [i]);
-  }
+  const { find, comps, rootOfRefs, refsOf } = partitionVariables(doc, entVarIdx, n);
 
   const cActive = new Map<number, typeof active>();
   const cDims = new Map<number, typeof drivingDims>();
@@ -663,6 +610,99 @@ const norm = (v: number[]): number => Math.sqrt(sumSq(v));
 
 
 
+
+/**
+ * Split variable indices into independent subsystems.
+ *
+ * Variables interact only through a shared residual, so the constraint graph
+ * breaks into connected components that can be handled one at a time. Every
+ * per-iteration cost in this file is superlinear in subsystem size — the normal
+ * equations are O(n^2*m), the dense solve and the RREF are O(n^3) — so shrinking
+ * n is worth far more than shaving constants.
+ *
+ * The partition OVER-approximates deliberately: a residual is assumed to depend
+ * on every variable of every entity it names, even when it really touches one
+ * DOF. Over-merging only costs speed; under-merging would silently drop a
+ * constraint and solve the wrong geometry. That is not hypothetical — the first
+ * version missed that a polyline SEGMENT is referenced as
+ * `${polylineId}#${vertexId}` rather than a bare entity id, so those constraints
+ * resolved to no variables and stopped being applied at all.
+ * test/solverPartition.test.ts exists to make that class of bug fail loudly.
+ *
+ * Shared by the solver and the DOF-status pass so the rule — and that gotcha —
+ * live in exactly one place.
+ */
+export interface VarPartition {
+  /** Component root for a variable index. */
+  find: (i: number) => number;
+  /** Root → the variable indices belonging to it. */
+  comps: Map<number, number[]>;
+  /** Root for a residual source, or -1 when it touches no free variable. */
+  rootOfRefs: (ids: readonly string[]) => number;
+  /** Entity ids a constraint/dimension names, with segment refs resolved. */
+  refsOf: (c: { entities?: string[]; points?: { entityId: string }[] }) => string[];
+}
+
+export function partitionVariables(
+  doc: CADDocument,
+  entVarIdx: Map<string, number[]>,
+  n: number,
+): VarPartition {
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (a: number): number => {
+    let r = a;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[a] !== r) {
+      const next = parent[a];
+      parent[a] = r;
+      a = next;
+    }
+    return r;
+  };
+  const refsOf = (c: { entities?: string[]; points?: { entityId: string }[] }): string[] => [
+    ...(c.entities ?? []).map(lineRefEntityId),
+    ...(c.points ?? []).map((pt) => pt.entityId),
+  ];
+  const link = (ids: readonly string[]): void => {
+    let first = -1;
+    for (const id of ids) {
+      for (const vi of entVarIdx.get(id) ?? []) {
+        if (first < 0) first = vi;
+        else {
+          const ra = find(first);
+          const rb = find(vi);
+          if (ra !== rb) parent[ra] = rb;
+        }
+      }
+    }
+  };
+  for (const c of doc.constraints) {
+    if (c.type === "fixed") continue;
+    link(refsOf(c));
+  }
+  for (const d of doc.dimensions) {
+    if (d.driving) link(refsOf(d));
+  }
+  for (const b of doc.bindings) link([b.entityId]);
+
+  const comps = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    const list = comps.get(r);
+    if (list) list.push(i);
+    else comps.set(r, [i]);
+  }
+  const rootOfRefs = (ids: readonly string[]): number => {
+    for (const id of ids) {
+      const list = entVarIdx.get(id);
+      if (list && list.length > 0) return find(list[0]);
+    }
+    return -1;
+  };
+  return { find, comps, rootOfRefs, refsOf };
+}
+
 // ---------------------------------------------------------------------------
 // Per-entity DOF status for sketch coloring
 
@@ -761,35 +801,91 @@ export function computeEntityDofStatus(
     bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))),
   );
 
-  const evalR = (x: number[]): number[] => {
-    vars.forEach((v, i) => {
-      v.set(x[i]);
-    });
-    const out: number[] = [];
-    for (const c of active) for (const r of constraintResiduals(c, geo)) out.push(r);
-    for (const d of drivingDims) for (const r of dimensionResiduals(d, geo)) out.push(r);
-    doc.bindings.forEach((b, i) => {
-      for (const r of bindingResidualAt(b, geo, bTargets[i])) out.push(r);
-    });
-    return out;
+  // Same partition the solver uses, for the same reason: this pass builds a
+  // finite-difference Jacobian (n+1 residual evaluations) and then runs an RREF
+  // null-space analysis over it, both of which blow up on the whole document.
+  // Determinedness is a per-subsystem property — the global Jacobian is
+  // block-diagonal across components, so a null vector never spans two of them —
+  // which makes analysing each block separately exact, not an approximation.
+  //
+  // This pass is purely COSMETIC (it drives entity colouring), and before this it
+  // dominated everything: at 2000 constrained holes the solver took 19ms and this
+  // took 2,998ms.
+  const entVarIdx = new Map<string, number[]>();
+  for (let i = 0; i < vars.length; i++) {
+    const eid = varEntIds[i];
+    const list = entVarIdx.get(eid);
+    if (list) list.push(i);
+    else entVarIdx.set(eid, [i]);
+  }
+  const part = partitionVariables(doc, entVarIdx, vars.length);
+
+  // File each residual source under its subsystem.
+  const cActive = new Map<number, typeof active>();
+  const cDims = new Map<number, typeof drivingDims>();
+  const cBind = new Map<number, { b: (typeof doc.bindings)[number]; i: number }[]>();
+  const file = <T>(m: Map<number, T[]>, k: number, v: T): void => {
+    if (k < 0) return;
+    const list = m.get(k);
+    if (list) list.push(v);
+    else m.set(k, [v]);
   };
+  for (const c of active) file(cActive, part.rootOfRefs(part.refsOf(c)), c);
+  for (const d of drivingDims) file(cDims, part.rootOfRefs(part.refsOf(d)), d);
+  doc.bindings.forEach((b, i) => {
+    file(cBind, part.rootOfRefs([b.entityId]), { b, i });
+  });
 
   const x = vars.map((v) => v.get());
-  const fx = evalR(x);
+  const anyResidual =
+    active.length > 0 || drivingDims.length > 0 || doc.bindings.length > 0;
 
-  if (fx.length === 0) {
+  if (!anyResidual) {
     // No effective constraints → all under-defined, except controlled geometry.
     for (const [eid] of entColsMap)
       statusMap.set(eid, controlled.has(eid) ? "defined" : "under-defined");
-    evalR(x); // restore entity state
     return statusMap;
   }
 
-  const J = jacobian(evalR, x, fx);
-  evalR(x); // restore entity state
+  // A variable is determined unless its own subsystem says otherwise. Anything in
+  // a subsystem with no constraints at all is free by definition, so it is left
+  // undetermined without building a Jacobian for it.
+  const determined = new Set<number>();
+  for (const [root, idx] of part.comps) {
+    const ca = cActive.get(root) ?? [];
+    const cd = cDims.get(root) ?? [];
+    const cb = cBind.get(root) ?? [];
+    if (ca.length === 0 && cd.length === 0 && cb.length === 0) continue;
 
-  // Find which variable indices are uniquely determined by the constraints
-  const determined = determinedVariables(J);
+    const cv = idx.map((i) => vars[i]);
+    const evalCR = (xs: number[]): number[] => {
+      cv.forEach((v, i) => {
+        v.set(xs[i]);
+      });
+      const out: number[] = [];
+      for (const c of ca) for (const r of constraintResiduals(c, geo)) out.push(r);
+      for (const d of cd) for (const r of dimensionResiduals(d, geo)) out.push(r);
+      for (const bi of cb)
+        for (const r of bindingResidualAt(bi.b, geo, bTargets[bi.i])) out.push(r);
+      return out;
+    };
+    const cx = cv.map((v) => v.get());
+    const cfx = evalCR(cx);
+    if (cfx.length === 0) {
+      evalCR(cx);
+      continue;
+    }
+    const cJ = jacobian(evalCR, cx, cfx);
+    evalCR(cx); // restore entity state for this subsystem
+    const cDet = determinedVariables(cJ);
+    for (let k = 0; k < idx.length; k++) if (cDet.has(k)) determined.add(idx[k]);
+  }
+
+  // Restore every variable to where it started (the per-subsystem loops above
+  // each restore their own, but a subsystem that was skipped never moved).
+  vars.forEach((v, i) => {
+    v.set(x[i]);
+  });
 
   // An entity is "defined" iff ALL its variables are determined — or it is
   // controlled by a feature/pattern (driven, not loose).
