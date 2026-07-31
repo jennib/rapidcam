@@ -124,21 +124,43 @@ export function checkOpSelection(
   return { validIds: [], error: "Select at least one geometry item." };
 }
 
+/**
+ * Geometry the contour ops (profile / pocket / v-carve) can target.
+ *
+ * "Closed" is NOT the test, because the generator chains open curves into
+ * closed loops before cutting (`chainOpenCurvesIntoLoops`) — that's how a
+ * rounded rectangle drawn as 4 lines + 4 fillet arcs profiles as one shape.
+ * Lines and arcs are never closed on their own and have always been accepted
+ * for exactly that reason; an **open polyline chains identically** and belongs
+ * in the same bucket.
+ *
+ * Requiring `closed` of polylines alone quietly broke imported DXF outlines,
+ * which arrive as runs of open polyline + separate arcs (bulges become true
+ * arcs). Picking one dropped it as "invalid"; picking a whole outline kept the
+ * arcs and dropped the polylines, so the op was accepted, its chain no longer
+ * closed, and it cut nothing — an empty 3-D preview and no error. An open
+ * polyline that chains to nothing is skipped with a note by the generator, the
+ * same as a loose line, so nothing here depends on it closing.
+ */
+function isContourTarget(e: Entity): boolean {
+  return (
+    e instanceof TextEntity ||
+    e instanceof CircleEntity ||
+    e instanceof RectEntity ||
+    e instanceof LineEntity ||
+    e instanceof ArcEntity ||
+    e instanceof BezierEntity ||
+    e instanceof PolylineEntity
+  );
+}
+
 export function isValidFor(e: Entity, combo: OpCombo): boolean {
   if (e.isConstruction) return false;
   switch (combo) {
     case "profile-outside":
     case "profile-inside":
     case "pocket":
-      return (
-        e instanceof TextEntity ||
-        e instanceof CircleEntity ||
-        e instanceof RectEntity ||
-        e instanceof LineEntity ||
-        e instanceof ArcEntity ||
-        e instanceof BezierEntity ||
-        (e instanceof PolylineEntity && e.closed)
-      );
+      return isContourTarget(e);
     case "engrave":
     case "chamfer":
       return true;
@@ -146,16 +168,9 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
       // A score/fold follows any vector centreline; a raster image can't be scored.
       return !(e instanceof RasterImageEntity);
     case "vcarve":
-      // V-carve fills closed regions; text is the main use case.
-      return (
-        e instanceof TextEntity ||
-        e instanceof CircleEntity ||
-        e instanceof RectEntity ||
-        e instanceof LineEntity ||
-        e instanceof ArcEntity ||
-        e instanceof BezierEntity ||
-        (e instanceof PolylineEntity && e.closed)
-      );
+      // V-carve fills closed regions (text is the main use case), but takes the
+      // same chained-open-curve path as profile — see isContourTarget.
+      return isContourTarget(e);
     case "relief-rough":
       // Roughing (like the relief finish) only targets a greyscale image.
       return e instanceof RasterImageEntity;

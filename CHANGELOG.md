@@ -9,6 +9,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **An imported DXF outline can be profiled again.** DXF outlines arrive as runs of
+  *open* polyline joined by separate arcs (a bulged segment becomes a true arc on
+  import, so a rounded shape is never one entity). The CAM dialog's selection check
+  required polylines be closed, which broke that geometry two ways: picking a single
+  polyline run was refused outright — *"None of the selected geometry can be used by
+  this operation type"* — and picking a whole outline was **accepted with the polyline
+  runs silently deleted from the op**, leaving the arcs alone, no longer a closed chain,
+  and a toolpath that cut nothing. The only symptom of the second was an empty 3-D
+  preview. Double-click chain-select was gated by the same check, so it also stopped
+  dead at every polyline run. Closedness was never the right test: the generator chains
+  open curves into loops before cutting, which is why lines and arcs — never closed on
+  their own — have always been accepted, and an open polyline chains identically. On the
+  file that turned this up, 21 of its 71 outlines were affected; all 71 now cut.
 - **A DXF that declares no units is no longer assumed to be millimetres.** `$INSUNITS`
   only arrived in DXF R13, so pre-R13 files (`AC1009` — still what a lot of hobby CNC
   drawings ship as) carry no units at all, and plenty of modern exporters omit it too.

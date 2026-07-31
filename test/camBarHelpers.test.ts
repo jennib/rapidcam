@@ -1,7 +1,9 @@
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
 import {
+  ArcEntity,
   CircleEntity,
+  type Entity,
   RectEntity,
   LineEntity,
   PolylineEntity,
@@ -68,14 +70,10 @@ test("checkOpSelection: an image-only selection on a non-engrave op explains why
 
 test("checkOpSelection: distinguishes 'nothing selected' from 'nothing usable'", () => {
   expect(checkOpSelection([], [], "engrave").error).toMatch(/select at least one/i);
-  const open = new PolylineEntity(
-    [
-      { x: 0, y: 0 },
-      { x: 10, y: 0 },
-    ],
-    false,
-  );
-  const r = checkOpSelection([open], [open.id], "profile-outside");
+  // Drill is the narrowest op — only a circle is a hole. (This used to use an
+  // open polyline on profile, which is now a legitimate contour target.)
+  const line = new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 });
+  const r = checkOpSelection([line], [line.id], "drill");
   expect(r.error).toMatch(/none of the selected geometry/i);
 });
 
@@ -102,7 +100,12 @@ test("isValidFor: drill accepts only circles", () => {
   expect(isValidFor(r, "drill")).toBe(false);
 });
 
-test("isValidFor: open polyline rejected for profile, accepted for engrave", () => {
+test("isValidFor: an open polyline is a contour target, like a line or arc", () => {
+  // It used to be rejected for requiring `closed`, which broke imported DXF
+  // outlines: they arrive as open-polyline runs joined by separate arcs, so the
+  // check dropped the polylines and left the op an unclosable chain that cut
+  // nothing. The generator chains open curves, and a line is no more closed
+  // than this is — see isContourTarget.
   const open = new PolylineEntity(
     [
       { x: 0, y: 0 },
@@ -110,8 +113,45 @@ test("isValidFor: open polyline rejected for profile, accepted for engrave", () 
     ],
     false,
   );
-  expect(isValidFor(open, "profile-outside")).toBe(false);
+  const line = new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 });
+  for (const combo of ["profile-outside", "profile-inside", "pocket", "vcarve"] as const) {
+    expect(isValidFor(open, combo)).toBe(isValidFor(line, combo));
+    expect(isValidFor(open, combo)).toBe(true);
+  }
   expect(isValidFor(open, "engrave")).toBe(true);
+  // Still not drillable — that one really does need a circle.
+  expect(isValidFor(open, "drill")).toBe(false);
+});
+
+test("a DXF-style outline (open polylines + arcs) survives the selection check", () => {
+  // The exact shape of the reported bug: an outline chained from open polyline
+  // runs and fillet arcs must reach the generator whole. Dropping any member
+  // breaks the chain, and a broken chain cuts nothing with no error shown.
+  const outline: Entity[] = [
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+      ],
+      false,
+    ),
+    new ArcEntity({ x: 10, y: 5 }, 5, -Math.PI / 2, Math.PI / 2),
+    new PolylineEntity(
+      [
+        { x: 10, y: 10 },
+        { x: 0, y: 10 },
+      ],
+      false,
+    ),
+    new ArcEntity({ x: 0, y: 5 }, 5, Math.PI / 2, (3 * Math.PI) / 2),
+  ];
+  const check = checkOpSelection(
+    outline,
+    outline.map((e) => e.id),
+    "profile-outside",
+  );
+  expect(check.error).toBeNull();
+  expect(check.validIds).toHaveLength(4); // nothing silently dropped
 });
 
 test("isValidFor: construction geometry is never valid", () => {
