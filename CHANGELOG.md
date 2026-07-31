@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **A DXF that declares no units is no longer assumed to be millimetres.** `$INSUNITS`
+  only arrived in DXF R13, so pre-R13 files (`AC1009` — still what a lot of hobby CNC
+  drawings ship as) carry no units at all, and plenty of modern exporters omit it too.
+  Those imported at 1 mm per drawing unit, which put an inch drawing on the canvas
+  **25.4× too small** — a 737 mm sheet of clamps arriving as a 29 mm smudge. The only
+  trace was a 6-second toast that a repair message could push off the end of the line.
+  Import now stops and asks, showing what the drawing measures under each reading
+  (`Inches — imports at 736.7 × 230.7 mm` / `Millimetres — imports at 29 × 9.1 mm`) so
+  the answer is obvious by eye. The likely reading is preselected from the file's
+  `$MEASUREMENT` flag, or failing that from the drawing's own size. Dismissing the
+  prompt cancels the import rather than guessing. The question is settled before any
+  geometry reaches the document, because the gap-welding repair pass that follows works
+  to absolute millimetre tolerances and only means anything at the right scale.
+  Files that *do* declare `$INSUNITS` are unaffected and never prompt.
+
 ## [1.6.0] — 2026-07-25
 
 Lasers get the rotary. A beam machine can now work on cylinder stock — tumblers,

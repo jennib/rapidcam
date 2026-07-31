@@ -15,11 +15,14 @@ import {
 
 const dxf = (
   entityTags: (string | number)[],
-  opts: { units?: number; blocks?: (string | number)[] } = {},
+  opts: { units?: number; measurement?: number; blocks?: (string | number)[] } = {},
 ): string => {
   const lines: (string | number)[] = [];
-  if (opts.units !== undefined) {
-    lines.push(0, "SECTION", 2, "HEADER", 9, "$INSUNITS", 70, opts.units, 0, "ENDSEC");
+  if (opts.units !== undefined || opts.measurement !== undefined) {
+    lines.push(0, "SECTION", 2, "HEADER");
+    if (opts.units !== undefined) lines.push(9, "$INSUNITS", 70, opts.units);
+    if (opts.measurement !== undefined) lines.push(9, "$MEASUREMENT", 70, opts.measurement);
+    lines.push(0, "ENDSEC");
   }
   if (opts.blocks) {
     lines.push(0, "SECTION", 2, "BLOCKS", ...opts.blocks, 0, "ENDSEC");
@@ -239,9 +242,77 @@ test("inch units scale coordinates by 25.4", () => {
 });
 
 test("missing units assumes mm and warns", () => {
-  const { entities, warnings } = importDxf(dxf(LINE_00_105));
+  const { entities, warnings, units } = importDxf(dxf(LINE_00_105));
   expect((entities[0] as LineEntity).b.x).toBe(10);
   expect(warnings.some((w) => w.includes("no units"))).toBe(true);
+  // The flag the UI keys its "which units?" prompt off. A pre-R13 inch drawing
+  // is indistinguishable from a metric one here, so "assumed" is the whole
+  // guard against importing it 25.4× too small.
+  expect(units).toEqual({ mmPerUnit: 1, source: "assumed", hint: null });
+});
+
+test("declared units report source 'file' so the UI stays quiet", () => {
+  expect(importDxf(dxf(LINE_00_105, { units: 4 })).units).toEqual({
+    mmPerUnit: 1,
+    source: "file",
+    hint: null,
+  });
+  expect(importDxf(dxf(LINE_00_105, { units: 1 })).units).toEqual({
+    mmPerUnit: 25.4,
+    source: "file",
+    hint: null,
+  });
+});
+
+test("$INSUNITS 0 is unitless, not millimeters — still 'assumed'", () => {
+  const { units, warnings } = importDxf(dxf(LINE_00_105, { units: 0 }));
+  expect(units.source).toBe("assumed");
+  expect(warnings.some((w) => w.includes("no units"))).toBe(true);
+});
+
+test("an unsupported $INSUNITS code asks rather than silently using mm", () => {
+  const { units, warnings } = importDxf(dxf(LINE_00_105, { units: 99 }));
+  expect(units).toEqual({ mmPerUnit: 1, source: "assumed", hint: null });
+  expect(warnings.some((w) => w.includes("99"))).toBe(true);
+});
+
+test("$MEASUREMENT hints the prompt's default without deciding the scale", () => {
+  // 0 = imperial. It picks the linetype/hatch file rather than stating units,
+  // so it must only preselect — the import itself still lands at mm/assumed.
+  const imperial = importDxf(dxf(LINE_00_105, { measurement: 0 }));
+  expect(imperial.units).toEqual({ mmPerUnit: 1, source: "assumed", hint: "in" });
+  expect((imperial.entities[0] as LineEntity).b.x).toBe(10);
+
+  expect(importDxf(dxf(LINE_00_105, { measurement: 1 })).units.hint).toBe("mm");
+  // A declared $INSUNITS outranks it — no prompt, no hint needed.
+  expect(importDxf(dxf(LINE_00_105, { units: 4, measurement: 0 })).units).toEqual({
+    mmPerUnit: 1,
+    source: "file",
+    hint: null,
+  });
+});
+
+test("mmPerUnit override rescales and retires the units warning", () => {
+  const { entities, warnings, units } = importDxf(dxf(LINE_00_105), { mmPerUnit: 25.4 });
+  const l = entities[0] as LineEntity;
+  expect(l.b.x).toBeCloseTo(254, 9);
+  expect(l.b.y).toBeCloseTo(127, 9);
+  expect(units).toEqual({ mmPerUnit: 25.4, source: "override", hint: null });
+  // Positive control: the un-overridden parse of this same file DOES warn, so
+  // the empty array below is the override suppressing it, not an empty parse.
+  expect(importDxf(dxf(LINE_00_105)).warnings.some((w) => w.includes("no units"))).toBe(true);
+  expect(warnings).toEqual([]);
+});
+
+test("an overridden inch import matches a declared inch import exactly", () => {
+  const declared = importDxf(dxf([0, "ARC", 10, 1, 20, 0, 40, 2, 50, 0, 51, 90], { units: 1 }));
+  const chosen = importDxf(dxf([0, "ARC", 10, 1, 20, 0, 40, 2, 50, 0, 51, 90]), {
+    mmPerUnit: 25.4,
+  });
+  const a = declared.entities[0] as ArcEntity;
+  const b = chosen.entities[0] as ArcEntity;
+  expect(b.center).toEqual(a.center);
+  expect(b.radius).toEqual(a.radius);
 });
 
 test("SPLINE tessellates to a polyline that interpolates its clamped ends", () => {

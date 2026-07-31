@@ -5,8 +5,10 @@
  * integer group code and value) — no external dependency.
  *
  * Coordinate system: DXF is Y-up like the document, so no axis flip — only a
- * unit scale derived from the HEADER's $INSUNITS (unitless files assume mm and
- * warn). Z coordinates are ignored (2D import).
+ * unit scale derived from the HEADER's $INSUNITS. A file that declares nothing
+ * still imports at mm, but reports `units.source === "assumed"` so a caller
+ * with a UI can confirm the scale (see {@link DxfUnits}). Z coordinates are
+ * ignored (2D import).
  *
  * Entity coverage:
  *   LINE, CIRCLE, ARC, POINT           → direct 1:1 mapping
@@ -36,6 +38,32 @@ export interface DxfImportResult {
   entities: Entity[];
   /** Human-readable notes about anything skipped or approximated. */
   warnings: string[];
+  /** How the unit scale was decided — see {@link DxfUnits}. */
+  units: DxfUnits;
+}
+
+/**
+ * Where the drawing's unit scale came from.
+ *
+ *  - `"file"`     — the file declared it ($INSUNITS). Trust it.
+ *  - `"override"` — the caller supplied it (the user was asked).
+ *  - `"assumed"`  — the file said nothing, so millimetres were assumed. This is
+ *    a coin flip, not a fact: pre-R13 files (AC1009) have no $INSUNITS at all
+ *    and are usually inches, so an assumed-mm import of one lands 25.4× too
+ *    small. Callers with a UI should confirm the scale before trusting the
+ *    geometry rather than importing silently.
+ */
+export type DxfUnitSource = "file" | "override" | "assumed";
+
+export interface DxfUnits {
+  /** Millimetres per drawing unit, already applied to the returned entities. */
+  mmPerUnit: number;
+  source: DxfUnitSource;
+  /**
+   * Weak steer for resolving a `"assumed"` scale, read from the pre-R13
+   * $MEASUREMENT flag. Null when the file gives nothing to go on.
+   */
+  hint: "mm" | "in" | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +413,13 @@ const MAX_ENTITIES = 1_000_000;
 export interface DxfImportOptions {
   /** Ceiling on emitted entities. Defaults to {@link MAX_ENTITIES}. */
   maxEntities?: number;
+  /**
+   * Force the unit scale (millimetres per drawing unit), ignoring the file's
+   * own declaration. Used to re-import a file whose units the user resolved by
+   * hand — re-importing rather than rescaling in place keeps a chosen-inch file
+   * on the exact same path as a declared-inch one.
+   */
+  mmPerUnit?: number;
 }
 
 const SKIP_SILENTLY = new Set(["SEQEND", "VIEWPORT", "ATTDEF", "ATTRIB"]);
@@ -586,27 +621,53 @@ const INSUNITS_TO_MM: Record<number, number> = {
   14: 100, // decimeters
 };
 
-function readUnits(tags: Tag[], warnings: string[]): number {
+/**
+ * Read an integer HEADER variable, e.g. ("$INSUNITS", 70). The value is the
+ * first tag of `code` after the name, before the next variable (code 9) or
+ * section boundary (code 0). Null when absent or unparseable.
+ */
+function readHeaderInt(tags: Tag[], name: string, code: number): number | null {
   for (let i = 0; i + 1 < tags.length; i++) {
-    if (tags[i].code === 9 && tags[i].value.trim() === "$INSUNITS") {
-      // The variable's value is the next code-70 tag.
-      for (let j = i + 1; j < tags.length && tags[j].code !== 9 && tags[j].code !== 0; j++) {
-        if (tags[j].code === 70) {
-          const code = parseInt(tags[j].value.trim(), 10);
-          const k = INSUNITS_TO_MM[code];
-          if (k !== undefined) return k;
-          warnings.push(
-            code === 0
-              ? "file specifies no units — coordinates treated as millimeters"
-              : `unsupported $INSUNITS value ${code} — coordinates treated as millimeters`,
-          );
-          return 1;
-        }
+    if (tags[i].code !== 9 || tags[i].value.trim() !== name) continue;
+    for (let j = i + 1; j < tags.length && tags[j].code !== 9 && tags[j].code !== 0; j++) {
+      if (tags[j].code === code) {
+        const v = parseInt(tags[j].value.trim(), 10);
+        return Number.isNaN(v) ? null : v;
       }
     }
   }
-  warnings.push("file specifies no units — coordinates treated as millimeters");
-  return 1;
+  return null;
+}
+
+/** {@link readUnits} result, with the warning left for the caller to place. */
+interface UnitRead extends DxfUnits {
+  warning: string | null;
+}
+
+function readUnits(tags: Tag[]): UnitRead {
+  const insunits = readHeaderInt(tags, "$INSUNITS", 70);
+  // 0 is "unitless", which tells us nothing — treat it as absent.
+  if (insunits !== null && insunits !== 0) {
+    const k = INSUNITS_TO_MM[insunits];
+    if (k !== undefined) return { mmPerUnit: k, source: "file", hint: null, warning: null };
+    return {
+      mmPerUnit: 1,
+      source: "assumed",
+      hint: null,
+      warning: `unsupported $INSUNITS value ${insunits} — coordinates treated as millimeters`,
+    };
+  }
+  // $INSUNITS arrived in R13, so AC1009 and older files never carry it (and
+  // plenty of modern exporters still omit it). $MEASUREMENT is the older flag,
+  // but it selects the linetype/hatch pattern file rather than stating the
+  // drawing's units — good enough to preselect an answer, not to be one.
+  const measurement = readHeaderInt(tags, "$MEASUREMENT", 70);
+  return {
+    mmPerUnit: 1,
+    source: "assumed",
+    hint: measurement === 0 ? "in" : measurement === 1 ? "mm" : null,
+    warning: "file specifies no units — coordinates treated as millimeters",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -656,7 +717,14 @@ export function importDxf(text: string, opts: DxfImportOptions = {}): DxfImportR
   }
   if (entStart < 0) throw new Error("no ENTITIES section found — not a valid DXF file");
 
-  const unitScale = readUnits(tags, warnings);
+  const read = readUnits(tags);
+  const units: DxfUnits =
+    opts.mmPerUnit !== undefined
+      ? { mmPerUnit: opts.mmPerUnit, source: "override", hint: read.hint }
+      : { mmPerUnit: read.mmPerUnit, source: read.source, hint: read.hint };
+  // An override means the question has already been answered — don't re-raise it.
+  if (opts.mmPerUnit === undefined && read.warning) warnings.push(read.warning);
+  const unitScale = units.mmPerUnit;
 
   const ctx: ParseCtx = {
     tags,
@@ -680,7 +748,7 @@ export function importDxf(text: string, opts: DxfImportOptions = {}): DxfImportR
     const parts = [...ctx.skipped.entries()].map(([t, n]) => (n > 1 ? `${n}× ${t}` : t));
     warnings.push(`unsupported entities skipped: ${parts.join(", ")}`);
   }
-  return { entities, warnings };
+  return { entities, warnings, units };
 }
 
 function collectBlocks(

@@ -32,6 +32,9 @@ import { saveDraft, loadDraftData, clearDraft as dropDraft, getDraftMeta } from 
 import { copyToClipboard } from "../ui/clipboard";
 import { toast } from "../ui/toast";
 import { confirmDialog } from "../ui/modal";
+import { chooseDxfUnits, recommendDxfUnit } from "../ui/dxfUnitsDialog";
+import { selectionBounds } from "../core/transform";
+import { MM_PER_INCH } from "../core/units";
 import { track } from "../analytics";
 
 export interface ProjectManagerCallbacks {
@@ -490,6 +493,24 @@ export class ProjectManager {
       alert(`Could not import DXF: ${(e as Error).message}`);
       return;
     }
+
+    // The file didn't say what its units are, and assuming wrong is a silent
+    // 25.4× size error. Ask before anything reaches the document — the answer
+    // has to be settled up front because the repair pass below welds gaps at
+    // absolute mm tolerances, which only mean something at the right scale.
+    if (result.units.source === "assumed" && result.entities.length > 0) {
+      const bounds = selectionBounds(result.entities);
+      if (bounds) {
+        const choice = await chooseDxfUnits({
+          fileName: file.name,
+          bounds,
+          recommended: recommendDxfUnit(bounds, result.units.hint),
+        });
+        if (!choice) return;
+        result = importDxf(text, { mmPerUnit: choice === "in" ? MM_PER_INCH : 1 });
+      }
+    }
+
     const warnings = result.warnings;
     const raw = result.entities;
     if (raw.length === 0) {
@@ -553,10 +574,17 @@ export class ProjectManager {
       entities: survivors.length,
       issues: diagnostics.length,
       repaired: repairs.length > 0,
+      unitSource: result.units.source,
     });
 
-    // Lead with what Babel fixed, then any parser warnings.
-    const notes = [...repairs, ...warnings];
+    // Lead with what Babel fixed, then any parser warnings. A scale the user
+    // had to supply is echoed back first — it's the one thing they can't check
+    // by eye until the drawing is already on the canvas.
+    const chosen =
+      result.units.source === "override"
+        ? [`imported as ${result.units.mmPerUnit === 1 ? "millimeters" : "inches"}`]
+        : [];
+    const notes = [...chosen, ...repairs, ...warnings];
     if (notes.length) {
       const shown = notes.slice(0, 2).join(" · ");
       toast(`DXF: ${shown}${notes.length > 2 ? ` · +${notes.length - 2} more` : ""}`, 6000);
