@@ -312,10 +312,12 @@ export class ConstraintBar {
     for (const { spec, el } of this.typeButtons) {
       el.disabled = !buildConstraintsFor(spec.type, this.doc).ok;
     }
+    // No standing "select something" hint: the buttons are already disabled,
+    // which says the same thing without occupying a line. The element stays —
+    // it still carries real messages (errors, "Added coincident") — but it is
+    // cleared when the selection goes away so a message about geometry you are
+    // no longer holding cannot linger.
     if (!hasSelection) {
-      this.msgEl.textContent = "Select geometry to add a constraint";
-      this.msgEl.className = "cb-msg";
-    } else if (this.msgEl.textContent === "Select geometry to add a constraint") {
       this.msgEl.textContent = "";
       this.msgEl.className = "cb-msg";
     }

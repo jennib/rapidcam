@@ -50,18 +50,12 @@ export class AlignBar {
       this.buttons.push(btn);
     }
 
-    const hint = document.createElement("span");
-    hint.className = "cb-msg";
-    hint.textContent = "Select an item + the shape to centre it in";
-    this.host.appendChild(hint);
-    this.hint = hint;
   }
 
-  private hint!: HTMLElement;
-
   private refresh(): void {
+    // Disabled buttons already communicate "this needs a selection"; the hint
+    // that used to sit here was a permanent line of chrome saying so again.
     const ok = canCenter(this.doc);
     for (const btn of this.buttons) btn.disabled = !ok;
-    this.hint.style.display = ok ? "none" : "";
   }
 }
