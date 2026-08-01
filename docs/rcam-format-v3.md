@@ -676,8 +676,23 @@ deliberate:
 
 So changing a kind does not retype toolpaths that already exist; rebuild to apply
 it. A layer with a recipe but no `kind` still tunes the operations that cut it —
-it just isn't a job of its own. `side` applies to `"cut"` only and defaults to
-`"outside"`.
+it just isn't a job of its own.
+
+##### Kerf direction
+
+`side` applies to `"cut"` only and is normally **omitted**, meaning *auto*.
+
+Kerf compensation has a direction: to finish at the size you drew, the beam
+centreline runs **outside** an outline and **inside** a hole. Use one direction
+for both and every hole comes out a full kerf oversize. So a cut layer with a
+kerf is split by containment — a contour enclosed by another contour on the same
+layer is a hole — and builds **two** operations, holes first. That is also the
+order you would run it by hand: cut the interior features while the part is
+still held by the sheet, then free it with the outline.
+
+With no kerf there is nothing to compensate, so the layer stays one operation.
+Set `side` explicitly to force one direction throughout — an inlay or a press
+fit, where you want every contour biased the same way.
 
 ```jsonc
 // A two-colour job: cut the outline, score the fold lines.

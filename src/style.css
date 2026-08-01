@@ -710,7 +710,8 @@ button.cbtn.solve {
 
 /* The job kind gets its own full-width line: it is the decision the numbers
    below it serve, and its labels ("Engrave (filled)") need the room. */
-.layer-beam-kind {
+.layer-beam-kind,
+.layer-beam-side {
   width: 100%;
 }
 

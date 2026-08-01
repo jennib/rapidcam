@@ -202,6 +202,32 @@ test("\"Toolpaths from Layers\" is laser-only, and builds one path per job layer
   expect(host.querySelectorAll(".tp-op-item")).toHaveLength(2);
 });
 
+test("the kerf side picker appears for a cut, and only for a cut", () => {
+  const doc = laserDoc();
+  const host = mountLayers(doc);
+  beamToggles(host)[0].click();
+  const setKind = (v: string) => {
+    const k = host.querySelector<HTMLSelectElement>(".layer-beam-kind")!;
+    k.value = v;
+    k.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  setKind("engrave");
+  expect(host.querySelector(".layer-beam-side")).toBeNull();
+
+  setKind("cut");
+  const side = host.querySelector<HTMLSelectElement>(".layer-beam-side");
+  expect(side).toBeTruthy();
+  // Auto by default: the builder reads the geometry so holes and outlines each
+  // finish at the drawn size.
+  expect(side!.value).toBe("");
+  expect(doc.layers[0].laser?.side).toBeUndefined();
+
+  side!.value = "inside";
+  side!.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(doc.layers[0].laser?.side).toBe("inside");
+});
+
 test("the fields sit on their own lines so the narrow panel can't clip them", () => {
   // Structural stand-in for the layout bug this shipped with: three fields plus
   // their unit labels on ONE line overflowed a ~210px panel.
@@ -210,7 +236,7 @@ test("the fields sit on their own lines so the narrow panel can't clip them", ()
   beamToggles(host)[0].click();
 
   const lines = host.querySelectorAll(".layer-beam-row .layer-beam-line");
-  expect(lines).toHaveLength(3);
+  expect(lines).toHaveLength(3); // kind, power+speed, passes+preset (no kerf side: not a cut)
   expect(lines[0].querySelectorAll("select.layer-beam-kind")).toHaveLength(1); // job kind
   expect(lines[1].querySelectorAll("input")).toHaveLength(2); // power, speed
   expect(lines[2].querySelectorAll("input")).toHaveLength(1); // passes

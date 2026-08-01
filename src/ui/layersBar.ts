@@ -355,7 +355,37 @@ export class LayersBar {
       recipe.kind = (kindSel.value || undefined) as LaserJobKind | undefined;
       this.doc.emitChange();
     };
-    line().appendChild(kindSel);
+    const kindLine = line();
+    kindLine.appendChild(kindSel);
+
+    // Kerf side, cut only. "Auto" reads the geometry: a contour enclosed by
+    // another is a hole and is compensated the other way, so a plate and its
+    // holes both finish at the drawn size. Overridable because there are jobs
+    // (an inlay, a press-fit) where the user wants one direction throughout.
+    if (recipe.kind === "cut") {
+      const sideSel = document.createElement("select");
+      sideSel.className = "dim layer-beam-side";
+      sideSel.title =
+        "Which side of the line the kerf is taken from. Auto cuts outlines outside " +
+        "and enclosed holes inside, so both finish at the size you drew.";
+      for (const [v, label] of [
+        ["", "Kerf: auto"],
+        ["outside", "Kerf: outside"],
+        ["inside", "Kerf: inside"],
+      ] as const) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = label;
+        sideSel.appendChild(o);
+      }
+      sideSel.value = recipe.side ?? "";
+      sideSel.onchange = () => {
+        this.pushHistory();
+        recipe.side = (sideSel.value || undefined) as "outside" | "inside" | undefined;
+        this.doc.emitChange();
+      };
+      line().appendChild(sideSel);
+    }
 
     line().append(
       num(String(recipe.laserPower), "38px", "Beam power, % of machine maximum", (v) => {

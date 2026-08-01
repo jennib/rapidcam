@@ -35,6 +35,7 @@ import {
 } from "../model/entities";
 import { type CAMOperation, DEFAULTS, type LaserJobKind } from "./types";
 import { nextId } from "../model/ids";
+import { collectClosedLoops, pointInPolygon } from "./loops";
 
 /** Human label for a job kind, shared by the layers panel and this builder. */
 export const JOB_KIND_LABELS: Record<LaserJobKind, string> = {
@@ -75,6 +76,15 @@ function hasCuttablePath(e: Entity): boolean {
 }
 
 /**
+ * Something the user drew, as opposed to construction geometry or the
+ * document's own bookkeeping (the WCS origin point). Used to tell "this layer
+ * is empty" from "this layer holds things this job can't do to them".
+ */
+function isUserGeometry(e: Entity): boolean {
+  return !e.isConstruction && (hasCuttablePath(e) || e instanceof RasterImageEntity);
+}
+
+/**
  * Can this entity be cut by this kind of job? An open polyline IS a contour
  * target for a beam (see 4ae234b), so the kind only narrows things for a raster
  * image, which can never be anything but engraved.
@@ -108,16 +118,89 @@ export function buildJobFromLayers(doc: CADDocument): LayerJob {
       (e) => e.layerId === layer.id && usableFor(recipe.kind as LaserJobKind, e),
     );
     if (targets.length === 0) {
-      skipped.push({ layer: layer.name, why: "no geometry on it" });
+      // Distinguish "empty" from "holds things a beam can't do to it" — an
+      // image on a cut layer reported as "no geometry" sends the user hunting
+      // for shapes that are sitting right there.
+      //
+      // "Anything" means anything the USER drew. Counting every entity would
+      // count the document's implicit WCS origin point, which sits on layer 0
+      // of every drawing and would make a genuinely empty first layer report
+      // the wrong reason. That point has now caused three separate bugs here.
+      const anything = doc.entities.some(
+        (e) => e.layerId === layer.id && isUserGeometry(e),
+      );
+      skipped.push({
+        layer: layer.name,
+        why: anything
+          ? `nothing on it can be ${JOB_KIND_LABELS[recipe.kind].toLowerCase()} (an image can only be engraved)`
+          : "no geometry on it",
+      });
       continue;
     }
-    operations.push(opForLayer(layer, recipe.kind, targets));
+    operations.push(...opsForLayer(layer, recipe.kind, targets));
   }
 
   return { operations, skipped };
 }
 
-function opForLayer(layer: LayerDef, kind: LaserJobKind, targets: Entity[]): CAMOperation {
+/**
+ * Which of a cut layer's shapes are HOLES — contours enclosed by another
+ * contour on the same layer, by the even–odd rule.
+ *
+ * This matters because kerf compensation has a direction. To finish at the
+ * drawn size the beam centreline runs OUTSIDE an outline and INSIDE a hole; use
+ * one side for both and every hole comes out a full kerf oversize. A layer has
+ * one recipe, so the split has to be derived from the geometry.
+ *
+ * Same containment test `machinability.ts` already uses for pocket islands.
+ */
+function splitByContainment(targets: Entity[]): { outer: Entity[]; holes: Entity[] } {
+  const loops = collectClosedLoops(targets);
+  const holeIds = new Set<string>();
+  for (const loop of loops) {
+    const depth = loops.filter(
+      (other) => other !== loop && pointInPolygon(loop.verts[0], other.verts),
+    ).length;
+    if (depth % 2 === 1) for (const id of loop.ids) holeIds.add(id);
+  }
+  return {
+    // Open curves belong to no loop and so are never holes.
+    outer: targets.filter((e) => !holeIds.has(e.id)),
+    holes: targets.filter((e) => holeIds.has(e.id)),
+  };
+}
+
+/**
+ * The operation(s) one layer contributes. Usually one — but a kerf-compensated
+ * cut containing holes becomes two, because the compensation runs the opposite
+ * way on a hole (see {@link splitByContainment}).
+ *
+ * Holes are emitted FIRST, which is also how you would run the job by hand:
+ * cut the interior features while the part is still held by the sheet, then
+ * free it with the outline.
+ */
+function opsForLayer(layer: LayerDef, kind: LaserJobKind, targets: Entity[]): CAMOperation[] {
+  const r = layer.laser!;
+  const kerf = r.kerfWidth ?? 0;
+  // An explicit side is the user overriding the automatic call — honour it.
+  if (kind !== "cut" || kerf <= 0 || r.side) return [opForLayer(layer, kind, targets)];
+
+  const { outer, holes } = splitByContainment(targets);
+  if (holes.length === 0) return [opForLayer(layer, kind, targets, "outside")];
+  if (outer.length === 0) return [opForLayer(layer, kind, targets, "inside")];
+  return [
+    opForLayer(layer, kind, holes, "inside", `${layer.name} (holes)`),
+    opForLayer(layer, kind, outer, "outside", layer.name),
+  ];
+}
+
+function opForLayer(
+  layer: LayerDef,
+  kind: LaserJobKind,
+  targets: Entity[],
+  side?: "outside" | "inside",
+  name?: string,
+): CAMOperation {
   const r = layer.laser!;
   const isCut = kind === "cut";
   const isFill = kind === "fill";
@@ -125,10 +208,10 @@ function opForLayer(layer: LayerDef, kind: LaserJobKind, targets: Entity[]): CAM
     id: nextId("cam"),
     // Named for the layer, because that is how the user will look for it — in
     // the CAM list, in the G-code comments and in the pre-flight report.
-    name: layer.name,
+    name: name ?? layer.name,
     type: kind === "score" ? "score" : isCut ? "profile" : "engrave",
     entityIds: targets.map((e) => e.id),
-    side: r.side ?? "outside",
+    side: side ?? r.side ?? "outside",
     // A laser has no tool, but the fields are required. Same convention as
     // cam/materialTest.ts.
     toolType: "end-mill",

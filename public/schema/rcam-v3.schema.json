@@ -255,7 +255,7 @@
             "kerfWidth": { "type": "number", "minimum": 0, "description": "Beam kerf, mm. Omitted = leave each operation's own kerf alone." },
             "airAssist": { "type": "boolean", "description": "Omitted = leave each operation's own air-assist setting alone." },
             "kind": { "enum": ["cut", "score", "engrave", "fill"], "description": "What the geometry on this layer is FOR. Read when operations are BUILT from the layers (the \"Toolpaths from Layers\" action), NOT applied live the way feedrate/laserPower/laserPasses are: a cut, an engrave and a fill emit fundamentally different geometry, so retyping an existing operation at export time would silently differ from the previewed toolpath. Omitted = this layer tunes the operations that cut it but is not itself a job." },
-            "side": { "enum": ["outside", "inside"], "description": "kind \"cut\" only: which side of the contour the kerf is taken from. Default \"outside\"." }
+            "side": { "enum": ["outside", "inside"], "description": "kind \"cut\" only: which side of the contour the kerf is taken from. OMIT for auto, which is normally what you want: a contour enclosed by another on the same layer is treated as a hole and compensated inward while the outline is compensated outward, so both finish at the drawn size (the layer then builds two operations, holes first). Set explicitly to force one direction throughout." }
           }
         }
       }

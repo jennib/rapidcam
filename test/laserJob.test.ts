@@ -12,7 +12,7 @@ import { test, expect } from "vitest";
 import { buildJobFromLayers } from "../src/cam/laserJob";
 import { generateLaserGCode } from "../src/cam/lasergcode";
 import { CADDocument } from "../src/model/document";
-import { LineEntity, RectEntity, CircleEntity } from "../src/model/entities";
+import { LineEntity, RectEntity, CircleEntity, RasterImageEntity } from "../src/model/entities";
 import type { LaserRecipe } from "../src/cam/types";
 
 function laserDoc(): CADDocument {
@@ -120,6 +120,91 @@ test("kerf is taken only on a cut, and follows the recipe's side", () => {
   // A score is a centreline — carrying a kerf there would imply a compensation
   // the generator never applies.
   expect(score.kerfWidth).toBeUndefined();
+});
+
+// --- kerf direction ----------------------------------------------------------
+//
+// The bug these were written for: a cut layer holding an outline AND a hole got
+// one operation with one side, so with a kerf set the hole was traced OUTSIDE
+// its own contour and finished a full kerf oversize. Silently wrong parts.
+
+/** An outline with a hole in it, on one cut layer. */
+function plateWithHole(kerfWidth: number): CADDocument {
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { ...CUT, laserPasses: 1, kerfWidth };
+  doc.entities.push(new RectEntity({ x: 20, y: 20 }, { x: 120, y: 100 }, "outline"));
+  doc.entities.push(new CircleEntity({ x: 70, y: 60 }, 10, "hole"));
+  return doc;
+}
+
+/** Radii the program actually traces circles at (|I| of each G2). */
+function tracedRadii(g: string): number[] {
+  return [...g.matchAll(/G2 X[\d.-]+ Y[\d.-]+ I([\d.-]+)/g)].map((m) => Math.abs(+m[1]));
+}
+
+test("a kerf-compensated cut splits into holes and outline, holes first", () => {
+  const { operations } = buildJobFromLayers(plateWithHole(2));
+
+  expect(operations.map((o) => o.name)).toEqual(["Cut (holes)", "Cut"]);
+  expect(operations[0].entityIds).toEqual(["hole"]);
+  expect(operations[0].side).toBe("inside");
+  expect(operations[1].entityIds).toEqual(["outline"]);
+  expect(operations[1].side).toBe("outside");
+});
+
+test("the hole is traced INSIDE its contour, so it finishes at the drawn size", () => {
+  const doc = plateWithHole(2);
+  const g = generateLaserGCode(buildJobFromLayers(doc).operations, doc);
+
+  // A 10mm-radius hole with a 2mm kerf: the beam centreline must run at r=9,
+  // removing 1mm either side to finish at 10. Tracing at 11 (the bug) finishes
+  // the hole 4mm oversize.
+  expect(tracedRadii(g)).toContain(9);
+  expect(tracedRadii(g)).not.toContain(11);
+});
+
+test("with no kerf there is nothing to compensate, so the layer stays one operation", () => {
+  const { operations } = buildJobFromLayers(plateWithHole(0));
+  expect(operations).toHaveLength(1);
+  expect(operations[0].entityIds.sort()).toEqual(["hole", "outline"]);
+  // Control: the same document WITH a kerf does split.
+  expect(buildJobFromLayers(plateWithHole(2)).operations).toHaveLength(2);
+});
+
+test("an explicit side overrides the automatic call", () => {
+  const doc = plateWithHole(2);
+  doc.layers[0].laser!.side = "outside";
+  const { operations } = buildJobFromLayers(doc);
+  // The user has said what they want; don't second-guess them by splitting.
+  expect(operations).toHaveLength(1);
+  expect(operations[0].side).toBe("outside");
+});
+
+test("a layer of holes only is cut inside, without an empty outline operation", () => {
+  const doc = laserDoc();
+  doc.layers[0].name = "Holes";
+  doc.layers[0].laser = { ...CUT, laserPasses: 1, kerfWidth: 1 };
+  doc.entities.push(new CircleEntity({ x: 40, y: 40 }, 5, "h1"));
+  doc.entities.push(new CircleEntity({ x: 80, y: 40 }, 5, "h2"));
+
+  const { operations } = buildJobFromLayers(doc);
+  // Neither circle contains the other, so both are outer contours.
+  expect(operations).toHaveLength(1);
+  expect(operations[0].side).toBe("outside");
+});
+
+test("a layer holding only what this job cannot do says so, instead of \"no geometry\"", () => {
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { ...CUT };
+  doc.entities.push(new RasterImageEntity("img-1", { x: 0, y: 0 }, 50, 50, 0, false, false, "IMG"));
+
+  const { skipped } = buildJobFromLayers(doc);
+  // "no geometry on it" would send someone hunting for shapes sitting in plain
+  // sight on the canvas.
+  expect(skipped[0].why).toMatch(/cannot be cut|can only be engraved/);
+  expect(skipped[0].why).not.toBe("no geometry on it");
 });
 
 test("a filled engrave is an engrave with fill switched on", () => {
