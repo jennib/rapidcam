@@ -5,6 +5,7 @@ import { CircleEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { isDragRelease } from "./dragDraw";
 
 export class CircleTool implements Tool {
   readonly id = "circle";
@@ -13,6 +14,8 @@ export class CircleTool implements Tool {
 
   private center: Vec2 | null = null;
   private centerSnap: SnapPoint | null = null;
+  /** Where the first point was pressed, for press-drag-release (see dragDraw.ts). */
+  private anchorScreen: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -20,6 +23,7 @@ export class CircleTool implements Tool {
     if (!this.center) {
       this.center = e.world;
       this.centerSnap = e.snap?.key ? e.snap : null;
+      this.anchorScreen = e.screen;
     } else {
       const r = dist(this.center, e.world);
       if (r > 1e-6) {
@@ -44,8 +48,15 @@ export class CircleTool implements Tool {
         ctx.solve();
       }
       this.center = null;
+    this.anchorScreen = null;
       this.centerSnap = null;
     }
+  }
+
+  /** Release far enough from the centre = a drag; the radius is where you let go. */
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (!isDragRelease(this.anchorScreen, e)) return;
+    this.onPointerDown(e, ctx);
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -71,6 +82,7 @@ export class CircleTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     this.center = null;
+    this.anchorScreen = null;
     this.centerSnap = null;
     ctx.requestRender();
   }

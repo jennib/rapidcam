@@ -9,6 +9,7 @@ import { regularPolygonPoints } from "../core/geom";
 import { parseLength } from "../core/units";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { isDragRelease } from "./dragDraw";
 
 type Phase = "center" | "radius";
 
@@ -22,11 +23,15 @@ export class PolygonTool implements Tool {
   private sides = 6;
   private cursor: Vec2 = { x: 0, y: 0 };
 
+  /** Where the centre was pressed, for press-drag-release (see dragDraw.ts). */
+  private anchorScreen: Vec2 | null = null;
+
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
 
     if (this.phase === "center") {
       this.center = e.world;
+      this.anchorScreen = e.screen;
       this.phase = "radius";
       ctx.openMultiValueEditor(
         e.world,
@@ -50,6 +55,12 @@ export class PolygonTool implements Tool {
       if (r < 1e-6) return;
       this.commit(r, vecAngle(sub(e.world, this.center!)), ctx);
     }
+  }
+
+  /** Release far enough from the centre = a drag; the radius is where you let go. */
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (!isDragRelease(this.anchorScreen, e)) return;
+    this.onPointerDown(e, ctx);
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -147,5 +158,6 @@ export class PolygonTool implements Tool {
   private reset(): void {
     this.phase = "center";
     this.center = null;
+    this.anchorScreen = null;
   }
 }

@@ -1,5 +1,6 @@
 /**
- * Rectangle tool: click one corner, click the opposite.
+ * Rectangle tool: click one corner, click the opposite — or press and drag from
+ * one corner to the other (see dragDraw.ts).
  *
  * Emits a single {@link RectEntity} — one whole-shape object with editable
  * Width/Height (both formula-drivable) in the properties panel, so "draw a
@@ -22,6 +23,7 @@ import { parseLength } from "../core/units";
 import { RectEntity } from "../model/entities";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { isDragRelease } from "./dragDraw";
 
 export class RectTool implements Tool {
   readonly id = "rect";
@@ -29,13 +31,15 @@ export class RectTool implements Tool {
   readonly icon = ICONS.rect;
 
   private start: Vec2 | null = null;
+  /** Where the first corner was pressed, for press-drag-release (see dragDraw.ts). */
+  private anchorScreen: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private typedW: number | null = null;
   private typedH: number | null = null;
   private isCenter: boolean = false;
 
   onActivate(ctx: ToolContext): void {
-    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
+    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
   }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -43,7 +47,8 @@ export class RectTool implements Tool {
     this.isCenter = e.altKey;
     if (!this.start) {
       this.start = e.world;
-      ctx.setHint("Click opposite corner (Hold Alt for center rectangle).");
+      this.anchorScreen = e.screen;
+      ctx.setHint("Click opposite corner, or drag (Hold Alt for center rectangle).");
       ctx.openMultiValueEditor(
         e.world,
         [
@@ -70,10 +75,17 @@ export class RectTool implements Tool {
         this.commit(p0, p1, ctx);
       }
       this.start = null;
+      this.anchorScreen = null;
       this.typedW = null;
       this.typedH = null;
-      ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
+      ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
     }
+  }
+
+  /** Release far enough from the first corner = a drag; finish the rectangle there. */
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (!isDragRelease(this.anchorScreen, e)) return;
+    this.onPointerDown(e, ctx);
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -125,9 +137,10 @@ export class RectTool implements Tool {
   cancel(ctx: ToolContext): void {
     ctx.closeValueEditor();
     this.start = null;
+    this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
+    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
     ctx.requestRender();
   }
 
@@ -155,9 +168,10 @@ export class RectTool implements Tool {
     this.commit(p0, p1, ctx);
     
     this.start = null;
+    this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click to place first corner (Hold Alt to draw from center).");
+    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
     return true;
   }
 

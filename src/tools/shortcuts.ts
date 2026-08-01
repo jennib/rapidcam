@@ -35,9 +35,9 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
 export const TOOL_HINTS: Record<string, string> = {
   select:
     "Drag = move · Shift+drag = marquee · Ctrl+click = pick points · double-click = chain select",
-  line: "Click start, then end · Shift = ortho · Esc cancels",
-  rect: "Click two opposite corners",
-  circle: "Click the centre, then a point on the circle",
+  line: "Click start then end, or drag · Shift = ortho · Esc cancels",
+  rect: "Click two opposite corners, or drag one out",
+  circle: "Click the centre then a point on the circle, or drag out from the centre",
   arc: "Click centre → start → end · Tab flips direction",
   polyline: "Click vertices · Esc or double-click finishes",
   dimension: "Click two points (or a circle), then place the dimension",
@@ -53,7 +53,7 @@ export const TOOL_HINTS: Record<string, string> = {
   extend: "Click near an entity's end to extend it to the next boundary",
   mirror: "Select objects first · click two points to define the mirror axis",
   slot: "Click the two slot centres, then set the width",
-  polygon: "Click the centre, then a vertex",
+  polygon: "Click the centre then a vertex, or drag out from the centre",
 };
 
 const byTool: Record<string, string> = Object.fromEntries(

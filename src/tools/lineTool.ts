@@ -5,6 +5,7 @@ import { LineEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint } from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
+import { isDragRelease } from "./dragDraw";
 import { orthoSnap } from "../input/snapping";
 
 export class LineTool implements Tool {
@@ -14,6 +15,8 @@ export class LineTool implements Tool {
 
   private start: Vec2 | null = null;
   private startSnap: SnapPoint | null = null;
+  /** Where the first point was pressed, for press-drag-release (see dragDraw.ts). */
+  private anchorScreen: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -21,6 +24,7 @@ export class LineTool implements Tool {
     if (!this.start) {
       this.start = e.world;
       this.startSnap = e.snap?.key ? e.snap : null;
+      this.anchorScreen = e.screen;
     } else {
       const shifted = e.shiftKey;
       const world = shifted ? orthoSnap(this.start, e.world) : e.world;
@@ -43,8 +47,15 @@ export class LineTool implements Tool {
         ctx.solve();
       }
       this.start = null;
+    this.anchorScreen = null;
       this.startSnap = null;
     }
+  }
+
+  /** Release far enough from the start point = a drag; finish the line there. */
+  onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (!isDragRelease(this.anchorScreen, e)) return;
+    this.onPointerDown(e, ctx);
   }
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -69,6 +80,7 @@ export class LineTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     this.start = null;
+    this.anchorScreen = null;
     this.startSnap = null;
     ctx.requestRender();
   }
