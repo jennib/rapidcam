@@ -39,7 +39,7 @@ export class RectTool implements Tool {
   private isCenter: boolean = false;
 
   onActivate(ctx: ToolContext): void {
-    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
+    ctx.setHint("Click two corners, or drag (Alt = from centre).");
   }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -48,7 +48,7 @@ export class RectTool implements Tool {
     if (!this.start) {
       this.start = e.world;
       this.anchorScreen = e.screen;
-      ctx.setHint("Click opposite corner, or drag (Hold Alt for center rectangle).");
+      ctx.setHint("Click the opposite corner, or drag (Alt = centred).");
       ctx.openMultiValueEditor(
         e.world,
         [
@@ -77,15 +77,13 @@ export class RectTool implements Tool {
         // Snapping can pull the second corner onto the first row/column of the
         // grid, giving a zero-width or zero-height rectangle. Refusing silently
         // reads as "my drag did nothing" — say why (see ToolContext.notify).
-        ctx.notify(
-          "Corners snapped to the same row or column — nothing to draw. Zoom in, or toggle snap in the status bar.",
-        );
+        ctx.notify("Corners snapped together — zoom in or toggle snap.");
       }
       this.start = null;
       this.anchorScreen = null;
       this.typedW = null;
       this.typedH = null;
-      ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
+      ctx.setHint("Click two corners, or drag (Alt = from centre).");
     }
   }
 
@@ -157,7 +155,7 @@ export class RectTool implements Tool {
     this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
+    ctx.setHint("Click two corners, or drag (Alt = from centre).");
     ctx.requestRender();
   }
 
@@ -188,7 +186,7 @@ export class RectTool implements Tool {
     this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click two opposite corners, or drag one out (Hold Alt to draw from center).");
+    ctx.setHint("Click two corners, or drag (Alt = from centre).");
     return true;
   }
 

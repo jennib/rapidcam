@@ -155,6 +155,10 @@ test("a drag that snaps to nothing says so instead of silently failing", async (
   // size guard — correctly — refuses it. Refusing SILENTLY is the same "my drag
   // did nothing" the drag support exists to fix, and ToolContext.notify is the
   // house rule for exactly this.
+  // The narrowest window the app supports (below ~1024x600 it shows the mobile
+  // warning instead of booting) — the status bar is tightest here, so this is
+  // where a long message actually costs something.
+  await page.setViewportSize({ width: 1024, height: 700 });
   await page.goto(APP_URL);
   await waitForApp(page);
   await newProject(page);
@@ -172,7 +176,21 @@ test("a drag that snaps to nothing says so instead of silently failing", async (
   await page.mouse.up();
 
   expect(await drawn(page)).toHaveLength(0);
-  await expect(page.locator("#statusbar")).toContainText(/snapped to the same row or column/i);
+  await expect(page.locator("#statusbar")).toContainText(/snapped together/i);
+
+  // The status bar should stay ONE line while a refusal AND a tool hint are
+  // both showing — that is the moment it is fullest. The first version of this
+  // message wrapped it to two cramped lines, seen in a screenshot at 1500px.
+  //
+  // Be clear about what this is worth: restoring BOTH long strings does not
+  // reproduce that wrap under Playwright, even here at the narrowest supported
+  // width, so this is a COARSE bound rather than a proven guard — it would
+  // catch a large regression, but it has not been demonstrated against the
+  // specific one that prompted it. The real protection is that the strings are
+  // now short. Do not read a pass here as "the bar definitely fits".
+  const bar = await page.locator("#statusbar").boundingBox();
+  if (!bar) throw new Error("no status bar");
+  expect(bar.height, "the status bar wrapped — shorten the message or the hint").toBeLessThan(34);
 
   // And the tool is usable straight afterwards — the refusal is not a dead end.
   const b = await toPx(page, [140, 120]);

@@ -93,14 +93,22 @@ async function crowdTheLayersPanel(page: Page): Promise<void> {
     // A name someone would really type, not "Cut" — the field flexes, so a long
     // one is what squeezes the buttons.
     doc.layers[0].name = "Cut through 6mm birch plywood";
-    doc.layers[0].laser = { feedrate: 300, laserPower: 100, laserPasses: 3 };
+    // A CUT kind renders the tallest the beam row ever gets: job-kind picker AND
+    // kerf-side picker on top of the three number fields and the preset select.
+    doc.layers[0].laser = {
+      kind: "cut",
+      feedrate: 300,
+      laserPower: 100,
+      laserPasses: 3,
+      kerfWidth: 0.2,
+    };
     doc.layers.push({
       id: "l-score",
       name: "Score",
       color: "#e05a5a",
       visible: true,
       locked: false,
-      laser: { feedrate: 1800, laserPower: 15, laserPasses: 1 },
+      laser: { kind: "score", feedrate: 1800, laserPower: 15, laserPasses: 1 },
     });
     doc.layers.push({
       id: "l-clamp",
@@ -114,6 +122,10 @@ async function crowdTheLayersPanel(page: Page): Promise<void> {
     doc.emitChange();
   });
   await expect(page.locator("#layersbar .layer-row")).toHaveCount(3);
+  // The controls added latest are the ones a layout guard is most likely to
+  // miss — assert they are on screen, or a clean sweep says nothing about them.
+  await expect(page.locator("#layersbar .layer-beam-kind")).toHaveCount(2);
+  await expect(page.locator("#layersbar .layer-beam-side")).toHaveCount(1);
 }
 
 test("no control is laid out beyond a container that cannot scroll", async ({ page }) => {

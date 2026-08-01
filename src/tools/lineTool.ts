@@ -48,9 +48,7 @@ export class LineTool implements Tool {
       } else {
         // Snapping can pull the second point onto the first. Refusing silently
         // reads as "my drag did nothing" — say why (see ToolContext.notify).
-        ctx.notify(
-          "Zero-length line — both ends snapped to the same point. Zoom in, or toggle snap in the status bar.",
-        );
+        ctx.notify("Both ends snapped together — zoom in or toggle snap.");
       }
       this.start = null;
       this.anchorScreen = null;

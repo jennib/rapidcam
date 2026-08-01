@@ -55,9 +55,7 @@ export class PolygonTool implements Tool {
       if (r < 1e-6) {
         // Snapping can pull the second point onto the first. Refusing silently
         // reads as "my drag did nothing" — say why (see ToolContext.notify).
-        ctx.notify(
-          "Radius snapped to zero — the vertex landed on the centre. Zoom in, or toggle snap in the status bar.",
-        );
+        ctx.notify("Radius snapped to zero — zoom in or toggle snap.");
         return;
       }
       this.commit(r, vecAngle(sub(e.world, this.center!)), ctx);

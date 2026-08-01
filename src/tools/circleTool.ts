@@ -49,9 +49,7 @@ export class CircleTool implements Tool {
       } else {
         // Snapping can pull the second point onto the first. Refusing silently
         // reads as "my drag did nothing" — say why (see ToolContext.notify).
-        ctx.notify(
-          "Radius snapped to zero — the edge landed on the centre. Zoom in, or toggle snap in the status bar.",
-        );
+        ctx.notify("Radius snapped to zero — zoom in or toggle snap.");
       }
       this.center = null;
       this.anchorScreen = null;
