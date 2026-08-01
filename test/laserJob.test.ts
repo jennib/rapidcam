@@ -194,6 +194,25 @@ test("an explicit side overrides the automatic call", () => {
   expect(operations[0].side).toBe("outside");
 });
 
+test("nesting alternates: a plug inside a hole is cut outside again", () => {
+  // Even-odd, not "anything enclosed is a hole". A washer-in-a-hole is depth 2
+  // and is a part in its own right, so its kerf goes outward like any outline —
+  // treating it as a hole would make it a kerf undersize.
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { ...CUT, laserPasses: 1, kerfWidth: 1 };
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 200, y: 200 }, "outline")); // depth 0
+  doc.entities.push(new CircleEntity({ x: 100, y: 100 }, 60, "hole")); // depth 1
+  doc.entities.push(new CircleEntity({ x: 100, y: 100 }, 20, "plug")); // depth 2
+
+  const { operations } = buildJobFromLayers(doc);
+  expect(operations.map((o) => o.name)).toEqual(["Cut (holes)", "Cut"]);
+  expect(operations[0].entityIds).toEqual(["hole"]);
+  expect(operations[0].side).toBe("inside");
+  expect(operations[1].entityIds.sort()).toEqual(["outline", "plug"]);
+  expect(operations[1].side).toBe("outside");
+});
+
 test("a layer of holes only is cut inside, without an empty outline operation", () => {
   const doc = laserDoc();
   doc.layers[0].name = "Holes";
@@ -207,7 +226,7 @@ test("a layer of holes only is cut inside, without an empty outline operation", 
   expect(operations[0].side).toBe("outside");
 });
 
-test("a layer holding only what this job cannot do says so, instead of \"no geometry\"", () => {
+test('a layer holding only what this job cannot do says so, instead of "no geometry"', () => {
   const doc = laserDoc();
   doc.layers[0].name = "Cut";
   doc.layers[0].laser = { ...CUT };

@@ -454,6 +454,26 @@ function kitchenSinkDoc(): CADDocument {
 function allEntityTypesDoc(): CADDocument {
   const doc = new CADDocument({ width: 300, height: 300 });
   doc.layers.push({ id: "layer-1", name: "Cuts", color: "#ff3333", visible: true, locked: false });
+  // A layer beam recipe, every field populated. The layer object is
+  // additionalProperties:false, so a wrong key here would reject files the app
+  // itself writes — and the schema is the contract external authors (and AIs)
+  // generate .rcam from.
+  doc.layers.push({
+    id: "layer-beam",
+    name: "Score",
+    color: "#e05a5a",
+    visible: true,
+    locked: false,
+    laser: {
+      kind: "cut",
+      side: "inside",
+      feedrate: 300,
+      laserPower: 100,
+      laserPasses: 3,
+      kerfWidth: 0.2,
+      airAssist: true,
+    },
+  });
   const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 20, y: 0 }));
   line.isConstruction = true;
   line.layerId = "layer-1";
