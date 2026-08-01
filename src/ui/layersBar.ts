@@ -397,7 +397,12 @@ export class LayersBar {
         "58px",
         `Cutting speed, ${unit}/min`,
         (v) => {
-          recipe.feedrate = toMM(v, unit);
+          // Floor at 1, exactly as the toolpath dialog's feed field does. Zero
+          // is not a slow cut: it emits `F0`, which a controller rejects or
+          // stalls on, and it makes the run-time estimate non-finite. This was
+          // the only route in the app to such a program — the dialog clamps and
+          // the file schema forbids it (exclusiveMinimum 0).
+          recipe.feedrate = Math.max(1, toMM(v, unit));
         },
       ),
       unitTag(`${unit}/min`),
