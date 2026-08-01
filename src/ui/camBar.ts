@@ -24,6 +24,7 @@ import {
   type ToolDef,
   type ToolType,
 } from "../cam/types";
+import { buildJobFromLayers } from "../cam/laserJob";
 import { loadLibrary, addTool } from "../cam/toolLibrary";
 import {
   addPreset,
@@ -199,6 +200,8 @@ export class CamBar {
   /** "Material Test" button — shown only in laser mode. */
   private testBtn: HTMLButtonElement | null = null;
   private presetBtn: HTMLButtonElement | null = null;
+  /** "Toolpaths from Layers" — shown only in laser mode. */
+  private fromLayersBtn: HTMLButtonElement | null = null;
   /** Tile (stitch) + Two-sided (flip) buttons — hidden for a rotary machine (flat-mill only). */
   private stitchBtn: HTMLButtonElement | null = null;
   private flipBtn: HTMLButtonElement | null = null;
@@ -239,7 +242,6 @@ export class CamBar {
     this.opsList = document.createElement("div");
     this.opsList.className = "cam-ops-list";
     this.content.appendChild(this.opsList);
-    this.renderOps();
 
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex;gap:6px;";
@@ -281,6 +283,19 @@ export class CamBar {
     this.presetBtn = presetBtn;
 
     this.content.appendChild(btnRow);
+
+    // Build the whole job from the layer list — the colour-driven workflow's
+    // payoff. Its own full-width row rather than a fifth button in btnRow,
+    // which is already tight at four.
+    const fromLayersBtn = document.createElement("button");
+    fromLayersBtn.className = "cam-add-btn cam-from-layers-btn";
+    fromLayersBtn.style.cssText = "width:100%;margin-top:6px;";
+    fromLayersBtn.textContent = "Toolpaths from Layers";
+    fromLayersBtn.title =
+      "Create one toolpath per layer, using the job type and beam settings set on each layer";
+    fromLayersBtn.addEventListener("click", () => void this.toolpathsFromLayers());
+    this.content.appendChild(fromLayersBtn);
+    this.fromLayersBtn = fromLayersBtn;
 
     const sep = document.createElement("div");
     sep.className = "cam-sep";
@@ -335,7 +350,11 @@ export class CamBar {
       this.flipBtn = flipBtn;
     }
 
-    this.updateModeButtons();
+    // Last, not first: renderOps() also decides which machine-kind-specific
+    // buttons are shown, so running it before they exist left every one of them
+    // at its default visibility until the first document change happened to
+    // correct it — "Manage Tools" visible on a laser, "Material Test" on a mill.
+    this.renderOps();
   }
 
   /**
@@ -464,6 +483,7 @@ export class CamBar {
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
     if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
     if (this.presetBtn) this.presetBtn.style.display = laser ? "" : "none";
+    if (this.fromLayersBtn) this.fromLayersBtn.style.display = laser ? "" : "none";
     // Tile/Two-sided are flat-mill-only — hidden for a rotary job.
     this.updateModeButtons();
 
@@ -1833,6 +1853,54 @@ export class CamBar {
    * (geometry + one engrave op per cell) into the document in a single history
    * step, grouped so it's easy to move or delete as a unit.
    */
+  /**
+   * Turn the layer list into a job: one toolpath per layer that carries a job
+   * type, in layer order.
+   *
+   * Replaces the operation list rather than appending, because this action means
+   * "the layers ARE the job" — appending would silently double every path on a
+   * second press, and a laser cutting the same contour twice is a scorched part.
+   * The replacement is confirmed and goes through history, so it is undoable.
+   */
+  private async toolpathsFromLayers(): Promise<void> {
+    const { operations, skipped } = buildJobFromLayers(this.doc);
+
+    if (operations.length === 0) {
+      const why = skipped.length
+        ? skipped.map((s) => `“${s.layer}” — ${s.why}`).join("; ")
+        : "no layer has a job type yet";
+      toast(`Nothing to build: ${why}. Set one with ⚡ in the Layers panel.`, 4200);
+      return;
+    }
+
+    if (this.doc.operations.length > 0) {
+      const ok = await confirmDialog({
+        title: "Rebuild toolpaths from layers?",
+        message:
+          `This replaces the ${this.doc.operations.length} existing toolpath` +
+          `${this.doc.operations.length > 1 ? "s" : ""} with ${operations.length} built from ` +
+          `your layers (${operations.map((o) => o.name).join(", ")}).\n\n` +
+          "Any settings you changed on the existing toolpaths will be lost. Undo restores them.",
+        confirmLabel: "Rebuild",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    this.pushHistory?.();
+    this.doc.operations = operations;
+    this.doc.emitChange();
+    this.renderOps();
+
+    const note = skipped.length
+      ? ` (skipped ${skipped.map((s) => `“${s.layer}”: ${s.why}`).join("; ")})`
+      : "";
+    toast(
+      `Built ${operations.length} toolpath${operations.length > 1 ? "s" : ""} from layers${note}.`,
+      skipped.length ? 4200 : 2600,
+    );
+  }
+
   private runMaterialTest(): void {
     openMaterialTestDialog((cfg) => {
       // Place the grid so it (and its left/bottom labels) sit in positive space.

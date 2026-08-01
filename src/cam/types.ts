@@ -342,7 +342,31 @@ export interface LaserRecipe {
   kerfWidth?: number;
   /** Omitted = leave each operation's own air-assist setting alone. */
   airAssist?: boolean;
+  /**
+   * What the geometry on this layer is FOR — read when operations are built
+   * from the layers (cam/laserJob.ts), NOT applied live the way the numbers
+   * above are.
+   *
+   * The asymmetry is deliberate. Power and speed are parameters: changing one
+   * changes how hard the same move is cut, so applying it live is safe and is
+   * the point. The kind is structure — a cut is a kerf-compensated closed
+   * contour, an engrave is a centreline, a fill floods the interior — so
+   * retyping somebody's operation at export time would silently emit different
+   * geometry than the preview they approved. Change the kind and rebuild.
+   *
+   * Absent = the layer tunes the operations that cut it but is not itself a job.
+   */
+  kind?: LaserJobKind;
+  /** `kind: "cut"` only: which side of the contour the kerf is taken from. Default outside. */
+  side?: "outside" | "inside";
 }
+
+/**
+ * What a layer's geometry is for. The laser subset of {@link CAMOpType}, named
+ * the way a laser user talks: cut through it, score a fold line, engrave a
+ * centreline, or flood the interior.
+ */
+export type LaserJobKind = "cut" | "score" | "engrave" | "fill";
 
 export const DEFAULTS = {
   toolType: "end-mill" as ToolType,

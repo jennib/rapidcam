@@ -659,6 +659,37 @@ The rules, which mirror `toolId` on the mill side:
   "laser": { "feedrate": 300, "laserPower": 100, "laserPasses": 3 } }
 ```
 
+#### The layer as a job
+
+A recipe may also say what its geometry is **for**, with `kind`: `"cut"`,
+`"score"`, `"engrave"` or `"fill"` (a filled/solid engrave). Layers carrying a
+kind can be turned into a whole program in one action — one operation per layer,
+in layer order, named after the layer.
+
+`kind` behaves differently from the numbers beside it, and the asymmetry is
+deliberate:
+
+| | applied | why |
+|---|---|---|
+| `feedrate`, `laserPower`, `laserPasses` | **live**, at toolpath time | parameters — they change how hard the same move is cut, so re-tuning a layer re-tunes every operation on it |
+| `kind` | when operations are **built** | structure — a cut is a kerf-compensated closed contour, an engrave a centreline, a fill floods the interior. Retyping an existing operation at export would emit different geometry than the previewed toolpath |
+
+So changing a kind does not retype toolpaths that already exist; rebuild to apply
+it. A layer with a recipe but no `kind` still tunes the operations that cut it —
+it just isn't a job of its own. `side` applies to `"cut"` only and defaults to
+`"outside"`.
+
+```jsonc
+// A two-colour job: cut the outline, score the fold lines.
+"layers": [
+  { "id": "l-cut", "name": "Cut", "color": "#000000", "visible": true, "locked": false,
+    "laser": { "kind": "cut", "feedrate": 300, "laserPower": 100, "laserPasses": 3,
+               "kerfWidth": 0.15 } },
+  { "id": "l-score", "name": "Score", "color": "#e05a5a", "visible": true, "locked": false,
+    "laser": { "kind": "score", "feedrate": 1800, "laserPower": 15, "laserPasses": 1 } }
+]
+```
+
 A raster engrave is produced when an **Engrave** op's `entityIds` reference an `image` entity: the greyscale pixels are swept as horizontal scan rows, modulating beam power per dot (`laserPower` for black down to `rasterMinPower` for the lightest mark). `laserPower` is the *darkest* power; `laserPasses` repeats the whole sweep.
 
 On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose** (the smooth-relief tool, and the default) — a **V-bit** is allowed but carves an engraving-like result (a cone per dot) and is flagged with a note; a flat end mill is rejected. The default stepover is ~10% of the cutter diameter. `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead; `reliefGamma` applies a tone curve (`depth ∝ darkness^gamma`, default linear) to keep a photo from reading flat. (`laserPower`/`rasterMinPower` are ignored.)

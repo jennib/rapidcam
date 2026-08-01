@@ -1,7 +1,8 @@
 import type { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
 import { confirmDialog } from "./modal";
-import { DEFAULTS, getAssociatedOperations } from "../cam/types";
+import { DEFAULTS, getAssociatedOperations, type LaserJobKind } from "../cam/types";
+import { JOB_KIND_LABELS } from "../cam/laserJob";
 import { loadPresets } from "../cam/laserPresets";
 import { fromMM, toMM } from "../core/units";
 
@@ -329,6 +330,32 @@ export class LayersBar {
       s.textContent = t;
       return s;
     };
+
+    // What this layer is FOR. Full-width and first, because it is the decision
+    // the rest of the row serves — and unlike the numbers it is read when
+    // toolpaths are BUILT, not applied live (see cam/laserJob.ts).
+    const kindSel = document.createElement("select");
+    kindSel.className = "dim layer-beam-kind";
+    kindSel.title =
+      "What the geometry on this layer is for. Used by “Toolpaths from Layers”; " +
+      "changing it does not retype toolpaths that already exist.";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "Tuning only (no job)";
+    kindSel.appendChild(none);
+    for (const [k, label] of Object.entries(JOB_KIND_LABELS)) {
+      const o = document.createElement("option");
+      o.value = k;
+      o.textContent = label;
+      kindSel.appendChild(o);
+    }
+    kindSel.value = recipe.kind ?? "";
+    kindSel.onchange = () => {
+      this.pushHistory();
+      recipe.kind = (kindSel.value || undefined) as LaserJobKind | undefined;
+      this.doc.emitChange();
+    };
+    line().appendChild(kindSel);
 
     line().append(
       num(String(recipe.laserPower), "38px", "Beam power, % of machine maximum", (v) => {
