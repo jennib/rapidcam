@@ -71,22 +71,6 @@ body {
   flex-shrink: 0;
 }
 
-.topbar-filename {
-  font-size: 13px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
-  flex-shrink: 1;
-  min-width: 0;
-  padding: 2px 8px;
-  border-radius: 4px;
-  transition: color 0.15s;
-}
-.topbar-filename.dirty {
-  color: var(--text);
-}
 
 .field-group {
   display: flex;

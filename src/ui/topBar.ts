@@ -11,10 +11,6 @@ export interface TopBarCallbacks {
   canUndo: () => boolean;
   canRedo: () => boolean;
   onSettings: () => void;
-  /** Returns the current file name (without extension). */
-  getFileName: () => string;
-  /** Returns true when the document has unsaved changes. */
-  isDirty: () => boolean;
   file: FileMenuCallbacks;
   edit: EditMenuCallbacks;
   insert: InsertMenuCallbacks;
@@ -24,7 +20,6 @@ export interface TopBarCallbacks {
 export class TopBar {
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
-  private fileNameLabel!: HTMLElement;
 
   constructor(
     private host: HTMLElement,
@@ -41,11 +36,10 @@ export class TopBar {
     brand.innerHTML = '<img src="/rapidcam-logo.svg" height="32" alt="RapidCAM">';
     this.host.appendChild(brand);
 
-    // File name indicator — sits right after the logo so the user always
-    // knows which file is open. A dot prefix appears when dirty.
-    this.fileNameLabel = el("div", "topbar-filename");
-    this.host.appendChild(this.fileNameLabel);
-
+    // No file-name label here. The browser tab already carries the name and the
+    // unsaved-changes marker (projectManager.updateTitle), so a copy beside the
+    // logo was the same fact twice — and it was the one thing between the brand
+    // and the menus, pushing them right for no gain.
     new FileMenu(this.host, this.cb.file);
     new EditMenu(this.host, this.cb.edit);
     new InsertMenu(this.host, this.cb.insert);
@@ -74,11 +68,6 @@ export class TopBar {
   private refresh(): void {
     this.undoBtn.disabled = !this.cb.canUndo();
     this.redoBtn.disabled = !this.cb.canRedo();
-    const name = this.cb.getFileName();
-    const dirty = this.cb.isDirty();
-    this.fileNameLabel.textContent = dirty ? `● ${name}` : name;
-    this.fileNameLabel.title = dirty ? `${name} — unsaved changes` : name;
-    this.fileNameLabel.classList.toggle("dirty", dirty);
   }
 }
 

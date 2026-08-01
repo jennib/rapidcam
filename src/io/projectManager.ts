@@ -67,10 +67,19 @@ export class ProjectManager {
   }
 
   // --- title / dirty flag ---
+  /**
+   * The browser tab is where the open file's name lives — there is no copy of it
+   * in the app chrome.
+   *
+   * The unsaved marker leads rather than trails. A browser truncates a tab title
+   * from the RIGHT and shows very few characters when several tabs are open, so
+   * a trailing `*` is the first thing to disappear — precisely when the user is
+   * scanning tabs to find the one with unsaved work. `●` reads at small sizes
+   * where `*` (which sits high and thin) does not.
+   */
   updateTitle(): void {
-    document.title = this.isDirty
-      ? `${this.currentFileName}* — RapidCAM`
-      : `${this.currentFileName} — RapidCAM`;
+    const name = this.currentFileName;
+    document.title = this.isDirty ? `● ${name} — RapidCAM` : `${name} — RapidCAM`;
   }
 
   markDirty(): void {
