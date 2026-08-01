@@ -20,15 +20,15 @@ const examples = readdirSync(examplesDir).filter((f) => f.endsWith(".rcam"));
  * pre-flight lint as warnings — the import check says what the export says.
  * These examples legitimately trip advisories the app itself shows at export:
  * box-joint cuts a profile on the stock edge, the through-cut examples kiss
- * 2 mm into the spoilboard, the multi-tool jobs rely on the sender pausing on
- * the tool-change comment, and the rotary job plunges at its cutting feed.
+ * 2 mm into the spoilboard, and the multi-tool jobs rely on the sender
+ * pausing on the tool-change comment.
  * Pinned 1:1 so a NEW finding on any example still fails the build.
  */
 const knownLint: Record<string, RegExp[]> = {
   "box-joint-tab-slot.rcam": [/outside the stock/],
   "enclosure-lid.rcam": [/below the stock bottom/],
   "mounting-plate-cam.rcam": [/below the stock bottom/, /manual tool change/],
-  "rotary-spiral-dowel.rcam": [/plunge/, /manual tool change/],
+  "rotary-spiral-dowel.rcam": [/manual tool change/],
   "vcarve-sign.rcam": [/manual tool change/],
 };
 

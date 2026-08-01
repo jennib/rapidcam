@@ -460,18 +460,30 @@ export class SettingsBar {
       // wrapped canvas dimension is locked to the circumference (π·⌀), so editing
       // the diameter resizes the cylinder surface and keeps doc.rotary in sync.
       const wrapX = rot.wrapAxis === "x";
+      const diaInput = wrapX ? this.widthInput : this.heightInput;
+      const lenInput = wrapX ? this.heightInput : this.widthInput;
       const diaVal = wrapX ? w : h; // the wrapped field holds the diameter
       const lenVal = wrapX ? h : w; // the other field holds the length
-      if ((diaVal !== null && diaVal > 0) || (lenVal !== null && lenVal > 0)) this.pushHistory();
-      if (diaVal !== null && diaVal > 0) {
-        this.doc.rotary = { ...rot, diameter: diaVal };
-        const circ = Math.PI * diaVal;
+      const curLen = wrapX ? this.doc.canvas.height : this.doc.canvas.width;
+      // A commit re-parses whatever's DISPLAYED, which refresh() rounds for
+      // readability — doing that for BOTH fields unconditionally (even the one
+      // the user didn't touch) truncated the exact stored diameter a little more
+      // on every Length edit, drifting the wrap circumference off the true
+      // cylinder and opening a seam gap over repeated edits. Only recommit a
+      // field whose displayed text no longer matches what's actually stored.
+      const diaChanged =
+        diaVal !== null && diaVal > 0 && diaInput.value !== formatLength(rot.diameter, u);
+      const lenChanged = lenVal !== null && lenVal > 0 && lenInput.value !== formatLength(curLen, u);
+      if (diaChanged || lenChanged) this.pushHistory();
+      if (diaChanged) {
+        this.doc.rotary = { ...rot, diameter: diaVal! };
+        const circ = Math.PI * diaVal!;
         if (wrapX) this.doc.canvas.width = circ;
         else this.doc.canvas.height = circ;
       }
-      if (lenVal !== null && lenVal > 0) {
-        if (wrapX) this.doc.canvas.height = lenVal;
-        else this.doc.canvas.width = lenVal;
+      if (lenChanged) {
+        if (wrapX) this.doc.canvas.height = lenVal!;
+        else this.doc.canvas.width = lenVal!;
       }
       this.doc.emitChange();
       return;

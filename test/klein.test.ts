@@ -174,6 +174,25 @@ test("banner emits a diameter token that gSender's rotary parser matches", () =>
   expect(parsed).toBeCloseTo(63.5, 3);
 });
 
+test("the header rounds the wrapped stock dimension instead of printing raw float noise", () => {
+  // New Project sets the rotary canvas dimension to Math.PI * diameter — an
+  // irrational number. generateGCode's "; Stock:" line used to interpolate the
+  // raw float straight in (e.g. "188.49555921538757mm"); it must be rounded
+  // like every other emitted number.
+  const doc = new CADDocument({ width: 300, height: Math.PI * 60 });
+  doc.machineKind = "mill-rotary";
+  doc.stockThickness = 10;
+  doc.rotary = { axisWord: "A", diameter: 60, wrapAxis: "y" };
+  const c = doc.add(new CircleEntity({ x: 100, y: 50 }, 20));
+  doc.operations = [profileOp("p", [c.id])];
+
+  const { program } = generateRotaryProgram(doc);
+  const stockLine = program.split("\n").find((l) => l.startsWith("; Stock:"));
+  expect(stockLine).toBeDefined();
+  expect(stockLine).not.toMatch(/\d\.\d{4,}/); // no run of 4+ decimal digits
+  expect(stockLine).toContain("188.496"); // Math.PI*60 rounded to 3dp
+});
+
 test("a rotary job is surface-zeroed even if origin.z is 'bed' (no radial-wall Z shift)", () => {
   // A cylinder has no bed. An errant bed Z-origin (old file / saved default) must
   // NOT shift Z by the wall — that would post cuts high and cut air, while the

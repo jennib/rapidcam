@@ -528,6 +528,9 @@ export class CamBar {
     return `${this.doc.machineKind}|${this.doc.stockThickness}|${JSON.stringify(op)}`;
   }
 
+  /** How many op estimates to post per tick — see {@link runOpEstimateChunk}. */
+  private static readonly OP_EST_CHUNK = 3;
+
   /**
    * Fill in any missing per-op run-time estimates off the render path. Posting an
    * op's G-code is expensive (relief/raster can be huge), so this is debounced and
@@ -540,25 +543,39 @@ export class CamBar {
     );
     if (pending.length === 0) return;
     if (this.opEstTimer !== null) clearTimeout(this.opEstTimer);
-    this.opEstTimer = setTimeout(() => {
-      this.opEstTimer = null;
-      for (const op of pending) {
-        const key = this.opTimeKey(op);
-        let secs = this.opTimeCache.get(key);
-        if (secs === undefined) {
-          try {
-            secs = estimateGCodeTime(generateGCode([op], this.doc, this.gcodeOpts())).seconds;
-          } catch {
-            secs = 0; // a bad/empty op shouldn't break the list
-          }
-          this.opTimeCache.set(key, secs);
+    this.opEstTimer = setTimeout(() => this.runOpEstimateChunk(pending), 150);
+  }
+
+  /**
+   * Post a small chunk of pending estimates, then yield back to the event loop
+   * before continuing with the rest. `opTimeKey` includes `machineKind`, so
+   * switching it invalidates EVERY op's cache entry in one go — on a large job
+   * (e.g. a 26-cell laser material-test grid) running the whole pending list
+   * synchronously froze the tab for minutes with no way to even navigate away.
+   * Chunking can't make the total posting work any cheaper, but it keeps the tab
+   * responsive throughout and the cards filling in progressively double as the
+   * progress indicator the frozen version had none of.
+   */
+  private runOpEstimateChunk(pending: CAMOperation[]): void {
+    const chunk = pending.slice(0, CamBar.OP_EST_CHUNK);
+    const rest = pending.slice(CamBar.OP_EST_CHUNK);
+    for (const op of chunk) {
+      const key = this.opTimeKey(op);
+      let secs = this.opTimeCache.get(key);
+      if (secs === undefined) {
+        try {
+          secs = estimateGCodeTime(generateGCode([op], this.doc, this.gcodeOpts())).seconds;
+        } catch {
+          secs = 0; // a bad/empty op shouldn't break the list
         }
-        // The element may have been replaced by a newer render — update only if it's
-        // still the live one for this op.
-        const el = this.opEstEls.get(op.id);
-        if (el) el.textContent = `⏱ ~${formatDuration(secs)}`;
+        this.opTimeCache.set(key, secs);
       }
-    }, 150);
+      // The element may have been replaced by a newer render — update only if it's
+      // still the live one for this op.
+      const el = this.opEstEls.get(op.id);
+      if (el) el.textContent = `⏱ ~${formatDuration(secs)}`;
+    }
+    this.opEstTimer = rest.length > 0 ? setTimeout(() => this.runOpEstimateChunk(rest), 0) : null;
   }
 
   private highlightOp(id: string | null): void {
@@ -2026,10 +2043,14 @@ export class CamBar {
     // with Export / Cancel. It replaces the plain pre-flight confirm on this path.
     const name = this.exportName(isRotary ? "all-rotary" : "all");
     const foot = stockFootprint(this.doc);
-    const stockLabel =
-      this.doc.isLaser
-        ? `${foot.width} × ${foot.height}mm`
-        : `${foot.width} × ${foot.height} × ${this.doc.stockThickness}mm`;
+    // Rounded (not the raw values): a rotary job's wrapped dimension is
+    // Math.PI * diameter, an irrational number that otherwise printed its full
+    // float precision straight into the confirm-before-you-cut screen.
+    const fw = formatLength(foot.width, "mm");
+    const fh = formatLength(foot.height, "mm");
+    const stockLabel = this.doc.isLaser
+      ? `${fw} × ${fh}mm`
+      : `${fw} × ${fh} × ${formatLength(this.doc.stockThickness, "mm")}mm`;
     const proceed = await openExportPreview({
       gcode,
       filename: name,

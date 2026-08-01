@@ -1708,7 +1708,10 @@ export function generateGCode(
     `; Post-processor: ${pp.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}  Z: ${zLabel}`,
-    `; Stock: ${foot.width} × ${foot.height} × ${doc.stockThickness}mm`,
+    // Rounded (not the raw values): a rotary job's wrapped dimension is
+    // Math.PI * diameter, an irrational number that otherwise prints its full
+    // float precision straight into the header (e.g. "188.49555921538757").
+    `; Stock: ${n(foot.width)} × ${n(foot.height)} × ${n(doc.stockThickness)}mm`,
     `; Tools: ${toolSummary}`,
     "G21 ; metric",
     "G90 ; absolute",

@@ -106,9 +106,15 @@ function laserGcode(): string {
 //   2. tabbed passes re-issue the cutting feed after each tab lift/descend
 //      (previously the lap silently continued at plungeRate) — this adds F words
 //      to `enclosure`'s motion; the behavior is pinned by test/tab-feed.test.ts.
+// `rotary` re-baselined 2026-08-01: the flat program's "; Stock:" header line
+// now rounds its dimensions (gcode.ts/lasergcode.ts) instead of interpolating
+// the raw float — a rotary job's wrapped dimension is Math.PI * diameter, which
+// printed its full precision straight into this fixture's header
+// ("314.15926535897933mm") before the fix. Comment-only change: motion is
+// identical, confirmed by diffing the two programs before re-pinning.
 const GOLDEN = {
   enclosure: "9bf1734f6f723146914d9fdcc1b67795c652b4e510522f02f1714488e5fbe1fb",
-  rotary: "381bf3d14ac438600f9d28cd47bbc99fdf714d507c4fe2171f272c0310c76344",
+  rotary: "81a1ce2be108c787773a70a351e4b2b5a97fc76c14fc19ba388bbfd5c9e33dd8",
   laser: "f3e5f9507f27537af3aed24b87a86529e246937d36e48327912626e00a29c51a",
   centerBed: "fed6641e9377ccfe0b60fc74211753cda30ebbaae5f2b0e0531f89918d906326",
 };

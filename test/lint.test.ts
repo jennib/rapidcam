@@ -213,3 +213,72 @@ test("buildLintContext maps a centered origin into emitted bounds", () => {
   const ctx = buildLintContext(doc);
   expect(ctx.bounds).toEqual({ xMin: -50, xMax: 50, yMin: -40, yMax: 40 });
 });
+
+// --- positioned StockRect (workholding phase 2) ------------------------------
+// New Project centres the blank on a margin-padded sheet (stockRect off (0,0))
+// so there's room to draw clamps that overhang it. resolveOrigin's ox/oy already
+// fold stockRect.x/y in, but the bounds calc used to build the envelope from
+// canvas (0,0) regardless — silently shifting the whole valid box by
+// (-stockRect.x, -stockRect.y). On the New Project default (200×150 stock
+// centred on a 300×250 sheet, so stockRect = {x:50,y:50,...}) that produced a
+// false "outside the stock" error on the first export of a first project, while
+// letting a real off-stock move through on the opposite edge.
+test("buildLintContext anchors bounds to a POSITIONED stockRect, not canvas (0,0)", () => {
+  const doc = new CADDocument({ width: 300, height: 250 });
+  doc.origin = { x: "left", y: "front", z: "top" };
+  doc.stockRect = { x: 50, y: 50, width: 200, height: 150 };
+  const ctx = buildLintContext(doc);
+  expect(ctx.bounds).toEqual({ xMin: 0, xMax: 200, yMin: 0, yMax: 150 });
+});
+
+test("out of bounds: a positioned stockRect doesn't false-flag a move inside the true stock", () => {
+  const doc = new CADDocument({ width: 300, height: 250 });
+  doc.origin = { x: "left", y: "front", z: "top" };
+  doc.stockRect = { x: 50, y: 50, width: 200, height: 150 };
+  const ctx = buildLintContext(doc);
+  const g = ["G0 Z5", "G0 X22 Y103", "G1 Z-3 F300"].join("\n"); // comfortably inside 0-200 × 0-150
+  expect(codes(g, ctx)).not.toContain("out-of-bounds");
+});
+
+test("out of bounds: a positioned stockRect still catches a move genuinely off the stock", () => {
+  const doc = new CADDocument({ width: 300, height: 250 });
+  doc.origin = { x: "left", y: "front", z: "top" };
+  doc.stockRect = { x: 50, y: 50, width: 200, height: 150 };
+  const ctx = buildLintContext(doc);
+  const g = ["G0 Z5", "G0 X22 Y-3", "G1 Z-3 F300"].join("\n"); // 3mm past the true Y0 edge
+  expect(codes(g, ctx)).toContain("out-of-bounds");
+});
+
+// --- G93 inverse-time feed (rotary combined moves) ---------------------------
+test("fast plunge: G93 inverse-time moves aren't compared as if F were mm/min", () => {
+  // Under G93 (cam/klein.ts, a rotary job with inverseTimeFeed) F is
+  // 1/minutes-for-the-whole-move, not mm/min — a short pure-Z plunge naturally
+  // gets a NUMERICALLY LARGER F than a long lateral move at the same true
+  // surface feed, which the check (before it knew about G93) read as "plunging
+  // at or above the cutting feed" on essentially every rotary job.
+  const g = [
+    "G93",
+    "G0 Z5",
+    "G0 X10 Y10",
+    "G1 X73 A13.369 F15.873", // 63mm lateral move at surface feed 1000mm/min
+    "G0 Z5",
+    "G0 X30 Y30",
+    "G1 Z-3 F37.5", // 8mm plunge at surface feed 300mm/min — but a LARGER inverse-time F
+  ].join("\n");
+  expect(codes(g)).not.toContain("fast-plunge");
+});
+
+test("fast plunge: a G94 plunge after a G93 block is compared normally again", () => {
+  const g = [
+    "G93",
+    "G1 X73 A13.369 F15.873",
+    "G94",
+    "G0 Z5",
+    "G0 X30 Y30",
+    "G1 X40 Y30 F1000", // establishes an ordinary mm/min cutting feed
+    "G0 Z5",
+    "G0 X50 Y50",
+    "G1 Z-3 F1200", // genuinely faster than the cutting feed — should still warn
+  ].join("\n");
+  expect(codes(g)).toContain("fast-plunge");
+});

@@ -10,7 +10,9 @@
  *   end-mill  — flat disc (original behaviour)
  *   ball-nose — hemispherical stamp: h(d) = depth + R − √(R²−d²)
  *   v-bit     — V-cone stamp: h(d) = depth + d / tan(halfAngle)
- *   drill     — V-cone stamp using tip angle; natural cylindrical bore via acc. passes
+ *   drill     — V-cone stamp using tip angle, clamped to the bit's own radius (a
+ *               real bit's flutes run straight past the point, not an ever-
+ *               widening cone) — see {@link makeStampFn}, {@link stampVCone}
  */
 
 import type { Vec2 } from "../core/vec2";
@@ -664,8 +666,14 @@ function makeStampFn(
     return (cx, cy, d) => stampVCone(data, w, h, cx, cy, halfTan, d, stockT);
   }
   if (tt === "drill") {
+    // A drill's point is conical, but only out to the bit's own radius — past
+    // that its flutes run a straight cylindrical shank. Clamp the cone's reach
+    // to R, or a deep hole with a shallow (wide) tip angle flares out forever:
+    // a 12mm-deep hole at the standard 118° point (halfTan ≈ tan59° ≈ 1.66)
+    // reaches ~20mm lateral before ever hitting the R clamp, rendering as a
+    // crater several times the bit's actual diameter.
     const tipHalfTan = Math.tan(((op.tipAngle ?? 118) / 2) * (Math.PI / 180));
-    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, tipHalfTan, d, stockT);
+    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, tipHalfTan, d, stockT, R);
   }
   // end-mill (and any unrecognised type): flat disc
   return (cx, cy, d) => stampDisc(data, w, h, cx, cy, Rcell, d);
@@ -751,8 +759,13 @@ function stampBallNose(
  * V-cone stamp (V-bit engraving, drill tip).
  * At lateral distance d_mm from centre: h = depth + d_mm / halfAngleTan
  * Produces the characteristic V-groove cross-section; naturally capped at stockT.
- * For a drill tool the cone also creates the vertical-wall illusion at the tool
- * radius since the height field transitions sharply from h(R) to stockT outside R.
+ *
+ * `maxRMM` (default unbounded, for a V-bit whose sides genuinely are the whole
+ * profile) clips the cone at a hard radius — a drill passes its own R here, since
+ * past the point a real bit runs a straight cylindrical shank rather than an
+ * ever-widening cone, and without the clamp a shallow tip angle on a deep hole
+ * flares out to many times the bit's actual diameter (see the drill branch of
+ * {@link makeStampFn}).
  */
 function stampVCone(
   data: Float32Array,
@@ -763,10 +776,14 @@ function stampVCone(
   halfAngleTan: number,
   depth: number,
   stockT: number,
+  maxRMM: number = Infinity,
 ): void {
-  // Maximum lateral reach in mm where the cone still removes material
-  const dMaxMM = (stockT - depth) * halfAngleTan;
+  // Maximum lateral reach in mm where the cone still removes material — where it
+  // reaches the stock surface, or the caller's hard radius clamp, whichever is
+  // tighter.
+  const dMaxMM = Math.min((stockT - depth) * halfAngleTan, maxRMM);
   const dMaxCell = dMaxMM * RES;
+  const dMax2 = dMaxMM * dMaxMM;
   const x0 = Math.max(0, Math.floor(cx - dMaxCell));
   const x1 = Math.min(w - 1, Math.ceil(cx + dMaxCell));
   const y0 = Math.max(0, Math.floor(cy - dMaxCell));
@@ -776,9 +793,10 @@ function stampVCone(
     for (let x = x0; x <= x1; x++) {
       const dxMM = (x - cx) / RES;
       const dyMM = (y - cy) / RES;
-      const dMM = Math.sqrt(dxMM * dxMM + dyMM * dyMM);
-      const hAt = depth + dMM / halfAngleTan;
-      if (hAt < stockT && hAt < data[base + x]) data[base + x] = hAt;
+      const d2 = dxMM * dxMM + dyMM * dyMM;
+      if (d2 > dMax2) continue;
+      const hAt = depth + Math.sqrt(d2) / halfAngleTan;
+      if (hAt < data[base + x]) data[base + x] = hAt;
     }
   }
 }

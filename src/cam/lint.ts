@@ -87,6 +87,10 @@ interface Move {
   hasY: boolean;
   hasZ: boolean;
   f: number; // active (modal) feed rate for this move
+  /** G93 (inverse-time) active for this move — see {@link checkFastPlunge}: F is
+   *  1/minutes-for-the-whole-move under G93, not mm/min, so it is NOT comparable
+   *  across moves of different lengths the way a G94 feed rate is. */
+  invTime: boolean;
 }
 
 /**
@@ -103,6 +107,10 @@ function parseMoves(gcode: string, zTop: number): Move[] {
     z = zTop,
     f = 0;
   let motion: 0 | 1 | 2 | 3 | null = null;
+  // G94 (feed-per-minute) is the controller's power-up default; G93 (inverse-time,
+  // rotary combined moves — see cam/klein.ts) is modal once emitted and stays
+  // active across every line until an explicit G94, same as motion/feed.
+  let invTime = false;
   let lineNo = 0;
 
   for (const raw of gcode.split(/\r?\n/)) {
@@ -123,7 +131,9 @@ function parseMoves(gcode: string, zTop: number): Move[] {
       if (letter === "G" && !Number.isNaN(val)) {
         const g = Math.round(val);
         if (g === 0 || g === 1 || g === 2 || g === 3) nextMotion = g;
-        // Non-motion G-words (G17/G20/G21/G90/…) leave the modal motion untouched.
+        else if (g === 93) invTime = true;
+        else if (g === 94) invTime = false;
+        // Other non-motion G-words (G17/G20/G21/G90/…) leave modal state untouched.
         continue;
       }
       if (Number.isNaN(val)) continue;
@@ -154,7 +164,21 @@ function parseMoves(gcode: string, zTop: number): Move[] {
     // motion mode (a bare `F1000` or a `G90` line moves nothing). The "before"
     // position (px/py/pz) is threaded in afterwards from the prior move.
     if (sawCoord && motion !== null) {
-      moves.push({ line: lineNo, motion, px: 0, py: 0, pz: 0, x, y, z, hasX, hasY, hasZ, f });
+      moves.push({
+        line: lineNo,
+        motion,
+        px: 0,
+        py: 0,
+        pz: 0,
+        x,
+        y,
+        z,
+        hasX,
+        hasY,
+        hasZ,
+        f,
+        invTime,
+      });
     }
   }
 
@@ -273,6 +297,12 @@ function checkFastPlunge(moves: Move[]): LintFinding | null {
   let first: Move | null = null,
     count = 0;
   for (const m of moves) {
+    // Under G93 (inverse-time — a rotary combined-move job, cam/klein.ts) F is
+    // 1/minutes-for-this-move, not mm/min: a short pure-Z plunge naturally gets a
+    // LARGER F than a long lateral move at the same true feed, which read as
+    // "at or above the cutting feed" every time and warned on ordinary rotary
+    // plunges. Not comparable across moves at all, so skip them outright.
+    if (m.invTime) continue;
     const lateral = m.hasX || m.hasY;
     if (m.motion === 1 && lateral) lastHorizFeed = m.f || lastHorizFeed;
     // Pure downward Z feed (no lateral component) = a straight plunge.
@@ -547,6 +577,17 @@ export function buildLintContext(
 ): LintContext {
   const { ox, oy, zOffset } = resolveOrigin(doc);
   const { width, height } = stockFootprint(doc);
+  // The stock's corner in CANVAS coordinates — (0,0) only for the legacy
+  // "stock fills the work area" case. Since positioned StockRect shipped (the
+  // workholding work), the blank can sit anywhere on a larger sheet (room for
+  // clamps to overhang), so the bounds must be anchored at the stock's actual
+  // corner, not canvas (0,0) — the same sx/sy resolveOrigin already folds into
+  // ox/oy. Getting this wrong doesn't just shift the box: on the New Project
+  // default (blank centred on a margin-padded sheet) it produced a false
+  // "outside the stock" error on geometry that was safely inside on one edge,
+  // while silently passing real off-stock moves on the opposite edge.
+  const sx = doc.stockRect?.x ?? 0;
+  const sy = doc.stockRect?.y ?? 0;
   // Fixture footprints shifted into emitted (post-origin) coords to match the moves.
   const fixtures: Fixture[] =
     doc.isLaser
@@ -557,10 +598,10 @@ export function buildLintContext(
         }));
   return {
     bounds: {
-      xMin: 0 - ox,
-      xMax: width - ox,
-      yMin: 0 - oy,
-      yMax: height - oy,
+      xMin: sx - ox,
+      xMax: sx + width - ox,
+      yMin: sy - oy,
+      yMax: sy + height - oy,
     },
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),

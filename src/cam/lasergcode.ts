@@ -786,7 +786,9 @@ export function generateLaserGCode(
     `; Laser post-processor: ${post.name}`,
     `; ${ops.length} toolpath${ops.length !== 1 ? "s" : ""}`,
     `; WCS origin X: ${xLabel}  Y: ${yLabel}`,
-    `; Stock: ${foot.width} × ${foot.height}mm`,
+    // Rounded (not the raw values) — a laser-rotary job's wrapped dimension is
+    // Math.PI * diameter and would otherwise print its full float precision.
+    `; Stock: ${n(foot.width)} × ${n(foot.height)}mm`,
     "G21 ; metric",
     "G90 ; absolute",
     "G17 ; XY plane",
