@@ -183,6 +183,69 @@ test("a drag that snaps to nothing says so instead of silently failing", async (
   expect(await drawn(page)).toHaveLength(1);
 });
 
+test("modifiers work on a drag: Alt centres a rectangle, Shift keeps a line ortho", async ({
+  page,
+}) => {
+  // A drag finishes by re-entering onPointerDown with the RELEASE event, so the
+  // modifier state that counts is the one held at release — the same as for a
+  // second click. Untested until now, and easy to get wrong.
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await newProject(page);
+
+  await pickTool(page, "Rectangle");
+  const c = await toPx(page, [80, 80]);
+  const corner = await toPx(page, [120, 110]);
+  await page.keyboard.down("Alt");
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down();
+  await page.mouse.move(corner.x, corner.y);
+  await page.mouse.up();
+  await page.keyboard.up("Alt");
+
+  const rect = await page.evaluate(() => {
+    const r = (
+      window as unknown as {
+        __app: { doc: { entities: { id: string; p0?: { x: number; y: number }; p1?: { x: number; y: number } }[] } };
+      }
+    ).__app.doc.entities.find((e) => e.id !== "__origin__") as {
+      p0: { x: number; y: number };
+      p1: { x: number; y: number };
+    };
+    return { cx: (r.p0.x + r.p1.x) / 2, cy: (r.p0.y + r.p1.y) / 2 };
+  });
+  // Alt draws from the centre, so the press point is the CENTRE of the result,
+  // not a corner of it.
+  expect(rect.cx).toBeCloseTo(80, 1);
+  expect(rect.cy).toBeCloseTo(80, 1);
+
+  // Shift on a line drag constrains it to the axis, so a sloped drag comes out
+  // exactly horizontal.
+  await pickTool(page, "Line");
+  const a = await toPx(page, [40, 150]);
+  const b = await toPx(page, [140, 168]); // deliberately sloped
+  await page.keyboard.down("Shift");
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y);
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+
+  const line = await page.evaluate(() => {
+    const l = (
+      window as unknown as {
+        __app: { doc: { entities: { id: string; a?: { x: number; y: number }; b?: { x: number; y: number } }[] } };
+      }
+    ).__app.doc.entities.find((e) => e.a && e.b) as {
+      a: { x: number; y: number };
+      b: { x: number; y: number };
+    };
+    return { dy: Math.abs(l.b.y - l.a.y), dx: Math.abs(l.b.x - l.a.x) };
+  });
+  expect(line.dx).toBeGreaterThan(50); // control: a real line was drawn
+  expect(line.dy).toBeCloseTo(0, 6); // and Shift flattened it
+});
+
 test("a dragged endpoint snaps, exactly as a clicked one does", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);
