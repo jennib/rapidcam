@@ -101,7 +101,7 @@ export class PolylineTool implements Tool {
           }),
         );
       }
-      
+
       // Auto-add H/V constraints to each segment if perfectly orthogonal
       const numSegs = closed ? pts.length : pts.length - 1;
       for (let i = 0; i < numSegs; i++) {
@@ -114,7 +114,7 @@ export class PolylineTool implements Tool {
           ctx.doc.addConstraint(makeConstraint("vertical", { entities: [refId] }));
         }
       }
-      
+
       ctx.solve();
     }
     this.points = [];

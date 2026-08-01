@@ -716,7 +716,10 @@ function computeT(raw: Vec2, a: Vec2, b: Vec2): number {
 }
 
 /** Find the closest edge of a rectangle or image and return its two corner PointRefs and its midpoint. */
-function pickRectOrImageEdge(ent: RectEntity | RasterImageEntity, p: Vec2): { p1: Pick; p2: Pick; mid: Pick } | null {
+function pickRectOrImageEdge(
+  ent: RectEntity | RasterImageEntity,
+  p: Vec2,
+): { p1: Pick; p2: Pick; mid: Pick } | null {
   const isImg = ent.type === "image";
   const blKey = isImg ? "c0" : "bl";
   const brKey = isImg ? "c1" : "br";

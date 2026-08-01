@@ -37,7 +37,7 @@ export class PolygonTool implements Tool {
         e.world,
         [
           { placeholder: "Sides", initial: this.sides.toString() },
-          { placeholder: `Ø (${ctx.doc.displayUnit})` }
+          { placeholder: `Ø (${ctx.doc.displayUnit})` },
         ],
         (raws) => this.commitByText(raws, ctx),
         () => this.cancel(ctx),
@@ -47,12 +47,19 @@ export class PolygonTool implements Tool {
             this.sides = n;
             ctx.requestRender();
           }
-        }
+        },
       );
     } else {
       ctx.closeValueEditor();
       const r = dist(this.center!, e.world);
-      if (r < 1e-6) return;
+      if (r < 1e-6) {
+        // Snapping can pull the second point onto the first. Refusing silently
+        // reads as "my drag did nothing" — say why (see ToolContext.notify).
+        ctx.notify(
+          "Radius snapped to zero — the vertex landed on the centre. Zoom in, or toggle snap in the status bar.",
+        );
+        return;
+      }
       this.commit(r, vecAngle(sub(e.world, this.center!)), ctx);
     }
   }

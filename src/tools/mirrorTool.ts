@@ -122,7 +122,7 @@ export class MirrorTool implements Tool {
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
-    
+
     if (!this.axisStart) {
       // First try to hit an existing line to use as the mirror axis directly
       const tol = ctx.view.toWorldLen(12);
@@ -146,7 +146,7 @@ export class MirrorTool implements Tool {
         ctx.requestRender();
         return; // Done in one click
       }
-      
+
       // If no line clicked, start drawing an axis
       this.axisStart = { ...e.world };
     } else {

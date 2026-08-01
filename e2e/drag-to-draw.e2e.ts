@@ -149,6 +149,40 @@ test("drag draws a circle and a line too", async ({ page }) => {
   expect(ents.map((e) => e.type).sort()).toEqual(["CircleEntity", "LineEntity"]);
 });
 
+test("a drag that snaps to nothing says so instead of silently failing", async ({ page }) => {
+  // Found by looking at a real drag: snapping can pull the second corner onto
+  // the first row or column of the grid, so the rectangle is zero-width and the
+  // size guard — correctly — refuses it. Refusing SILENTLY is the same "my drag
+  // did nothing" the drag support exists to fix, and ToolContext.notify is the
+  // house rule for exactly this.
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await newProject(page);
+
+  await pickTool(page, "Rectangle");
+  const a = await toPx(page, [60, 60]);
+
+  // Straight down: the corners share a column, so the rectangle has zero width
+  // at any zoom. (The case that led here was a short diagonal drag whose X was
+  // snapped back onto the anchor's column — same outcome, but it depends on the
+  // zoom-to-grid ratio, so this drives it deterministically instead.)
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(a.x, a.y + 60);
+  await page.mouse.up();
+
+  expect(await drawn(page)).toHaveLength(0);
+  await expect(page.locator("#statusbar")).toContainText(/snapped to the same row or column/i);
+
+  // And the tool is usable straight afterwards — the refusal is not a dead end.
+  const b = await toPx(page, [140, 120]);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y);
+  await page.mouse.up();
+  expect(await drawn(page)).toHaveLength(1);
+});
+
 test("a dragged endpoint snaps, exactly as a clicked one does", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);

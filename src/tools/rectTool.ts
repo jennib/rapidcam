@@ -63,7 +63,7 @@ export class RectTool implements Tool {
           this.typedW = w != null && w > 0 ? w : null;
           this.typedH = h != null && h > 0 ? h : null;
           ctx.requestRender();
-        }
+        },
       );
     } else {
       ctx.closeValueEditor();
@@ -73,6 +73,13 @@ export class RectTool implements Tool {
       if (w > 1e-6 && h > 1e-6) {
         ctx.pushHistory();
         this.commit(p0, p1, ctx);
+      } else {
+        // Snapping can pull the second corner onto the first row/column of the
+        // grid, giving a zero-width or zero-height rectangle. Refusing silently
+        // reads as "my drag did nothing" — say why (see ToolContext.notify).
+        ctx.notify(
+          "Corners snapped to the same row or column — nothing to draw. Zoom in, or toggle snap in the status bar.",
+        );
       }
       this.start = null;
       this.anchorScreen = null;
@@ -94,12 +101,22 @@ export class RectTool implements Tool {
     if (this.start) ctx.requestRender();
   }
 
-  private getRectExtents(cursorWorld: Vec2): { p0: Vec2, p1: Vec2 } {
+  private getRectExtents(cursorWorld: Vec2): { p0: Vec2; p1: Vec2 } {
     if (!this.start) return { p0: cursorWorld, p1: cursorWorld };
 
     // The user's typed W and H are the total desired dimensions.
-    const dx = this.typedW !== null ? (this.isCenter ? this.typedW / 2 : this.typedW) : Math.abs(cursorWorld.x - this.start.x);
-    const dy = this.typedH !== null ? (this.isCenter ? this.typedH / 2 : this.typedH) : Math.abs(cursorWorld.y - this.start.y);
+    const dx =
+      this.typedW !== null
+        ? this.isCenter
+          ? this.typedW / 2
+          : this.typedW
+        : Math.abs(cursorWorld.x - this.start.x);
+    const dy =
+      this.typedH !== null
+        ? this.isCenter
+          ? this.typedH / 2
+          : this.typedH
+        : Math.abs(cursorWorld.y - this.start.y);
 
     const signX = cursorWorld.x < this.start.x ? -1 : 1;
     const signY = cursorWorld.y < this.start.y ? -1 : 1;
@@ -166,7 +183,7 @@ export class RectTool implements Tool {
 
     ctx.pushHistory();
     this.commit(p0, p1, ctx);
-    
+
     this.start = null;
     this.anchorScreen = null;
     this.typedW = null;

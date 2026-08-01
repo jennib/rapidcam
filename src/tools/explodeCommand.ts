@@ -15,12 +15,7 @@
  * implied parallelism). Arcs/circles/beziers are left untouched.
  */
 
-import {
-  type EntityId,
-  LineEntity,
-  type RectEntity,
-  type PolylineEntity,
-} from "../model/entities";
+import { type EntityId, LineEntity, type RectEntity, type PolylineEntity } from "../model/entities";
 import { type Constraint, makeConstraint } from "../model/constraints";
 import type { CADDocument } from "../model/document";
 

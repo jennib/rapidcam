@@ -46,9 +46,15 @@ export class CircleTool implements Tool {
         // result — and so currentDof() — stale from before the circle existed,
         // which skews any consumer that reads it before the next solve.
         ctx.solve();
+      } else {
+        // Snapping can pull the second point onto the first. Refusing silently
+        // reads as "my drag did nothing" — say why (see ToolContext.notify).
+        ctx.notify(
+          "Radius snapped to zero — the edge landed on the centre. Zoom in, or toggle snap in the status bar.",
+        );
       }
       this.center = null;
-    this.anchorScreen = null;
+      this.anchorScreen = null;
       this.centerSnap = null;
     }
   }
