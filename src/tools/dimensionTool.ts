@@ -204,6 +204,7 @@ export class DimensionTool implements Tool {
           pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
         if (pick && !samePos(pick.pos, this.p1!.pos)) {
           this.p2 = pick;
+          this.forcedLinearType = null;
           this.phase = "placeLinear";
           break;
         }
@@ -213,6 +214,7 @@ export class DimensionTool implements Tool {
           const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
           if (entityPick && !samePos(entityPick.pos, this.p1!.pos)) {
             this.p2 = entityPick;
+            this.forcedLinearType = null;
             this.phase = "placeLinear";
           }
         }
@@ -225,6 +227,7 @@ export class DimensionTool implements Tool {
         if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
           this.p2 = pick;
           this.hoverP2 = null;
+          this.forcedLinearType = null;
           break;
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
@@ -251,6 +254,7 @@ export class DimensionTool implements Tool {
             }
           }
           if (newP2) {
+            this.forcedLinearType = null;
             if (newP1?.ref.key.startsWith("mid") && newP2.ref.key.startsWith("mid")) {
               const edge1 = getEdgeEnds(ctx.doc, newP1);
               const edge2 = getEdgeEnds(ctx.doc, newP2);
@@ -424,8 +428,14 @@ export class DimensionTool implements Tool {
       const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
 
+      const isSameEntityEdge =
+        this.firstMid !== null &&
+        this.hoverP2 === null &&
+        activeP1.ref.entityId === activeP2.ref.entityId;
+
       this.curType =
-        this.forcedLinearType ?? chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
+        (isSameEntityEdge ? this.forcedLinearType : null) ??
+        chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);

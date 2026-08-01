@@ -279,3 +279,24 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   check("chain: l1 length held", Math.abs(l1.length - 100) < 0.1, `len1=${l1.length.toFixed(3)}`);
   check("chain: l2 length held", Math.abs(l2.length - 50) < 0.1, `len2=${l2.length.toFixed(3)}`);
 }
+
+// 11) Multi-entity linear dimensioning between two entities ----------------
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const rect = doc.add(new LineEntity({ x: 50, y: 50 }, { x: 50, y: 250 })) as LineEntity;
+  const line = doc.add(new LineEntity({ x: 240, y: 100 }, { x: 240, y: 200 })) as LineEntity;
+  // Measuring horizontal distance (Δx = 190) from vertical line rect to line.
+  // Starting from a vertical edge must not lock the dimension to "vertical".
+  const dim = makeDimension("horizontal", {
+    points: [{ entityId: rect.id, key: "a" }, { entityId: line.id, key: "a" }],
+    value: 190,
+    offset: 10,
+  });
+  doc.addDimension(dim);
+  solve(doc);
+  check(
+    "horizontal dimension correctly measures Δx between two vertical entities",
+    Math.abs(Math.abs(line.a.x - rect.a.x) - 190) < 1e-3,
+    `dx=${Math.abs(line.a.x - rect.a.x).toFixed(4)}`,
+  );
+}

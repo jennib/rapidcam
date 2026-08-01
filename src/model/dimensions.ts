@@ -178,6 +178,20 @@ function gapGeom(
   };
 }
 
+function readLineGeom(geo: Geo, id: EntityId | undefined): { a: Vec2; b: Vec2 } | null {
+  if (!id) return null;
+  const sep = id.indexOf("#");
+  if (sep >= 0) {
+    const poly = geo(id.slice(0, sep));
+    if (poly instanceof PolylineEntity) {
+      const seg = poly.segmentByStartVertexId(id.slice(sep + 1));
+      return seg ? { a: seg[0], b: seg[1] } : null;
+    }
+  }
+  const e = geo(id);
+  return e instanceof LineEntity ? { a: e.a, b: e.b } : null;
+}
+
 function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
   if (!id) return null;
   const e = geo(id);
@@ -186,8 +200,8 @@ function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
 
 /** Compute the vertex and arm directions for an angle between two lines. */
 function linesAngleGeometry(
-  l1: LineEntity,
-  l2: LineEntity,
+  l1: { a: Vec2; b: Vec2 },
+  l2: { a: Vec2; b: Vec2 },
 ): { vertex: Vec2; d1: Vec2; d2: Vec2 } | null {
   const EPS = 1e-6;
   // Prefer a shared endpoint as the vertex.
@@ -256,16 +270,16 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       return a.radius * span;
     }
     case "angle": {
-      const l1 = readLine(geo, dim.entities[0]);
-      const l2 = readLine(geo, dim.entities[1]);
+      const l1 = readLineGeom(geo, dim.entities[0]);
+      const l2 = readLineGeom(geo, dim.entities[1]);
       if (!l1 || !l2) return null;
       const ag = linesAngleGeometry(l1, l2);
       if (!ag) return null;
       return Math.acos(Math.max(-1, Math.min(1, dot(ag.d1, ag.d2))));
     }
     case "line-distance": {
-      const l1 = readLine(geo, dim.entities[0]);
-      const l2 = readLine(geo, dim.entities[1]);
+      const l1 = readLineGeom(geo, dim.entities[0]);
+      const l2 = readLineGeom(geo, dim.entities[1]);
       if (!l1 || !l2) return null;
       const dir2 = normalize(sub(l2.b, l2.a));
       const normal2 = { x: -dir2.y, y: dir2.x };
@@ -346,16 +360,16 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     return Math.max(5, Math.min(40, dist(cursor, a.center) - a.radius));
   }
   if (dim.type === "angle") {
-    const l1 = readLine(geo, dim.entities[0]);
-    const l2 = readLine(geo, dim.entities[1]);
+    const l1 = readLineGeom(geo, dim.entities[0]);
+    const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return dim.offset;
     const ag = linesAngleGeometry(l1, l2);
     if (!ag) return dim.offset;
     return Math.max(5, dist(cursor, ag.vertex));
   }
   if (dim.type === "line-distance") {
-    const l1 = readLine(geo, dim.entities[0]);
-    const l2 = readLine(geo, dim.entities[1]);
+    const l1 = readLineGeom(geo, dim.entities[0]);
+    const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return dim.offset;
     const p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
     const q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
@@ -457,8 +471,8 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
 
   // angle
   if (dim.type === "angle") {
-    const l1 = readLine(geo, dim.entities[0]);
-    const l2 = readLine(geo, dim.entities[1]);
+    const l1 = readLineGeom(geo, dim.entities[0]);
+    const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return null;
     const ag = linesAngleGeometry(l1, l2);
     if (!ag) return null;
@@ -493,8 +507,8 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   let q: Vec2 | null = null;
 
   if (dim.type === "line-distance") {
-    const l1 = readLine(geo, dim.entities[0]);
-    const l2 = readLine(geo, dim.entities[1]);
+    const l1 = readLineGeom(geo, dim.entities[0]);
+    const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return null;
     p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
     q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
@@ -517,12 +531,12 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     p2 = { x, y: p.y };
     q2 = { x, y: q.y };
   } else if (type === "line-distance") {
-    const l1 = readLine(geo, dim.entities[0])!;
+    const l1 = readLineGeom(geo, dim.entities[0])!;
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
     p2 = add(p, scale(n, dim.offset));
     const d = dot(sub(q, p), n);
-    q2 = add(q, scale(n, dim.offset - d));
+    q2 = add(p2, scale(n, -d));
   } else {
     const n = linearNormal("distance", p, q);
     p2 = add(p, scale(n, dim.offset));
