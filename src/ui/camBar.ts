@@ -364,9 +364,14 @@ export class CamBar {
    * show-then-block. Re-run from renderOps so a machine-type change takes effect.
    */
   private updateModeButtons(): void {
-    const rotary = this.doc.isRotary;
-    if (this.stitchBtn) this.stitchBtn.style.display = rotary ? "none" : "";
-    if (this.flipBtn) this.flipBtn.style.display = rotary ? "none" : "";
+    // Both handlers below require a flat MILL, but this only hid them for a
+    // rotary — so on a laser document "Tile" and "Two-sided" were visible,
+    // enabled, and refused with a toast every time they were clicked. Match the
+    // gate the handlers actually apply: a button that cannot work should not be
+    // offered.
+    const millOnly = this.doc.machineKind === "mill";
+    if (this.stitchBtn) this.stitchBtn.style.display = millOnly ? "" : "none";
+    if (this.flipBtn) this.flipBtn.style.display = millOnly ? "" : "none";
   }
 
   private openFlip(): void {

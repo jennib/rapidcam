@@ -202,6 +202,35 @@ test("\"Toolpaths from Layers\" is laser-only, and builds one path per job layer
   expect(host.querySelectorAll(".tp-op-item")).toHaveLength(2);
 });
 
+test("mill-only actions are not offered on machines that refuse them", () => {
+  // "Tile" and "Two-sided" both bail with a toast unless the machine is a flat
+  // mill, but were only hidden for a rotary — so a laser document showed two
+  // enabled buttons that refused every click.
+  const shown = (doc: CADDocument) => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    // Both buttons are only built when their preview callbacks are supplied, so
+    // a CamBar without them has nothing to assert on (and `.every()` on the
+    // empty result would pass vacuously — hence the length check below).
+    new CamBar(host, doc, () => {}, () => {}, () => {});
+    return [...host.querySelectorAll<HTMLButtonElement>("button.cam-add-btn")]
+      .filter((b) => /Tile|Two-sided/i.test(b.textContent ?? ""))
+      .map((b) => `${b.textContent?.trim()}:${b.style.display === "none" ? "hidden" : "shown"}`);
+  };
+
+  const mill = new CADDocument({ width: 200, height: 100 });
+  // Control: on a flat mill they ARE offered, so a "hidden" below is the machine
+  // kind rather than a selector that matches nothing.
+  expect(shown(mill).every((s) => s.endsWith(":shown"))).toBe(true);
+  expect(shown(mill)).toHaveLength(2);
+
+  expect(shown(laserDoc()).every((s) => s.endsWith(":hidden"))).toBe(true);
+
+  const rotary = new CADDocument({ width: 200, height: 100 });
+  rotary.machineKind = "mill-rotary";
+  expect(shown(rotary).every((s) => s.endsWith(":hidden"))).toBe(true);
+});
+
 test("the kerf side picker appears for a cut, and only for a cut", () => {
   const doc = laserDoc();
   const host = mountLayers(doc);

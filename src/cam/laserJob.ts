@@ -114,6 +114,13 @@ export function buildJobFromLayers(doc: CADDocument): LayerJob {
       skipped.push({ layer: layer.name, why: "workholding layers are not cut" });
       continue;
     }
+    // Hidden means not cut. A user who hides a layer to get it out of the way
+    // and then builds the job does not expect the machine to burn it anyway,
+    // and finding out costs a piece of material. Unhide it to include it.
+    if (layer.visible === false) {
+      skipped.push({ layer: layer.name, why: "the layer is hidden" });
+      continue;
+    }
     const targets = doc.entities.filter(
       (e) => e.layerId === layer.id && usableFor(recipe.kind as LaserJobKind, e),
     );

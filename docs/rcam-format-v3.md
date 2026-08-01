@@ -651,6 +651,8 @@ The rules, which mirror `toolId` on the mill side:
   numbers *are* the point, such as the cells of a material-test grid.
 - A layer with no `laser` key changes nothing, which is how every file written
   before this existed behaves.
+- Building a job skips **hidden** layers (`"visible": false`) and **workholding**
+  layers — hiding something is how you take it out of the job.
 
 ```jsonc
 // The "Cut" layer: everything on it burns at 100% and 300mm/min, three passes.

@@ -94,6 +94,19 @@ test("an empty layer is reported, not silently dropped", () => {
   expect(skipped).toEqual([{ layer: "Cut", why: "no geometry on it" }]);
 });
 
+test("a hidden layer is not cut", () => {
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { ...CUT };
+  doc.entities.push(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }, "R1"));
+  expect(buildJobFromLayers(doc).operations).toHaveLength(1); // control: visible = cut
+
+  doc.layers[0].visible = false;
+  const { operations, skipped } = buildJobFromLayers(doc);
+  expect(operations).toEqual([]);
+  expect(skipped).toEqual([{ layer: "Cut", why: "the layer is hidden" }]);
+});
+
 test("construction geometry is not cut", () => {
   const doc = laserDoc();
   doc.layers[0].laser = { ...CUT };
