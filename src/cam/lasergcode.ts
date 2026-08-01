@@ -35,7 +35,7 @@ import {
 } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import type { CAMOperation } from "./types";
-import { DEFAULTS } from "./types";
+import { DEFAULTS, resolveOpLaser } from "./types";
 import { offsetPolygon, signedArea } from "./offset";
 import { chainOpenCurvesIntoLoops } from "./loops";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
@@ -717,7 +717,8 @@ export function laserPreviewPaths(
   const post = getLaserPost(postProcessor);
   const paths: LaserPreviewPath[] = [];
   for (const raw of rawOps) {
-    const op = expandOpPatternTargets(raw, doc);
+    // Same order as the generator, so the preview shows the layer's numbers.
+    const op = expandOpPatternTargets(resolveOpLaser(raw, doc.layers, doc.entities), doc);
     for (const it of laserOpItems(op, doc, post)) {
       if (it.kind === "note") continue;
       if (it.kind === "circle")
@@ -757,9 +758,14 @@ export function generateLaserGCode(
 ): string {
   if (rawOps.length === 0) return "; No toolpaths\nM30\n";
 
-  // Expand pattern targets so a toolpath follows its pattern's count. (No tool
-  // resolution — laser ops carry their own power/feed, not a tool library entry.)
-  const ops = rawOps.map((op) => expandOpPatternTargets(op, doc));
+  // Resolve each op's layer recipe FIRST (the layer is a property of the
+  // authored geometry, and expansion mints target ids the document doesn't
+  // hold), then expand pattern targets so a toolpath follows its pattern's
+  // count. There is no tool resolution here — a laser's "tool" is the beam
+  // recipe, which lives on the layer or inline on the op.
+  const ops = rawOps.map((op) =>
+    expandOpPatternTargets(resolveOpLaser(op, doc.layers, doc.entities), doc),
+  );
   const { ox, oy } = resolveOrigin(doc); // Z origin is irrelevant for a laser
   const foot = stockFootprint(doc);
   const post = getLaserPost(opts.postProcessor);

@@ -242,7 +242,20 @@
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
         "fixture": { "type": "boolean", "description": "When true, closed shapes on this layer are workholding (clamps/fixtures): not machined, and pre-flight flags any move that would hit one." },
-        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Fixture layers only: clamp height above the stock top, mm. A rapid clears the clamp only above this. Omitted = full-height (blocks any pass)." }
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Fixture layers only: clamp height above the stock top, mm. A rapid clears the clamp only above this. Omitted = full-height (blocks any pass)." },
+        "laser": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["feedrate", "laserPower", "laserPasses"],
+          "description": "Laser documents only: beam settings shared by every operation whose geometry sits entirely on this layer (the colour-driven workflow — cut on black, score on red). An operation with \"laserOverride\": true keeps its own instead. Omitted = each operation uses its own settings.",
+          "properties": {
+            "feedrate": { "type": "number", "exclusiveMinimum": 0, "description": "Cutting speed, mm/min." },
+            "laserPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Beam power, % of machine maximum." },
+            "laserPasses": { "type": "integer", "minimum": 1, "description": "How many times the beam re-traces each path." },
+            "kerfWidth": { "type": "number", "minimum": 0, "description": "Beam kerf, mm. Omitted = leave each operation's own kerf alone." },
+            "airAssist": { "type": "boolean", "description": "Omitted = leave each operation's own air-assist setting alone." }
+          }
+        }
       }
     },
 
@@ -721,6 +734,7 @@
         "leadOut": { "$ref": "#/$defs/leadDef" },
         "laserPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Laser only (machineKind \"laser\"): beam power as a percentage (0–100) of the controller's max (GRBL $30), scaled to an S word. Default 80." },
         "laserPasses": { "type": "integer", "minimum": 1, "description": "Laser only: number of times the beam re-traces each path (the fixed-Z analogue of milling stepdown). Default 1." },
+        "laserOverride": { "type": "boolean", "description": "Laser only: cut with this operation's own beam settings, ignoring any \"laser\" recipe on the layer its geometry sits on. Omitted/false = follow the layer when it has one. Set on operations whose numbers ARE the point, such as the cells of a material-test grid." },
         "kerfWidth": { "type": "number", "minimum": 0, "description": "Laser profile only: beam kerf width (mm). Closed profiles are offset by half this — outward for side \"outside\", inward for \"inside\". 0 = cut on the line. Engrave ignores it." },
         "laserFill": { "type": "boolean", "description": "Laser engrave only: flood the interior of closed shapes with parallel scan lines (area/solid engraving) in addition to outlining them. Closed contours are grouped even–odd so letter counters stay unfilled. Default false." },
         "laserFillSpacing": { "type": "number", "exclusiveMinimum": 0, "description": "Laser fill only: spacing (mm) between scan lines — roughly the beam/line width. Default 0.2." },

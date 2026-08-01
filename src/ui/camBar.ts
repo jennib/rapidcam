@@ -1,4 +1,4 @@
-import type { CADDocument, GroupDef } from "../model/document";
+import type { CADDocument, GroupDef, LayerDef } from "../model/document";
 import {
   type Entity,
   LineEntity,
@@ -13,6 +13,8 @@ import { formatFeed, formatLength, toMM } from "../core/units";
 import {
   DEFAULTS,
   TOOL_TYPE_LABELS,
+  opLayerId,
+  resolveOpLaser,
   selectedOpsInOrder,
   type CAMOperation,
   type CAMOpType,
@@ -136,6 +138,8 @@ interface OpState {
   laserFillSpacing: number;
   laserOverscan: number;
   airAssist: boolean;
+  /** Cut with this op's own beam settings, ignoring its layer's recipe. */
+  laserOverride: boolean;
   // raster engrave (engrave op targeting an image entity)
   rasterLineInterval: number;
   rasterDotPitch: number; // 0 = square dots (use the line interval)
@@ -155,6 +159,12 @@ interface DialogHooks {
   updateVBitHint(): void;
   /** Set the tool type from outside the tool section (e.g. force V-bit for chamfer). */
   setToolType(t: ToolType): void;
+  /**
+   * Re-read which layer the op's geometry sits on and refresh the laser
+   * section's beam banner. Called by the geometry section, because changing the
+   * target selection can move the op onto (or off) a layer with a beam recipe.
+   */
+  refreshBeamLayer(): void;
 }
 
 const TP_PALETTE = [
@@ -405,6 +415,21 @@ export class CamBar {
    *  float like "0.19685039370078738" when mm is converted to inches. */
   private lenView(mm: number): string {
     return formatLength(mm, this.doc.displayUnit);
+  }
+  /**
+   * The layer whose beam recipe drives this operation, or null when it keeps its
+   * own settings (no recipe on the layer, geometry spanning several layers, or
+   * the op has forked). See cam/types.ts `resolveOpLaser`.
+   */
+  private beamLayer(
+    entityIds: readonly string[] | undefined,
+    overridden: boolean | undefined,
+  ): LayerDef | null {
+    if (!this.doc.isLaser || overridden) return null;
+    const id = opLayerId(entityIds, this.doc.entities);
+    if (id === null) return null;
+    const layer = this.doc.layers.find((l) => l.id === id);
+    return layer?.laser ? layer : null;
   }
   /** A feed/plunge rate as e.g. "1200 mm/min" / "47.2 in/min". */
   private feedU(mmPerMin: number): string {
@@ -679,15 +704,25 @@ export class CamBar {
     // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
     // All lengths/feeds shown in the document's unit and rounded (raw internal
     // mm otherwise leaked as "-19.0499999…mm").
+    // Summarise the numbers the machine will actually run: when the op's layer
+    // carries a beam recipe, those are the layer's, not the op's own fields.
+    const beam = this.doc.isLaser
+      ? resolveOpLaser(op, this.doc.layers, this.doc.entities)
+      : op;
+    const beamLayer =
+      this.doc.isLaser && beam !== op ? this.beamLayer(op.entityIds, op.laserOverride) : null;
     params.textContent =
       this.doc.isLaser
-        ? `${op.laserPower ?? DEFAULTS.laserPower}% · ${op.laserPasses ?? DEFAULTS.laserPasses}× · ${this.feedU(op.feedrate)}` +
+        ? `${beam.laserPower ?? DEFAULTS.laserPower}% · ${beam.laserPasses ?? DEFAULTS.laserPasses}× · ${this.feedU(beam.feedrate)}` +
           (op.laserFill
             ? " · fill"
-            : op.type === "profile" && (op.kerfWidth ?? 0) > 0
-              ? ` · kerf ${this.lenU(op.kerfWidth ?? 0)}`
-              : "")
+            : op.type === "profile" && (beam.kerfWidth ?? 0) > 0
+              ? ` · kerf ${this.lenU(beam.kerfWidth ?? 0)}`
+              : "") +
+          (beamLayer ? ` · ⚡${beamLayer.name}` : "")
         : `T${op.toolNumber} ⌀${this.lenU(op.diameter)} ${toolLabel}  ${this.lenU(op.depth)}`;
+    if (beamLayer)
+      item.title = `Power, speed and passes come from the "${beamLayer.name}" layer. Edit them there to change every toolpath on it, or open this toolpath to give it its own.`;
     // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
     // chamfer) left in a laser document won't produce a toolpath — flag it here
     // rather than letting it surface only as a "; NOTE:" buried in the G-code.
@@ -923,6 +958,7 @@ export class CamBar {
       laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
       laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
       airAssist: existing?.airAssist ?? false,
+      laserOverride: existing?.laserOverride ?? false,
       // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
       // scales with the bit — ~10% of the cutter diameter is a good scallop/speed
       // balance (a fixed fine value is a needlessly long cut with a wide bit).
@@ -954,7 +990,11 @@ export class CamBar {
     };
 
     // Late-bound cross-section callbacks (see DialogHooks).
-    const hooks: DialogHooks = { updateVBitHint: () => {}, setToolType: () => {} };
+    const hooks: DialogHooks = {
+      updateVBitHint: () => {},
+      setToolType: () => {},
+      refreshBeamLayer: () => {},
+    };
 
     // --- backdrop + draggable dialog shell ---
     const { backdrop, dialog, body } = this.buildDialogShell(isNew, closeDialog);
@@ -1451,6 +1491,7 @@ export class CamBar {
     if (!isLaser) laser.root.style.display = "none";
     body.appendChild(laser.root);
     const updateLaserVisibility = isLaser ? laser.update : () => {};
+    hooks.refreshBeamLayer = updateLaserVisibility;
 
     // tabs section — profile ops only (mill)
     const tabs = this.buildTabsSection(state);
@@ -1465,7 +1506,7 @@ export class CamBar {
     const updateLeadVisibility = isLaser ? () => {} : lead.update;
 
     // geometry section
-    const geom = this.buildGeometrySection(state);
+    const geom = this.buildGeometrySection(state, hooks);
     body.appendChild(geom.root);
     const { renderEntities, startPickMode, stopPickMode, getPickActive } = geom;
     geomCleanup = geom.cleanup;
@@ -1738,6 +1779,7 @@ export class CamBar {
             : undefined,
         laserPower: isLaser ? state.laserPower : undefined,
         laserPasses: isLaser ? state.laserPasses : undefined,
+        laserOverride: isLaser && state.laserOverride ? true : undefined,
         kerfWidth: isLaser && isProfile ? state.kerfWidth : undefined,
         laserFill: isLaser && type === "engrave" && !raster && state.laserFill ? true : undefined,
         laserFillSpacing:
@@ -2889,6 +2931,74 @@ export class CamBar {
       },
       "len"
     );
+    // --- layer recipe banner -------------------------------------------------
+    // When this op's geometry all sits on a layer carrying a beam recipe, the
+    // layer's numbers are what the machine runs — so the fields show them and
+    // are read-only, rather than displaying values that quietly don't apply.
+    //
+    // Breaking the link is a button, not a side effect of typing. The mill's
+    // tool library forks silently on edit, but there the user picked the tool
+    // explicitly; here the link comes from which layer the geometry is on, so a
+    // silent fork would leave someone wondering months later why re-tuning the
+    // layer skipped this one operation.
+    const layerBanner = document.createElement("div");
+    layerBanner.className = "tp-field tp-beam-layer";
+    layerBanner.style.cssText =
+      "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;";
+    const layerNote = document.createElement("span");
+    layerNote.style.cssText = "flex:1;min-width:150px;font-size:11px;color:var(--text-dim);";
+    const layerBtn = document.createElement("button");
+    layerBtn.type = "button";
+    layerBtn.className = "btn tp-beam-layer-toggle";
+    layerBanner.append(layerNote, layerBtn);
+    sec.appendChild(layerBanner);
+
+    const beamFields = [feed, power, passes, kerf];
+    /** Reflect the layer link: message, button, and whether the fields are live. */
+    const updateLayerBanner = (): void => {
+      const layer = this.beamLayer([...state.entityIds], state.laserOverride);
+      // A layer whose recipe is being ignored because this op forked — worth
+      // naming, so "follow it again" is an obvious offer rather than a mystery.
+      const forkedFrom = state.laserOverride
+        ? this.beamLayer([...state.entityIds], false)
+        : null;
+      layerBanner.style.display = layer || forkedFrom ? "" : "none";
+      for (const f of beamFields) {
+        f.inp.disabled = !!layer;
+        f.inp.style.opacity = layer ? "0.55" : "";
+      }
+      if (layer) {
+        layerNote.textContent = `⚡ Power, speed and passes come from the "${layer.name}" layer.`;
+        layerNote.title =
+          "Edit them in the Layers panel to change every toolpath cutting this layer.";
+        layerBtn.textContent = "Use custom settings";
+        layerBtn.title = `Give this toolpath its own power and speed, independent of the "${layer.name}" layer`;
+      } else if (forkedFrom) {
+        layerNote.textContent = `Custom settings — not following the "${forkedFrom.name}" layer.`;
+        layerNote.title = "";
+        layerBtn.textContent = "Follow the layer";
+        layerBtn.title = `Take power, speed and passes from the "${forkedFrom.name}" layer again`;
+      }
+    };
+
+    layerBtn.addEventListener("click", () => {
+      if (!state.laserOverride) {
+        // Fork starting from what the layer was actually cutting at, so "custom"
+        // begins at the numbers on screen instead of jumping back to whatever
+        // the op held before it started following.
+        const layer = this.beamLayer([...state.entityIds], false);
+        if (layer?.laser) {
+          state.feedrate = layer.laser.feedrate;
+          state.laserPower = layer.laser.laserPower;
+          state.laserPasses = layer.laser.laserPasses;
+          if (layer.laser.kerfWidth !== undefined) state.kerfWidth = layer.laser.kerfWidth;
+          if (layer.laser.airAssist !== undefined) state.airAssist = layer.laser.airAssist;
+        }
+      }
+      state.laserOverride = !state.laserOverride;
+      update();
+    });
+
     sec.appendChild(feed.el);
     sec.appendChild(power.el);
     sec.appendChild(passes.el);
@@ -3138,6 +3248,15 @@ export class CamBar {
     sec.insertBefore(presetPicker, feed.el);
 
     const update = () => {
+      updateLayerBanner();
+      // Show the numbers that will actually run. While an op follows its layer
+      // the fields are the layer's (and read-only); once it forks they are the
+      // op's own again.
+      const active = this.beamLayer([...state.entityIds], state.laserOverride)?.laser;
+      feed.inp.value = this.feedView(active?.feedrate ?? state.feedrate);
+      power.inp.value = String(active?.laserPower ?? state.laserPower);
+      passes.inp.value = String(active?.laserPasses ?? state.laserPasses);
+      kerf.inp.value = this.lenView(active?.kerfWidth ?? state.kerfWidth);
       const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
       const isEngrave = state.combo === "engrave";
       const isRaster = isEngrave && this.opTargetsImage(state.entityIds);
@@ -3244,7 +3363,10 @@ export class CamBar {
   }
 
   /** Geometry section: entity/region picking, canvas pick-mode, and the live entity list. */
-  private buildGeometrySection(state: OpState): {
+  private buildGeometrySection(
+    state: OpState,
+    hooks: DialogHooks,
+  ): {
     root: HTMLElement;
     renderEntities: () => void;
 
@@ -3542,6 +3664,9 @@ export class CamBar {
     };
 
     renderEntities = () => {
+      // Which layer the op follows depends on the geometry it targets, so the
+      // beam banner has to re-read it whenever that selection changes.
+      hooks.refreshBeamLayer();
       // Pocket and V-carve support BOTH: show the region
       // list once areas are picked (or while flood-fill picking), else fall
       // through to the entity list so boundaries/text can be explicitly selected.

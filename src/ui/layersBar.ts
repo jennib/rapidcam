@@ -1,7 +1,9 @@
 import type { CADDocument, LayerDef } from "../model/document";
 import { nextId } from "../model/ids";
 import { confirmDialog } from "./modal";
-import { getAssociatedOperations } from "../cam/types";
+import { DEFAULTS, getAssociatedOperations } from "../cam/types";
+import { loadPresets } from "../cam/laserPresets";
+import { fromMM, toMM } from "../core/units";
 
 export class LayersBar {
   private content!: HTMLElement;
@@ -206,6 +208,36 @@ export class LayersBar {
         row.appendChild(htInp);
       }
 
+      // Beam recipe toggle — laser documents only, and never on a fixture layer
+      // (a clamp isn't cut, so power/speed for it would be meaningless).
+      if (this.doc.isLaser && !layer.fixture) {
+        const beamBtn = document.createElement("button");
+        beamBtn.className = "icon-btn layer-beam-toggle";
+        beamBtn.style.padding = "4px 6px";
+        beamBtn.style.fontSize = "14px";
+        beamBtn.innerHTML = "⚡";
+        beamBtn.style.opacity = layer.laser ? "1" : "0.35";
+        beamBtn.title = layer.laser
+          ? "This layer sets its own power and speed — click to let each toolpath keep its own"
+          : "Give this layer its own power and speed, shared by every toolpath that cuts it";
+        beamBtn.onclick = () => {
+          this.pushHistory();
+          layer.laser = layer.laser
+            ? undefined
+            : // The same numbers a new operation would have used anyway, so
+              // enabling a recipe changes nothing until the user tunes it. See
+              // cam/laserPresets.ts for why nothing here ships pre-seeded with
+              // material figures somebody might trust.
+              {
+                feedrate: DEFAULTS.feedrate,
+                laserPower: DEFAULTS.laserPower,
+                laserPasses: DEFAULTS.laserPasses,
+              };
+          this.doc.emitChange();
+        };
+        row.appendChild(beamBtn);
+      }
+
       // Delete button
       const delBtn = document.createElement("button");
       delBtn.className = "icon-btn danger";
@@ -251,6 +283,132 @@ export class LayersBar {
       row.appendChild(delBtn);
 
       this.listEl.appendChild(row);
+
+      if (this.doc.isLaser && !layer.fixture && layer.laser)
+        this.listEl.appendChild(this.beamRow(layer));
     }
   }
+
+  /**
+   * The beam recipe editor for one layer: power, speed, passes, and a picker to
+   * fill them from a saved material preset. Sits under its layer's row so the
+   * relationship is obvious, and edits are live — every toolpath cutting this
+   * layer picks the numbers up at export (cam/types.ts `resolveOpLaser`), which
+   * is the point: re-tune once after a test cut, not once per operation.
+   */
+  private beamRow(layer: LayerDef): HTMLElement {
+    const unit = this.doc.displayUnit;
+    const wrap = document.createElement("div");
+    wrap.className = "layer-beam-row";
+
+    // Two short lines rather than one long one: the layers panel is ~210px wide,
+    // and a single row of three fields plus their units overflowed — the power
+    // field clipped "100" to "1(" and the passes suffix wrapped onto its own line.
+    const line = (): HTMLElement => {
+      const el = document.createElement("div");
+      el.className = "layer-beam-line";
+      wrap.appendChild(el);
+      return el;
+    };
+
+    const num = (
+      value: string,
+      width: string,
+      title: string,
+      commit: (v: number) => void,
+    ): HTMLInputElement => {
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.className = "dim";
+      inp.value = value;
+      inp.style.width = width;
+      inp.title = title;
+      inp.min = "0";
+      inp.onchange = () => {
+        const v = parseFloat(inp.value);
+        if (!Number.isFinite(v) || v < 0) return void this.render(); // reject, restore
+        this.pushHistory();
+        commit(v);
+        this.doc.emitChange();
+      };
+      return inp;
+    };
+
+    const recipe = layer.laser;
+    if (!recipe) return wrap;
+
+    const unitTag = (t: string) => {
+      const s = document.createElement("span");
+      s.textContent = t;
+      return s;
+    };
+
+    line().append(
+      num(String(recipe.laserPower), "38px", "Beam power, % of machine maximum", (v) => {
+        recipe.laserPower = Math.min(100, v);
+      }),
+      unitTag("%"),
+      num(
+        String(round3(fromMM(recipe.feedrate, unit))),
+        "58px",
+        `Cutting speed, ${unit}/min`,
+        (v) => {
+          recipe.feedrate = toMM(v, unit);
+        },
+      ),
+      unitTag(`${unit}/min`),
+    );
+
+    const second = line();
+    second.append(
+      num(String(recipe.laserPasses), "38px", "How many times the beam re-traces each path", (v) => {
+        recipe.laserPasses = Math.max(1, Math.round(v));
+      }),
+      unitTag(recipe.laserPasses === 1 ? "pass" : "passes"),
+    );
+
+    // Fill from a saved recipe. Every kind is offered, labelled — a layer isn't
+    // itself a cut or an engrave, so narrowing the list the way the toolpath
+    // dialog does would hide the very preset the user saved for this colour.
+    const presets = loadPresets();
+    if (presets.length > 0) {
+      const sel = document.createElement("select");
+      sel.className = "dim layer-beam-preset";
+      sel.title = "Fill power, speed and passes from a saved material preset";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Preset…";
+      sel.appendChild(placeholder);
+      for (const p of presets) {
+        const o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = `${p.name} (${p.kind})`;
+        sel.appendChild(o);
+      }
+      sel.onchange = () => {
+        const p = presets.find((x) => x.id === sel.value);
+        if (!p) return;
+        this.pushHistory();
+        // Copied by value, exactly as the toolpath dialog applies one: the
+        // document must not hold a reference to a recipe living in this
+        // browser's localStorage.
+        layer.laser = {
+          feedrate: p.feedrate,
+          laserPower: p.laserPower,
+          laserPasses: p.laserPasses,
+          ...(p.kerfWidth !== undefined ? { kerfWidth: p.kerfWidth } : {}),
+          ...(p.airAssist !== undefined ? { airAssist: p.airAssist } : {}),
+        };
+        this.doc.emitChange();
+      };
+      second.appendChild(sel);
+    }
+
+    return wrap;
+  }
+}
+
+/** Trim float noise from a unit conversion without hiding a real decimal. */
+function round3(v: number): number {
+  return Math.round(v * 1000) / 1000;
 }

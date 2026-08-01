@@ -305,6 +305,43 @@ export interface CAMOperation {
    * <1 deepens them; a photo usually needs this tuned to not read flat.
    */
   reliefGamma?: number;
+  /**
+   * Laser only: cut this operation with its own inline beam settings, ignoring
+   * any recipe on the layer its geometry sits on (see {@link LaserRecipe} and
+   * {@link resolveOpLaser}). Set when the user edits a beam field on an op that
+   * was following its layer — the op forks to a one-off, exactly as editing a
+   * tool field clears {@link CAMOperation.toolId}. Absent/false = follow the
+   * layer when it has a recipe.
+   */
+  laserOverride?: boolean;
+}
+
+/**
+ * Beam settings attached to a layer — "everything on this layer cuts at 100% and
+ * 300mm/min". The laser workflow is colour-driven: cut on black, score on red,
+ * engrave on blue. Without this, those numbers live only on individual
+ * operations, so re-tuning a power after a test cut means editing every one.
+ *
+ * A layer recipe is the source of truth for the ops it covers, resolved at
+ * toolpath time by {@link resolveOpLaser} — the same shape as `toolId` +
+ * {@link resolveOpTool} on the mill side, so there is one idea to learn rather
+ * than two. The fields deliberately match {@link ../cam/laserPresets.LaserPreset}
+ * so a saved material recipe drops straight onto a layer.
+ *
+ * Unlike a preset (personal, localStorage, copied by value), a recipe lives IN
+ * the document: it describes how this design's layers are meant to be cut, and
+ * travels with the file the way operation feeds already do.
+ */
+export interface LaserRecipe {
+  /** mm/min. */
+  feedrate: number;
+  /** 0–100 % of machine maximum. */
+  laserPower: number;
+  laserPasses: number;
+  /** mm. Omitted = leave each operation's own kerf alone. */
+  kerfWidth?: number;
+  /** Omitted = leave each operation's own air-assist setting alone. */
+  airAssist?: boolean;
 }
 
 export const DEFAULTS = {
@@ -439,6 +476,74 @@ export function resolveOpTool(op: CAMOperation, tools?: ToolDef[]): CAMOperation
     plungeRate: t.plungeRate,
     spindleSpeed: t.spindleSpeed,
     safeZ: t.safeZ,
+  };
+}
+
+/** The minimum an entity must expose to be filed under a layer. */
+interface LayerPlaced {
+  id: EntityId;
+  layerId?: string;
+}
+
+/** The minimum a layer must expose to carry a beam recipe. */
+interface RecipeBearing {
+  id: string;
+  laser?: LaserRecipe;
+}
+
+/**
+ * The single layer ALL of an operation's target geometry sits on, or null when
+ * it spans several layers, targets nothing, or references geometry that no
+ * longer exists.
+ *
+ * Null is the honest answer for a mixed op, not a reason to pick one layer: an
+ * operation cutting a shape from the "cut" layer and one from "score" has no
+ * single correct power, so it keeps its own and says so in the UI.
+ */
+export function opLayerId(
+  entityIds: readonly EntityId[] | undefined,
+  entities: readonly LayerPlaced[],
+): string | null {
+  if (!entityIds || entityIds.length === 0) return null;
+  let found: string | null = null;
+  for (const id of entityIds) {
+    const ent = entities.find((e) => e.id === id);
+    if (!ent) return null; // unknown geometry — don't guess
+    const layerId = ent.layerId;
+    if (layerId === undefined) return null;
+    if (found === null) found = layerId;
+    else if (found !== layerId) return null; // spans layers
+  }
+  return found;
+}
+
+/**
+ * Apply the layer's beam recipe to an operation, so every downstream read of
+ * `op.laserPower`/`feedrate`/etc. sees the layer's numbers. The mirror of
+ * {@link resolveOpTool}: the shared definition wins, the op's inline fields are
+ * the fallback, and an op that has forked ({@link CAMOperation.laserOverride})
+ * is left alone.
+ *
+ * Call this BEFORE pattern expansion — the layer is a property of the authored
+ * geometry, and expansion mints target ids that aren't in the document.
+ */
+export function resolveOpLaser(
+  op: CAMOperation,
+  layers: readonly RecipeBearing[],
+  entities: readonly LayerPlaced[],
+): CAMOperation {
+  if (op.laserOverride) return op;
+  const layerId = opLayerId(op.entityIds, entities);
+  if (layerId === null) return op;
+  const recipe = layers.find((l) => l.id === layerId)?.laser;
+  if (!recipe) return op;
+  return {
+    ...op,
+    feedrate: recipe.feedrate,
+    laserPower: recipe.laserPower,
+    laserPasses: recipe.laserPasses,
+    kerfWidth: recipe.kerfWidth ?? op.kerfWidth,
+    airAssist: recipe.airAssist ?? op.airAssist,
   };
 }
 

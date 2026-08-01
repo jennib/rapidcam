@@ -88,6 +88,10 @@ function baseLaserOp(
     stepover: DEFAULTS.stepover,
     laserPower: power,
     laserPasses: Math.max(1, Math.round(passes)),
+    // The swept (power, feed) IS the experiment. A layer beam recipe would
+    // overwrite every cell with the same numbers and turn the grid into 25
+    // identical squares, so these ops never follow a layer.
+    laserOverride: true,
   };
 }
 

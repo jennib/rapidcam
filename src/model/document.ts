@@ -268,7 +268,7 @@ import {
   TextEntity,
   RasterImageEntity,
 } from "./entities";
-import type { CAMOperation, ToolDef } from "../cam/types";
+import type { CAMOperation, LaserRecipe, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
 import {
@@ -350,6 +350,23 @@ export interface LayerDef {
    * to allow rapids over short clamps.
    */
   fixtureHeight?: number;
+  /**
+   * Laser documents only: beam power/speed/passes for everything on this layer —
+   * the colour-driven workflow (cut on black, score on red). Operations whose
+   * geometry all sits here take these numbers at toolpath time unless they have
+   * forked; see cam/types.ts `LaserRecipe` and `resolveOpLaser`. Absent = each
+   * operation keeps its own settings, which is how every pre-recipe file behaves.
+   */
+  laser?: LaserRecipe;
+}
+
+/**
+ * Copy a layer for snapshot/restore. The beam recipe is a nested object, so a
+ * bare spread would let an undo snapshot and the live layer share it — editing
+ * a power in place would silently rewrite history.
+ */
+function cloneLayer(l: LayerDef): LayerDef {
+  return { ...l, ...(l.laser ? { laser: { ...l.laser } } : {}) };
 }
 
 type EntitySnapshot =
@@ -1209,7 +1226,7 @@ export class CADDocument {
         ...(f.keyIds ? { keyIds: { ...f.keyIds } } : {}),
       })),
       patterns: this.patterns.map(clonePatternDef),
-      layers: this.layers.map((l) => ({ ...l })),
+      layers: this.layers.map(cloneLayer),
       activeLayerId: this.activeLayerId,
       operations: this.operations.map((op) => ({ ...op, entityIds: [...op.entityIds] })),
       tools: this.tools.map((t) => ({ ...t })),
@@ -1218,7 +1235,7 @@ export class CADDocument {
 
   restore(s: DocSnapshot): void {
     this.layers = s.layers
-      ? s.layers.map((l) => ({ ...l }))
+      ? s.layers.map(cloneLayer)
       : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
     this.activeLayerId = s.activeLayerId ?? "layer-0";
 

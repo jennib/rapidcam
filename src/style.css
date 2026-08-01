@@ -633,6 +633,52 @@ button.cbtn.solve {
   padding: 12px;
 }
 
+/* Per-layer laser beam recipe, shown under its layer's row. The panel is only
+   ~210px wide, so the fields drop their spin buttons — Chrome's arrows take
+   ~17px of a number input's content box, which clipped "100" to "1(". */
+.layer-beam-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: -2px 0 6px 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.layer-beam-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layer-beam-row input.dim,
+.layer-beam-row select.dim {
+  padding: 3px 4px;
+  font-size: 11px;
+}
+
+.layer-beam-row input.dim {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.layer-beam-row input.dim::-webkit-outer-spin-button,
+.layer-beam-row input.dim::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.layer-beam-row select.dim {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+}
+
 /* ---------- Properties bar ---------- */
 #propertiesbar {
   flex: 0 0 auto;

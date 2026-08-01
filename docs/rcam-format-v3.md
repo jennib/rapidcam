@@ -631,6 +631,33 @@ instead:
 | `rasterDotPitch` | `engrave` (image) | raster: horizontal pitch (mm) between dots in a row. Omitted = square dots (= `rasterLineInterval`) |
 | `rasterMinPower` | `engrave` (image) | raster: beam power (%) for the lightest engraved dot; `laserPower` is the power for a fully black dot. Default 0 |
 | `rasterInvert` | `engrave` (image) | raster: engrave the light areas instead of the dark (photo negative). Default false |
+| `laserOverride` | both | cut with this op's own beam settings, ignoring any `laser` recipe on its layer (see below). Default false |
+
+#### Per-layer beam recipes
+
+A **layer** may carry a `laser` recipe — `feedrate`, `laserPower`, `laserPasses`
+and optionally `kerfWidth` / `airAssist`. Every operation whose `entityIds` all
+sit on that layer takes those numbers at toolpath time, so the colour-driven
+workflow (cut on black, score on red) is set up once and re-tuned in one place
+after a test cut.
+
+The rules, which mirror `toolId` on the mill side:
+
+- The layer's numbers **replace** the operation's own; `kerfWidth` and
+  `airAssist` fall back to the operation's when the recipe omits them.
+- An operation whose geometry **spans several layers** keeps its own settings —
+  there is no single correct answer for it.
+- `"laserOverride": true` opts an operation out entirely. Set it where the
+  numbers *are* the point, such as the cells of a material-test grid.
+- A layer with no `laser` key changes nothing, which is how every file written
+  before this existed behaves.
+
+```jsonc
+// The "Cut" layer: everything on it burns at 100% and 300mm/min, three passes.
+{ "id": "layer-cut", "name": "Cut", "color": "#000000",
+  "visible": true, "locked": false,
+  "laser": { "feedrate": 300, "laserPower": 100, "laserPasses": 3 } }
+```
 
 A raster engrave is produced when an **Engrave** op's `entityIds` reference an `image` entity: the greyscale pixels are swept as horizontal scan rows, modulating beam power per dot (`laserPower` for black down to `rasterMinPower` for the lightest mark). `laserPower` is the *darkest* power; `laserPasses` repeats the whole sweep.
 
