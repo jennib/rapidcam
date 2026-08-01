@@ -113,6 +113,31 @@ test("laserOverride forks the op off its layer", () => {
   expect(resolveOpLaser(forked, doc.layers, doc.entities).laserPower).toBe(80);
 });
 
+test("moving geometry to another layer re-tunes the toolpath that cuts it", () => {
+  // The consequence of binding by layer rather than by an explicit reference:
+  // dragging a shape from "Cut" to "Score" changes how it is cut. That is the
+  // intended behaviour of a colour-driven workflow, but it happens without the
+  // operation being touched, so it is worth pinning deliberately.
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { feedrate: 300, laserPower: 100, laserPasses: 1 };
+  const score = addLayer(doc, "layer-score", { feedrate: 1800, laserPower: 15, laserPasses: 1 });
+
+  const line = new LineEntity({ x: 0, y: 0 }, { x: 10, y: 0 }, "L1");
+  doc.entities.push(line);
+  const op = baseOp({ entityIds: ["L1"] });
+
+  expect(resolveOpLaser(op, doc.layers, doc.entities).laserPower).toBe(100);
+
+  line.layerId = score;
+  expect(resolveOpLaser(op, doc.layers, doc.entities).laserPower).toBe(15);
+  expect(resolveOpLaser(op, doc.layers, doc.entities).feedrate).toBe(1800);
+
+  // Moving it onto a layer with no recipe hands control back to the operation.
+  line.layerId = addLayer(doc, "layer-plain");
+  expect(resolveOpLaser(op, doc.layers, doc.entities).laserPower).toBe(80);
+});
+
 test("an op referencing geometry that no longer exists is left alone, not guessed at", () => {
   const doc = laserDoc();
   doc.layers[0].laser = RECIPE;

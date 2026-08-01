@@ -1,0 +1,188 @@
+/**
+ * No control may be laid out past the edge of a container that cannot scroll.
+ *
+ * This exists because of a real regression. The Layers panel is ~225px and its
+ * row already carried six controls at its limit on a mill; adding the laser beam
+ * toggle laid that button and **Delete Layer** out past the panel's right edge —
+ * Delete by 30px, i.e. permanently unclickable on any laser document.
+ *
+ * Nothing else in the suite could have caught it. The unit tests assert the
+ * model and the happy-dom component tests assert structure, but happy-dom has no
+ * layout engine, so every `querySelector` was green while the UI was broken. It
+ * took a screenshot to notice, which is not a method.
+ *
+ * So the guard is deliberately app-wide rather than scoped to the panel that
+ * broke: a sweep for any element whose content overflows horizontally, which is
+ * not scrollable, and which has a real control in the overflowing part. A
+ * horizontal scrollbar is fine — the user can reach it. Content simply laid out
+ * past a hard edge is not.
+ *
+ * The app measured clean in every scene below at the time of writing, so a
+ * failure here is a new defect, not a pre-existing backlog item.
+ */
+import { test, expect, waitForApp, APP_URL } from "./appFixture";
+import type { Page } from "@playwright/test";
+
+/** A control laid out beyond a container that offers no way to scroll to it. */
+interface Unreachable {
+  container: string;
+  overBy: number;
+  controls: string[];
+}
+
+/**
+ * Every unreachable control currently on screen.
+ *
+ * Skips containers that scroll horizontally, and reports only when an actual
+ * button/input/select ends up outside — text spilling is a cosmetic question,
+ * an out-of-reach control is a broken feature.
+ */
+async function unreachableControls(page: Page): Promise<Unreachable[]> {
+  return page.evaluate(() => {
+    const out: Unreachable[] = [];
+    for (const el of document.querySelectorAll("*")) {
+      if (!(el instanceof HTMLElement)) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") continue;
+      if (/auto|scroll/.test(cs.overflowX)) continue; // reachable by scrolling
+      if (el.clientWidth === 0) continue; // not laid out
+      const overBy = el.scrollWidth - el.clientWidth;
+      if (overBy <= 1) continue;
+      const box = el.getBoundingClientRect();
+      const lost = [...el.querySelectorAll("button, input, select, textarea")].filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.width > 0 && r.right > box.right + 0.5;
+      });
+      if (lost.length === 0) continue;
+      out.push({
+        container:
+          el.tagName.toLowerCase() +
+          (el.id ? `#${el.id}` : "") +
+          (typeof el.className === "string" && el.className.trim()
+            ? `.${el.className.trim().split(/\s+/).join(".")}`
+            : ""),
+        overBy: Math.round(overBy),
+        controls: lost
+          .slice(0, 4)
+          .map((c) =>
+            (
+              (c as HTMLElement).title ||
+              c.textContent ||
+              (c as HTMLInputElement).value ||
+              c.tagName
+            )
+              .toString()
+              .trim()
+              .slice(0, 32),
+          ),
+      });
+    }
+    return out;
+  });
+}
+
+/** The worst case for width: several layers, a fixture, and beam recipes. */
+async function crowdTheLayersPanel(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: Record<string, unknown> } }).__app.doc as {
+      machineKind: string;
+      layers: Record<string, unknown>[];
+      emitChange: () => void;
+    };
+    doc.machineKind = "laser";
+    // A name someone would really type, not "Cut" — the field flexes, so a long
+    // one is what squeezes the buttons.
+    doc.layers[0].name = "Cut through 6mm birch plywood";
+    doc.layers[0].laser = { feedrate: 300, laserPower: 100, laserPasses: 3 };
+    doc.layers.push({
+      id: "l-score",
+      name: "Score",
+      color: "#e05a5a",
+      visible: true,
+      locked: false,
+      laser: { feedrate: 1800, laserPower: 15, laserPasses: 1 },
+    });
+    doc.layers.push({
+      id: "l-clamp",
+      name: "Clamps",
+      color: "#f5c542",
+      visible: true,
+      locked: false,
+      fixture: true,
+      fixtureHeight: 20,
+    });
+    doc.emitChange();
+  });
+  await expect(page.locator("#layersbar .layer-row")).toHaveCount(3);
+}
+
+test("no control is laid out beyond a container that cannot scroll", async ({ page }) => {
+  await page.goto(APP_URL);
+  await waitForApp(page);
+
+  expect(await unreachableControls(page)).toEqual([]);
+
+  await crowdTheLayersPanel(page);
+  // Positive control: the crowded row really was built, so a clean sweep means
+  // "seven controls fit" rather than "the hard case never rendered".
+  await expect(page.locator("#layersbar .layer-beam-toggle")).toHaveCount(2);
+  expect(await unreachableControls(page)).toEqual([]);
+
+  // The CAM panel, which the beam summary writes into.
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll(".rtab")].find((t) =>
+      /CAM/i.test(t.textContent ?? ""),
+    );
+    (tab as HTMLElement | undefined)?.click();
+  });
+  expect(await unreachableControls(page)).toEqual([]);
+
+  // And back on a mill, where the layer row was already at its limit before the
+  // beam toggle existed.
+  await page.evaluate(() => {
+    const doc = (
+      window as unknown as { __app: { doc: { machineKind: string; emitChange: () => void } } }
+    ).__app.doc;
+    doc.machineKind = "mill";
+    doc.emitChange();
+  });
+  await expect(page.locator("#layersbar .layer-beam-toggle")).toHaveCount(0);
+  expect(await unreachableControls(page)).toEqual([]);
+});
+
+test("the Add Toolpath dialog fits its controls too", async ({ page }) => {
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await crowdTheLayersPanel(page);
+
+  await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __app: { doc: { entities: { selected: boolean }[]; emitChange: () => void } };
+      }
+    ).__app.doc;
+    for (const e of doc.entities) e.selected = true;
+    doc.emitChange();
+    (document.querySelector(".cam-add-btn") as HTMLElement | null)?.click();
+  });
+
+  await expect(page.locator(".tp-dialog")).toBeVisible();
+  expect(await unreachableControls(page)).toEqual([]);
+});
+
+test("Delete Layer stays clickable — it is the control that was pushed out", async ({ page }) => {
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await crowdTheLayersPanel(page);
+
+  const del = page.locator("#layersbar .layer-row").first().locator("button.icon-btn").last();
+  await expect(del).toHaveAttribute("title", "Delete Layer");
+  await expect(del).toBeEnabled();
+
+  // `toBeVisible` passes for an element sitting outside its parent's box, so
+  // assert what actually broke: its right edge is inside the panel.
+  const box = await del.boundingBox();
+  const panel = await page.locator("#layersbar").boundingBox();
+  if (!box || !panel) throw new Error("Delete button or panel has no box");
+  expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width + 0.5);
+});

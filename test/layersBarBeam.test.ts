@@ -140,6 +140,58 @@ test("the fields sit on their own lines so the narrow panel can't clip them", ()
   expect(lines[1].querySelectorAll("input")).toHaveLength(1); // passes
 });
 
+test("the operation list shows the layer's numbers, and follows a move between layers", () => {
+  // Editing a layer recipe, or moving geometry onto a different layer, changes
+  // what the machine runs. The CAM list has to show the resolved numbers or the
+  // panel would confidently display settings that no longer apply.
+  const doc = laserDoc();
+  doc.layers[0].name = "Cut";
+  doc.layers[0].laser = { feedrate: 300, laserPower: 100, laserPasses: 1 };
+  doc.layers.push({
+    id: "l-score",
+    name: "Score",
+    color: "#e05a5a",
+    visible: true,
+    locked: false,
+    laser: { feedrate: 1800, laserPower: 15, laserPasses: 1 },
+  });
+  const rect = new RectEntity({ x: 0, y: 0 }, { x: 40, y: 20 }, "R1");
+  doc.entities.push(rect);
+  doc.operations.push({
+    id: "op1",
+    name: "Cut",
+    type: "profile",
+    entityIds: ["R1"],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 0,
+    feedrate: 1200,
+    plungeRate: 300,
+    spindleSpeed: 0,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    laserPower: 80,
+    laserPasses: 1,
+  });
+
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  new CamBar(host, doc);
+
+  const summary = () => host.querySelector(".tp-op-params")?.textContent ?? "";
+  expect(summary()).toContain("100%");
+  expect(summary()).toContain("⚡Cut"); // says where the numbers came from
+  expect(summary()).not.toContain("80%"); // the op's own value is not what runs
+
+  rect.layerId = "l-score";
+  doc.emitChange();
+  expect(summary()).toContain("15%");
+  expect(summary()).toContain("⚡Score");
+});
+
 test("the toolpath dialog names the layer driving the beam, and can fork off it", () => {
   const doc = laserDoc();
   doc.layers[0].name = "Cut";
