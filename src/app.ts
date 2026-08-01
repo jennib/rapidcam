@@ -20,7 +20,7 @@ import { ProjectManager } from "./io/projectManager";
 import { consumeSharedDesign } from "./io/shareLink";
 import type { Geo } from "./model/constraints";
 import { type Dimension, dimensionLayout } from "./model/dimensions";
-import { CADDocument, ORIGIN_ENTITY_ID } from "./model/document";
+import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "./model/document";
 import type { Bounds, Entity, EntityId } from "./model/entities";
 import { nextId } from "./model/ids";
 import { regenerateAllStalePatterns, regenerateStalePatterns } from "./model/patternEngine";
@@ -875,7 +875,8 @@ export class App {
       }
     }
 
-    const geo: Geo = (id: string) => this.doc.entities.find(e => e.id === id);
+    const geo: Geo = (id: string) =>
+      id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : this.doc.entities.find((e) => e.id === id);
     for (const dim of this.doc.dimensions) {
       const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
       if (layout) {
@@ -1016,10 +1017,8 @@ export class App {
 
   // --- inline dimension value editor ---------------------------------------
   private openDimEditor(dim: Dimension): void {
-    const geo: Geo = (
-      (m) => (id: string) =>
-        m.get(id)
-    )(new Map(this.doc.entities.map((e) => [e.id, e])));
+    const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
+    const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : byId.get(id));
     const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
     if (!layout) return;
 

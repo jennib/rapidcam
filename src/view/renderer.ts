@@ -2,7 +2,13 @@
 
 import type { Vec2 } from "../core/vec2";
 import { type Unit, fromMM } from "../core/units";
-import { type CADDocument, resolveOrigin, ORIGIN_ENTITY_ID } from "../model/document";
+import {
+  type CADDocument,
+  resolveOrigin,
+  ORIGIN_ENTITY_ID,
+  STOCK_ENTITY_ID,
+  stockRefEntity,
+} from "../model/document";
 import {
   type Entity,
   type LineEntity,
@@ -661,11 +667,11 @@ export class Renderer {
     if (doc.dimensions.length === 0) return;
     const ctx = this.ctx;
     const byId = new Map(doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id) => byId.get(id);
+    const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
     const unit = doc.displayUnit;
 
     const isVisible = (id: string) => {
-      if (id === ORIGIN_ENTITY_ID) return true;
+      if (id === ORIGIN_ENTITY_ID || id === STOCK_ENTITY_ID) return true;
       const e = byId.get(id);
       if (!e) return false;
       const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];

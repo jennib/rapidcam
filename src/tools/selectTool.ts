@@ -16,7 +16,12 @@ import {
   dimensionLayout,
   dimensionOffsetFromCursor,
 } from "../model/dimensions";
-import type { CADDocument, DocSnapshot } from "../model/document";
+import {
+  type CADDocument,
+  type DocSnapshot,
+  STOCK_ENTITY_ID,
+  stockRefEntity,
+} from "../model/document";
 import {
   type Bounds,
   type LineEntity,
@@ -196,7 +201,8 @@ export class SelectTool implements Tool {
     }
 
     const byId = new Map(ctx.doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id: string) => byId.get(id);
+    const geo: Geo = (id: string) =>
+      id === STOCK_ENTITY_ID ? stockRefEntity(ctx.doc) : byId.get(id);
     let hitLabelDim: Dimension | null = null;
     let hitDim: Dimension | null = null;
     let dimDist = Infinity;
@@ -356,7 +362,8 @@ export class SelectTool implements Tool {
       const dim = ctx.doc.dimensions.find((d) => d.id === this.dragDimLabelId);
       if (dim) {
         const byId = new Map(ctx.doc.entities.map((en) => [en.id, en]));
-        const geo: Geo = (id) => byId.get(id);
+        const geo: Geo = (id) =>
+          id === STOCK_ENTITY_ID ? stockRefEntity(ctx.doc) : byId.get(id);
         dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
         ctx.requestRender();
       }

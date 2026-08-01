@@ -21,7 +21,7 @@ import {
   type LinearDimType,
   makeDimension,
 } from "../model/dimensions";
-import type { CADDocument } from "../model/document";
+import { type CADDocument, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import {
   ArcEntity,
   CircleEntity,
@@ -303,7 +303,7 @@ export class DimensionTool implements Tool {
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     this.cursor = e.world;
     if (this.dragDim) {
-      const geo = geoOf(ctx.doc.entities);
+      const geo = geoOf(ctx.doc);
       this.dragDim.offset = dimensionOffsetFromCursor(this.dragDim, geo, e.world);
       ctx.doc.emitChange();
       return;
@@ -415,7 +415,7 @@ export class DimensionTool implements Tool {
 
   // --- placement -----------------------------------------------------------
   private recompute(ctx: ToolContext): void {
-    const geo = geoOf(ctx.doc.entities);
+    const geo = geoOf(ctx.doc);
     const unit = ctx.doc.displayUnit;
     this.preview = { previews: [], selectionRect: null };
 
@@ -491,7 +491,7 @@ export class DimensionTool implements Tool {
 
   private commitAngle(ctx: ToolContext): void {
     ctx.pushHistory();
-    const geo = geoOf(ctx.doc.entities);
+    const geo = geoOf(ctx.doc);
     const dim = this.angleDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     this.phase = "first";
@@ -572,7 +572,7 @@ export class DimensionTool implements Tool {
 
   private commitLinear(ctx: ToolContext): void {
     ctx.pushHistory();
-    const geo = geoOf(ctx.doc.entities);
+    const geo = geoOf(ctx.doc);
     const dim = this.linearDim(ctx, this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     // A dim across a single text's own box can't drive (the size lives in the
@@ -595,7 +595,7 @@ export class DimensionTool implements Tool {
   }
   private commitCircle(ctx: ToolContext): void {
     ctx.pushHistory();
-    const geo = geoOf(ctx.doc.entities);
+    const geo = geoOf(ctx.doc);
     const dim = this.circleDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     this.phase = "first";
@@ -605,7 +605,7 @@ export class DimensionTool implements Tool {
   }
   private commitGap(ctx: ToolContext): void {
     ctx.pushHistory();
-    const geo = geoOf(ctx.doc.entities);
+    const geo = geoOf(ctx.doc);
     const dim = this.gapDim(this.curOffset);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     this.phase = "first";
@@ -615,9 +615,9 @@ export class DimensionTool implements Tool {
   }
 }
 
-function geoOf(entities: Entity[]): Geo {
-  const m = new Map(entities.map((e) => [e.id, e]));
-  return (id) => m.get(id);
+function geoOf(doc: CADDocument): Geo {
+  const m = new Map(doc.entities.map((e) => [e.id, e]));
+  return (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : m.get(id));
 }
 
 function arcPolylinePoints(

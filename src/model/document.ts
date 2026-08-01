@@ -1,7 +1,7 @@
 /** The CAD document: canvas definition, geometry, constraints, dimensions. */
 
 import type { Unit } from "../core/units";
-import { type Vec2, dist } from "../core/vec2";
+import { type Vec2, dist, mid } from "../core/vec2";
 
 // --- origin types ------------------------------------------------------------
 
@@ -253,7 +253,7 @@ export function deriveSheet(
   return { width: width + SHEET_MARGIN * 2, height: height + SHEET_MARGIN * 2 };
 }
 import {
-  type Entity,
+  Entity,
   type EntityId,
   type SnapPoint,
   type Bounds,
@@ -271,6 +271,114 @@ import {
 import type { CAMOperation, LaserRecipe, ToolDef } from "../cam/types";
 
 export const ORIGIN_ENTITY_ID = "__origin__";
+
+/**
+ * Sentinel `PointRef.entityId` for the stock rectangle's corners/edge-midpoints —
+ * lets a dimension anchor to the material the same way it already anchors to the
+ * WCS origin. Deliberately NOT a real entry in `doc.entities` the way
+ * {@link ORIGIN_ENTITY_ID} is: origin's approach needs matching exclusions
+ * everywhere geometry is iterated (CAM export, DXF export, `bounds()`, snapshot/
+ * restore, machinability checks, …) and still cost three separate bugs in one
+ * feature (see the "origin-entity-trap" note). A stock ref is resolved on demand
+ * by {@link stockRefEntity} purely to satisfy `Geo` lookups, so none of that
+ * exclusion machinery is needed, and — since it's never in `doc.entities` — the
+ * solver can never mistake it for a free variable either.
+ */
+export const STOCK_ENTITY_ID = "__stock__";
+
+const STOCK_POINT_KEYS = ["bl", "br", "tr", "tl", "mid_b", "mid_r", "mid_t", "mid_l"] as const;
+export type StockPointKey = (typeof STOCK_POINT_KEYS)[number];
+
+/**
+ * The stock rectangle's corner/edge-midpoint in world mm, or null when there's no
+ * flat stock to dimension from (a rotary document's canvas is the unrolled
+ * cylinder surface, not a rectangle) or `key` isn't one of the 8 recognised
+ * points. Same corner/midpoint vocabulary as `RectEntity`
+ * (bl/br/tr/tl, mid_b/mid_r/mid_t/mid_l) so it plugs into the same dimension code.
+ */
+export function stockRefPoint(doc: CADDocument, key: string): Vec2 | null {
+  if (isRotary(doc.machineKind)) return null;
+  const { width, height } = stockFootprint(doc);
+  const sx = doc.stockRect?.x ?? 0;
+  const sy = doc.stockRect?.y ?? 0;
+  const bl = { x: sx, y: sy };
+  const br = { x: sx + width, y: sy };
+  const tr = { x: sx + width, y: sy + height };
+  const tl = { x: sx, y: sy + height };
+  switch (key as StockPointKey) {
+    case "bl":
+      return bl;
+    case "br":
+      return br;
+    case "tr":
+      return tr;
+    case "tl":
+      return tl;
+    case "mid_b":
+      return mid(bl, br);
+    case "mid_r":
+      return mid(br, tr);
+    case "mid_t":
+      return mid(tr, tl);
+    case "mid_l":
+      return mid(tl, bl);
+    default:
+      return null;
+  }
+}
+
+/** All 8 stock corner/edge-midpoint snap points, or `[]` for a rotary document. */
+export function stockSnapPoints(doc: CADDocument): SnapPoint[] {
+  const out: SnapPoint[] = [];
+  for (const key of STOCK_POINT_KEYS) {
+    const pos = stockRefPoint(doc, key);
+    if (!pos) continue;
+    out.push({
+      pos,
+      kind: key.startsWith("mid") ? "midpoint" : "endpoint",
+      entityId: STOCK_ENTITY_ID,
+      key,
+    });
+  }
+  return out;
+}
+
+/**
+ * Fixed reference entity resolving the stock rectangle's corners/edge-midpoints —
+ * exists only to answer `Geo` lookups (dimension measurement/rendering/solving);
+ * never added to `doc.entities` (see {@link STOCK_ENTITY_ID}). `translate` is a
+ * no-op: dimensions anchor TO the stock, the stock never moves in response.
+ */
+class StockRefEntity extends Entity {
+  readonly type = "point" as const;
+  constructor(private doc: CADDocument) {
+    super(STOCK_ENTITY_ID);
+  }
+  bounds(): Bounds {
+    const p = stockRefPoint(this.doc, "bl") ?? { x: 0, y: 0 };
+    return { min: p, max: p };
+  }
+  distanceTo(): number {
+    return Infinity; // never hit-tested as a body
+  }
+  snapPoints(): SnapPoint[] {
+    return stockSnapPoints(this.doc);
+  }
+  translate(): void {}
+  duplicate(): Entity {
+    return new StockRefEntity(this.doc);
+  }
+  override getPoint(key: string): Vec2 {
+    const p = stockRefPoint(this.doc, key);
+    if (!p) throw new Error(`stock ref has no point '${key}'`);
+    return p;
+  }
+}
+
+/** The one place a `Geo` lookup should resolve {@link STOCK_ENTITY_ID} from. */
+export function stockRefEntity(doc: CADDocument): Entity {
+  return new StockRefEntity(doc);
+}
 import {
   type Constraint,
   type PointRef,
@@ -756,11 +864,16 @@ export class CADDocument {
   /** Drop constraints/dimensions/point-selections/patterns that reference removed entities. */
   private pruneReferences(): void {
     const ids = new Set(this.entities.map((e) => e.id));
+    // STOCK_ENTITY_ID is never in `this.entities` (see its doc comment) — it's
+    // resolved on demand, not removable, so a dimension anchored to it is never
+    // "orphaned". Without this, deleting ANY unrelated entity would silently
+    // drop every stock-anchored dimension the next time this runs.
+    const stillExists = (id: EntityId) => id === STOCK_ENTITY_ID || ids.has(id);
     this.constraints = this.constraints.filter((c) =>
       constraintEntityIds(c).every((id) => ids.has(id)),
     );
     this.dimensions = this.dimensions.filter(
-      (d) => d.entities.every((id) => ids.has(id)) && d.points.every((p) => ids.has(p.entityId)),
+      (d) => d.entities.every((id) => ids.has(id)) && d.points.every((p) => stillExists(p.entityId)),
     );
     this.bindings = this.bindings.filter((b) => ids.has(b.entityId));
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
@@ -948,7 +1061,7 @@ export class CADDocument {
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
-    return (id) => m.get(id);
+    return (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(this) : m.get(id));
   }
   /** Topmost dimension whose lines/text are within `tol` mm of `p`, or null. */
   dimensionAt(p: Vec2, tol: number): Dimension | null {
@@ -1020,7 +1133,10 @@ export class CADDocument {
     this.emitChange();
   }
 
-  /** Nearest pickable point DOF within `tol` mm of `p`, or null. */
+  /** Nearest pickable point DOF within `tol` mm of `p`, or null. Includes the
+   *  stock rectangle's corners/edge-midpoints (see {@link STOCK_ENTITY_ID}) so a
+   *  dimension can anchor to the material the same way it already anchors to any
+   *  other point — they compete on pure distance with every entity's points. */
   pickPoint(p: Vec2, tol: number): { ref: PointRef; pos: Vec2 } | null {
     let best: { ref: PointRef; pos: Vec2 } | null = null;
     let bestD = tol;
@@ -1035,6 +1151,13 @@ export class CADDocument {
           bestD = d;
           best = { ref: { entityId: e.id, key: dp.key }, pos: dp.pos };
         }
+      }
+    }
+    for (const sp of stockSnapPoints(this)) {
+      const d = dist(sp.pos, p);
+      if (d <= bestD) {
+        bestD = d;
+        best = { ref: { entityId: sp.entityId, key: sp.key! }, pos: sp.pos };
       }
     }
     return best;
@@ -1053,7 +1176,10 @@ export class CADDocument {
     return null;
   }
 
-  /** All object-snap points across every entity (optionally excluding some). */
+  /** All object-snap points across every entity (optionally excluding some), plus
+   *  the stock rectangle's corners/edge-midpoints (see {@link STOCK_ENTITY_ID}) —
+   *  so drawing tools can snap new geometry onto the material, not just onto
+   *  other entities. */
   snapPoints(exclude?: Set<EntityId>): SnapPoint[] {
     const out: SnapPoint[] = [];
     for (const e of this.entities) {
@@ -1062,6 +1188,7 @@ export class CADDocument {
       if (!layer.visible) continue; // snapping still works on locked layers, but not invisible ones
       out.push(...e.snapPoints());
     }
+    out.push(...stockSnapPoints(this));
     return out;
   }
 

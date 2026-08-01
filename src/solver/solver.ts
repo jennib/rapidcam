@@ -22,7 +22,7 @@ import {
   lineRefEntityId,
 } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
+import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
 import { ArcEntity, type Entity, RasterImageEntity } from "../model/entities";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
@@ -79,7 +79,7 @@ export type PinMap = Map<string, Vec2>;
 
 export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
-  const geo: Geo = (id) => byId.get(id);
+  const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
   // Binding targets are constant during a solve (they depend only on variables,
   // which are fixed here) — evaluate each once, up front, out of the FD loop.
   const bindingVars = new Map(doc.variables.map((v) => [v.name, v.value]));
@@ -724,7 +724,7 @@ export function computeEntityDofStatus(
 ): EntityStatusMap {
   const statusMap: EntityStatusMap = new Map();
   const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
-  const geo: Geo = (id) => byId.get(id);
+  const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
 
   // Solver didn't converge → everything is in conflict
   if (lastResult?.hasConstraints && !lastResult.converged) {
@@ -911,7 +911,7 @@ export function constraintJacobianRankChange(
   extras: Constraint[] = [],
 ): { variables: number; rankWithout: number; rankWith: number } {
   const byId = new Map<string, Entity>(doc.entities.map((e) => [e.id, e]));
-  const geo: Geo = (id) => byId.get(id);
+  const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
 
   // Build fixed set (same logic as solve())
   const fixed = new Set<string>();
