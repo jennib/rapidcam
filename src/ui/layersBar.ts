@@ -88,14 +88,13 @@ export class LayersBar {
     this.listEl.innerHTML = "";
 
     for (const layer of this.doc.layers) {
+      // Sizing lives in .layer-row (style.css). The panel is ~225px and the row
+      // carries up to seven controls; it was already at its limit on a mill, and
+      // adding the beam toggle pushed Delete clean outside the panel.
       const row = document.createElement("div");
-      row.style.display = "flex";
-      row.style.alignItems = "center";
-      row.style.gap = "6px";
-      row.style.padding = "4px";
+      row.className = "layer-row";
       row.style.backgroundColor =
         this.doc.activeLayerId === layer.id ? "rgba(255,255,255,0.1)" : "transparent";
-      row.style.borderRadius = "4px";
 
       // Radio button for active layer
       const radio = document.createElement("input");
@@ -128,8 +127,6 @@ export class LayersBar {
       nameInp.type = "text";
       nameInp.value = layer.name;
       nameInp.className = "dim";
-      nameInp.style.flex = "1";
-      nameInp.style.minWidth = "60px"; // let flex grow but stay readable
       nameInp.title = layer.name;
       nameInp.onchange = () => {
         this.pushHistory();
@@ -141,8 +138,6 @@ export class LayersBar {
       // Visibility toggle (eye)
       const visBtn = document.createElement("button");
       visBtn.className = "icon-btn";
-      visBtn.style.padding = "4px 6px";
-      visBtn.style.fontSize = "14px";
       visBtn.innerHTML = layer.visible ? "👁" : "🕶";
       visBtn.title = "Toggle Visibility";
       visBtn.onclick = () => {
@@ -156,8 +151,6 @@ export class LayersBar {
       // Lock toggle
       const lockBtn = document.createElement("button");
       lockBtn.className = "icon-btn";
-      lockBtn.style.padding = "4px 6px";
-      lockBtn.style.fontSize = "14px";
       lockBtn.innerHTML = layer.locked ? "🔒" : "🔓";
       lockBtn.title = "Toggle Lock";
       lockBtn.onclick = () => {
@@ -172,8 +165,6 @@ export class LayersBar {
       // / keep-outs: not machined, and pre-flight flags any move that would hit one.
       const fixBtn = document.createElement("button");
       fixBtn.className = "icon-btn";
-      fixBtn.style.padding = "4px 6px";
-      fixBtn.style.fontSize = "14px";
       fixBtn.innerHTML = "🗜";
       fixBtn.style.opacity = layer.fixture ? "1" : "0.35";
       fixBtn.title = layer.fixture
@@ -213,8 +204,6 @@ export class LayersBar {
       if (this.doc.isLaser && !layer.fixture) {
         const beamBtn = document.createElement("button");
         beamBtn.className = "icon-btn layer-beam-toggle";
-        beamBtn.style.padding = "4px 6px";
-        beamBtn.style.fontSize = "14px";
         beamBtn.innerHTML = "⚡";
         beamBtn.style.opacity = layer.laser ? "1" : "0.35";
         beamBtn.title = layer.laser
@@ -241,8 +230,6 @@ export class LayersBar {
       // Delete button
       const delBtn = document.createElement("button");
       delBtn.className = "icon-btn danger";
-      delBtn.style.padding = "4px 6px";
-      delBtn.style.fontSize = "14px";
       delBtn.innerHTML = "🗑";
       delBtn.title = "Delete Layer";
       delBtn.disabled = this.doc.layers.length <= 1;

@@ -633,6 +633,35 @@ button.cbtn.solve {
   padding: 12px;
 }
 
+/* One layer's row. The panel is ~225px and the row carries up to seven controls
+   (active, colour, name, visibility, lock, fixture, beam, delete). At the old
+   6px gaps and 4px 6px button padding the fixed controls alone came to ~207px,
+   so on a laser document the beam toggle and Delete were laid out PAST the
+   panel's right edge — Delete by 30px, i.e. unclickable. Tightened to fit, with
+   `flex-wrap` as a backstop so a future control pushes a row taller rather than
+   silently out of reach. Guarded by e2e/layers-panel-fit.e2e.ts, which measures
+   real layout — happy-dom has none, so the component tests could not see this. */
+.layer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px 2px;
+  border-radius: 4px;
+}
+
+.layer-row input.dim[type="text"] {
+  flex: 1 1 44px;
+  min-width: 44px;
+  width: auto;
+}
+
+.layer-row .icon-btn {
+  padding: 3px 3px;
+  font-size: 13px;
+  line-height: 1;
+}
+
 /* Per-layer laser beam recipe, shown under its layer's row. The panel is only
    ~210px wide, so the fields drop their spin buttons — Chrome's arrows take
    ~17px of a number input's content box, which clipped "100" to "1(". */
