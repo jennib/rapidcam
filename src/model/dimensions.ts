@@ -29,7 +29,7 @@ import {
 } from "../core/vec2";
 import { distToSegment } from "../core/geom";
 import { type Unit, formatLengthWithUnit, formatAngle } from "../core/units";
-import { type EntityId, CircleEntity, LineEntity, ArcEntity } from "./entities";
+import { type EntityId, CircleEntity, LineEntity, ArcEntity, PolylineEntity } from "./entities";
 import type { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
 
@@ -190,12 +190,6 @@ function readLineGeom(geo: Geo, id: EntityId | undefined): { a: Vec2; b: Vec2 } 
   }
   const e = geo(id);
   return e instanceof LineEntity ? { a: e.a, b: e.b } : null;
-}
-
-function readLine(geo: Geo, id: EntityId | undefined): LineEntity | null {
-  if (!id) return null;
-  const e = geo(id);
-  return e instanceof LineEntity ? e : null;
 }
 
 /** Compute the vertex and arm directions for an angle between two lines. */
