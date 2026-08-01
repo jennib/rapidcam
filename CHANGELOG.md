@@ -8,6 +8,68 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Laser jobs from layers.** A layer on a laser document can carry its own beam
+  recipe — power, speed, passes, optional kerf and air assist — and say what its
+  geometry is *for*: cut, score, engrave, or filled engrave. **Toolpaths from
+  Layers** then turns the drawing into a program in one press: one toolpath per
+  layer, in layer order, named after the layer. Hidden and workholding layers are
+  skipped and reported by name.
+
+  Power, speed and passes are **live**: any toolpath whose geometry all sits on a
+  layer takes them at export, so re-tuning after a test cut re-tunes everything on
+  that layer without a rebuild. The job *type* is deliberately not live, because a
+  cut, an engrave and a fill emit fundamentally different geometry — changing it
+  will not silently retype a toolpath you have already previewed.
+
+  Additive in `.rcam` (`layers[].laser`, `operations[].laserOverride`); the schema
+  and format guide document both.
+
+- **Drag to draw.** The line, rectangle, circle and polygon tools now accept
+  press-drag-release as well as click-then-click. No setting: a click and a drag
+  differ by how far the pointer moved, so the gesture is inferred. A press and
+  release in the same place is still a click and still arms the second point, so
+  existing muscle memory is unaffected. A dragged endpoint snaps exactly as a
+  clicked one does, and `Alt` (draw from centre) and `Shift` (ortho) work on a
+  drag too.
+
+### Fixed
+
+- **Kerf direction on a cut layer containing holes.** The beam must run *outside*
+  an outline and *inside* a hole for both to finish at the drawn size. A single
+  cut layer used one direction for both, so with a kerf set every hole came out a
+  full kerf oversize — silently, since the toolpath and preview both looked
+  right. A kerf-compensated cut is now split by containment, holes first.
+
+- **Delete Layer was unreachable on a laser document.** The Layers panel row was
+  already at its width limit; the beam toggle pushed Delete 30px outside the
+  panel. Row sizing now fits every control, with `flex-wrap` as a backstop so a
+  control added later makes the row taller rather than silently out of reach.
+
+- **Refusing to draw a shape now says why.** All four two-point tools silently did
+  nothing when snapping collapsed a shape to zero size — the same "my drag did
+  nothing" that drag support exists to fix. They now explain the refusal.
+
+- **The layers panel could emit an unrunnable `F0` program.** Its speed field had
+  no lower bound, while the toolpath dialog clamps to 1 and the file schema
+  forbids anything at or below zero. Now clamped to match.
+
+- **Tile and Two-sided were offered on machines that refuse them.** Both require a
+  flat mill but were hidden only for a rotary, so a laser document showed two
+  enabled buttons that toasted a refusal on every click.
+
+- **`renderOps()` ran before the CAM panel's buttons existed**, so every
+  machine-specific button sat at its default visibility until the first document
+  change happened to correct it — "Manage Tools" showing on a laser, "Material
+  Test" on a mill.
+
+- **Documentation declared the wrong format version.** `llms.txt` told authors to
+  emit `"version": 2` and the README called v2 current, while the schema requires
+  `3` — so an AI following the published guidance produced a file that failed
+  validation.
+
+
 ## [1.7.0] — 2026-07-31
 
 Machine settings find their home. A drawing is now a drawing: `.rcam` v3 drops machine

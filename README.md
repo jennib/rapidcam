@@ -33,12 +33,12 @@ https://github.com/user-attachments/assets/c4c5327a-c474-4d0b-95a6-56a732f8f3a5
 | Tool | Key | Description |
 |------|-----|-------------|
 | Select | `V` | Click/drag to select; move, resize, or rotate selected entities |
-| Line | `L` | Click two points; chains automatically |
-| Rectangle | `R` | Click two corners |
-| Circle | `C` | Click centre then a point on the circumference |
+| Line | `L` | Click two points **or drag**; chains automatically |
+| Rectangle | `R` | Click two corners **or drag one out**; hold `Alt` to draw from the centre |
+| Circle | `C` | Click centre then a point on the circumference, **or drag out from the centre** |
 | Arc | `A` | Click centre, start, end |
 | Slot | `U` | Click two centre points; auto-constrains the two arc caps |
-| Polygon | `N` | Click centre then a vertex; `[`/`]` change side count |
+| Polygon | `N` | Click centre then a vertex **or drag out**; `[`/`]` change side count |
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
 | Text | — | Click to place; double-click to edit in place; outlines can be profiled, pocketed, engraved, or **v-carved** |
@@ -102,6 +102,35 @@ You can also type a formula **directly into a scalar property field** — a circ
 
 Entities live on named, coloured, show/hide layers. Construction geometry (dashed) is kept on separate layers and excluded from CAM operations.
 
+On a **laser** document a layer can also carry the beam settings for everything on it — power, speed, passes, and what the geometry is *for* (cut / score / engrave / filled engrave). That makes the colour-driven workflow the whole job: see [Laser jobs from layers](#laser-jobs-from-layers).
+
+### Laser jobs from layers
+
+Laser work is colour-driven — cut on black, score on red, engrave on blue — so on
+a laser document each layer can carry its own beam settings and say what its
+geometry is *for*:
+
+| On the layer | Meaning |
+|---|---|
+| **Job type** | Cut, Score, Engrave, or Engrave (filled) — or *tuning only*, a layer that sets power for the toolpaths cutting it without being a job itself |
+| **Power / speed / passes** | Beam percentage, feed, and how many times each path is re-traced |
+| **Kerf** | Auto by default (see below), or forced outside/inside for an inlay or press fit |
+
+Press **Toolpaths from Layers** in the CAM panel and the drawing becomes a
+program: one toolpath per layer, in layer order, named after the layer. Hidden
+layers and workholding layers are skipped, and you're told which and why.
+
+Power, speed and passes stay **live** — re-tune a layer after a test cut and
+every toolpath cutting it follows, no rebuild needed. The job *type* is
+deliberately not live: a cut, an engrave and a fill emit fundamentally different
+geometry, so changing a type doesn't silently retype toolpaths you've already
+previewed. Change it and rebuild.
+
+Kerf compensation has a direction. To finish at the size you drew, the beam runs
+**outside** an outline and **inside** a hole — so a kerf-compensated cut layer
+containing holes builds two toolpaths, holes first (which is also how you'd run
+it by hand: cut the interior while the part is still held by the sheet).
+
 ### CAM
 
 | Feature | Details |
@@ -119,7 +148,7 @@ Entities live on named, coloured, show/hide layers. Construction geometry (dashe
 | Rotary / 4th axis | Switch the machine type to **CNC Mill — Rotary / 4th axis** to machine around a cylinder (spoil rods, columns, rolling pins, pens). The canvas becomes the **unrolled cylinder surface** — set the stock as Length × Diameter and the wrapped dimension locks to π·diameter, so a straight line across the wrap cuts a **ring** and a diagonal cuts a **helix**. Every toolpath type works unchanged; at export the flat program is wrapped, posting the wrapped axis as **A/B rotary degrees** with **G93 inverse-time feed** so combined linear+rotary moves hold the commanded surface speed. Choose the **Z0 reference** — the **stock surface** (touch off the cylinder top) or the **rotary centre** (axis of rotation); centre-zeroing lines up with gSender's native rotary preview with no extra toggle. The flat canvas carries a **wrap hint** — a degree ruler down the wrapped axis, quarter-turn guides, the seam edges, and the A0 line (which follows the **work origin**, so a centred origin reads −180°…+180°); toggle it from **View ▸ Rotary Wrap Hint** |
 | Stock & workholding | Place the stock blank anywhere inside a larger machine work area (the WCS origin follows the blank), and flag layers as **fixtures**: closed shapes on a fixture layer are clamps — drawn amber-dashed, never machined, with an optional clamp height — and the pre-flight check flags any move that would hit one |
 | Tool library | Named tool definitions with diameter, V-bit angle, feed/speed presets |
-| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation), vector **engrave**, and low-power **score/fold** lines, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear) and **greyscale raster engrave** of an imported image (sweeps the photo as scan rows, modulating beam power per pixel — darker = more power — with invert and overscan). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Per-op air assist (M8/M9). A built-in **Material Test** generator sweeps power × speed across a labelled grid so you can dial in settings for a new material. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later | A **rotary** laser (tumblers, bottles, pens, bats) is its own machine type — **Laser — Rotary (cylinder)** — which brings the cylinder stock model, the wrap hint and the carved-cylinder preview to the beam. It posts by **axis substitution**: the wrapped axis stays an ordinary linear word in surface millimetres and the program carries a banner stating what one revolution must measure (set the rotary's steps/mm from it), because GRBL — which drives most laser rotaries — has no 4th axis to send degrees to |
+| Laser output | Switch the machine type to **laser** for fixed-Z beam output: vector **cut** (optional kerf compensation), vector **engrave**, and low-power **score/fold** lines, plus **area-fill engrave** (scan-line flood of closed shapes, counters left clear) and **greyscale raster engrave** of an imported image (sweeps the photo as scan rows, modulating beam power per pixel — darker = more power — with invert and overscan). Power (%) + pass count instead of spindle/Z. Pick a laser controller — GRBL/FluidNC (`M4` dynamic or `M3` constant), Marlin, Smoothieware, or LinuxCNC (PWM spindle) — each an editable post in `src/cam/laserposts/`. Per-op air assist (M8/M9). Power and speed can live **on the layer** instead of on each toolpath, so the whole job is described by colour and built in one press — see [Laser jobs from layers](#laser-jobs-from-layers). A built-in **Material Test** generator sweeps power × speed across a labelled grid so you can dial in settings for a new material. Reuses the same geometry as milling; designed so waterjet/plasma can slot in later | A **rotary** laser (tumblers, bottles, pens, bats) is its own machine type — **Laser — Rotary (cylinder)** — which brings the cylinder stock model, the wrap hint and the carved-cylinder preview to the beam. It posts by **axis substitution**: the wrapped axis stays an ordinary linear word in surface millimetres and the program carries a banner stating what one revolution must measure (set the rotary's steps/mm from it), because GRBL — which drives most laser rotaries — has no 4th axis to send degrees to |
 | G-code export | GRBL and LinuxCNC post-processors (mill) / selectable laser controllers (laser); post per-operation or a ticked subset to one file; per-op coolant (`M7`/`M8`) and machine-wide custom start/end blocks |
 | Pre-flight checks | Every export or send lints the posted program first and confirms before writing anything: rapids travelling sideways below the stock top, moves outside the stock while engaged, cuts below the stock bottom, straight plunges at cutting feed, a manual tool change with no pause, and fixture/clamp collisions |
 | Send to gSender | Post the program straight to a running **gSender** over its local API instead of downloading — including both sides of a two-sided job in sequence |
@@ -261,8 +290,8 @@ npm run validate   # type check + tests + production build
 ## File format
 
 Projects are saved as `.rcam` files — plain JSON, all lengths in millimetres,
-Y-up. The current format is **version 2** (version-1 files open and are upgraded
-automatically). It's documented for external tooling:
+Y-up. The current format is **version 3** (version-1 and version-2 files open and
+are upgraded automatically). It's documented for external tooling:
 
 - [`docs/rcam-format-v3.md`](docs/rcam-format-v3.md) — authoring guide (entity
   point-key vocabularies, constraint/dimension semantics, CAM operations, gotchas).

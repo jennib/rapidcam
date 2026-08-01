@@ -665,8 +665,16 @@ The rules, which mirror `toolId` on the mill side:
 
 A recipe may also say what its geometry is **for**, with `kind`: `"cut"`,
 `"score"`, `"engrave"` or `"fill"` (a filled/solid engrave). Layers carrying a
-kind can be turned into a whole program in one action — one operation per layer,
-in layer order, named after the layer.
+kind can be turned into a whole program in one action — **Toolpaths from Layers**
+in the CAM panel — producing one operation per layer, in layer order, named after
+the layer.
+
+**This makes `operations` optional for a laser design.** Emitting layers with
+kinds and an empty `operations` array is a valid and compact way to describe a
+job: the file says what each colour is for and how hard to cut it, and the user
+presses one button to get the toolpaths. That is usually a better thing to
+generate than hand-built operations, because you cannot get the entity lists,
+the kerf direction or the cut order wrong.
 
 `kind` behaves differently from the numbers beside it, and the asymmetry is
 deliberate:

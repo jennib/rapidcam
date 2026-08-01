@@ -187,6 +187,14 @@ highest-leverage habits:
 - **Closed shapes can be composite.** A rounded rectangle authored as 4 lines
   + 4 tangent fillet arcs profiles as one closed loop — endpoints just have
   to meet.
+- **For a laser design, describe the LAYERS, not the operations.** Put a
+  `laser` recipe on each layer — `{kind, feedrate, laserPower, laserPasses}` —
+  and you may leave `operations` empty: the user presses **Toolpaths from
+  Layers** and gets one correctly-typed operation per layer, in layer order.
+  You cannot get the entity lists, the kerf direction or the cut order wrong
+  that way, and `kind` (`cut`/`score`/`engrave`/`fill`) is far easier to get
+  right than an operation `type` plus its flags. Power and speed on a layer
+  are live, so the user can re-tune after a test cut without rebuilding.
 - **Never author `__origin__`**, and never include `fonts`/`images` arrays;
   keep existing `fontId`/`imageId` references intact when modifying.
 - **Expect a report, not applause.** When the user (or agent harness) returns

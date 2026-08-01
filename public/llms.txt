@@ -44,13 +44,35 @@ integration guide, inlined as one plain-text document.
   to entity ids; keyed entities keep their ids by key rather than by emit
   position, so references survive output reordering and partial deletes.
 
+## Laser jobs from layers
+
+- A **layer** may carry a `laser` recipe — `{kind?, feedrate, laserPower,
+  laserPasses, kerfWidth?, side?, airAssist?}` — so a design describes how each
+  colour is cut: cut on black, score on red, engrave on blue.
+- `feedrate`/`laserPower`/`laserPasses` are **live**: any operation whose
+  `entityIds` all sit on that layer takes them at toolpath time, so re-tuning a
+  layer re-tunes everything on it. An operation spanning several layers keeps
+  its own settings, and `"laserOverride": true` opts one out entirely.
+- `kind` (`"cut"|"score"|"engrave"|"fill"`) is read when operations are BUILT,
+  not applied live — a cut, an engrave and a fill emit different geometry, so
+  retyping an existing operation at export would not match its preview. A layer
+  with a recipe but no `kind` tunes the operations that cut it without being a
+  job of its own.
+- Emitting layers with kinds and NO `operations` is a valid, compact way to
+  describe a laser job: the user presses **Toolpaths from Layers** and gets one
+  operation per layer, in layer order, named after the layer.
+- Hidden layers (`"visible": false`) and workholding layers (`"fixture": true`)
+  are never cut.
+- Kerf direction is automatic unless you set `side`: a contour enclosed by
+  another on the same layer is treated as a hole and compensated inward while
+  the outline goes outward, so both finish at the drawn size.
 ## Authoring tips for LLMs
 
 - All lengths are millimetres and all angles are radians (CCW), regardless of
   the file's `displayUnit`. The world frame is Y-up.
 - You do not need exact coordinates: emit rough positions plus constraints and
   dimensions, and RapidCAM's parametric solver snaps the geometry exact.
-- Declare `"version": 2` and validate your output against the schema before
+- Declare `"version": 3` and validate your output against the schema before
   presenting it to a user.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;
   iterate on that feedback rather than aiming for a perfect first attempt.
