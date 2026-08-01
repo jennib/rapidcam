@@ -21,15 +21,20 @@ import {
   type LinearDimType,
   makeDimension,
 } from "../model/dimensions";
-import { type CADDocument, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
+import {
+  type CADDocument,
+  STOCK_ENTITY_ID,
+  stockRefEntity,
+  stockRefPoint,
+} from "../model/document";
 import {
   ArcEntity,
   CircleEntity,
   type Entity,
   type LineEntity,
+  type RasterImageEntity,
   type RectEntity,
   TextEntity,
-  type RasterImageEntity,
 } from "../model/entities";
 
 /** True when an entity can carry a radius / gap dimension. */
@@ -187,6 +192,21 @@ export class DimensionTool implements Tool {
               this.phase = "second";
             }
           }
+        } else {
+          // Not a hitTest candidate — the stock rect isn't an entity — so check
+          // it explicitly, same as a rectangle/image edge above.
+          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
+          if (edge) {
+            this.firstRaw = e.worldRaw;
+            this.firstMid = edge.mid;
+            this.p1 = edge.p1;
+            this.p2 = edge.p2;
+            const dx = Math.abs(edge.p2.pos.x - edge.p1.pos.x);
+            const dy = Math.abs(edge.p2.pos.y - edge.p1.pos.y);
+            this.forcedLinearType =
+              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
+            this.phase = "placeLinear";
+          }
         }
         break;
       }
@@ -231,9 +251,9 @@ export class DimensionTool implements Tool {
           break;
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
+        let newP1: Pick | null = null;
+        let newP2: Pick | null = null;
         if (hit) {
-          let newP1: Pick | null = null;
-          let newP2: Pick | null = null;
           if (hit.type === "rectangle" || hit.type === "image") {
             const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
             if (edge && hit.id !== this.p1!.ref.entityId) {
@@ -253,31 +273,50 @@ export class DimensionTool implements Tool {
               if (this.firstMid) newP1 = this.firstMid;
             }
           }
-          if (newP2) {
-            this.forcedLinearType = null;
-            if (newP1?.ref.key.startsWith("mid") && newP2.ref.key.startsWith("mid")) {
-              const edge1 = getEdgeEnds(ctx.doc, newP1);
-              const edge2 = getEdgeEnds(ctx.doc, newP2);
-              if (edge1 && edge2) {
-                const dir1 = normalize(sub(edge1.b, edge1.a));
-                const dir2 = normalize(sub(edge2.b, edge2.a));
-                if (Math.abs(cross(dir1, dir2)) > 0.05) {
-                  this.line1Id = newP1.ref.entityId;
-                  this.line2Id = newP2.ref.entityId;
-                  this.phase = "placeAngle";
-                  this.hoverP1 = null;
-                  this.hoverP2 = null;
-                  break;
-                }
+        }
+        // Deliberately NOT offering a continuous stock-edge fallback here (unlike
+        // the "first" phase and hover-preview below): this same branch also
+        // handles the FINAL placement click, and the stock rect usually fills or
+        // nearly fills the whole canvas — an ordinary "click open space to place
+        // the dimension" click routinely lands within tolerance of ITS edge too.
+        // That turned "place below this image" into a silent no-op (the click was
+        // reinterpreted as re-picking p2 onto the stock instead of committing) —
+        // see the regression this caused in imageDimensionOrphan.test.ts. Picking
+        // the stock as the SECOND point still works at its 8 corner/midpoint
+        // hotspots via pickPoint above; only picking anywhere along a stock edge
+        // as the second point specifically requires clicking the stock FIRST.
+        if (newP2) {
+          this.forcedLinearType = null;
+          // See the matching guard in recompute(): a stock edge can't feed the
+          // angle-dimension path either (readLineGeom can't resolve WHICH of its
+          // 4 edges from a bare entity id) — stays a plain point dimension.
+          if (
+            newP1?.ref.key.startsWith("mid") &&
+            newP2.ref.key.startsWith("mid") &&
+            newP1.ref.entityId !== STOCK_ENTITY_ID &&
+            newP2.ref.entityId !== STOCK_ENTITY_ID
+          ) {
+            const edge1 = getEdgeEnds(ctx.doc, newP1);
+            const edge2 = getEdgeEnds(ctx.doc, newP2);
+            if (edge1 && edge2) {
+              const dir1 = normalize(sub(edge1.b, edge1.a));
+              const dir2 = normalize(sub(edge2.b, edge2.a));
+              if (Math.abs(cross(dir1, dir2)) > 0.05) {
+                this.line1Id = newP1.ref.entityId;
+                this.line2Id = newP2.ref.entityId;
+                this.phase = "placeAngle";
+                this.hoverP1 = null;
+                this.hoverP2 = null;
+                break;
               }
             }
-            if (newP1) this.p1 = newP1;
-            this.p2 = newP2;
-            if (this.hoverRaw) this.secondRaw = this.hoverRaw;
-            this.hoverP1 = null;
-            this.hoverP2 = null;
-            break;
           }
+          if (newP1) this.p1 = newP1;
+          this.p2 = newP2;
+          if (this.hoverRaw) this.secondRaw = this.hoverRaw;
+          this.hoverP1 = null;
+          this.hoverP2 = null;
+          break;
         }
         this.commitLinear(ctx);
         break;
@@ -320,9 +359,9 @@ export class DimensionTool implements Tool {
         this.hoverP2 = pick;
       } else {
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
+        let newP1: Pick | null = null;
+        let newP2: Pick | null = null;
         if (hit) {
-          let newP1: Pick | null = null;
-          let newP2: Pick | null = null;
           if (hit.type === "rectangle" || hit.type === "image") {
             const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
             if (edge && hit.id !== this.p1!.ref.entityId) {
@@ -344,10 +383,13 @@ export class DimensionTool implements Tool {
               if (this.firstMid) newP1 = this.firstMid;
             }
           }
-          if (newP2) {
-            this.hoverP1 = newP1;
-            this.hoverP2 = newP2;
-          }
+        }
+        // No stock fallback here either — see the matching comment in
+        // onPointerDown's "placeLinear" case; the preview must not promise an
+        // anchor the click won't actually commit to.
+        if (newP2) {
+          this.hoverP1 = newP1;
+          this.hoverP2 = newP2;
         }
       }
     }
@@ -436,7 +478,18 @@ export class DimensionTool implements Tool {
       this.curType =
         (isSameEntityEdge ? this.forcedLinearType : null) ??
         chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
-      if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
+      // "line-distance" stores its two sides as bare entity ids (dim.entities),
+      // which is enough for a LineEntity/polyline segment but can't say WHICH of
+      // a rectangle/image/stock's 4 edges was meant — only the mid_* key on the
+      // POINT carries that, and points aren't kept for this dimension type. So a
+      // stock edge always stays a plain point dimension (still correct — just
+      // without the edge-spanning extension line line-distance would draw).
+      if (
+        activeP1.ref.key.startsWith("mid") &&
+        activeP2.ref.key.startsWith("mid") &&
+        activeP1.ref.entityId !== STOCK_ENTITY_ID &&
+        activeP2.ref.entityId !== STOCK_ENTITY_ID
+      ) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);
         if (edge1 && edge2) {
@@ -581,6 +634,12 @@ export class DimensionTool implements Tool {
     if (measuresSingleTextBox(dim, geo)) {
       dim.driving = false;
       ctx.notify("Reference dimension — text size is set by its font/size, not driven");
+    } else if (measuresStockOnly(dim)) {
+      // Both anchors are fixed stock points — nothing here is ever a solver
+      // variable, so a driving residual would just be permanently-satisfied
+      // dead weight (and would wrongly count against the sketch's free DOF).
+      dim.driving = false;
+      ctx.notify("Reference dimension — the stock doesn't move, so this can't drive anything");
     }
     this.phase = "first";
     this.p1 = null;
@@ -760,4 +819,53 @@ function pickRectOrImageEdge(
     p2: { ref: { entityId: ent.id, key: best[2] }, pos: best[3] },
     mid: { ref: { entityId: ent.id, key: best[4] }, pos: best[5] },
   };
+}
+
+/**
+ * Find the closest edge of the STOCK rectangle within `tol`, same shape as
+ * {@link pickRectOrImageEdge}. The stock isn't an entity, so it's never a
+ * `hitTest` candidate — unlike a real rectangle, where `pickRectOrImageEdge`
+ * only runs after hitTest has already confirmed the click is on its outline,
+ * this does its own tolerance check (`bestD` starts at `tol`, not `Infinity`).
+ * Without this, only the stock's 8 exact corner/midpoint points (each an
+ * ~8px hotspot) were clickable — the rest of every edge was dead space, unlike
+ * every other edge in the app.
+ */
+function pickStockEdge(
+  doc: CADDocument,
+  p: Vec2,
+  tol: number,
+): { p1: Pick; p2: Pick; mid: Pick } | null {
+  const bl = stockRefPoint(doc, "bl");
+  const br = stockRefPoint(doc, "br");
+  const tr = stockRefPoint(doc, "tr");
+  const tl = stockRefPoint(doc, "tl");
+  if (!bl || !br || !tr || !tl) return null; // rotary: no flat stock to dimension from
+  const edges: [string, Vec2, string, Vec2, string, Vec2][] = [
+    ["bl", bl, "br", br, "mid_b", mid(bl, br)],
+    ["br", br, "tr", tr, "mid_r", mid(br, tr)],
+    ["tr", tr, "tl", tl, "mid_t", mid(tr, tl)],
+    ["tl", tl, "bl", bl, "mid_l", mid(tl, bl)],
+  ];
+  let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
+  let bestD = tol;
+  for (const edge of edges) {
+    const d = distToSegment(p, edge[1], edge[3]);
+    if (d < bestD) {
+      bestD = d;
+      best = edge;
+    }
+  }
+  if (!best) return null;
+  return {
+    p1: { ref: { entityId: STOCK_ENTITY_ID, key: best[0] }, pos: best[1] },
+    p2: { ref: { entityId: STOCK_ENTITY_ID, key: best[2] }, pos: best[3] },
+    mid: { ref: { entityId: STOCK_ENTITY_ID, key: best[4] }, pos: best[5] },
+  };
+}
+
+/** True when a linear dimension measures entirely between two stock points —
+ *  both sides fixed, so it can never drive anything (see commitLinear). */
+function measuresStockOnly(dim: Dimension): boolean {
+  return dim.points.length === 2 && dim.points.every((p) => p.entityId === STOCK_ENTITY_ID);
 }
