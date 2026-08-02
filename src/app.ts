@@ -884,7 +884,7 @@ export class App {
     const geo: Geo = (id: string) =>
       id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : this.doc.entities.find((e) => e.id === id);
     for (const dim of this.doc.dimensions) {
-      const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
+      const layout = dimensionLayout(dim, geo, this.doc.displayUnit, this.view.scale);
       if (layout) {
         const labelScreenDist = dist(screen, this.view.worldToScreen(layout.textPos));
         if (labelScreenDist < 12) return "move";
@@ -992,7 +992,7 @@ export class App {
     const screen = this.screenOf(ev);
     const world = this.view.screenToWorld(screen);
     // Editing a dimension's value works in any tool.
-    const dim = this.doc.dimensionAt(world, this.view.toWorldLen(8));
+    const dim = this.doc.dimensionAt(world, this.view.toWorldLen(8), this.view.scale);
     if (dim) {
       this.openDimEditor(dim);
       return;
@@ -1025,7 +1025,7 @@ export class App {
   private openDimEditor(dim: Dimension): void {
     const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
     const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : byId.get(id));
-    const layout = dimensionLayout(dim, geo, this.doc.displayUnit);
+    const layout = dimensionLayout(dim, geo, this.doc.displayUnit, this.view.scale);
     if (!layout) return;
 
     this.dimEditor.open({

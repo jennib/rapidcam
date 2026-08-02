@@ -684,7 +684,7 @@ export class Renderer {
       if (dim.entities.some((id) => !isVisible(id))) continue;
       if (dim.points.some((p) => !isVisible(p.entityId))) continue;
 
-      const layout = dimensionLayout(dim, geo, unit);
+      const layout = dimensionLayout(dim, geo, unit, view.scale);
       if (!layout) continue;
 
       const isSelected = dim.id === doc.selectedDimensionId;

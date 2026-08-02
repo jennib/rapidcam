@@ -223,11 +223,13 @@ export class SelectTool implements Tool {
     let dimDist = Infinity;
 
     for (const dim of ctx.doc.dimensions) {
-      const layout = dimensionLayout(dim, geo, ctx.doc.displayUnit);
+      const layout = dimensionLayout(dim, geo, ctx.doc.displayUnit, ctx.view.scale);
       if (!layout) continue;
       const labelScreenDist = dist(e.screen, ctx.view.worldToScreen(layout.textPos));
       if (labelScreenDist < 12 && !hitLabelDim) hitLabelDim = dim;
-      const d = dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit) * ctx.view.scale;
+      const d =
+        dimensionHitDistance(dim, geo, e.worldRaw, ctx.doc.displayUnit, ctx.view.scale) *
+        ctx.view.scale;
       if (d < 10 && d < dimDist) {
         hitDim = dim;
         dimDist = d;

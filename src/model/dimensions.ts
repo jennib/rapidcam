@@ -488,7 +488,49 @@ export function dimensionAnchorsFromCursor(
   return chainProjectAnchors(cursor, l1, l2);
 }
 
-export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout | null {
+/**
+ * Where the value text sits on a linear dimension: centred on the dimension
+ * line normally, shifted just past the far arrow when it would not fit
+ * between them.
+ *
+ * The label is drawn with an OPAQUE background (it deliberately breaks the
+ * dimension line so the number stays readable over geometry). On a narrow
+ * measurement that box is wider than the whole span, so it covered the shaft
+ * and both arrowheads — the dimension rendered as a bare number floating
+ * between two lines with no visible graphic at all. Standard drafting moves
+ * the text outside once it stops fitting.
+ *
+ * `pxPerMm` is the viewport scale, since fitting is a screen-space question:
+ * text is a fixed pixel size, so the same dimension fits when zoomed in and
+ * not when zoomed out. Callers without a viewport omit it and keep the
+ * always-centred behaviour — but any caller that HIT-TESTS must pass the same
+ * scale the renderer used, or the clickable label drifts from the drawn one.
+ */
+function linearTextPos(
+  p2: Vec2,
+  q2: Vec2,
+  dir: Vec2,
+  label: string,
+  pxPerMm: number | undefined,
+): Vec2 {
+  const centre = mid(p2, q2);
+  if (!pxPerMm || pxPerMm <= 0) return centre;
+  // Matches drawDimText: 11px ui-monospace, 4px padding each side. Monospace
+  // makes a per-character estimate accurate enough to decide fit.
+  const textPx = label.length * 6.7 + 8;
+  const spanPx = len(sub(q2, p2)) * pxPerMm;
+  if (spanPx >= textPx + 6) return centre; // fits, with a little clearance
+  // Doesn't fit: park it just beyond the far arrow, on the dimension line.
+  const outMm = (textPx / 2 + 8) / pxPerMm;
+  return add(q2, scale(dir, outMm));
+}
+
+export function dimensionLayout(
+  dim: Dimension,
+  geo: Geo,
+  unit: Unit,
+  pxPerMm?: number,
+): DimLayout | null {
   const displayVal = dim.driving ? dim.value : (dimensionMeasure(dim, geo) ?? 0);
 
   if (dim.type === "radius" || dim.type === "diameter") {
@@ -637,6 +679,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     // the lines is `anchors` — see resolveLineDistanceCrossing.
     const span = len(sub(q, p));
     const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
+    const gapLabel = formatLengthWithUnit(displayVal, unit);
     return {
       segments: [[p, q]],
       // Arrows point outward, each into the line it touches.
@@ -644,8 +687,8 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
         { tip: p, dir: scale(u, -1) },
         { tip: q, dir: u },
       ],
-      textPos: mid(p, q),
-      label: formatLengthWithUnit(displayVal, unit),
+      textPos: linearTextPos(p, q, u, gapLabel, pxPerMm),
+      label: gapLabel,
     };
   }
 
@@ -667,6 +710,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
 
   const along = len(sub(q2, p2));
   const dir = along > 1e-9 ? scale(sub(q2, p2), 1 / along) : { x: 1, y: 0 };
+  const linLabel = formatLengthWithUnit(displayVal, unit);
   return {
     segments: [
       [p, p2],
@@ -677,14 +721,24 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
       { tip: p2, dir: scale(dir, -1) },
       { tip: q2, dir },
     ],
-    textPos: mid(p2, q2),
-    label: formatLengthWithUnit(displayVal, unit),
+    textPos: linearTextPos(p2, q2, dir, linLabel, pxPerMm),
+    label: linLabel,
   };
 }
 
-/** World-distance from `pt` to the dimension's lines/text (for picking). */
-export function dimensionHitDistance(dim: Dimension, geo: Geo, pt: Vec2, unit: Unit): number {
-  const layout = dimensionLayout(dim, geo, unit);
+/**
+ * World-distance from `pt` to the dimension's lines/text (for picking).
+ * `pxPerMm` must match what the renderer passed to dimensionLayout, or the
+ * clickable label sits somewhere other than the drawn one.
+ */
+export function dimensionHitDistance(
+  dim: Dimension,
+  geo: Geo,
+  pt: Vec2,
+  unit: Unit,
+  pxPerMm?: number,
+): number {
+  const layout = dimensionLayout(dim, geo, unit, pxPerMm);
   if (!layout) return Infinity;
   let d = dist(pt, layout.textPos);
   for (const [a, b] of layout.segments) d = Math.min(d, distToSegment(pt, a, b));

@@ -11,6 +11,7 @@ import {
   dimensionAnchorsFromCursor,
   dimensionOffsetFromCursor,
   dimensionLayout,
+  dimensionHitDistance,
   chainProjectAnchors,
 } from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
@@ -645,5 +646,62 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     "dragging far away yields no offset at all (position is anchors-only)",
     dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 }) === 0,
     `offset=${dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 })}`,
+  );
+}
+
+// 19) A narrow gap must not be swallowed by its own value label. The label is
+//     drawn with an OPAQUE background so the number stays readable over
+//     geometry; on a short span that box is wider than the whole dimension and
+//     covered the shaft AND both arrowheads, leaving a bare number floating
+//     between two lines with no visible dimension graphic at all. Fitting is a
+//     screen-space question (fixed-pixel text), so the layout takes the
+//     viewport scale.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 6, y: 0 }, { x: 6, y: 100 })) as LineEntity; // 6mm apart
+  const geo = geoOf(doc);
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: [0.5, 0.5],
+    value: 6,
+    offset: 0,
+  });
+
+  // ~1.9 px/mm (the app's default fit-view zoom): 6mm is ~11px on screen,
+  // far narrower than the label.
+  const tight = dimensionLayout(dim, geo, "mm", 1.864)!;
+  check(
+    "narrow gap: the label is pushed clear of the span, not centred on it",
+    tight.textPos.x > 6,
+    `textPos.x=${tight.textPos.x.toFixed(3)} (span is x 0..6)`,
+  );
+  check(
+    "narrow gap: the shaft and arrows still span exactly the measured gap",
+    Math.abs(dist(tight.segments[0][0], tight.segments[0][1]) - 6) < 1e-6 &&
+      Math.abs(dist(tight.arrows[0].tip, tight.arrows[1].tip) - 6) < 1e-6,
+  );
+
+  // Zoomed right in, the same dimension has room, so the label centres again.
+  const roomy = dimensionLayout(dim, geo, "mm", 40)!;
+  check(
+    "zoomed in, the same dimension centres its label between the arrows",
+    Math.abs(roomy.textPos.x - 3) < 1e-6,
+    `textPos.x=${roomy.textPos.x.toFixed(3)}`,
+  );
+
+  // Omitting the scale keeps the old always-centred behaviour.
+  const noScale = dimensionLayout(dim, geo, "mm")!;
+  check(
+    "without a viewport scale the label stays centred (back-compatible)",
+    Math.abs(noScale.textPos.x - 3) < 1e-6,
+    `textPos.x=${noScale.textPos.x.toFixed(3)}`,
+  );
+
+  // Hit-testing must follow the label, or the drawn label is unclickable.
+  check(
+    "the moved label is what hit-testing picks (same scale in, same place out)",
+    dimensionHitDistance(dim, geo, tight.textPos, "mm", 1.864) < 1e-6,
+    `d=${dimensionHitDistance(dim, geo, tight.textPos, "mm", 1.864)}`,
   );
 }

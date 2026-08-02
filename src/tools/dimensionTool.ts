@@ -147,7 +147,7 @@ export class DimensionTool implements Tool {
         }
 
         // Grab an existing dimension to reposition it (offset/anchors only — no re-solve).
-        const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8));
+        const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8), ctx.view.scale);
         if (existing) {
           ctx.pushHistory();
           this.dragDim = existing;

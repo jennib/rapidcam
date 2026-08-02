@@ -1065,11 +1065,11 @@ export class CADDocument {
     return (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(this) : m.get(id));
   }
   /** Topmost dimension whose lines/text are within `tol` mm of `p`, or null. */
-  dimensionAt(p: Vec2, tol: number): Dimension | null {
+  dimensionAt(p: Vec2, tol: number, pxPerMm?: number): Dimension | null {
     const geo = this.geo();
     for (let i = this.dimensions.length - 1; i >= 0; i--) {
       if (this.dimensions[i].hidden) continue; // headless — nothing drawn to click
-      if (dimensionHitDistance(this.dimensions[i], geo, p, this.displayUnit) <= tol) {
+      if (dimensionHitDistance(this.dimensions[i], geo, p, this.displayUnit, pxPerMm) <= tol) {
         return this.dimensions[i];
       }
     }
