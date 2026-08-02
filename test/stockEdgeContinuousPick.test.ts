@@ -27,7 +27,19 @@ import { SnapEngine } from "../src/input/snapping";
 import { CADDocument, STOCK_ENTITY_ID } from "../src/model/document";
 import { LineEntity, RasterImageEntity } from "../src/model/entities";
 import { DimensionTool } from "../src/tools/dimensionTool";
+import type { Dimension } from "../src/model/dimensions";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
+
+/**
+ * Which entities a dimension is anchored to, regardless of how it stores
+ * them. Point dimensions keep PointRefs; an edge-to-edge "line-distance"
+ * dimension keeps `entities`, edge-qualified as "<id>#mid_l". Two parallel
+ * edges now produce the latter, so these tests assert the anchoring the user
+ * asked for rather than one particular encoding of it.
+ */
+function anchorIds(dim: Dimension): string[] {
+  return [...dim.points.map((p) => p.entityId), ...dim.entities.map((e) => e.split("#")[0])];
+}
 
 function makeCtx(doc: CADDocument): ToolContext {
   return {
@@ -90,9 +102,10 @@ describe("continuous stock-edge picking", () => {
 
     expect(doc.dimensions).toHaveLength(1);
     const dim = doc.dimensions[0];
-    const stockPoint = dim.points.find((p) => p.entityId === STOCK_ENTITY_ID);
-    expect(stockPoint?.key).toBe("mid_l");
-    expect(dim.points.some((p) => p.entityId === line.id)).toBe(true);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(line.id);
+    // The stock side names WHICH edge — the left one that was clicked.
+    expect(dim.entities.some((e) => e === `${STOCK_ENTITY_ID}#mid_l`)).toBe(true);
     expect(dim.value).toBeCloseTo(100, 3); // |150 - 50|
   });
 
@@ -122,9 +135,41 @@ describe("continuous stock-edge picking", () => {
     const dim = doc.dimensions[0];
     // Must NOT be the line's own two endpoints (its length, 100mm) — must be
     // redirected to measure against the stock edge instead.
-    expect(dim.points.some((p) => p.entityId === STOCK_ENTITY_ID)).toBe(true);
-    expect(dim.points.some((p) => p.entityId === line.id)).toBe(true);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(line.id);
     expect(dim.value).toBeCloseTo(100, 3); // |150 - 50|, same edge, different anchor
+  });
+
+  it("anchors the gap where you CLICKED, not at either edge's midpoint", () => {
+    // The reported complaint: "the dimension line snaps to the mid points of
+    // the vertical line and the left edge ... looks terrible and is not the
+    // intent". Both anchors used to jump to their own edge's midpoint — two
+    // unrelated heights — because a stock/rect edge could not be named
+    // individually, so the dimension degraded to a point dimension.
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 50, y: 50, width: 200, height: 150 }; // left edge y:50..200, mid y=125
+    doc.add(new LineEntity({ x: 150, y: 70 }, { x: 150, y: 170 })); // mid y=120
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click both sides LOW (y=90) — nowhere near either midpoint (125 / 120).
+    click(tool, ctx, { x: 150, y: 90 });
+    move(tool, ctx, { x: 50, y: 90 });
+    click(tool, ctx, { x: 50, y: 90 });
+    move(tool, ctx, { x: 100, y: 90 });
+    click(tool, ctx, { x: 100, y: 90 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(dim.type).toBe("line-distance");
+    expect(dim.value).toBeCloseTo(100, 3);
+
+    // Resolve both anchors to world points and check they sit at the clicked
+    // height, directly across from each other (a straight perpendicular span).
+    const lineY = 70 + (dim.anchors?.[0] ?? 0.5) * 100; // line runs y 70 -> 170
+    const stockY = 200 + (dim.anchors?.[1] ?? 0.5) * (50 - 200); // left edge tl -> bl
+    expect(lineY).toBeCloseTo(90, 3);
+    expect(stockY).toBeCloseTo(90, 3);
   });
 
   it("an open-space placement click near the stock edge still commits — it is not reinterpreted as a re-pick", () => {

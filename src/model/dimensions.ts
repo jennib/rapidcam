@@ -178,15 +178,65 @@ function gapGeom(
   };
 }
 
+/**
+ * Which two corners bound each edge of a 4-corner entity, keyed by the same
+ * `mid_*` edge key the pickers hand out. Rectangles and the stock rect name
+ * their corners bl/br/tr/tl; images name theirs c0..c3.
+ */
+const RECT_EDGE_CORNERS: Record<string, [string, string]> = {
+  mid_b: ["bl", "br"],
+  mid_r: ["br", "tr"],
+  mid_t: ["tr", "tl"],
+  mid_l: ["tl", "bl"],
+};
+const IMAGE_EDGE_CORNERS: Record<string, [string, string]> = {
+  mid_b: ["c0", "c1"],
+  mid_r: ["c1", "c2"],
+  mid_t: ["c2", "c3"],
+  mid_l: ["c3", "c0"],
+};
+
+/**
+ * The two endpoints of one edge of a rectangle, image, or the stock rect.
+ *
+ * A multi-edge entity can't be named by a bare entity id — that's why a
+ * dimension anchored to (say) the stock's left edge could never become a
+ * proper edge-to-edge dimension and fell back to a midpoint-to-midpoint
+ * point dimension instead. Callers pair the id with the edge key using the
+ * existing `<id>#<key>` segment-ref convention (see lineRefEntityId, which
+ * already strips it for solver partitioning and delete-pruning).
+ */
+export function edgeEndsOf(
+  ent: { type: string; getPoint(key: string): Vec2 } | undefined,
+  edgeKey: string,
+): { a: Vec2; b: Vec2 } | null {
+  if (!ent) return null;
+  const pair = (ent.type === "image" ? IMAGE_EDGE_CORNERS : RECT_EDGE_CORNERS)[edgeKey];
+  if (!pair) return null;
+  try {
+    const a = ent.getPoint(pair[0]);
+    const b = ent.getPoint(pair[1]);
+    // getPoint throws for an unknown key on most entities, but a wrong-kind
+    // entity that answers with junk must not become a phantom edge either.
+    if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(b.x)) return null;
+    return { a, b };
+  } catch {
+    return null; // no such corner: wrong entity kind, or rotary stock (no flat rect)
+  }
+}
+
 function readLineGeom(geo: Geo, id: EntityId | undefined): { a: Vec2; b: Vec2 } | null {
   if (!id) return null;
   const sep = id.indexOf("#");
   if (sep >= 0) {
-    const poly = geo(id.slice(0, sep));
-    if (poly instanceof PolylineEntity) {
-      const seg = poly.segmentByStartVertexId(id.slice(sep + 1));
+    const base = geo(id.slice(0, sep));
+    const suffix = id.slice(sep + 1);
+    if (base instanceof PolylineEntity) {
+      const seg = base.segmentByStartVertexId(suffix);
       return seg ? { a: seg[0], b: seg[1] } : null;
     }
+    // "<id>#mid_l" — one named edge of a rectangle, image, or the stock rect.
+    return edgeEndsOf(base, suffix);
   }
   const e = geo(id);
   return e instanceof LineEntity ? { a: e.a, b: e.b } : null;

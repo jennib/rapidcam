@@ -10,7 +10,7 @@
 import { angleInArc, distToSegment } from "../core/geom";
 import type { Unit } from "../core/units";
 import { cross, dist, mid, normalize, sub, type Vec2 } from "../core/vec2";
-import type { Geo, PointRef } from "../model/constraints";
+import { type Geo, type PointRef, SEGMENT_SEP } from "../model/constraints";
 import {
   avoidDimensionCollision,
   chainProjectAnchors,
@@ -21,6 +21,7 @@ import {
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
+  edgeEndsOf,
   type LinearDimType,
   makeDimension,
 } from "../model/dimensions";
@@ -485,18 +486,14 @@ export class DimensionTool implements Tool {
       this.curType =
         (isSameEntityEdge ? this.forcedLinearType : null) ??
         chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
-      // "line-distance" stores its two sides as bare entity ids (dim.entities),
-      // which is enough for a LineEntity/polyline segment but can't say WHICH of
-      // a rectangle/image/stock's 4 edges was meant — only the mid_* key on the
-      // POINT carries that, and points aren't kept for this dimension type. So a
-      // stock edge always stays a plain point dimension (still correct — just
-      // without the edge-spanning extension line line-distance would draw).
-      if (
-        activeP1.ref.key.startsWith("mid") &&
-        activeP2.ref.key.startsWith("mid") &&
-        activeP1.ref.entityId !== STOCK_ENTITY_ID &&
-        activeP2.ref.entityId !== STOCK_ENTITY_ID
-      ) {
+      // Two parallel edges measure as a true edge-to-edge gap, drawn where you
+      // clicked. This used to exclude the stock (and any rect/image edge could
+      // only be named as a whole entity), because dim.entities held bare ids
+      // with no way to say WHICH of 4 edges was meant — so those degraded to a
+      // point dimension pinned to both edges' MIDPOINTS, at two unrelated
+      // positions, which is what made a line-to-stock-edge dimension look
+      // broken. lineDistanceRef now qualifies the id with the edge key.
+      if (activeP1.ref.key.startsWith("mid") && activeP2.ref.key.startsWith("mid")) {
         const edge1 = getEdgeEnds(ctx.doc, activeP1);
         const edge2 = getEdgeEnds(ctx.doc, activeP2);
         if (edge1 && edge2) {
@@ -600,7 +597,7 @@ export class DimensionTool implements Tool {
       // matching heights, which used to draw a diagonal shaft instead of a
       // straight perpendicular one. See chainProjectAnchors.
       return makeDimension(this.curType, {
-        entities: [ap1.ref.entityId, ap2.ref.entityId],
+        entities: [lineDistanceRef(ap1), lineDistanceRef(ap2)],
         anchors: edge1 && edge2 ? chainProjectAnchors(p1Raw, edge1, edge2) : [0.5, 0.5],
         value: 0,
         offset,
@@ -797,23 +794,25 @@ function pickVirtualRectCorner(entities: Entity[], p: Vec2, tol: number): Pick |
 }
 
 function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | null {
-  const e = doc.entities.find((x: Entity) => x.id === midRef.ref.entityId);
+  const id = midRef.ref.entityId;
+  // The stock rect isn't in doc.entities — it resolves through stockRefEntity,
+  // the same way Geo lookups do. Without this it returned null, so a
+  // dimension from a stock edge never qualified as an edge-to-edge dimension
+  // and silently degraded to a midpoint-to-midpoint point dimension.
+  const e = id === STOCK_ENTITY_ID ? stockRefEntity(doc) : doc.entities.find((x) => x.id === id);
   if (!e) return null;
-  if (e.type === "line") {
-    return { a: (e as LineEntity).a, b: (e as LineEntity).b };
-  } else if (e.type === "rectangle" || e.type === "image") {
-    const key = midRef.ref.key;
-    const isImg = e.type === "image";
-    const blKey = isImg ? "c0" : "bl";
-    const brKey = isImg ? "c1" : "br";
-    const trKey = isImg ? "c2" : "tr";
-    const tlKey = isImg ? "c3" : "tl";
-    if (key === "mid_b") return { a: e.getPoint(blKey), b: e.getPoint(brKey) };
-    if (key === "mid_r") return { a: e.getPoint(brKey), b: e.getPoint(trKey) };
-    if (key === "mid_t") return { a: e.getPoint(trKey), b: e.getPoint(tlKey) };
-    if (key === "mid_l") return { a: e.getPoint(tlKey), b: e.getPoint(blKey) };
-  }
-  return null;
+  if (e.type === "line") return { a: (e as LineEntity).a, b: (e as LineEntity).b };
+  return edgeEndsOf(e, midRef.ref.key);
+}
+
+/**
+ * How a line-distance dimension names one of its two sides. A plain line is
+ * just its id; one edge of a multi-edge entity (rectangle, image, stock) has
+ * to carry WHICH edge, via the existing `<id>#<key>` segment-ref convention.
+ */
+function lineDistanceRef(pick: Pick): string {
+  const { entityId, key } = pick.ref;
+  return key.startsWith("mid_") ? `${entityId}${SEGMENT_SEP}${key}` : entityId;
 }
 
 /** Find the closest edge of a rectangle or image and return its two corner PointRefs and its midpoint. */
