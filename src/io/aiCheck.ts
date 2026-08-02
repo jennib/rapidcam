@@ -15,7 +15,7 @@
  */
 
 import { postPrograms } from "../cam/postPrograms";
-import { CADDocument } from "../model/document";
+import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID } from "../model/document";
 import { RasterImageEntity } from "../model/entities";
 import { solve } from "../solver/solver";
 import { applyFile, normalizeRcam, type RcamFile } from "./fileio";
@@ -78,7 +78,17 @@ function refIssues(file: RcamFile): AiIssue[] {
   const toolIds = new Set(
     ((file.tools ?? []) as { id?: string }[]).map((t) => t.id).filter(Boolean),
   );
-  const missing = (id: string) => id !== "__origin__" && !entityIds.has(id);
+  /**
+   * Reserved synthetic entities. Neither is ever serialized into `entities`,
+   * but both are legitimate, resolvable reference targets at runtime — the
+   * origin point, and the stock rectangle's edges/corners (see
+   * STOCK_ENTITY_ID in model/document.ts and stockRefDimension.test.ts).
+   * Omitting __stock__ here rejected any file containing a dimension
+   * anchored to a stock edge — a fully supported thing to draw — so a design
+   * that saved cleanly then failed its own import check on reopen.
+   */
+  const SYNTHETIC_IDS = new Set<string>([ORIGIN_ENTITY_ID, STOCK_ENTITY_ID]);
+  const missing = (id: string) => !SYNTHETIC_IDS.has(id) && !entityIds.has(id);
 
   type PointRef = { entityId?: string };
   const scanPointRefs = (section: string, items: unknown[] | undefined) => {
@@ -163,7 +173,7 @@ function boundsIssues(doc: CADDocument): AiIssue[] {
   const eps = 1e-6;
   const outside: string[] = [];
   for (const e of doc.entities) {
-    if (e.id === "__origin__") continue;
+    if (e.id === ORIGIN_ENTITY_ID) continue;
     const b = e.bounds();
     if (!Number.isFinite(b.min.x) || !Number.isFinite(b.max.x)) continue;
     if (

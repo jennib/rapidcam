@@ -9,8 +9,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
-import { CADDocument } from "../src/model/document";
+import { CADDocument, STOCK_ENTITY_ID } from "../src/model/document";
 import { CircleEntity, LineEntity } from "../src/model/entities";
+import { makeDimension } from "../src/model/dimensions";
 import { buildAiPrompt } from "../src/io/aiPrompt";
 import {
   buildErrorReport,
@@ -157,6 +158,35 @@ describe("checkRcamText", () => {
     expect(
       r.issues.some((i) => i.severity === "warning" && i.message.includes("no-such-tool")),
     ).toBe(true);
+  });
+
+  it("accepts the reserved synthetic entities (__origin__, __stock__) as reference targets", () => {
+    // Round-trip of the exact reported failure: a design dimensioned from a
+    // stock edge saved fine, then failed its OWN import check on reopen with
+    // 'references entity "__stock__", which does not exist'. Neither reserved
+    // id is ever serialized into `entities` — both resolve at runtime — so
+    // the refs check must allow them rather than treat them as dangling.
+    const doc = new CADDocument({ width: 200, height: 150 });
+    doc.stockRect = { x: 0, y: 0, width: 200, height: 150 };
+    const c = doc.add(new CircleEntity({ x: 60, y: 40 }, 5));
+    doc.addDimension(
+      makeDimension("horizontal", {
+        points: [
+          { entityId: STOCK_ENTITY_ID, key: "bl" },
+          { entityId: c.id, key: "c" },
+        ],
+        value: 60,
+        offset: 20,
+      }),
+    );
+    const file = serializeDoc(doc, "Stock dim");
+    // The stock is NOT an entity in the saved file — that's the whole point.
+    expect((file.entities as { id?: string }[]).some((e) => e.id === STOCK_ENTITY_ID)).toBe(false);
+    expect(JSON.stringify(file)).toContain(STOCK_ENTITY_ID);
+
+    const r = checkRcamText(JSON.stringify(file), validator);
+    expect(r.issues.filter((i) => i.check === "refs")).toEqual([]);
+    expect(r.ok).toBe(true);
   });
 
   it("flags a contradictory constraint system as a solver error", () => {
