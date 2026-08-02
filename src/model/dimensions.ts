@@ -382,6 +382,36 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   return clampMinOffset(dot(sub(cursor, m), linearNormal("distance", p, q)));
 }
 
+/** Project `p` onto segment a→b, as a parameter clamped to [0, 1]. */
+export function projectOnLine(p: Vec2, a: Vec2, b: Vec2): number {
+  const v = sub(b, a);
+  const l2 = v.x * v.x + v.y * v.y;
+  if (l2 < 1e-9) return 0.5;
+  const t = dot(sub(p, a), v) / l2;
+  return Math.max(0, Math.min(1, t));
+}
+
+/**
+ * Recompute a line-distance dimension's anchors [t1, t2] from the cursor,
+ * projecting onto each line independently. dimensionOffsetFromCursor alone
+ * only ever moves the shaft perpendicular to the two lines (the gap it
+ * reports is invariant to anchor position) — dragging along the lines' own
+ * direction had nothing to drive it, so e.g. a dimension between two
+ * vertical lines could be dragged left/right but never up/down. Returns
+ * null for every other dimension type.
+ */
+export function dimensionAnchorsFromCursor(
+  dim: Dimension,
+  geo: Geo,
+  cursor: Vec2,
+): [number, number] | null {
+  if (dim.type !== "line-distance") return null;
+  const l1 = readLineGeom(geo, dim.entities[0]);
+  const l2 = readLineGeom(geo, dim.entities[1]);
+  if (!l1 || !l2) return null;
+  return [projectOnLine(cursor, l1.a, l1.b), projectOnLine(cursor, l2.a, l2.b)];
+}
+
 export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout | null {
   const displayVal = dim.driving ? dim.value : (dimensionMeasure(dim, geo) ?? 0);
 
@@ -525,12 +555,18 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     p2 = { x, y: p.y };
     q2 = { x, y: q.y };
   } else if (type === "line-distance") {
+    // Both extension lines run the SAME perpendicular distance (offset) out
+    // from their own anchor — mirroring the generic aligned-dim branch below.
+    // Deriving q2 from p2 and the p→q gap instead (as this used to) ignores
+    // any tangential offset between the two anchors (t1 ≠ t2, now reachable
+    // by dragging one end along its line — see dimensionAnchorsFromCursor),
+    // so q2 could land far from q and draw a long, wrongly-angled second
+    // extension line instead of a straight dimension.
     const l1 = readLineGeom(geo, dim.entities[0])!;
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
     p2 = add(p, scale(n, dim.offset));
-    const d = dot(sub(q, p), n);
-    q2 = add(p2, scale(n, -d));
+    q2 = add(q, scale(n, dim.offset));
   } else {
     const n = linearNormal("distance", p, q);
     p2 = add(p, scale(n, dim.offset));

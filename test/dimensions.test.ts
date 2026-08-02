@@ -5,7 +5,13 @@
 
 import { CADDocument } from "../src/model/document";
 import { LineEntity, CircleEntity } from "../src/model/entities";
-import { makeDimension, dimensionMeasure } from "../src/model/dimensions";
+import {
+  makeDimension,
+  dimensionMeasure,
+  dimensionAnchorsFromCursor,
+  dimensionOffsetFromCursor,
+  dimensionLayout,
+} from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
 import { type Geo, makeConstraint } from "../src/model/constraints";
 import { dist } from "../src/core/vec2";
@@ -299,4 +305,95 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     Math.abs(Math.abs(line.a.x - rect.a.x) - 190) < 1e-3,
     `dx=${Math.abs(line.a.x - rect.a.x).toFixed(4)}`,
   );
+}
+
+// 12) line-distance anchors slide along the lines, not just the perpendicular
+//     offset — dragging a dim between two vertical lines up/down used to do
+//     nothing, since only dimensionOffsetFromCursor (perpendicular) was wired
+//     into the drag handlers.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 100 })) as LineEntity;
+  const geo = geoOf(doc);
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: [0.5, 0.5],
+    value: 0,
+    offset: 20,
+  });
+
+  const near = dimensionAnchorsFromCursor(dim, geo, { x: 25, y: 90 });
+  check(
+    "dragging near the top slides both anchors near t=0.9",
+    near !== null && Math.abs(near[0] - 0.9) < 1e-6 && Math.abs(near[1] - 0.9) < 1e-6,
+    `anchors=${JSON.stringify(near)}`,
+  );
+
+  const far = dimensionAnchorsFromCursor(dim, geo, { x: 25, y: -50 });
+  check(
+    "cursor beyond the line's end clamps the anchor to 0, not negative",
+    far !== null && far[0] === 0 && far[1] === 0,
+    `anchors=${JSON.stringify(far)}`,
+  );
+
+  // Offset (perpendicular standoff) still works independently of anchor drag.
+  dim.anchors = near ?? [0.5, 0.5];
+  const offset = dimensionOffsetFromCursor(dim, geo, { x: 60, y: 90 });
+  check("perpendicular offset drag is unaffected by the anchor fix", offset > 0, `offset=${offset}`);
+
+  const other = makeDimension("distance", {
+    points: [
+      { entityId: l1.id, key: "a" },
+      { entityId: l1.id, key: "b" },
+    ],
+    value: 0,
+    offset: 5,
+  });
+  check(
+    "non line-distance dimensions get no anchors from the cursor",
+    dimensionAnchorsFromCursor(other, geo, { x: 25, y: 90 }) === null,
+  );
+}
+
+// 13) line-distance renders a straight dimension even when the two anchors
+//     sit at DIFFERENT positions along their lines (t1 != t2) -- e.g. after
+//     dragging just one end. q2 used to be derived from p2 and the p->q gap,
+//     ignoring any tangential offset between the anchors, so it could land
+//     far from q and draw a long, wrongly-angled second extension line —
+//     reported live as "dimension lines should be straight lines. Not
+//     whatever this is" against production geometry with mismatched anchors.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 100 })) as LineEntity;
+  const geo = geoOf(doc);
+  // Mismatched anchors: t1=0.2 (near the bottom of l1), t2=0.9 (near the top of l2).
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: [0.2, 0.9],
+    value: 50,
+    offset: 20,
+  });
+  const layout = dimensionLayout(dim, geo, "mm");
+  check("mismatched-anchor line-distance still lays out", layout !== null);
+  if (layout) {
+    const [p, p2] = layout.segments[0];
+    const [q, q2] = layout.segments[1];
+    check(
+      "extension line 1 (p to p2) is exactly the offset long",
+      Math.abs(dist(p, p2) - 20) < 1e-6,
+      `len=${dist(p, p2).toFixed(4)}`,
+    );
+    check(
+      "extension line 2 (q to q2) is ALSO exactly the offset long, not a long stray diagonal",
+      Math.abs(dist(q, q2) - 20) < 1e-6,
+      `len=${dist(q, q2).toFixed(4)}`,
+    );
+    // p2 and q2 sit directly across from p and q (same tangential coordinate,
+    // shifted only along the perpendicular n=(±1,0)) -- a straight offset copy
+    // of the p-q line, not a shape bent back on itself.
+    check("p2 keeps p's y", Math.abs(p2.y - p.y) < 1e-6, `p.y=${p.y} p2.y=${p2.y}`);
+    check("q2 keeps q's y", Math.abs(q2.y - q.y) < 1e-6, `q.y=${q.y} q2.y=${q2.y}`);
+  }
 }

@@ -12,6 +12,7 @@ import {
 } from "../model/constraints";
 import {
   type Dimension,
+  dimensionAnchorsFromCursor,
   dimensionHitDistance,
   dimensionLayout,
   dimensionOffsetFromCursor,
@@ -364,6 +365,11 @@ export class SelectTool implements Tool {
         const byId = new Map(ctx.doc.entities.map((en) => [en.id, en]));
         const geo: Geo = (id) =>
           id === STOCK_ENTITY_ID ? stockRefEntity(ctx.doc) : byId.get(id);
+        // For line-distance dims, slide the anchors along the lines first so
+        // the offset (perpendicular standoff) below is measured from where
+        // the dimension is being dragged to, not where it started.
+        const anchors = dimensionAnchorsFromCursor(dim, geo, e.worldRaw);
+        if (anchors) dim.anchors = anchors;
         dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
         ctx.requestRender();
       }

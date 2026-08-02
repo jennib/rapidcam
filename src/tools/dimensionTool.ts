@@ -9,18 +9,20 @@
 
 import { angleInArc, distToSegment } from "../core/geom";
 import type { Unit } from "../core/units";
-import { cross, dist, dot, mid, normalize, sub, type Vec2 } from "../core/vec2";
+import { cross, dist, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import type { Geo, PointRef } from "../model/constraints";
 import {
   avoidDimensionCollision,
   chooseLinearType,
   type Dimension,
   type DimensionType,
+  dimensionAnchorsFromCursor,
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
   type LinearDimType,
   makeDimension,
+  projectOnLine,
 } from "../model/dimensions";
 import {
   type CADDocument,
@@ -145,7 +147,7 @@ export class DimensionTool implements Tool {
           break;
         }
 
-        // Grab an existing dimension to reposition it (offset only — no re-solve).
+        // Grab an existing dimension to reposition it (offset/anchors only — no re-solve).
         const existing = ctx.doc.dimensionAt(e.worldRaw, ctx.view.toWorldLen(8));
         if (existing) {
           ctx.pushHistory();
@@ -350,6 +352,8 @@ export class DimensionTool implements Tool {
     this.cursor = e.world;
     if (this.dragDim) {
       const geo = geoOf(ctx.doc);
+      const anchors = dimensionAnchorsFromCursor(this.dragDim, geo, e.world);
+      if (anchors) this.dragDim.anchors = anchors;
       this.dragDim.offset = dimensionOffsetFromCursor(this.dragDim, geo, e.world);
       ctx.doc.emitChange();
       return;
@@ -606,7 +610,7 @@ export class DimensionTool implements Tool {
         entities: [ap1.ref.entityId, ap2.ref.entityId],
         anchors:
           edge1 && edge2
-            ? [computeT(p1Raw, edge1.a, edge1.b), computeT(p2Raw, edge2.a, edge2.b)]
+            ? [projectOnLine(p1Raw, edge1.a, edge1.b), projectOnLine(p2Raw, edge2.a, edge2.b)]
             : [0.5, 0.5],
         value: 0,
         offset,
@@ -822,14 +826,6 @@ function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | nul
     if (key === "mid_l") return { a: e.getPoint(tlKey), b: e.getPoint(blKey) };
   }
   return null;
-}
-
-function computeT(raw: Vec2, a: Vec2, b: Vec2): number {
-  const v = sub(b, a);
-  const l2 = v.x * v.x + v.y * v.y;
-  if (l2 < 1e-9) return 0.5;
-  const t = dot(sub(raw, a), v) / l2;
-  return Math.max(0, Math.min(1, t)); // constrain between 0 and 1
 }
 
 /** Find the closest edge of a rectangle or image and return its two corner PointRefs and its midpoint. */
