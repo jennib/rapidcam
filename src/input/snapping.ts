@@ -32,8 +32,13 @@ export interface SnapResult {
 export class SnapEngine {
   gridEnabled = true;
   objectSnapEnabled = true;
-  /** Object-snap pickup radius in screen pixels. */
-  pixelTolerance = 12;
+  /**
+   * Object-snap pickup radius in screen pixels. Briefly raised to 12 alongside
+   * the edge/body snap; that widened EVERY snap in the app, not just the new
+   * one, which is a separate behaviour change from adding a new snap kind.
+   * Back to 10 — give the body snap its own constant if it needs more reach.
+   */
+  pixelTolerance = 10;
 
   resolve(screen: Vec2, view: Viewport, doc: CADDocument, exclude?: Set<EntityId>): SnapResult {
     const rawWorld = view.screenToWorld(screen);
