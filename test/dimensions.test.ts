@@ -375,7 +375,7 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     entities: [l1.id, l2.id],
     anchors: [0.2, 0.9],
     value: 50,
-    offset: 20,
+    offset: 12,
   });
   const layout = dimensionLayout(dim, geo, "mm");
   check("line-distance with a stale anchors[1] still lays out", layout !== null);
@@ -384,12 +384,12 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     const [q, q2] = layout.segments[1];
     check(
       "extension line 1 (p to p2) is exactly the offset long",
-      Math.abs(dist(p, p2) - 20) < 1e-6,
+      Math.abs(dist(p, p2) - 12) < 1e-6,
       `len=${dist(p, p2).toFixed(4)}`,
     );
     check(
       "extension line 2 (q to q2) is ALSO exactly the offset long, not a long stray diagonal",
-      Math.abs(dist(q, q2) - 20) < 1e-6,
+      Math.abs(dist(q, q2) - 12) < 1e-6,
       `len=${dist(q, q2).toFixed(4)}`,
     );
     check("p2 keeps p's y", Math.abs(p2.y - p.y) < 1e-6, `p.y=${p.y} p2.y=${p2.y}`);
@@ -484,7 +484,7 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     entities: [l1.id, l2.id],
     anchors: chainProjectAnchors({ x: 0, y: 50 }, l1, l2), // placed at the midpoint, [0.5, 0.5]
     value: 50,
-    offset: 20,
+    offset: 12,
   });
   const before = dimensionLayout(dim, geo, "mm");
   check("straight before any edit", before !== null);
@@ -504,12 +504,12 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     const [q, q2] = after.segments[1];
     check(
       "after: extension line 1 is still exactly the offset long",
-      Math.abs(dist(p, p2) - 20) < 1e-6,
+      Math.abs(dist(p, p2) - 12) < 1e-6,
       `len=${dist(p, p2).toFixed(4)}`,
     );
     check(
       "after: extension line 2 is ALSO still exactly the offset long (not a stray diagonal)",
-      Math.abs(dist(q, q2) - 20) < 1e-6,
+      Math.abs(dist(q, q2) - 12) < 1e-6,
       `len=${dist(q, q2).toFixed(4)}`,
     );
     check(
@@ -518,4 +518,103 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
       `p.y=${p.y} q.y=${q.y}`,
     );
   }
+}
+
+// 17) The actual reported "pivot / too long" bug: l1 is LONG, l2 is SHORT.
+//     Placing/dragging near a position only l1 can reach used to let anchor 1
+//     follow the reference freely along l1's own (long) extent while anchor 2
+//     stayed pinned to l2's short end -- a pivot around the pinned point,
+//     with the shaft stretched all the way out to wherever anchor 1 was.
+//     Clamping to the OVERLAP keeps anchor 1 from ever wandering past what
+//     l2 can also reach, so both anchors move together and the dimension
+//     never gets longer than it needs to be.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 200 })) as LineEntity; // long
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 30 })) as LineEntity; // short
+  const geo = geoOf(doc);
+
+  // Reference far up l1 (y=150) -- well past l2's 0..30 reach.
+  const anchors = dimensionAnchorsFromCursor(
+    makeDimension("line-distance", {
+      entities: [l1.id, l2.id],
+      anchors: [0.5, 0.5],
+      value: 0,
+      offset: 20,
+    }),
+    geo,
+    { x: 0, y: 150 },
+  );
+  check("anchors resolve for a reference past the short line's reach", anchors !== null);
+  if (anchors) {
+    const p1y = 0 + anchors[0] * 200;
+    check(
+      "anchor 1 is pulled back to l2's reach (y=30), NOT left at the raw reference (y=150)",
+      Math.abs(p1y - 30) < 1e-6,
+      `p1y=${p1y.toFixed(3)} (anchors=${JSON.stringify(anchors)})`,
+    );
+    const p2y = 0 + anchors[1] * 30;
+    check(
+      "anchor 2 sits directly opposite anchor 1 (both at the overlap boundary)",
+      Math.abs(p2y - p1y) < 1e-6,
+      `p1y=${p1y.toFixed(3)} p2y=${p2y.toFixed(3)}`,
+    );
+  }
+
+  // A dimension created (not dragged) with these anchors must lay out short
+  // and straight, not stretched up toward y=150.
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: anchors ?? [0.15, 1],
+    value: 30,
+    offset: 20,
+  });
+  const layout = dimensionLayout(dim, geo, "mm");
+  check("still lays out", layout !== null);
+  if (layout) {
+    const [p] = layout.segments[0];
+    check(
+      "the actual rendered anchor never exceeds l2's reach (y <= 30)",
+      p.y <= 30 + 1e-6,
+      `p.y=${p.y.toFixed(3)}`,
+    );
+  }
+}
+
+// 18) Extension length is capped -- a large offset (95, matching what was
+//     placed live) must not stretch the extension lines out that far. The
+//     arrows should sit close to the actual objects with just a small,
+//     constant gap, not a draggable-to-anywhere leader with extra line
+//     sticking out past the arrowheads back toward the real anchor points.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 100 })) as LineEntity;
+  const geo = geoOf(doc);
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: [0.5, 0.5],
+    value: 50,
+    offset: 95,
+  });
+  const layout = dimensionLayout(dim, geo, "mm");
+  check("still lays out with a large stored offset", layout !== null);
+  if (layout) {
+    const [p, p2] = layout.segments[0];
+    const [q, q2] = layout.segments[1];
+    check(
+      "extension line 1 is capped, not the full 95mm offset",
+      dist(p, p2) < 20,
+      `len=${dist(p, p2).toFixed(4)}`,
+    );
+    check(
+      "extension line 2 is ALSO capped",
+      dist(q, q2) < 20,
+      `len=${dist(q, q2).toFixed(4)}`,
+    );
+  }
+
+  // Dragging further out must not keep growing the offset past the cap.
+  const dragged = dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 });
+  check("dragging far away still returns a capped offset", Math.abs(dragged) < 20, `offset=${dragged}`);
 }

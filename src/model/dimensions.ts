@@ -338,6 +338,19 @@ function clampMinOffset(val: number, min = 10): number {
   return val;
 }
 
+/**
+ * Same idea, but also caps the far end: a line-distance dimension's
+ * extension lines are meant to be a small, constant witness-line gap (some
+ * breathing room off the object), not a draggable-to-anywhere leader — an
+ * arbitrarily large offset just stretches the dimension far past the two
+ * lines it's measuring for no visual benefit. Dragging past the cap simply
+ * pins at it rather than continuing to grow.
+ */
+function clampOffsetRange(val: number, min = 10, max = 16): number {
+  const mag = Math.max(min, Math.min(max, Math.abs(val)));
+  return (val >= 0 ? 1 : -1) * mag;
+}
+
 /** Recompute `offset` from the cursor for the dimension's current type. */
 export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2): number {
   if (dim.type === "radius" || dim.type === "diameter") {
@@ -365,12 +378,12 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     const l1 = readLineGeom(geo, dim.entities[0]);
     const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return dim.offset;
-    const p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
-    const q = crossProjectOntoLine2(p, l2);
+    const ref = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
+    const { p, q } = resolveLineDistanceCrossing(ref, l1, l2);
     const m = mid(p, q);
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
-    return clampMinOffset(dot(sub(cursor, m), n));
+    return clampOffsetRange(dot(sub(cursor, m), n));
   }
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
@@ -392,40 +405,75 @@ export function projectOnLine(p: Vec2, a: Vec2, b: Vec2): number {
 }
 
 /**
- * Where a line-distance dimension's SECOND point actually lives: dropped
- * fresh from `p` onto l2, never read from a stored anchors[1] fraction.
- * anchors[1] is only a snapshot from whenever the dimension was last placed
- * or dragged — if either line moves independently afterward (resized, one
- * endpoint dragged, anything short of both lines translating in lockstep),
- * that stored fraction stops corresponding to the point directly across from
- * p. Re-deriving it every call keeps the dimension a perpendicular crossing
- * no matter how the geometry has changed since — reported live as "nodes"
- * appearing on the dimension (the stale anchor visibly hinging away from the
- * line) once one of the two lines was moved.
+ * Resolve BOTH of a line-distance dimension's anchors from one reference
+ * point, so they always sit directly across from each other (a straight,
+ * perpendicular dimension), and re-derived fresh every call so neither
+ * anchor goes stale if the lines move independently afterward.
+ *
+ * The key move is clamping to the OVERLAP of what l1 and l2 can each reach
+ * tangentially, not clamping each line's projection independently. Clamping
+ * independently lets one anchor slide freely while the other pins to its
+ * line's nearest end the moment the reference goes past what THAT line
+ * alone supports — even while the other line still has plenty of room — so
+ * the shaft pivots around the pinned point and stretches out to meet the
+ * still-sliding one. That's what read as "nodes where the dimension can
+ * pivot... causing the dimension line to be too long": a pivot that fired
+ * long before it needed to, and dragged the shaft's far end away with it.
+ * Clamping the shared position to the overlap keeps both anchors moving
+ * together across the full range they can BOTH support, so a pivot only
+ * happens in the genuine edge case where the two lines don't tangentially
+ * overlap at all — and even then, it lands at the nearest valid edge
+ * instead of wherever the reference point happened to wander off to.
  */
-function crossProjectOntoLine2(p: Vec2, l2: { a: Vec2; b: Vec2 }): Vec2 {
-  const t2 = projectOnLine(p, l2.a, l2.b);
-  return add(l2.a, scale(sub(l2.b, l2.a), t2));
+function resolveLineDistanceCrossing(
+  reference: Vec2,
+  l1: { a: Vec2; b: Vec2 },
+  l2: { a: Vec2; b: Vec2 },
+): { p: Vec2; q: Vec2; t1: number; t2: number } {
+  const d1 = sub(l1.b, l1.a);
+  const len1 = len(d1);
+  if (len1 < 1e-9) {
+    const t2 = projectOnLine(l1.a, l2.a, l2.b);
+    return { p: l1.a, q: add(l2.a, scale(sub(l2.b, l2.a), t2)), t1: 0.5, t2 };
+  }
+  const dir = scale(d1, 1 / len1);
+  const s1a = dot(l1.a, dir);
+  const s1b = s1a + len1; // dir IS l1's own unit direction, so l1.b is exactly len1 further
+  const lo1 = Math.min(s1a, s1b);
+  const hi1 = Math.max(s1a, s1b);
+
+  const d2 = sub(l2.b, l2.a);
+  const s2a = dot(l2.a, dir);
+  const s2b = s2a + dot(d2, dir); // signed: handles l2 running either direction along dir
+  const lo2 = Math.min(s2a, s2b);
+  const hi2 = Math.max(s2a, s2b);
+
+  const overlapLo = Math.max(lo1, lo2);
+  const overlapHi = Math.min(hi1, hi2);
+  const sRef = dot(reference, dir);
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  // Overlap exists -> clamp to it so both anchors can always meet perpendicular.
+  // No overlap (rare) -> fall back to l1's own extent; some pivot is unavoidable.
+  const s = overlapLo <= overlapHi ? clamp(sRef, overlapLo, overlapHi) : clamp(sRef, lo1, hi1);
+
+  const t1 = clamp((s - s1a) / len1, 0, 1);
+  const p = add(l1.a, scale(d1, t1));
+  const t2 = projectOnLine(p, l2.a, l2.b); // final safety clamp against l2's real extent
+  const q = add(l2.a, scale(d2, t2));
+  return { p, q, t1, t2 };
 }
 
 /**
  * Anchor a line-distance dimension's two ends so they sit DIRECTLY ACROSS
- * from each other (t1 on l1, then t2 on l2 = wherever t1's point lands when
- * dropped straight onto l2) — never two independently-chosen positions.
- * That guarantees the rendered shaft in dimensionLayout is a straight,
- * perpendicular crossing, never a diagonal. The only time it can't be exact
- * is when l2 doesn't extend as far as l1's anchor tangentially — t2 clamps
- * to l2's nearest end, angling the shaft slightly because there's genuinely
- * no room for a perpendicular crossing there, not because of a bug.
+ * from each other. Used for both the initial two-click placement and
+ * drag-to-reposition.
  */
 export function chainProjectAnchors(
   cursor: Vec2,
   l1: { a: Vec2; b: Vec2 },
   l2: { a: Vec2; b: Vec2 },
 ): [number, number] {
-  const t1 = projectOnLine(cursor, l1.a, l1.b);
-  const p1 = add(l1.a, scale(sub(l1.b, l1.a), t1));
-  const t2 = projectOnLine(p1, l2.a, l2.b);
+  const { t1, t2 } = resolveLineDistanceCrossing(cursor, l1, l2);
   return [t1, t2];
 }
 
@@ -571,8 +619,8 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const l1 = readLineGeom(geo, dim.entities[0]);
     const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return null;
-    p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
-    q = crossProjectOntoLine2(p, l2);
+    const ref = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
+    ({ p, q } = resolveLineDistanceCrossing(ref, l1, l2));
   } else {
     p = readPoint(geo, dim.points[0]);
     q = readPoint(geo, dim.points[1]);
@@ -592,18 +640,26 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     p2 = { x, y: p.y };
     q2 = { x, y: q.y };
   } else if (type === "line-distance") {
-    // Both extension lines run the SAME perpendicular distance (offset) out
-    // from their own anchor — mirroring the generic aligned-dim branch below.
+    // Both extension lines run the SAME perpendicular distance out from
+    // their own anchor — mirroring the generic aligned-dim branch below.
     // Deriving q2 from p2 and the p→q gap instead (as this used to) ignores
     // any tangential offset between the two anchors (t1 ≠ t2, now reachable
     // by dragging one end along its line — see dimensionAnchorsFromCursor),
     // so q2 could land far from q and draw a long, wrongly-angled second
     // extension line instead of a straight dimension.
+    //
+    // The distance itself is clampOffsetRange'd, not raw dim.offset: these
+    // extension lines are meant to be a small, fixed witness-line gap giving
+    // the arrows some breathing room off the object, not a leader you drag
+    // out arbitrarily far — a large offset just left extra line sticking out
+    // past the arrowheads, back toward the real measured points, with the
+    // arrows sitting nowhere near either object.
     const l1 = readLineGeom(geo, dim.entities[0])!;
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
-    p2 = add(p, scale(n, dim.offset));
-    q2 = add(q, scale(n, dim.offset));
+    const ext = clampOffsetRange(dim.offset);
+    p2 = add(p, scale(n, ext));
+    q2 = add(q, scale(n, ext));
   } else {
     const n = linearNormal("distance", p, q);
     p2 = add(p, scale(n, dim.offset));
