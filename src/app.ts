@@ -640,15 +640,21 @@ export class App {
     });
   }
 
+  /**
+   * With a selection: toggles THOSE entities' own `isConstruction` — a
+   * property of the selected geometry, nothing else. With nothing selected:
+   * toggles `doc.isConstructionMode`, the mode that decides what NEW shapes
+   * get drawn as. These used to be coupled (selecting a shape and marking it
+   * construction also silently armed construction mode for whatever you drew
+   * next) — surprising, and not what either action asked for.
+   */
   private toggleConstruction(): void {
     const selected = this.doc.selected;
+    this.project.pushHistory();
     if (selected.length > 0) {
       const allAreConstruction = selected.every((e) => e.isConstruction);
-      this.project.pushHistory();
       for (const e of selected) e.isConstruction = !allAreConstruction;
-      this.doc.isConstructionMode = !allAreConstruction;
     } else {
-      this.project.pushHistory();
       this.doc.isConstructionMode = !this.doc.isConstructionMode;
     }
     this.doc.emitChange();

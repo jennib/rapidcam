@@ -139,10 +139,11 @@ export class PropertiesBar {
 
     this.constructionBtn = document.createElement("button");
     this.constructionBtn.className = "btn props-construction-btn";
-    this.constructionBtn.innerHTML = '<input type="checkbox" class="cm-checkbox" style="pointer-events: none;"> Construction Mode';
-    this.constructionBtn.title = "Toggle construction geometry mode (X)";
+    this.constructionBtn.innerHTML =
+      '<input type="checkbox" class="cm-checkbox" style="pointer-events: none;"> Construction Mode';
+    this.constructionBtn.title =
+      "New shapes are drawn as construction geometry until this is off again (X)";
     this.constructionBtn.addEventListener("click", () => this.onConstructionToggle());
-    this.content.appendChild(this.constructionBtn);
 
     this.host.appendChild(this.content);
   }
@@ -165,13 +166,17 @@ export class PropertiesBar {
 
   private refresh(): void {
     this.content.innerHTML = "";
-    this.content.appendChild(this.constructionBtn);
     const selected = this.doc.selected;
-    const cmActive =
-      selected.length > 0 ? selected.every((e) => e.isConstruction) : this.doc.isConstructionMode;
-    this.constructionBtn.classList.toggle("active", cmActive);
-    const cb = this.constructionBtn.querySelector(".cm-checkbox") as HTMLInputElement | null;
-    if (cb) cb.checked = cmActive;
+    // The "next shapes drawn are construction" MODE only means something when
+    // nothing is selected — with a selection, construction is a property of
+    // the selected entity/entities instead (shown in its own section below, or
+    // toggled via the X hotkey / right-click for a multi-selection).
+    if (selected.length === 0) {
+      this.content.appendChild(this.constructionBtn);
+      this.constructionBtn.classList.toggle("active", this.doc.isConstructionMode);
+      const cb = this.constructionBtn.querySelector(".cm-checkbox") as HTMLInputElement | null;
+      if (cb) cb.checked = this.doc.isConstructionMode;
+    }
 
     const selDim = this.doc.selectedDimensionId
       ? (this.doc.dimensions.find((d) => d.id === this.doc.selectedDimensionId) ?? null)
@@ -398,6 +403,7 @@ export class PropertiesBar {
       Math.PI / 180,
     );
 
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -532,6 +538,28 @@ export class PropertiesBar {
     mutate();
     this.solve();
     this.doc.emitChange();
+  }
+
+  /** "Construction" checkbox — a property of THIS entity (reference geometry
+   *  shown for snapping/layout but excluded from toolpaths and export). Never
+   *  touches doc.isConstructionMode: that's the separate mode governing what
+   *  NEW shapes are drawn as, not what an already-drawn one currently is. */
+  private constructionRow(sec: HTMLElement, entity: Entity): void {
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span");
+    lbl.textContent = "Construction";
+    lbl.title = "Reference geometry — excluded from toolpaths and export.";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = entity.isConstruction;
+    cb.addEventListener("change", () => {
+      this.pushHistory();
+      entity.isConstruction = cb.checked;
+      this.doc.emitChange();
+    });
+    row.append(lbl, cb);
+    sec.appendChild(row);
   }
 
   /** A "Label [input] unit" row whose input commits a parsed number on change. */
@@ -1027,6 +1055,7 @@ export class PropertiesBar {
     angleRow.append(angleLbl, angleIn, angleUnit);
     sec.appendChild(angleRow);
 
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -1040,6 +1069,7 @@ export class PropertiesBar {
         entity.center = { x, y };
       });
     });
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -1096,6 +1126,7 @@ export class PropertiesBar {
         entity.center = { x, y };
       });
     });
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -1148,6 +1179,7 @@ export class PropertiesBar {
         entity.b = { x, y };
       });
     });
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -1173,6 +1205,7 @@ export class PropertiesBar {
       entity.p0 = { x: m.x, y: m.y };
       entity.p1 = { x: m.x + w, y: m.y + v };
     });
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
@@ -1247,6 +1280,7 @@ export class PropertiesBar {
     });
     sec.appendChild(list);
 
+    this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }
 
