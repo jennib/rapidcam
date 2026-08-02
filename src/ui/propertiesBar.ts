@@ -429,8 +429,9 @@ export class PropertiesBar {
           : formatLength(dim.value, this.doc.displayUnit);
     // Flag a driving dimension whose formula no longer evaluates (a deleted variable) —
     // it silently keeps its last value otherwise, which would post a wrong toolpath.
-    if (dim.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null)
-      inp.style.borderColor = "var(--danger, #e05555)";
+    const broken =
+      !!dim.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
+    if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
       let v: number | null = null;
@@ -453,7 +454,25 @@ export class PropertiesBar {
       }
       if (!this.commitDimValue(dim, v, expr)) this.flashInput(inp);
     });
-    row.append(lbl, inp);
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    // Angle dimensions don't support formulas at all (see the isAngle branches
+    // above) — no picker to offer there. Every other type already can via
+    // dim.expr; it just had no way to find a variable's name short of typing it
+    // blind, unlike every scalar/binding field's ƒx badge.
+    if (!isAngle) {
+      row.appendChild(
+        this.fxBadge({
+          input: inp,
+          bound: !!dim.expr && !broken,
+          broken,
+          boundExpr: dim.expr,
+          onUnbind: () => {
+            if (!this.commitDimValue(dim, dim.value, undefined)) this.flashInput(inp);
+          },
+        }),
+      );
+    }
     sec.appendChild(row);
 
     const btnRow = document.createElement("div");
