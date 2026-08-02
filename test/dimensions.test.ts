@@ -357,19 +357,20 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   );
 }
 
-// 13) line-distance renders a straight dimension even when the two anchors
-//     sit at DIFFERENT positions along their lines (t1 != t2) -- e.g. after
-//     dragging just one end. q2 used to be derived from p2 and the p->q gap,
-//     ignoring any tangential offset between the anchors, so it could land
-//     far from q and draw a long, wrongly-angled second extension line —
-//     reported live as "dimension lines should be straight lines. Not
-//     whatever this is" against production geometry with mismatched anchors.
+// 13) line-distance ALWAYS renders a straight, perpendicular dimension --
+//     even with a WRONG/stale anchors[1] in storage, q is now freshly
+//     re-derived by projecting p (from anchors[0]) onto line2 on every call,
+//     not read from the stored fraction. That's what keeps the dimension
+//     correct if EITHER line moves independently after placement (only
+//     anchors[0]'s own line used to stay in sync; the other could go stale)
+//     — reported live as "nodes" appearing on the dimension, visibly
+//     hinging away from the line, once one line was dragged.
 {
   const doc = new CADDocument({ width: 400, height: 300 });
   const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
   const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 100 })) as LineEntity;
   const geo = geoOf(doc);
-  // Mismatched anchors: t1=0.2 (near the bottom of l1), t2=0.9 (near the top of l2).
+  // anchors[1]=0.9 is deliberately WRONG (should be ignored, not honored).
   const dim = makeDimension("line-distance", {
     entities: [l1.id, l2.id],
     anchors: [0.2, 0.9],
@@ -377,7 +378,7 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     offset: 20,
   });
   const layout = dimensionLayout(dim, geo, "mm");
-  check("mismatched-anchor line-distance still lays out", layout !== null);
+  check("line-distance with a stale anchors[1] still lays out", layout !== null);
   if (layout) {
     const [p, p2] = layout.segments[0];
     const [q, q2] = layout.segments[1];
@@ -391,11 +392,15 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
       Math.abs(dist(q, q2) - 20) < 1e-6,
       `len=${dist(q, q2).toFixed(4)}`,
     );
-    // p2 and q2 sit directly across from p and q (same tangential coordinate,
-    // shifted only along the perpendicular n=(±1,0)) -- a straight offset copy
-    // of the p-q line, not a shape bent back on itself.
     check("p2 keeps p's y", Math.abs(p2.y - p.y) < 1e-6, `p.y=${p.y} p2.y=${p2.y}`);
     check("q2 keeps q's y", Math.abs(q2.y - q.y) < 1e-6, `q.y=${q.y} q2.y=${q2.y}`);
+    // The real point: q sits directly across from p (t=0.2 on l2), NOT at
+    // the stale stored anchors[1]=0.9 (which would put q.y at 90).
+    check(
+      "q ignores the stale stored anchors[1] and sits directly across from p",
+      Math.abs(q.y - p.y) < 1e-6,
+      `p.y=${p.y} q.y=${q.y}`,
+    );
   }
 }
 
@@ -462,4 +467,55 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     Math.abs(t2 - 0.15) < 1e-6,
     `t2=${t2}`,
   );
+}
+
+// 16) Moving ONE of the two measured lines AFTER the dimension already
+//     exists must not bend it -- this is the actual reported bug ("nodes"
+//     appearing on the dimension when a line was dragged). anchors[0] rides
+//     along with l1 as designed; the fix is making q re-cross onto l2's
+//     CURRENT geometry every time, instead of trusting wherever anchors[1]
+//     pointed back when the dimension was first placed.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 100 })) as LineEntity;
+  const geo = geoOf(doc);
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: chainProjectAnchors({ x: 0, y: 50 }, l1, l2), // placed at the midpoint, [0.5, 0.5]
+    value: 50,
+    offset: 20,
+  });
+  const before = dimensionLayout(dim, geo, "mm");
+  check("straight before any edit", before !== null);
+  if (before) {
+    const [p, p2] = before.segments[0];
+    const [q, q2] = before.segments[1];
+    check("before: extensions match", Math.abs(dist(p, p2) - dist(q, q2)) < 1e-6);
+  }
+
+  // Now drag l2's far endpoint, stretching it -- NOT a rigid translation, so
+  // anchors[1]'s old fraction (0.5) would land somewhere completely different.
+  l2.b = { x: 50, y: 300 };
+  const after = dimensionLayout(dim, geo, "mm");
+  check("still lays out after l2 changes shape", after !== null);
+  if (after) {
+    const [p, p2] = after.segments[0];
+    const [q, q2] = after.segments[1];
+    check(
+      "after: extension line 1 is still exactly the offset long",
+      Math.abs(dist(p, p2) - 20) < 1e-6,
+      `len=${dist(p, p2).toFixed(4)}`,
+    );
+    check(
+      "after: extension line 2 is ALSO still exactly the offset long (not a stray diagonal)",
+      Math.abs(dist(q, q2) - 20) < 1e-6,
+      `len=${dist(q, q2).toFixed(4)}`,
+    );
+    check(
+      "after: q still crosses directly opposite p (re-derived, not stale)",
+      Math.abs(q.y - p.y) < 1e-6,
+      `p.y=${p.y} q.y=${q.y}`,
+    );
+  }
 }

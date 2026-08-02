@@ -366,7 +366,7 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return dim.offset;
     const p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
-    const q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
+    const q = crossProjectOntoLine2(p, l2);
     const m = mid(p, q);
     let n = perp(normalize(sub(l1.b, l1.a)));
     if (dot(sub(q, p), n) < 0) n = scale(n, -1);
@@ -389,6 +389,23 @@ export function projectOnLine(p: Vec2, a: Vec2, b: Vec2): number {
   if (l2 < 1e-9) return 0.5;
   const t = dot(sub(p, a), v) / l2;
   return Math.max(0, Math.min(1, t));
+}
+
+/**
+ * Where a line-distance dimension's SECOND point actually lives: dropped
+ * fresh from `p` onto l2, never read from a stored anchors[1] fraction.
+ * anchors[1] is only a snapshot from whenever the dimension was last placed
+ * or dragged — if either line moves independently afterward (resized, one
+ * endpoint dragged, anything short of both lines translating in lockstep),
+ * that stored fraction stops corresponding to the point directly across from
+ * p. Re-deriving it every call keeps the dimension a perpendicular crossing
+ * no matter how the geometry has changed since — reported live as "nodes"
+ * appearing on the dimension (the stale anchor visibly hinging away from the
+ * line) once one of the two lines was moved.
+ */
+function crossProjectOntoLine2(p: Vec2, l2: { a: Vec2; b: Vec2 }): Vec2 {
+  const t2 = projectOnLine(p, l2.a, l2.b);
+  return add(l2.a, scale(sub(l2.b, l2.a), t2));
 }
 
 /**
@@ -555,7 +572,7 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const l2 = readLineGeom(geo, dim.entities[1]);
     if (!l1 || !l2) return null;
     p = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
-    q = add(l2.a, scale(sub(l2.b, l2.a), dim.anchors?.[1] ?? 0.5));
+    q = crossProjectOntoLine2(p, l2);
   } else {
     p = readPoint(geo, dim.points[0]);
     q = readPoint(geo, dim.points[1]);
