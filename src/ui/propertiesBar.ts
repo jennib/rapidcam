@@ -14,7 +14,7 @@ import { GENERATORS } from "../generators/index";
 import { findBinding } from "../model/bindings";
 import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
 import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
-import type { CADDocument, GroupDef } from "../model/document";
+import { ORIGIN_ENTITY_ID, type CADDocument, type GroupDef } from "../model/document";
 import {
   ArcEntity,
   type Bounds,
@@ -382,10 +382,11 @@ export class PropertiesBar {
     fitRow.append(fitLbl, fitControls);
     sec.appendChild(fitRow);
 
-    this.coordRow(sec, "X", entity.position.x, "Y", entity.position.y, (x, y) => {
-      this.applyEdit(() => {
-        entity.position = { x, y };
-      });
+    this.originCoordRow(sec, "X", "x", entity.id, "pos", entity.position.x, (v) => {
+      entity.position = { x: v, y: entity.position.y };
+    });
+    this.originCoordRow(sec, "Y", "y", entity.id, "pos", entity.position.y, (v) => {
+      entity.position = { x: entity.position.x, y: v };
     });
 
     // Angle — degrees (stored as radians); the engrave/relief sweeps along the
@@ -932,6 +933,42 @@ export class PropertiesBar {
     parent.appendChild(row);
   }
 
+  /**
+   * A single POSITION coordinate (Cx, Ax, image X, ...), formula-drivable via
+   * {@link hiddenDimRow} — a horizontal/vertical hidden dimension from the WCS
+   * origin (always world (0,0); see ORIGIN_ENTITY_ID) to this entity's own
+   * point. Reuses the exact mechanism Length/W/H already use for the same
+   * reason: a point's X/Y isn't a scalar DOF the ScalarBinding channel can
+   * drive, but "distance from a fixed point" is exactly what a hidden
+   * horizontal/vertical dimension already models.
+   *
+   * Because that dimension type measures |Δ|, a formula can't express a
+   * negative coordinate this way — the same limitation any horizontal/
+   * vertical dimension has, not something new here.
+   */
+  private originCoordRow(
+    parent: HTMLElement,
+    label: string,
+    axis: "x" | "y",
+    entityId: string,
+    pointKey: string,
+    currentValue: number,
+    applyLiteral: (v: number) => void,
+  ): void {
+    this.hiddenDimRow(
+      parent,
+      label,
+      axis === "x" ? "horizontal" : "vertical",
+      [
+        { entityId: ORIGIN_ENTITY_ID, key: "p" },
+        { entityId, key: pointKey },
+      ],
+      currentValue,
+      "mm",
+      applyLiteral,
+    );
+  }
+
   /** A two-field "Lx [x] Ly [y]" coordinate row committing both values together. */
   private coordRow(
     parent: HTMLElement,
@@ -1083,10 +1120,11 @@ export class PropertiesBar {
     this.bindingRow(sec, "Radius", entity.id, "r", entity.radius, "mm", (v) => {
       if (v > 0) entity.radius = v;
     });
-    this.coordRow(sec, "Cx", entity.center.x, "Cy", entity.center.y, (x, y) => {
-      this.applyEdit(() => {
-        entity.center = { x, y };
-      });
+    this.originCoordRow(sec, "Cx", "x", entity.id, "c", entity.center.x, (v) => {
+      entity.center = { x: v, y: entity.center.y };
+    });
+    this.originCoordRow(sec, "Cy", "y", entity.id, "c", entity.center.y, (v) => {
+      entity.center = { x: entity.center.x, y: v };
     });
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
@@ -1140,10 +1178,11 @@ export class PropertiesBar {
     sweepRow.append(swLbl, swVal);
     sec.appendChild(sweepRow);
 
-    this.coordRow(sec, "Cx", entity.center.x, "Cy", entity.center.y, (x, y) => {
-      this.applyEdit(() => {
-        entity.center = { x, y };
-      });
+    this.originCoordRow(sec, "Cx", "x", entity.id, "c", entity.center.x, (v) => {
+      entity.center = { x: v, y: entity.center.y };
+    });
+    this.originCoordRow(sec, "Cy", "y", entity.id, "c", entity.center.y, (v) => {
+      entity.center = { x: entity.center.x, y: v };
     });
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
@@ -1188,15 +1227,17 @@ export class PropertiesBar {
       },
       1,
     );
-    this.coordRow(sec, "Ax", entity.a.x, "Ay", entity.a.y, (x, y) => {
-      this.applyEdit(() => {
-        entity.a = { x, y };
-      });
+    this.originCoordRow(sec, "Ax", "x", entity.id, "a", entity.a.x, (v) => {
+      entity.a = { x: v, y: entity.a.y };
     });
-    this.coordRow(sec, "Bx", entity.b.x, "By", entity.b.y, (x, y) => {
-      this.applyEdit(() => {
-        entity.b = { x, y };
-      });
+    this.originCoordRow(sec, "Ay", "y", entity.id, "a", entity.a.y, (v) => {
+      entity.a = { x: entity.a.x, y: v };
+    });
+    this.originCoordRow(sec, "Bx", "x", entity.id, "b", entity.b.x, (v) => {
+      entity.b = { x: v, y: entity.b.y };
+    });
+    this.originCoordRow(sec, "By", "y", entity.id, "b", entity.b.y, (v) => {
+      entity.b = { x: entity.b.x, y: v };
     });
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
