@@ -1023,6 +1023,55 @@ export class CADDocument {
     this.variables = this.variables.filter((v) => v.id !== id);
     if (this.variables.length !== before) this.emitChange();
   }
+  /** Find human-readable descriptions of everywhere `varName` is currently used. */
+  variableUsages(varName: string): string[] {
+    const usages: string[] = [];
+    const re = new RegExp(`\\b${varName}\\b`);
+
+    for (const d of this.dimensions) {
+      if (d.expr && re.test(d.expr)) {
+        usages.push(`Dimension (${d.expr})`);
+      }
+    }
+    for (const v of this.variables) {
+      if (v.name !== varName && re.test(v.expr)) {
+        usages.push(`Variable '${v.name}'`);
+      }
+    }
+    for (const pat of this.patterns) {
+      const p = pat.params as unknown as Record<string, string | number | undefined>;
+      let usedInPat = false;
+      for (const key of [
+        "countXExpr",
+        "countYExpr",
+        "spacingXExpr",
+        "spacingYExpr",
+        "countExpr",
+      ] as const) {
+        const e = p[key];
+        if (typeof e === "string" && re.test(e)) {
+          usedInPat = true;
+          break;
+        }
+      }
+      if (usedInPat) usages.push(`Pattern '${pat.kind}'`);
+    }
+    for (const b of this.bindings) {
+      if (re.test(b.expr)) {
+        usages.push(`Scalar Binding (${b.scalarKey})`);
+      }
+    }
+    for (const f of this.features) {
+      if (!f.paramExprs) continue;
+      for (const key of Object.keys(f.paramExprs)) {
+        if (re.test(f.paramExprs[key])) {
+          usages.push(`Feature '${f.generatorId}'`);
+          break;
+        }
+      }
+    }
+    return usages;
+  }
   updateVariable(id: string, patch: Partial<Pick<Variable, "name" | "expr" | "value">>): void {
     const v = this.variables.find((x) => x.id === id);
     if (!v) return;

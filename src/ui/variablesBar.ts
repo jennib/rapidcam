@@ -2,6 +2,7 @@ import type { CADDocument } from "../model/document";
 import { makeVariable, isValidName, isDuplicateName, varMap } from "../model/variables";
 import { parseLength } from "../core/units";
 import { evalExpr } from "../core/expr";
+import { confirmDialog } from "./modal";
 
 export class VariablesBar {
   private content!: HTMLElement;
@@ -212,7 +213,19 @@ export class VariablesBar {
       delBtn.dataset.field = "del";
       delBtn.title = "Delete variable";
       delBtn.style.cssText = "padding:0 6px;flex:0 0 auto;";
-      delBtn.onclick = () => {
+      delBtn.onclick = async () => {
+        const usages = this.doc.variableUsages(v.name);
+        if (usages.length > 0) {
+          const listStr = usages.map((u) => `• ${u}`).join("\n");
+          const ok = await confirmDialog({
+            title: `Delete Variable '${v.name}'`,
+            message: `'${v.name}' is currently in use by:\n\n${listStr}\n\nDeleting this variable may cause formula errors in dependent items. Are you sure you want to delete it?`,
+            confirmLabel: "Delete Variable",
+            cancelLabel: "Keep Variable",
+            danger: true,
+          });
+          if (!ok) return;
+        }
         this.pushHistory();
         this.doc.removeVariable(v.id);
         this.runSolve();
