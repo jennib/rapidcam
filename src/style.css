@@ -1665,6 +1665,45 @@ button.cbtn.solve {
   z-index: 100;
 }
 
+/*
+ * Why a dimension edit was refused. Persistent and dismissable on purpose:
+ * this replaced a 2.5s status-bar flash that vanished before it could be read.
+ */
+.dim-error {
+  position: absolute;
+  z-index: 101;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 260px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid #e05555;
+  border-left-width: 3px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 45%);
+}
+
+.dim-error-close {
+  flex: none;
+  margin: -2px -2px 0 0;
+  padding: 0 3px;
+  background: none;
+  border: none;
+  color: var(--text);
+  opacity: 0.6;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.dim-error-close:hover {
+  opacity: 1;
+}
+
 .dim-multi-edit {
   position: absolute;
   display: flex;

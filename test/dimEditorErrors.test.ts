@@ -92,6 +92,26 @@ describe("dimension editor error reporting", () => {
     expect(errors[0]).not.toMatch(/unknown variable/i);
   });
 
+  test("a caller-supplied refusal reason wins over the generic one", () => {
+    // "already fully constrained" and "value unreachable" need different
+    // fixes, so the document's specific diagnosis must reach the user.
+    const editor = new DimEditor();
+    editor.open({
+      dim: makeDimension("distance", { value: 25, offset: 10 }),
+      container,
+      screenPos: { x: 0, y: 0 },
+      displayUnit: "mm",
+      vars,
+      onCommit: () => false,
+      onError: (m) => errors.push(m),
+      commitFailureReason: () => "The sketch is already fully constrained",
+    });
+    const input = container.querySelector("input.dim-edit") as HTMLInputElement;
+    input.value = "Cup_Diam";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(errors).toEqual(["The sketch is already fully constrained"]);
+  });
+
   test("a non-positive value says so rather than blaming the syntax", () => {
     typeAndCommit("0", () => true);
     expect(errors).toEqual(["Value must be greater than zero"]);
@@ -109,5 +129,51 @@ describe("dimension editor error reporting", () => {
     input.value = "Cup_D";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     expect(input.title).toBe("");
+  });
+
+  test("the reason is a dismissable bubble, not a message that vanishes", () => {
+    typeAndCommit("Cup_to_Bottom", () => true);
+    const box = container.querySelector(".dim-error");
+    expect(box?.textContent).toContain("Unknown variable: Cup_to_Bottom");
+
+    // It must still be there after the brief input flash would have ended.
+    expect(container.querySelector(".dim-error")).not.toBeNull();
+
+    (box?.querySelector(".dim-error-close") as HTMLButtonElement).click();
+    expect(container.querySelector(".dim-error")).toBeNull();
+  });
+
+  test("Escape dismisses the error but keeps the edit; a second Escape closes it", () => {
+    const editor = new DimEditor();
+    editor.open({
+      dim: makeDimension("distance", { value: 25, offset: 10 }),
+      container,
+      screenPos: { x: 0, y: 0 },
+      displayUnit: "mm",
+      vars,
+      onCommit: () => true,
+      onError: (m) => errors.push(m),
+    });
+    const input = container.querySelector("input.dim-edit") as HTMLInputElement;
+    input.value = "Cup_to_Bottom";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(container.querySelector(".dim-error")).not.toBeNull();
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(container.querySelector(".dim-error")).toBeNull();
+    expect(editor.isOpen).toBe(true); // the typed value survives for correction
+    expect(input.value).toBe("Cup_to_Bottom");
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(editor.isOpen).toBe(false);
+  });
+
+  test("editing the value clears the bubble", () => {
+    typeAndCommit("Cup_to_Bottom", () => true);
+    expect(container.querySelector(".dim-error")).not.toBeNull();
+    const input = container.querySelector("input.dim-edit") as HTMLInputElement;
+    input.value = "Cup_D";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(container.querySelector(".dim-error")).toBeNull();
   });
 });

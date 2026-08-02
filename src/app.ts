@@ -1036,10 +1036,15 @@ export class App {
       vars: varMap(this.doc.variables, this.doc.stockThickness),
       onCommit: (v, expr) => this.commitDimValue(dim, v, expr),
       onError: (msg) => this.statusBar.flash(msg),
+      commitFailureReason: () => this.dimCommitFailure,
     });
   }
 
+  /** Why the last commitDimValue refused, for the editor to report. */
+  private dimCommitFailure: string | null = null;
+
   private commitDimValue(dimArg: Dimension, v: number, expr?: string): boolean {
+    this.dimCommitFailure = null;
     // Re-resolve by id to the live instance: a prior rejected commit calls
     // doc.restore(), which rebuilds every Dimension as a new object. The editor
     // stays open holding its original reference, so on the retry `dimArg` may be
@@ -1061,6 +1066,17 @@ export class App {
     this.runSolve();
 
     if (this.lastSolveResult && !this.lastSolveResult.converged) {
+      // Say WHICH kind of refusal this is while the failing state is still
+      // loaded — "over-constrained" and "this value is unreachable" need
+      // different fixes, and after the rollback below the evidence is gone.
+      // A non-positive DOF means the sketch had no freedom left to absorb the
+      // new dimension; otherwise there was room and the solver still could not
+      // reach this particular value (e.g. a length longer than the geometry
+      // it is attached to allows).
+      this.dimCommitFailure =
+        this.currentDof() <= 0
+          ? "The sketch is already fully constrained — remove a dimension or constraint first"
+          : "The solver couldn't reach that value — it may not be geometrically possible";
       // Full rollback to the captured snapshot: the solver already moved geometry,
       // so reverting just the three dim fields and re-solving isn't guaranteed to
       // reproduce the prior state (and that re-solve could itself fail to converge,

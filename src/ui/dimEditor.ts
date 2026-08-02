@@ -32,11 +32,18 @@ interface OpenOptions {
    * over-constrained sketch.
    */
   onError?: (message: string) => void;
+  /**
+   * Why the last onCommit refused, when the caller can be specific — an
+   * exhausted sketch and an unreachable value need different fixes. Falls back
+   * to a generic message.
+   */
+  commitFailureReason?: () => string | null;
 }
 
 export class DimEditor {
   private el: HTMLInputElement | null = null;
   private datalist: HTMLDataListElement | null = null;
+  private errEl: HTMLElement | null = null;
 
   get isOpen(): boolean {
     return this.el !== null;
@@ -45,7 +52,16 @@ export class DimEditor {
   open(opts: OpenOptions): void {
     this.close();
 
-    const { dim, container, screenPos, displayUnit, vars = new Map(), onCommit, onError } = opts;
+    const {
+      dim,
+      container,
+      screenPos,
+      displayUnit,
+      vars = new Map(),
+      onCommit,
+      onError,
+      commitFailureReason,
+    } = opts;
 
     const input = document.createElement("input");
     input.type = "text";
@@ -79,7 +95,8 @@ export class DimEditor {
     /** Refuse the commit, flash, and say why. */
     const reject = (reason: string) => {
       this.flash(input);
-      input.title = reason; // also readable on hover, since the flash is brief
+      input.title = reason; // also readable on hover
+      this.showError(container, screenPos, reason);
       onError?.(reason);
     };
     /** Why `raw` could not be turned into a usable value. */
@@ -90,7 +107,8 @@ export class DimEditor {
       if (bad) return bad;
       return "Value must be greater than zero"; // parsed fine, so it was <= 0
     };
-    const SOLVER_REFUSED =
+    const solverRefused = (): string =>
+      commitFailureReason?.() ??
       "That value can't be solved — the sketch may be over-constrained";
 
     const commit = () => {
@@ -104,7 +122,7 @@ export class DimEditor {
           return;
         }
         if (!onCommit(v)) {
-          reject(SOLVER_REFUSED);
+          reject(solverRefused());
           return;
         }
         this.close();
@@ -116,7 +134,7 @@ export class DimEditor {
       const lenVal = parseLength(raw, displayUnit);
       if (lenVal !== null && lenVal > 0) {
         if (!onCommit(lenVal, undefined)) {
-          reject(SOLVER_REFUSED);
+          reject(solverRefused());
           return;
         }
         this.close();
@@ -131,7 +149,7 @@ export class DimEditor {
         return;
       }
       if (!onCommit(exprVal, raw)) {
-        reject(SOLVER_REFUSED);
+        reject(solverRefused());
         return;
       }
       this.close();
@@ -140,10 +158,14 @@ export class DimEditor {
     // Drop a stale reason as soon as the user starts fixing the input.
     input.addEventListener("input", () => {
       input.title = "";
+      this.clearError();
     });
 
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") commit();
+      // First Escape dismisses the error, keeping the text you were fixing;
+      // a second one abandons the edit.
+      else if (e.key === "Escape" && this.errEl) this.clearError();
       else if (e.key === "Escape") this.close();
       e.stopPropagation();
     });
@@ -156,6 +178,7 @@ export class DimEditor {
   }
 
   close(): void {
+    this.clearError();
     if (this.el) {
       const el = this.el;
       this.el = null;
@@ -165,6 +188,52 @@ export class DimEditor {
       this.datalist.remove();
       this.datalist = null;
     }
+  }
+
+  /**
+   * Show why the edit was refused, until dismissed. A transient status-bar
+   * flash was unreadable in practice ("goes away too quickly and I cannot read
+   * it"), so this sits by the input and waits: closed by its ×, by Escape, by
+   * editing the value, or when the editor closes. It never takes focus — the
+   * input has to stay ready for the correction.
+   */
+  private showError(container: HTMLElement, screenPos: { x: number; y: number }, msg: string): void {
+    this.clearError();
+    const box = document.createElement("div");
+    box.className = "dim-error";
+    box.setAttribute("role", "alert");
+
+    const text = document.createElement("span");
+    text.textContent = msg;
+    box.appendChild(text);
+
+    const close = document.createElement("button");
+    close.className = "dim-error-close";
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Dismiss");
+    close.tabIndex = -1; // never steal focus from the value being corrected
+    close.addEventListener("mousedown", (e) => e.preventDefault()); // don't blur-commit
+    close.addEventListener("click", () => this.clearError());
+    box.appendChild(close);
+
+    box.style.left = `${screenPos.x - 36}px`;
+    box.style.top = `${screenPos.y + 16}px`;
+    container.appendChild(box);
+    this.errEl = box;
+
+    // Nudge back inside if the bubble would hang off the right or bottom edge.
+    const host = container.getBoundingClientRect();
+    const r = box.getBoundingClientRect();
+    if (r.right > host.right - 4) {
+      box.style.left = `${Math.max(4, screenPos.x - 36 - (r.right - host.right + 4))}px`;
+    }
+    if (r.bottom > host.bottom - 4) box.style.top = `${screenPos.y - 16 - r.height}px`;
+  }
+
+  private clearError(): void {
+    this.errEl?.remove();
+    this.errEl = null;
   }
 
   private flash(input: HTMLInputElement): void {
