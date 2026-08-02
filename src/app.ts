@@ -1024,7 +1024,10 @@ export class App {
   // --- inline dimension value editor ---------------------------------------
   private openDimEditor(dim: Dimension): void {
     const byId = new Map(this.doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : byId.get(id));
+    const geo: Geo = (id) =>
+      id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID)
+        ? stockRefEntity(this.doc)
+        : byId.get(id);
     const layout = dimensionLayout(dim, geo, this.doc.displayUnit, this.view.scale);
     if (!layout) return;
 

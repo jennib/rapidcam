@@ -692,7 +692,10 @@ export class DimensionTool implements Tool {
 
 function geoOf(doc: CADDocument): Geo {
   const m = new Map(doc.entities.map((e) => [e.id, e]));
-  return (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : m.get(id));
+  return (id) =>
+    id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID)
+      ? stockRefEntity(doc)
+      : m.get(id);
 }
 
 function arcPolylinePoints(

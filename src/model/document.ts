@@ -781,6 +781,9 @@ export class CADDocument {
     if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
       e.layerId = this.activeLayerId;
     }
+    if (this.isConstructionMode && !e.isConstruction) {
+      e.isConstruction = true;
+    }
     this.entities.push(e);
     this.emitChange();
     return e;
@@ -792,6 +795,9 @@ export class CADDocument {
     this.selectedSegments = [];
     if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
       e.layerId = this.activeLayerId;
+    }
+    if (this.isConstructionMode && !e.isConstruction) {
+      e.isConstruction = true;
     }
     this.entities.push(e);
     e.selected = true;

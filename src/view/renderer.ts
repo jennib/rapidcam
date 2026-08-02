@@ -678,12 +678,17 @@ export class Renderer {
     if (doc.dimensions.length === 0) return;
     const ctx = this.ctx;
     const byId = new Map(doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
+    const geo: Geo = (id) =>
+      id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID)
+        ? stockRefEntity(doc)
+        : byId.get(id);
     const unit = doc.displayUnit;
 
     const isVisible = (id: string) => {
-      if (id === ORIGIN_ENTITY_ID || id === STOCK_ENTITY_ID) return true;
-      const e = byId.get(id);
+      if (id === ORIGIN_ENTITY_ID || id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID))
+        return true;
+      const cleanId = lineRefEntityId(id);
+      const e = byId.get(cleanId);
       if (!e) return false;
       const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       return layer.visible;
