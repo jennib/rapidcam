@@ -2,7 +2,7 @@
 
 import { type Vec2, distSq } from "../core/vec2";
 import { LineEntity, type SnapPoint } from "../model/entities";
-import { makeConstraint } from "../model/constraints";
+import { makeConstraint, SEGMENT_SEP } from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { isDragRelease } from "./dragDraw";
@@ -108,10 +108,14 @@ export function autoJoin(
       }),
     );
   } else if (snap.kind === "pointOnLine" && snap.entityId) {
+    // A rectangle can't be named as a whole here: pointOnLine resolves one
+    // LINE, so a bare rect id resolved to nothing and the constraint silently
+    // held the point nowhere. Qualify it with the edge that was snapped to.
+    const target = snap.edgeKey ? `${snap.entityId}${SEGMENT_SEP}${snap.edgeKey}` : snap.entityId;
     ctx.doc.addConstraint(
       makeConstraint("pointOnLine", {
         points: [{ entityId: newEntityId, key: newKey }],
-        entities: [snap.entityId],
+        entities: [target],
       }),
     );
   }

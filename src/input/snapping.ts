@@ -80,6 +80,9 @@ export class SnapEngine {
             }
           } else if (e instanceof RectEntity) {
             const corners = e.corners();
+            // corners() runs bl, br, tr, tl — so edge i spans the same sides
+            // RectEntity.snapPoints names mid_b, mid_r, mid_t, mid_l.
+            const edgeKeys = ["mid_b", "mid_r", "mid_t", "mid_l"] as const;
             for (let i = 0; i < 4; i++) {
               const ca = corners[i];
               const cb = corners[(i + 1) % 4];
@@ -92,7 +95,7 @@ export class SnapEngine {
                 const projPx = dist(view.worldToScreen(proj), screen);
                 if (projPx <= bestPx) {
                   bestPx = projPx;
-                  best = { pos: proj, kind: "pointOnLine", entityId: e.id };
+                  best = { pos: proj, kind: "pointOnLine", entityId: e.id, edgeKey: edgeKeys[i] };
                 }
               }
             }

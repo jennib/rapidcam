@@ -20,7 +20,6 @@ describe("Point on Line to Stock Edge test", () => {
     ];
 
     const build = buildConstraintsFor("pointOnLine", doc);
-    console.log("Build result for stock edge pointOnLine:", build);
 
     expect(build.ok).toBe(true);
     if (!build.ok) return;
@@ -29,8 +28,6 @@ describe("Point on Line to Stock Edge test", () => {
     for (const c of build.constraints) doc.addConstraint(c);
 
     const res = solve(doc);
-    console.log("Solve result:", res);
-    console.log("Line position:", line.a, line.b);
 
     expect(res.converged).toBe(true);
     expect(line.a.x).toBeCloseTo(50);

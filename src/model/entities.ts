@@ -50,12 +50,85 @@ export type SnapKind =
   | "pointOnLine"
   | "nearest";
 
+/**
+ * Which two corners bound each edge of a 4-corner entity. Rectangles and the
+ * stock rect name their corners bl/br/tr/tl; images name theirs c0..c3.
+ *
+ * Both the `mid_*` keys the pickers hand out and the plain compass names the
+ * constraint bar builds are accepted, because the two grew up separately and
+ * files already exist carrying each.
+ */
+const RECT_EDGE_CORNERS: Record<string, [string, string]> = {
+  mid_b: ["bl", "br"],
+  mid_r: ["br", "tr"],
+  mid_t: ["tr", "tl"],
+  mid_l: ["tl", "bl"],
+  bottom: ["bl", "br"],
+  right: ["br", "tr"],
+  top: ["tr", "tl"],
+  left: ["tl", "bl"],
+  b: ["bl", "br"],
+  r: ["br", "tr"],
+  t: ["tr", "tl"],
+  l: ["tl", "bl"],
+};
+const IMAGE_EDGE_CORNERS: Record<string, [string, string]> = {
+  mid_b: ["c0", "c1"],
+  mid_r: ["c1", "c2"],
+  mid_t: ["c2", "c3"],
+  mid_l: ["c3", "c0"],
+  bottom: ["c0", "c1"],
+  right: ["c1", "c2"],
+  top: ["c2", "c3"],
+  left: ["c3", "c0"],
+};
+
+/**
+ * The two endpoints of one named edge of a rectangle, image, or the stock rect.
+ *
+ * A multi-edge entity cannot be identified by a bare entity id — that gap is
+ * why a dimension anchored to a stock edge silently degraded to a
+ * midpoint-to-midpoint point dimension, and why a `pointOnLine` constraint
+ * snapped onto a rectangle edge resolved to nothing and constrained nothing.
+ * Callers pair the id with the edge key using the `<id>#<key>` segment-ref
+ * convention (see lineRefEntityId, which already strips it for solver
+ * partitioning and delete-pruning).
+ *
+ * Returns null for an unrecognized key rather than guessing an edge: picking
+ * a plausible default here would silently measure or constrain against the
+ * wrong side of the part.
+ */
+export function edgeEndsOf(
+  ent: { type: string; getPoint(key: string): Vec2 } | undefined,
+  edgeKey: string,
+): { a: Vec2; b: Vec2 } | null {
+  if (!ent) return null;
+  const pair = (ent.type === "image" ? IMAGE_EDGE_CORNERS : RECT_EDGE_CORNERS)[edgeKey];
+  if (!pair) return null;
+  try {
+    const a = ent.getPoint(pair[0]);
+    const b = ent.getPoint(pair[1]);
+    // getPoint throws for an unknown key on most entities, but a wrong-kind
+    // entity that answers with junk must not become a phantom edge either.
+    if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(b.x)) return null;
+    return { a, b };
+  } catch {
+    return null; // no such corner: wrong entity kind, or rotary stock (no flat rect)
+  }
+}
+
 export interface SnapPoint {
   pos: Vec2;
   kind: SnapKind;
   entityId: EntityId;
   /** DOF point key on the entity, present when the snap maps to a constrainable point. */
   key?: string;
+  /**
+   * Which edge of a multi-edge entity a "pointOnLine" snap landed on (see
+   * edgeEndsOf). Kept separate from `key`, which means "pin to this exact
+   * point" — an edge snap must slide ALONG the edge, not weld to its midpoint.
+   */
+  edgeKey?: string;
 }
 
 /** A draggable/solvable point degree-of-freedom, addressed within an entity by `key`. */

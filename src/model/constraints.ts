@@ -18,6 +18,7 @@ import type { CADDocument } from "./document";
 import {
   ArcEntity,
   CircleEntity,
+  edgeEndsOf,
   type Entity,
   type EntityId,
   LineEntity,
@@ -128,48 +129,21 @@ export interface LineGeom {
  * polyline-segment ref (`polylineId#index`). Returns null for non-line refs
  * (circles, arcs, missing entities) so callers can fall through.
  */
-const STOCK_ENTITY_ID = "__stock__";
-
 function lineGeom(geo: Geo, ref: EntityId | undefined): LineGeom | null {
   if (!ref) return null; // entity-less constraint (e.g. point-pair horizontal/vertical) — let caller fall through
-  if (ref.startsWith(STOCK_ENTITY_ID)) {
-    const stock = geo(STOCK_ENTITY_ID);
-    if (!stock) return null;
-    try {
-      const bl = stock.getPoint("bl");
-      const br = stock.getPoint("br");
-      const tr = stock.getPoint("tr");
-      const tl = stock.getPoint("tl");
-      const edge = ref.slice(STOCK_ENTITY_ID.length + 1);
-      switch (edge) {
-        case "right":
-        case "r":
-        case "mid_r":
-          return { a: br, b: tr };
-        case "top":
-        case "t":
-        case "mid_t":
-          return { a: tl, b: tr };
-        case "bottom":
-        case "b":
-        case "mid_b":
-          return { a: bl, b: br };
-        case "left":
-        case "l":
-        case "mid_l":
-        default:
-          return { a: bl, b: tl };
-      }
-    } catch {
-      return null;
-    }
-  }
   const sep = ref.indexOf(SEGMENT_SEP);
   if (sep >= 0) {
-    const poly = geo(ref.slice(0, sep));
-    if (!(poly instanceof PolylineEntity)) return null;
-    const seg = poly.segmentByStartVertexId(ref.slice(sep + 1));
-    return seg ? { a: seg[0], b: seg[1] } : null;
+    const base = geo(ref.slice(0, sep));
+    const suffix = ref.slice(sep + 1);
+    if (base instanceof PolylineEntity) {
+      const seg = base.segmentByStartVertexId(suffix);
+      return seg ? { a: seg[0], b: seg[1] } : null;
+    }
+    // "<id>#left" / "<id>#mid_l" — one named edge of a rectangle, image, or
+    // the stock rect. Shared with dimensions so both resolve edges identically;
+    // an unknown key yields null rather than defaulting to some edge, which
+    // would silently constrain against the wrong side of the part.
+    return edgeEndsOf(base, suffix);
   }
   const l = asLine(geo, ref);
   return l ? { a: l.a, b: l.b } : null;

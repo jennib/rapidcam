@@ -21,7 +21,6 @@ import {
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
-  edgeEndsOf,
   type LinearDimType,
   makeDimension,
 } from "../model/dimensions";
@@ -34,6 +33,7 @@ import {
 import {
   ArcEntity,
   CircleEntity,
+  edgeEndsOf,
   type Entity,
   type LineEntity,
   type RasterImageEntity,
