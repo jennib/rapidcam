@@ -10,7 +10,7 @@
 import { type Vec2, dist, sub, dot, add, scale } from "../core/vec2";
 import { distToSegment } from "../core/geom";
 import { type SnapPoint, type EntityId, LineEntity, RectEntity } from "../model/entities";
-import type { CADDocument } from "../model/document";
+import { type CADDocument, STOCK_ENTITY_ID } from "../model/document";
 import type { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
 import { intersectionsNear } from "../core/intersect";
@@ -102,6 +102,32 @@ export class SnapEngine {
                   bestPx = projPx;
                   best = { pos: proj, kind: "pointOnLine", entityId: e.id, edgeKey: edgeKeys[i] };
                 }
+              }
+            }
+          }
+        }
+
+        if (doc.stockRect && !doc.isRotary) {
+          const r = doc.stockRect;
+          const bl = { x: r.x, y: r.y };
+          const br = { x: r.x + r.width, y: r.y };
+          const tr = { x: r.x + r.width, y: r.y + r.height };
+          const tl = { x: r.x, y: r.y + r.height };
+          const corners = [bl, br, tr, tl];
+          const edgeKeys = ["mid_b", "mid_r", "mid_t", "mid_l"] as const;
+          for (let i = 0; i < 4; i++) {
+            const ca = corners[i];
+            const cb = corners[(i + 1) % 4];
+            const dWorld = distToSegment(rawWorld, ca, cb);
+            if (dWorld * view.scale <= this.pixelTolerance) {
+              const dir = sub(cb, ca);
+              const lenSq = dot(dir, dir);
+              const t = lenSq > 1e-12 ? Math.max(0, Math.min(1, dot(sub(rawWorld, ca), dir) / lenSq)) : 0;
+              const proj = add(ca, scale(dir, t));
+              const projPx = dist(view.worldToScreen(proj), screen);
+              if (projPx <= bestPx) {
+                bestPx = projPx;
+                best = { pos: proj, kind: "pointOnLine", entityId: STOCK_ENTITY_ID, edgeKey: edgeKeys[i] };
               }
             }
           }
