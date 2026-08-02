@@ -245,7 +245,80 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
 // Commit: create the offset entity in the document
 // ---------------------------------------------------------------------------
 
-function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
+import { STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
+import { nextId } from "../model/ids";
+import { edgeEndsOf } from "../model/entities";
+
+function distToInfiniteLine(p: Vec2, a: Vec2, b: Vec2): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-10) return dist(p, a);
+  return Math.abs(-dy * (p.x - a.x) + dx * (p.y - a.y)) / len;
+}
+
+import { lineRefEntityId } from "../model/constraints";
+
+function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContext): void {
+  if (parent.type !== "line" || child.type !== "line") return;
+  const childLine = child as LineEntity;
+
+  // 1. Inherit horizontal / vertical constraints
+  for (const c of ctx.doc.constraints) {
+    if (c.entities.some((id) => lineRefEntityId(id) === parent.id)) {
+      if (c.type === "horizontal" || c.type === "vertical") {
+        ctx.doc.addConstraint({
+          id: nextId("con"),
+          type: c.type,
+          points: [],
+          entities: [child.id],
+        });
+      }
+    }
+  }
+
+  // 2. Inherit pointOnLine constraints for endpoints (a, b)
+  for (const key of ["a", "b"] as const) {
+    const childPt = childLine[key];
+
+    for (const c of ctx.doc.constraints) {
+      if (c.type === "pointOnLine" && c.points.length === 1) {
+        const pRef = c.points[0];
+        if (pRef.entityId === parent.id && pRef.key === key) {
+          const target = c.entities[0];
+          const sep = target.indexOf("#");
+          let targetGeom: { a: Vec2; b: Vec2 } | null = null;
+          if (sep >= 0) {
+            const baseId = target.slice(0, sep);
+            const suffix = target.slice(sep + 1);
+            const base =
+              baseId === STOCK_ENTITY_ID
+                ? stockRefEntity(ctx.doc)
+                : ctx.doc.entities.find((e) => e.id === baseId);
+            targetGeom = edgeEndsOf(base, suffix);
+          } else {
+            const e = ctx.doc.entities.find((x) => x.id === target);
+            if (e instanceof LineEntity) targetGeom = { a: e.a, b: e.b };
+          }
+
+          if (targetGeom) {
+            const dLine = distToInfiniteLine(childPt, targetGeom.a, targetGeom.b);
+            if (dLine < 1e-3) {
+              ctx.doc.addConstraint({
+                id: nextId("con"),
+                type: "pointOnLine",
+                points: [{ entityId: child.id, key }],
+                entities: [target],
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+export function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
   for (const e of ctx.doc.entities) e.selected = false;
 
   switch (entity.type) {
@@ -260,6 +333,7 @@ function commitOffset(entity: Entity, d: number, ctx: ToolContext): void {
       const e = new LineEntity({ x: l.a.x + nx, y: l.a.y + ny }, { x: l.b.x + nx, y: l.b.y + ny });
       e.selected = true;
       ctx.doc.add(e);
+      inheritOffsetConstraints(l, e, ctx);
       break;
     }
     case "circle": {
