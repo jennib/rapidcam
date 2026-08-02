@@ -28,7 +28,7 @@ export class LineTool implements Tool {
     } else {
       const shifted = e.shiftKey;
       const world = shifted ? orthoSnap(this.start, e.world) : e.world;
-      const endSnap = shifted ? null : e.snap;
+      const endSnap = shifted ? resolveShiftedSnap(e.snap, world) : e.snap;
       if (distSq(this.start, world) > 1e-9) {
         ctx.pushHistory();
         const ent = new LineEntity(this.start, world);
@@ -119,4 +119,10 @@ export function autoJoin(
       }),
     );
   }
+}
+
+export function resolveShiftedSnap(snap: SnapPoint | null, world: Vec2): SnapPoint | null {
+  if (!snap) return null;
+  if (distSq(snap.pos, world) <= 1e-4) return snap;
+  return null;
 }

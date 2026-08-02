@@ -257,15 +257,16 @@ function distToInfiniteLine(p: Vec2, a: Vec2, b: Vec2): number {
   return Math.abs(-dy * (p.x - a.x) + dx * (p.y - a.y)) / len;
 }
 
-import { lineRefEntityId } from "../model/constraints";
+import { lineRefEntityId, SEGMENT_SEP } from "../model/constraints";
 
 function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContext): void {
   if (parent.type !== "line" || child.type !== "line") return;
+  const parentLine = parent as LineEntity;
   const childLine = child as LineEntity;
 
   // 1. Inherit horizontal / vertical constraints
   for (const c of ctx.doc.constraints) {
-    if (c.entities.some((id) => lineRefEntityId(id) === parent.id)) {
+    if (c.entities?.some((id) => lineRefEntityId(id) === parent.id)) {
       if (c.type === "horizontal" || c.type === "vertical") {
         ctx.doc.addConstraint({
           id: nextId("con"),
@@ -277,41 +278,70 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
     }
   }
 
-  // 2. Inherit pointOnLine constraints for endpoints (a, b)
+  // 2. Inherit endpoint boundary/line constraints (pointOnLine or coincident)
   for (const key of ["a", "b"] as const) {
+    const parentPt = parentLine[key];
     const childPt = childLine[key];
+    const targetIds = new Set<string>();
 
     for (const c of ctx.doc.constraints) {
       if (c.type === "pointOnLine" && c.points.length === 1) {
         const pRef = c.points[0];
         if (pRef.entityId === parent.id && pRef.key === key) {
-          const target = c.entities[0];
-          const sep = target.indexOf("#");
-          let targetGeom: { a: Vec2; b: Vec2 } | null = null;
-          if (sep >= 0) {
-            const baseId = target.slice(0, sep);
-            const suffix = target.slice(sep + 1);
-            const base =
-              baseId === STOCK_ENTITY_ID
-                ? stockRefEntity(ctx.doc)
-                : ctx.doc.entities.find((e) => e.id === baseId);
-            targetGeom = edgeEndsOf(base, suffix);
-          } else {
-            const e = ctx.doc.entities.find((x) => x.id === target);
-            if (e instanceof LineEntity) targetGeom = { a: e.a, b: e.b };
-          }
+          targetIds.add(c.entities[0]);
+        }
+      } else if (c.type === "coincident" && c.points.length === 2) {
+        const p1 = c.points[0];
+        const p2 = c.points[1];
+        if (p1.entityId === parent.id && p1.key === key) {
+          targetIds.add(p2.entityId);
+        } else if (p2.entityId === parent.id && p2.key === key) {
+          targetIds.add(p1.entityId);
+        }
+      }
+    }
 
-          if (targetGeom) {
-            const dLine = distToInfiniteLine(childPt, targetGeom.a, targetGeom.b);
-            if (dLine < 1e-3) {
-              ctx.doc.addConstraint({
-                id: nextId("con"),
-                type: "pointOnLine",
-                points: [{ entityId: child.id, key }],
-                entities: [target],
-              });
-            }
-          }
+    // Also check stock edges if parentPt touched a stock edge
+    if (ctx.doc.stockRect && !ctx.doc.isRotary) {
+      const r = ctx.doc.stockRect;
+      const edges = [
+        { key: "mid_b", a: { x: r.x, y: r.y }, b: { x: r.x + r.width, y: r.y } },
+        { key: "mid_r", a: { x: r.x + r.width, y: r.y }, b: { x: r.x + r.width, y: r.y + r.height } },
+        { key: "mid_t", a: { x: r.x + r.width, y: r.y + r.height }, b: { x: r.x, y: r.y + r.height } },
+        { key: "mid_l", a: { x: r.x, y: r.y + r.height }, b: { x: r.x, y: r.y } },
+      ];
+      for (const e of edges) {
+        if (distToInfiniteLine(parentPt, e.a, e.b) < 1e-3) {
+          targetIds.add(`${STOCK_ENTITY_ID}${SEGMENT_SEP}${e.key}`);
+        }
+      }
+    }
+
+    for (const target of targetIds) {
+      const sep = target.indexOf("#");
+      let targetGeom: { a: Vec2; b: Vec2 } | null = null;
+      if (sep >= 0) {
+        const baseId = target.slice(0, sep);
+        const suffix = target.slice(sep + 1);
+        const base =
+          baseId === STOCK_ENTITY_ID
+            ? stockRefEntity(ctx.doc)
+            : ctx.doc.entities.find((e) => e.id === baseId);
+        targetGeom = edgeEndsOf(base, suffix);
+      } else {
+        const e = ctx.doc.entities.find((x) => x.id === target);
+        if (e instanceof LineEntity) targetGeom = { a: e.a, b: e.b };
+      }
+
+      if (targetGeom) {
+        const dLine = distToInfiniteLine(childPt, targetGeom.a, targetGeom.b);
+        if (dLine < 1e-3) {
+          ctx.doc.addConstraint({
+            id: nextId("con"),
+            type: "pointOnLine",
+            points: [{ entityId: child.id, key }],
+            entities: [target],
+          });
         }
       }
     }

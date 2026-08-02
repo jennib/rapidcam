@@ -13,7 +13,7 @@ import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { orthoSnap } from "../input/snapping";
 
-import { autoJoin } from "./lineTool";
+import { autoJoin, resolveShiftedSnap } from "./lineTool";
 
 export class PolylineTool implements Tool {
   readonly id = "polyline";
@@ -27,9 +27,10 @@ export class PolylineTool implements Tool {
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
     const prev = this.points[this.points.length - 1];
+
     const shifted = e.shiftKey && prev != null;
     const world = shifted ? orthoSnap(prev, e.world) : e.world;
-    const snap = shifted ? null : e.snap;
+    const snap = shifted ? resolveShiftedSnap(e.snap, world) : e.snap;
 
     if (prev && distSq(prev, world) < 1e-9) return; // ignore duplicate click
 
