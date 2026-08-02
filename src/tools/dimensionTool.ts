@@ -12,6 +12,7 @@ import type { Unit } from "../core/units";
 import { cross, dist, dot, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import type { Geo, PointRef } from "../model/constraints";
 import {
+  avoidDimensionCollision,
   chooseLinearType,
   type Dimension,
   type DimensionType,
@@ -636,6 +637,12 @@ export class DimensionTool implements Tool {
     ctx.pushHistory();
     const geo = geoOf(ctx.doc);
     const dim = this.linearDim(ctx, this.curOffset);
+    // Chain dimensioning (two dims measured from the same datum) otherwise
+    // lands on the same or a near-identical offset — the shaft's position is
+    // derived purely from where THIS click landed, with no awareness of what's
+    // already there — so the shorter one buries inside the longer one instead
+    // of stacking cleanly outward.
+    dim.offset = avoidDimensionCollision(dim, ctx.doc.dimensions, geo, ctx.doc.displayUnit);
     dim.value = dimensionMeasure(dim, geo) ?? 0;
     // A dim across a single text's own box can't drive (the size lives in the
     // font, not the solver — both anchors translate together). Make it a

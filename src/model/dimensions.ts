@@ -562,3 +562,58 @@ export function dimensionHitDistance(dim: Dimension, geo: Geo, pt: Vec2, unit: U
   for (const [a, b] of layout.segments) d = Math.min(d, distToSegment(pt, a, b));
   return d;
 }
+
+/**
+ * Nudge a freshly-placed horizontal/vertical dimension's offset clear of any
+ * EXISTING one of the same type whose line would otherwise land on top of (or
+ * a hair from) it. The common trigger is chain dimensioning — two dimensions
+ * measured from the same datum point naturally land on the same or a very
+ * close offset (offset is derived purely from where you clicked to place THIS
+ * one, with no awareness of what else is already there), so the shorter one's
+ * shaft sits buried inside the longer one's rather than stacked cleanly
+ * outward. Only applied at the moment a dimension is placed — it does not
+ * re-run later if geometry moves and two placed-clear dimensions drift into
+ * each other; that's an ordinary "drag it" case like any other overlap.
+ *
+ * Scoped to horizontal/vertical: their shaft is a straight run at a constant
+ * X (or Y) over a range along the other axis, so "would these collide" is a
+ * simple perpendicular-distance-and-range-overlap check. "distance"/
+ * "line-distance" shafts aren't axis-aligned in general, and radius/diameter/
+ * angle/arclength/circle-gap radiate from a centre rather than running
+ * parallel — none of those share this specific failure mode.
+ */
+export function avoidDimensionCollision(
+  dim: Dimension,
+  existing: readonly Dimension[],
+  geo: Geo,
+  unit: Unit,
+): number {
+  if (dim.type !== "horizontal" && dim.type !== "vertical") return dim.offset;
+  const STEP = 12; // mm — clear of a typical dimension-line label height
+  const TOL = 8; // mm — how close two shafts can sit before they read as one
+  const sign = dim.offset >= 0 ? 1 : -1;
+  const others = existing.filter((d) => d.type === dim.type && !d.hidden);
+  if (others.length === 0) return dim.offset;
+
+  const shaftOf = (d: Dimension): { perp: number; lo: number; hi: number } | null => {
+    const layout = dimensionLayout(d, geo, unit);
+    if (!layout) return null;
+    const [a, b] = layout.segments[2]; // the shaft itself: [p2, q2]
+    return dim.type === "vertical"
+      ? { perp: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) }
+      : { perp: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) };
+  };
+
+  let offset = dim.offset;
+  for (let guard = 0; guard < 20; guard++) {
+    const probe = shaftOf({ ...dim, offset });
+    if (!probe) return offset;
+    const collided = others.some((o) => {
+      const os = shaftOf(o);
+      return os && Math.abs(probe.perp - os.perp) < TOL && probe.lo <= os.hi && os.lo <= probe.hi;
+    });
+    if (!collided) return offset;
+    offset += sign * STEP;
+  }
+  return offset;
+}
