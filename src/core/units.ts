@@ -46,7 +46,7 @@ const UNIT_ALIASES: Record<string, Unit> = {
  */
 export function parseLength(input: string, displayUnit: Unit): number | null {
   if (input == null) return null;
-  let s = input.trim().toLowerCase();
+  let s = input.trim().toLowerCase().replace(/(\d+),(\d+)/g, "$1.$2");
   if (s === "") return null;
 
   // Pull off a trailing unit suffix if present.

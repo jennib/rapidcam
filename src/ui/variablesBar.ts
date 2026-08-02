@@ -91,6 +91,18 @@ export class VariablesBar {
       nameInput.style.cssText = "width:72px;flex:0 0 72px;font-family:var(--mono);";
       nameInput.title = "Variable name";
 
+      let selectNameOnMouseUp = false;
+      nameInput.addEventListener("focus", () => {
+        nameInput.select();
+        selectNameOnMouseUp = true;
+      });
+      nameInput.addEventListener("mouseup", (e) => {
+        if (selectNameOnMouseUp) {
+          e.preventDefault();
+          selectNameOnMouseUp = false;
+        }
+      });
+
       const eq = document.createElement("span");
       eq.textContent = "=";
       eq.style.color = "var(--text-muted, #888)";
@@ -103,6 +115,19 @@ export class VariablesBar {
       valInput.dataset.field = "val";
       valInput.style.cssText = "flex:1;min-width:0;font-family:var(--mono);";
       valInput.title = "Value (number, unit like 50mm, or a formula of other variables)";
+
+      let selectValOnMouseUp = false;
+      valInput.addEventListener("focus", () => {
+        valInput.select();
+        selectValOnMouseUp = true;
+      });
+      valInput.addEventListener("mouseup", (e) => {
+        if (selectValOnMouseUp) {
+          e.preventDefault();
+          selectValOnMouseUp = false;
+        }
+      });
+
       // Flag a formula that no longer resolves (e.g. references a deleted variable).
       if (
         parseLength(v.expr, this.doc.displayUnit) === null &&
@@ -158,7 +183,11 @@ export class VariablesBar {
 
       // Commit value change on blur/enter
       const commitVal = () => {
-        const newExpr = valInput.value.trim();
+        let newExpr = valInput.value.trim();
+        // Replace commas used as decimal separators, e.g. "922,5" -> "922.5" or "0922,5" -> "0922.5"
+        newExpr = newExpr.replace(/(\d+),(\d+)/g, "$1.$2");
+        // Strip unnecessary leading zeroes before a non-zero number, e.g. "0922.5" -> "922.5"
+        newExpr = newExpr.replace(/\b0+(?=[1-9])/g, "");
         if (newExpr === v.expr) return;
         setTimeout(() => {
           this.pushHistory();
@@ -202,7 +231,10 @@ export class VariablesBar {
         const toFocus = this.listEl.querySelector(
           `[data-vid="${focusVid}"][data-field="${focusField}"]`,
         ) as HTMLElement;
-        if (toFocus) toFocus.focus();
+        if (toFocus) {
+          toFocus.focus();
+          if (toFocus instanceof HTMLInputElement) toFocus.select();
+        }
       }, 0);
     }
   }

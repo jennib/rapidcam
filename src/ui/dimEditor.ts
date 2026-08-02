@@ -113,7 +113,8 @@ export class DimEditor {
 
     const commit = () => {
       if (this.el !== input) return; // guard against double-commit on blur after close
-      const raw = input.value.trim();
+      let raw = input.value.trim().replace(/(\d+),(\d+)/g, "$1.$2");
+      raw = raw.replace(/\b0+(?=[1-9])/g, "");
 
       if (dim.type === "angle") {
         const v = parseAngle(raw);

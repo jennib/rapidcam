@@ -9,7 +9,8 @@ export type VarMap = ReadonlyMap<string, number>;
 /** Evaluate an expression string against a variable map. Returns null on any error. */
 export function evalExpr(expr: string, vars: VarMap): number | null {
   try {
-    const p = new Parser(expr.trim(), vars);
+    const s = expr.trim().replace(/(\d+),(\d+)/g, "$1.$2");
+    const p = new Parser(s, vars);
     const v = p.parseExpr();
     if (!p.done()) return null;
     return Number.isFinite(v) ? v : null;
@@ -24,7 +25,8 @@ export function evalExpr(expr: string, vars: VarMap): number | null {
  */
 export function validateExpr(expr: string, vars: VarMap): string | null {
   try {
-    const p = new Parser(expr.trim(), vars);
+    const s = expr.trim().replace(/(\d+),(\d+)/g, "$1.$2");
+    const p = new Parser(s, vars);
     p.parseExpr();
     if (!p.done()) return "Unexpected characters after expression";
     return null;
