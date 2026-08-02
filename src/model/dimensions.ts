@@ -766,6 +766,38 @@ export function dimensionLayout(
 }
 
 /**
+ * Identity of what a dimension MEASURES, ignoring how it is drawn. Two
+ * dimensions sharing this key measure exactly the same thing, so only one of
+ * them can drive it — a second is redundant, and a third asking for a
+ * different value is a contradiction the solver cannot resolve.
+ */
+export function dimensionSubjectKey(dim: Dimension): string {
+  const ents = [...dim.entities].sort().join(",");
+  const pts = dim.points
+    .map((p) => `${p.entityId}:${p.key}`)
+    .sort()
+    .join(",");
+  return `${dim.type}|${ents}|${pts}`;
+}
+
+/**
+ * An existing DRIVING dimension already measuring the same thing, if any.
+ *
+ * Placing a second one is how a sketch quietly becomes unsolvable: a real file
+ * arrived carrying three identical driving dimensions between a construction
+ * line and the stock's bottom edge, after which every further dimension on
+ * that distance failed to solve — with nothing having warned that the
+ * duplicates were being created.
+ */
+export function findDrivingDuplicate(
+  dim: Dimension,
+  existing: readonly Dimension[],
+): Dimension | null {
+  const k = dimensionSubjectKey(dim);
+  return existing.find((d) => d.driving && d.id !== dim.id && dimensionSubjectKey(d) === k) ?? null;
+}
+
+/**
  * World-distance from `pt` to the dimension's lines/text (for picking).
  * `pxPerMm` must match what the renderer passed to dimensionLayout, or the
  * clickable label sits somewhere other than the drawn one.

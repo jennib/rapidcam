@@ -12,6 +12,8 @@ import {
   dimensionOffsetFromCursor,
   dimensionLayout,
   dimensionHitDistance,
+  findDrivingDuplicate,
+  dimensionSubjectKey,
   chainProjectAnchors,
 } from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
@@ -791,5 +793,70 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     "a long formula label is pushed outside the span like any other overflow",
     fitted.textPos.x > 50,
     `textPos.x=${fitted.textPos.x.toFixed(2)} (span x 0..50)`,
+  );
+}
+
+// 21) Two driving dimensions measuring the same thing cannot both hold, and a
+//     third asking for a different value makes the sketch unsolvable. A real
+//     file arrived with THREE identical driving line-distance dims between a
+//     construction line and the stock's bottom edge; every later dimension on
+//     that distance then failed to solve, with nothing having warned the
+//     duplicates were being created.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 100, y: 0 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 0, y: 50 }, { x: 100, y: 50 })) as LineEntity;
+  const mk = (anchors: [number, number], value: number) =>
+    makeDimension("line-distance", { entities: [l1.id, l2.id], anchors, value, offset: 0 });
+
+  const first = mk([0.5, 0.5], 50);
+  doc.addDimension(first);
+
+  // Different anchors and a different value — but the same measurement.
+  const second = mk([0.1, 0.9], 40);
+  check(
+    "a second driving dimension on the same measurement is detected",
+    findDrivingDuplicate(second, doc.dimensions)?.id === first.id,
+  );
+
+  // Reference dimensions drive nothing, so they never count as duplicates.
+  first.driving = false;
+  check(
+    "a REFERENCE dimension on the same measurement is not a duplicate",
+    findDrivingDuplicate(second, doc.dimensions) === null,
+  );
+  first.driving = true;
+
+  // Reversed entity order is still the same measurement.
+  const reversed = makeDimension("line-distance", {
+    entities: [l2.id, l1.id],
+    anchors: [0.5, 0.5],
+    value: 50,
+    offset: 0,
+  });
+  check(
+    "entity order does not hide a duplicate",
+    findDrivingDuplicate(reversed, doc.dimensions)?.id === first.id,
+  );
+
+  // A genuinely different measurement must NOT be flagged (positive control).
+  const l3 = doc.add(new LineEntity({ x: 0, y: 90 }, { x: 100, y: 90 })) as LineEntity;
+  const other = makeDimension("line-distance", {
+    entities: [l1.id, l3.id],
+    anchors: [0.5, 0.5],
+    value: 90,
+    offset: 0,
+  });
+  check("a different pair of lines is not a duplicate", findDrivingDuplicate(other, doc.dimensions) === null);
+
+  // A dimension never counts as its own duplicate.
+  check("a dimension is not its own duplicate", findDrivingDuplicate(first, doc.dimensions) === null);
+
+  // Point-based dims key off their point refs, not just entities.
+  const pa = makeDimension("horizontal", { points: [pr(l1, "a"), pr(l1, "b")], value: 10, offset: 5 });
+  const pb = makeDimension("horizontal", { points: [pr(l1, "b"), pr(l1, "a")], value: 20, offset: 5 });
+  check(
+    "point-based duplicates are caught regardless of point order",
+    dimensionSubjectKey(pa) === dimensionSubjectKey(pb),
   );
 }

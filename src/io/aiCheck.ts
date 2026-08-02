@@ -155,6 +155,37 @@ function refIssues(file: RcamFile): AiIssue[] {
     }
   }
 
+  // Two driving dimensions measuring the same thing are redundant; three with
+  // differing values cannot all hold. The solver reports only that it failed,
+  // so the duplicates have to be named here or they are near-impossible to
+  // find by eye in a long dimension list.
+  const bySubject = new Map<string, string[]>();
+  for (const d of (file.dimensions ?? []) as {
+    id?: string;
+    type?: string;
+    driving?: boolean;
+    entities?: string[];
+    points?: { entityId?: string; key?: string }[];
+  }[]) {
+    if (d.driving === false) continue;
+    const ents = [...(d.entities ?? [])].sort().join(",");
+    const pts = (d.points ?? [])
+      .map((p) => `${p.entityId}:${p.key}`)
+      .sort()
+      .join(",");
+    const k = `${d.type}|${ents}|${pts}`;
+    bySubject.set(k, [...(bySubject.get(k) ?? []), d.id ?? "?"]);
+  }
+  for (const ids of bySubject.values()) {
+    if (ids.length > 1) {
+      issues.push({
+        severity: "warning",
+        check: "refs",
+        message: `${ids.length} driving dimensions measure the same thing (${ids.join(", ")}) — only one can drive it, and further dimensions on that measurement will fail to solve`,
+      });
+    }
+  }
+
   const imageIds = new Set(((file.images ?? []) as { id?: string }[]).map((i) => i.id));
   for (const e of file.entities as { type?: string; id?: string; imageId?: string }[]) {
     if (e.type === "image" && e.imageId && !imageIds.has(e.imageId)) {

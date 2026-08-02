@@ -21,6 +21,7 @@ import {
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
+  findDrivingDuplicate,
   type LinearDimType,
   makeDimension,
 } from "../model/dimensions";
@@ -574,7 +575,16 @@ export class DimensionTool implements Tool {
     // no editor, no constraint, no feedback — which reads as "nothing happened"
     // (audit #4). Solving now makes the check reflect the geometry as it is.
     ctx.solve();
-    if (ctx.currentDof() < 1) {
+    // Something already DRIVES this exact measurement. A second driver is at
+    // best redundant and at worst a contradiction the solver cannot resolve —
+    // and the failure surfaces later, on some unrelated edit, with no hint
+    // that duplicates were the cause. Keep it as a reference annotation and
+    // say so, rather than silently building an unsolvable sketch.
+    const dup = findDrivingDuplicate(dim, ctx.doc.dimensions);
+    if (dup) {
+      dim.driving = false;
+      ctx.notify("Already dimensioned — added for reference only");
+    } else if (ctx.currentDof() < 1) {
       // Sketch is fully or already over-constrained — add as reference only.
       dim.driving = false;
     }
