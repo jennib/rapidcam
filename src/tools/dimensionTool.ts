@@ -92,7 +92,8 @@ export function dimensionHint(phase: Phase): string | null {
   }
 }
 
-interface Pick {
+/** Exported for testing. */
+export interface Pick {
   ref: PointRef;
   pos: Vec2;
 }
@@ -187,7 +188,7 @@ export class DimensionTool implements Tool {
             this.phase = "placeLinear";
           } else {
             // Polyline body click: snap to nearest vertex.
-            const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
+            const entityPick = pickNearestEntityPoint(hit, e.worldRaw, tol);
             if (entityPick) {
               this.p1 = entityPick;
               this.phase = "second";
@@ -232,7 +233,7 @@ export class DimensionTool implements Tool {
         // Entity body click: snap to nearest point on the hit entity.
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit) {
-          const entityPick = pickNearestEntityPoint(hit, e.worldRaw);
+          const entityPick = pickNearestEntityPoint(hit, e.worldRaw, tol);
           if (entityPick && !samePos(entityPick.pos, this.p1!.pos)) {
             this.p2 = entityPick;
             this.forcedLinearType = null;
@@ -268,7 +269,7 @@ export class DimensionTool implements Tool {
               if (this.firstMid) newP1 = this.firstMid;
             }
           } else {
-            const pt = pickNearestEntityPoint(hit, e.worldRaw);
+            const pt = pickNearestEntityPoint(hit, e.worldRaw, tol);
             if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
               newP2 = pt;
               if (this.firstMid) newP1 = this.firstMid;
@@ -383,7 +384,7 @@ export class DimensionTool implements Tool {
               this.hoverRaw = e.worldRaw;
             }
           } else {
-            const pt = pickNearestEntityPoint(hit, e.worldRaw);
+            const pt = pickNearestEntityPoint(hit, e.worldRaw, tol);
             if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
               newP2 = pt;
               if (this.firstMid) newP1 = this.firstMid;
@@ -719,16 +720,47 @@ function samePos(a: Vec2, b: Vec2): boolean {
   return dist(a, b) < 1e-9;
 }
 
-/** Circle/arc rim anchor at the clicked angle, or null when the click is nearer
- *  the centre (or off an arc's span). The key encodes the angle so the point is
- *  recomputed live from the circle as it resizes/moves. */
-function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2): Pick | null {
+const QUADRANT_ANGLES = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+
+/**
+ * Circle/arc rim anchor at the clicked angle, or null when the click is nearer
+ * the centre (or off an arc's span). The key encodes the angle so the point is
+ * recomputed live from the circle as it resizes/moves.
+ *
+ * Snaps to the nearest QUADRANT (matching CircleEntity's own snapPoints — the
+ * ones every draw tool already snaps to) when the click is close enough, in
+ * ARC LENGTH rather than raw angle, so the catch radius means the same few
+ * screen pixels regardless of the circle's size. Without this, the picked
+ * angle is whatever the mouse happened to be at — a click aimed at "the top
+ * of the circle" lands a fraction of a degree off, and a dimension anchored
+ * there renders visibly crooked even though its measured VALUE is always
+ * exactly the radius (so the label looks perfectly clean, which makes the
+ * crooked line read as a bug rather than an imprecise click). Only snaps to a
+ * quadrant that's ALSO valid for an arc's span — never widens what an arc
+ * pick can reach, only makes an already-valid nearby click land exactly.
+ */
+export function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2, tol: number): Pick | null {
   const c = ent.center,
     r = ent.radius;
   const dCenter = dist(c, p);
   if (Math.abs(dCenter - r) >= dCenter) return null; // nearer the centre → let it win
-  const theta = Math.atan2(p.y - c.y, p.x - c.x);
-  if (ent instanceof ArcEntity && !angleInArc(theta, ent.startAngle, ent.endAngle)) return null;
+  const rawTheta = Math.atan2(p.y - c.y, p.x - c.x);
+  if (ent instanceof ArcEntity && !angleInArc(rawTheta, ent.startAngle, ent.endAngle)) return null;
+
+  let theta = rawTheta;
+  let bestArcDist = tol;
+  for (const q of QUADRANT_ANGLES) {
+    let d = Math.abs(rawTheta - q);
+    if (d > Math.PI) d = 2 * Math.PI - d; // shortest angular distance
+    const arcDist = d * r;
+    if (
+      arcDist < bestArcDist &&
+      (!(ent instanceof ArcEntity) || angleInArc(q, ent.startAngle, ent.endAngle))
+    ) {
+      bestArcDist = arcDist;
+      theta = q;
+    }
+  }
   return {
     ref: { entityId: ent.id, key: `edge@${theta}` },
     pos: { x: c.x + r * Math.cos(theta), y: c.y + r * Math.sin(theta) },
@@ -736,9 +768,9 @@ function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2): Pick | null {
 }
 
 /** Nearest point on an entity for use as a dimension anchor (pickable points). */
-function pickNearestEntityPoint(ent: Entity, p: Vec2): Pick | null {
+function pickNearestEntityPoint(ent: Entity, p: Vec2, tol: number): Pick | null {
   if (ent instanceof CircleEntity || ent instanceof ArcEntity) {
-    const edge = circleEdgePick(ent, p);
+    const edge = circleEdgePick(ent, p, tol);
     if (edge) return edge;
   }
   let best: Pick | null = null;
