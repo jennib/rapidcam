@@ -13,6 +13,7 @@ import { cross, dist, mid, normalize, sub, type Vec2 } from "../core/vec2";
 import type { Geo, PointRef } from "../model/constraints";
 import {
   avoidDimensionCollision,
+  chainProjectAnchors,
   chooseLinearType,
   type Dimension,
   type DimensionType,
@@ -22,7 +23,6 @@ import {
   dimensionOffsetFromCursor,
   type LinearDimType,
   makeDimension,
-  projectOnLine,
 } from "../model/dimensions";
 import {
   type CADDocument,
@@ -119,8 +119,6 @@ export class DimensionTool implements Tool {
   private hoverP1: Pick | null = null;
   private hoverP2: Pick | null = null;
   private firstRaw: Vec2 | null = null;
-  private secondRaw: Vec2 | null = null;
-  private hoverRaw: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
   private dragDim: Dimension | null = null;
 
@@ -322,7 +320,6 @@ export class DimensionTool implements Tool {
           }
           if (newP1) this.p1 = newP1;
           this.p2 = newP2;
-          if (this.hoverRaw) this.secondRaw = this.hoverRaw;
           this.hoverP1 = null;
           this.hoverP2 = null;
           break;
@@ -378,14 +375,12 @@ export class DimensionTool implements Tool {
             if (edge && hit.id !== this.p1!.ref.entityId) {
               newP2 = edge.mid;
               if (this.firstMid) newP1 = this.firstMid;
-              this.hoverRaw = e.worldRaw;
             }
           } else if (hit.type === "line") {
             const line = hit as LineEntity;
             if (hit.id !== this.p1!.ref.entityId) {
               newP2 = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
               if (this.firstMid) newP1 = this.firstMid;
-              this.hoverRaw = e.worldRaw;
             }
           } else {
             const pt = pickNearestEntityPoint(hit, e.worldRaw, tol);
@@ -399,7 +394,6 @@ export class DimensionTool implements Tool {
           if (edge) {
             newP2 = edge.mid;
             if (this.firstMid) newP1 = this.firstMid;
-            this.hoverRaw = e.worldRaw;
           }
         }
         if (newP2) {
@@ -458,8 +452,6 @@ export class DimensionTool implements Tool {
     this.hoverP1 = null;
     this.hoverP2 = null;
     this.firstRaw = null;
-    this.secondRaw = null;
-    this.hoverRaw = null;
     this.circleId = null;
     this.gapTargetId = null;
     this.line1Id = null;
@@ -569,8 +561,6 @@ export class DimensionTool implements Tool {
     this.hoverP1 = null;
     this.hoverP2 = null;
     this.firstRaw = null;
-    this.secondRaw = null;
-    this.hoverRaw = null;
     this.finaliseDim(dim, ctx);
   }
 
@@ -601,17 +591,17 @@ export class DimensionTool implements Tool {
       const ap1 = activeP1 ?? this.p1!;
       const ap2 = activeP2 ?? this.p2!;
       const p1Raw = this.firstRaw ?? ap1.pos;
-      const p2Raw = (this.hoverP2 ? this.hoverRaw : this.secondRaw) ?? ap2.pos;
 
       const edge1 = getEdgeEnds(ctx.doc, ap1);
       const edge2 = getEdgeEnds(ctx.doc, ap2);
 
+      // t2 is derived from t1 (chain-projected across to line2), not from its
+      // own raw click — two independently-clicked anchors are almost never at
+      // matching heights, which used to draw a diagonal shaft instead of a
+      // straight perpendicular one. See chainProjectAnchors.
       return makeDimension(this.curType, {
         entities: [ap1.ref.entityId, ap2.ref.entityId],
-        anchors:
-          edge1 && edge2
-            ? [projectOnLine(p1Raw, edge1.a, edge1.b), projectOnLine(p2Raw, edge2.a, edge2.b)]
-            : [0.5, 0.5],
+        anchors: edge1 && edge2 ? chainProjectAnchors(p1Raw, edge1, edge2) : [0.5, 0.5],
         value: 0,
         offset,
       });
@@ -669,8 +659,6 @@ export class DimensionTool implements Tool {
     this.hoverP1 = null;
     this.hoverP2 = null;
     this.firstRaw = null;
-    this.secondRaw = null;
-    this.hoverRaw = null;
     this.finaliseDim(dim, ctx);
   }
   private commitCircle(ctx: ToolContext): void {

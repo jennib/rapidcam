@@ -11,6 +11,7 @@ import {
   dimensionAnchorsFromCursor,
   dimensionOffsetFromCursor,
   dimensionLayout,
+  chainProjectAnchors,
 } from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
 import { type Geo, makeConstraint } from "../src/model/constraints";
@@ -396,4 +397,69 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     check("p2 keeps p's y", Math.abs(p2.y - p.y) < 1e-6, `p.y=${p.y} p2.y=${p2.y}`);
     check("q2 keeps q's y", Math.abs(q2.y - q.y) < 1e-6, `q.y=${q.y} q2.y=${q2.y}`);
   }
+}
+
+// 14) dimensionAnchorsFromCursor now chain-projects (t1 on l1, then l1's point
+//     dropped onto l2 for t2) instead of projecting the cursor onto each line
+//     independently. For parallel lines the two give the SAME result whenever
+//     neither projection clamps (dropping a perpendicular from one shared
+//     cursor onto two parallel lines always lands at the same tangential
+//     coordinate) -- they only diverge once t1 ITSELF gets clamped against
+//     l1's short extent, which independent projection doesn't know about
+//     when it separately (and unclampedly, relative to l1) projects onto l2.
+{
+  const doc = new CADDocument({ width: 400, height: 300 });
+  // l1 is SHORT (y 0..50); l2 is much longer (y 0..120).
+  const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 50 })) as LineEntity;
+  const l2 = doc.add(new LineEntity({ x: 50, y: 0 }, { x: 50, y: 120 })) as LineEntity;
+  const geo = geoOf(doc);
+  const dim = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: [0.5, 0.5],
+    value: 0,
+    offset: 20,
+  });
+
+  // Cursor at y=100 -- past l1's y=50 end (clamps t1 to 1, landing p1 at
+  // y=50), but well within l2's range on its own.
+  const anchors = dimensionAnchorsFromCursor(dim, geo, { x: 0, y: 100 });
+  check("chain-projected anchors exist past l1's short end", anchors !== null);
+  if (anchors) {
+    check("t1 clamps to l1's far end", anchors[0] === 1, `t1=${anchors[0]}`);
+    const p1y = 0 + anchors[0] * 50;
+    const p2y = 0 + anchors[1] * 120;
+    check(
+      "t2 follows l1's CLAMPED point (y=50), not the raw cursor (y=100) — a straight crossing",
+      Math.abs(p1y - p2y) < 1e-6,
+      `l1.y=${p1y.toFixed(3)} l2.y=${p2y.toFixed(3)}`,
+    );
+  }
+
+  // The resulting dimension must still lay out as a clean, straight shape.
+  const created = makeDimension("line-distance", {
+    entities: [l1.id, l2.id],
+    anchors: anchors ?? [1, 0.5],
+    value: 50,
+    offset: 15,
+  });
+  const layout = dimensionLayout(created, geo, "mm");
+  check("clamped-anchor dimension still lays out (no crash / null)", layout !== null);
+}
+
+// 15) Creation-time mismatch is the MAIN production scenario: two separate
+//     raw clicks (not a drag) at different heights on two parallel edges,
+//     which chainProjectAnchors must resolve to a directly-across pair
+//     using only the FIRST click as the tangential reference.
+{
+  const l1 = { a: { x: 0, y: 0 }, b: { x: 0, y: 100 } };
+  const l2 = { a: { x: 50, y: 0 }, b: { x: 50, y: 100 } };
+  // Simulates a click near the bottom of l1; a second, unrelated click near
+  // the top of l2 no longer has any say over l2's anchor position.
+  const [t1, t2] = chainProjectAnchors({ x: 0, y: 15 }, l1, l2);
+  check("t1 reflects the first click (y=15 -> t=0.15)", Math.abs(t1 - 0.15) < 1e-6, `t1=${t1}`);
+  check(
+    "t2 is DERIVED from t1's crossing, not an independent second click",
+    Math.abs(t2 - 0.15) < 1e-6,
+    `t2=${t2}`,
+  );
 }

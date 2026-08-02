@@ -392,13 +392,33 @@ export function projectOnLine(p: Vec2, a: Vec2, b: Vec2): number {
 }
 
 /**
- * Recompute a line-distance dimension's anchors [t1, t2] from the cursor,
- * projecting onto each line independently. dimensionOffsetFromCursor alone
- * only ever moves the shaft perpendicular to the two lines (the gap it
- * reports is invariant to anchor position) — dragging along the lines' own
- * direction had nothing to drive it, so e.g. a dimension between two
- * vertical lines could be dragged left/right but never up/down. Returns
- * null for every other dimension type.
+ * Anchor a line-distance dimension's two ends so they sit DIRECTLY ACROSS
+ * from each other (t1 on l1, then t2 on l2 = wherever t1's point lands when
+ * dropped straight onto l2) — never two independently-chosen positions.
+ * That guarantees the rendered shaft in dimensionLayout is a straight,
+ * perpendicular crossing, never a diagonal. The only time it can't be exact
+ * is when l2 doesn't extend as far as l1's anchor tangentially — t2 clamps
+ * to l2's nearest end, angling the shaft slightly because there's genuinely
+ * no room for a perpendicular crossing there, not because of a bug.
+ */
+export function chainProjectAnchors(
+  cursor: Vec2,
+  l1: { a: Vec2; b: Vec2 },
+  l2: { a: Vec2; b: Vec2 },
+): [number, number] {
+  const t1 = projectOnLine(cursor, l1.a, l1.b);
+  const p1 = add(l1.a, scale(sub(l1.b, l1.a), t1));
+  const t2 = projectOnLine(p1, l2.a, l2.b);
+  return [t1, t2];
+}
+
+/**
+ * Recompute a line-distance dimension's anchors [t1, t2] from the cursor.
+ * dimensionOffsetFromCursor alone only ever moves the shaft perpendicular to
+ * the two lines (the gap it reports is invariant to anchor position) —
+ * dragging along the lines' own direction had nothing to drive it, so e.g. a
+ * dimension between two vertical lines could be dragged left/right but never
+ * up/down. Returns null for every other dimension type.
  */
 export function dimensionAnchorsFromCursor(
   dim: Dimension,
@@ -409,7 +429,7 @@ export function dimensionAnchorsFromCursor(
   const l1 = readLineGeom(geo, dim.entities[0]);
   const l2 = readLineGeom(geo, dim.entities[1]);
   if (!l1 || !l2) return null;
-  return [projectOnLine(cursor, l1.a, l1.b), projectOnLine(cursor, l2.a, l2.b)];
+  return chainProjectAnchors(cursor, l1, l2);
 }
 
 export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout | null {
