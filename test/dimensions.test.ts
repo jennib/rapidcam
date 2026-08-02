@@ -338,10 +338,13 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     `anchors=${JSON.stringify(far)}`,
   );
 
-  // Offset (perpendicular standoff) still works independently of anchor drag.
+  // A gap dim has NO perpendicular standoff: dragging across the gap can't
+  // move it anywhere, because its shaft has to span the two lines. Position
+  // along the lines is anchors-only. (See #18 — a non-zero offset here is
+  // what used to push the arrows clean outside the space being measured.)
   dim.anchors = near ?? [0.5, 0.5];
   const offset = dimensionOffsetFromCursor(dim, geo, { x: 60, y: 90 });
-  check("perpendicular offset drag is unaffected by the anchor fix", offset > 0, `offset=${offset}`);
+  check("a gap dimension never takes a perpendicular offset", offset === 0, `offset=${offset}`);
 
   const other = makeDimension("distance", {
     points: [
@@ -380,26 +383,32 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const layout = dimensionLayout(dim, geo, "mm");
   check("line-distance with a stale anchors[1] still lays out", layout !== null);
   if (layout) {
-    const [p, p2] = layout.segments[0];
-    const [q, q2] = layout.segments[1];
+    // One segment only: the shaft spanning the gap. No extension lines.
     check(
-      "extension line 1 (p to p2) is exactly the offset long",
-      Math.abs(dist(p, p2) - 12) < 1e-6,
-      `len=${dist(p, p2).toFixed(4)}`,
+      "exactly one segment (the shaft) — no extension lines",
+      layout.segments.length === 1,
+      `segments=${layout.segments.length}`,
     );
+    const [p, q] = layout.segments[0];
+    check("shaft starts ON line1 (x=0)", Math.abs(p.x - 0) < 1e-6, `p.x=${p.x}`);
+    check("shaft ends ON line2 (x=50)", Math.abs(q.x - 50) < 1e-6, `q.x=${q.x}`);
     check(
-      "extension line 2 (q to q2) is ALSO exactly the offset long, not a long stray diagonal",
-      Math.abs(dist(q, q2) - 12) < 1e-6,
-      `len=${dist(q, q2).toFixed(4)}`,
+      "shaft length is exactly the measured gap",
+      Math.abs(dist(p, q) - 50) < 1e-6,
+      `len=${dist(p, q).toFixed(4)}`,
     );
-    check("p2 keeps p's y", Math.abs(p2.y - p.y) < 1e-6, `p.y=${p.y} p2.y=${p2.y}`);
-    check("q2 keeps q's y", Math.abs(q2.y - q.y) < 1e-6, `q.y=${q.y} q2.y=${q2.y}`);
-    // The real point: q sits directly across from p (t=0.2 on l2), NOT at
-    // the stale stored anchors[1]=0.9 (which would put q.y at 90).
+    // q sits directly across from p (t=0.2 on l2), NOT at the stale stored
+    // anchors[1]=0.9 (which would put q.y at 90 and skew the shaft).
     check(
       "q ignores the stale stored anchors[1] and sits directly across from p",
       Math.abs(q.y - p.y) < 1e-6,
       `p.y=${p.y} q.y=${q.y}`,
+    );
+    // The arrows are the shaft's own endpoints, i.e. they touch both lines.
+    check(
+      "both arrows sit exactly on the shaft's ends (on the two lines)",
+      dist(layout.arrows[0].tip, p) < 1e-6 && dist(layout.arrows[1].tip, q) < 1e-6,
+      `a0=(${layout.arrows[0].tip.x},${layout.arrows[0].tip.y}) a1=(${layout.arrows[1].tip.x},${layout.arrows[1].tip.y})`,
     );
   }
 }
@@ -489,9 +498,8 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const before = dimensionLayout(dim, geo, "mm");
   check("straight before any edit", before !== null);
   if (before) {
-    const [p, p2] = before.segments[0];
-    const [q, q2] = before.segments[1];
-    check("before: extensions match", Math.abs(dist(p, p2) - dist(q, q2)) < 1e-6);
+    const [p, q] = before.segments[0];
+    check("before: shaft spans the gap exactly", Math.abs(dist(p, q) - 50) < 1e-6);
   }
 
   // Now drag l2's far endpoint, stretching it -- NOT a rigid translation, so
@@ -500,22 +508,26 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   const after = dimensionLayout(dim, geo, "mm");
   check("still lays out after l2 changes shape", after !== null);
   if (after) {
-    const [p, p2] = after.segments[0];
-    const [q, q2] = after.segments[1];
+    const [p, q] = after.segments[0];
     check(
-      "after: extension line 1 is still exactly the offset long",
-      Math.abs(dist(p, p2) - 12) < 1e-6,
-      `len=${dist(p, p2).toFixed(4)}`,
+      "after: still exactly one segment, no stray extension lines",
+      after.segments.length === 1,
+      `segments=${after.segments.length}`,
     );
     check(
-      "after: extension line 2 is ALSO still exactly the offset long (not a stray diagonal)",
-      Math.abs(dist(q, q2) - 12) < 1e-6,
-      `len=${dist(q, q2).toFixed(4)}`,
+      "after: the shaft still spans exactly the gap (50), not more",
+      Math.abs(dist(p, q) - 50) < 1e-6,
+      `len=${dist(p, q).toFixed(4)}`,
     );
     check(
       "after: q still crosses directly opposite p (re-derived, not stale)",
       Math.abs(q.y - p.y) < 1e-6,
       `p.y=${p.y} q.y=${q.y}`,
+    );
+    check(
+      "after: both ends still sit ON their own line",
+      Math.abs(p.x - 0) < 1e-6 && Math.abs(q.x - 50) < 1e-6,
+      `p.x=${p.x} q.x=${q.x}`,
     );
   }
 }
@@ -581,11 +593,16 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
   }
 }
 
-// 18) Extension length is capped -- a large offset (95, matching what was
-//     placed live) must not stretch the extension lines out that far. The
-//     arrows should sit close to the actual objects with just a small,
-//     constant gap, not a draggable-to-anywhere leader with extra line
-//     sticking out past the arrowheads back toward the real anchor points.
+// 18) THE root bug behind every "dimension doesn't fit the space" report:
+//     `offset` used to displace the shaft along `n` -- but for two parallel
+//     lines `n` IS the across-the-gap direction, i.e. the direction being
+//     measured. So a stored offset (95 here, exactly what a placement click
+//     out past the geometry produced) slid BOTH arrows along the
+//     measurement: for lines at x=0 and x=50 the arrows landed at x=95 and
+//     x=145, entirely outside the 0..50 space they annotate, with the
+//     extension lines collinear behind them reading as line sticking out
+//     past the arrowheads. A gap dim has nowhere to sit but between its two
+//     lines, so offset must not move it at all.
 {
   const doc = new CADDocument({ width: 400, height: 300 });
   const l1 = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 0, y: 100 })) as LineEntity;
@@ -595,26 +612,38 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     entities: [l1.id, l2.id],
     anchors: [0.5, 0.5],
     value: 50,
-    offset: 95,
+    offset: 95, // a big stale offset, as old files and old placements carry
   });
   const layout = dimensionLayout(dim, geo, "mm");
   check("still lays out with a large stored offset", layout !== null);
   if (layout) {
-    const [p, p2] = layout.segments[0];
-    const [q, q2] = layout.segments[1];
     check(
-      "extension line 1 is capped, not the full 95mm offset",
-      dist(p, p2) < 20,
-      `len=${dist(p, p2).toFixed(4)}`,
+      "no extension lines at all — one segment",
+      layout.segments.length === 1,
+      `segments=${layout.segments.length}`,
+    );
+    // EVERY drawn point must be inside the 0..50 space, arrows included.
+    const xs = [
+      ...layout.segments.flatMap(([a, b]) => [a.x, b.x]),
+      ...layout.arrows.map((a) => a.tip.x),
+      layout.textPos.x,
+    ];
+    check(
+      "nothing the dimension draws escapes the space it measures (0..50)",
+      xs.every((x) => x >= -1e-6 && x <= 50 + 1e-6),
+      `xs=${xs.map((x) => x.toFixed(2)).join(",")}`,
     );
     check(
-      "extension line 2 is ALSO capped",
-      dist(q, q2) < 20,
-      `len=${dist(q, q2).toFixed(4)}`,
+      "the two arrows are exactly the gap apart — not offset-inflated",
+      Math.abs(dist(layout.arrows[0].tip, layout.arrows[1].tip) - 50) < 1e-6,
+      `spacing=${dist(layout.arrows[0].tip, layout.arrows[1].tip).toFixed(4)}`,
     );
   }
 
-  // Dragging further out must not keep growing the offset past the cap.
-  const dragged = dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 });
-  check("dragging far away still returns a capped offset", Math.abs(dragged) < 20, `offset=${dragged}`);
+  // And dragging can never reintroduce a non-zero offset for this type.
+  check(
+    "dragging far away yields no offset at all (position is anchors-only)",
+    dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 }) === 0,
+    `offset=${dimensionOffsetFromCursor(dim, geo, { x: 500, y: 50 })}`,
+  );
 }

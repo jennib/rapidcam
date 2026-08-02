@@ -1013,6 +1013,7 @@ export class CADDocument {
 
   // --- variables -----------------------------------------------------------
   addVariable(v: Variable): Variable {
+    updateCounter(v.id);
     this.variables.push(v);
     this.emitChange();
     return v;
@@ -1481,7 +1482,10 @@ export class CADDocument {
       updateCounter(d.id);
       return d;
     });
-    this.variables = (s.variables || []).map((v) => ({ ...v }));
+    this.variables = (s.variables || []).map((v) => {
+      updateCounter(v.id);
+      return { ...v };
+    });
     this.bindings = [...(s.bindings || []).map((b) => ({ ...b })), ...legacyImageBindings];
 
     this.isConstructionMode = s.isConstructionMode;

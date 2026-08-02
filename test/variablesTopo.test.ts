@@ -54,3 +54,42 @@ test("non-cyclic vars still evaluate even when another pair cycles", () => {
   evaluateVariables(vars, "mm");
   expect(valueOfVar(vars, "good")).toBe(40);
 });
+
+test("restoring variables updates ID counter so newly added variables get unique IDs", async () => {
+  const { CADDocument } = await import("../src/model/document");
+  const doc = new CADDocument({ width: 400, height: 400 });
+  doc.restore({
+    canvas: { width: 400, height: 400 },
+    displayUnit: "mm",
+    stockThickness: 19,
+    stockRect: null,
+    origin: { x: "left", y: "front", z: "top" },
+    groups: [],
+    layers: [],
+    activeLayerId: "layer-0",
+    entities: [],
+    constraints: [],
+    dimensions: [],
+    variables: [
+      { id: "var1", name: "var1", expr: "35", value: 35 },
+      { id: "var2", name: "var2", expr: "3", value: 3 },
+      { id: "var3", name: "var3", expr: "7.2", value: 7.2 },
+      { id: "var4", name: "var4", expr: "48", value: 48 },
+      { id: "var5", name: "var5", expr: "22.5", value: 22.5 },
+    ],
+    bindings: [],
+    patterns: [],
+    operations: [],
+    tools: [],
+    isConstructionMode: false,
+    selectedPoints: [],
+  });
+
+  const newVar = doc.addVariable(makeVariable("var6", "10", "mm"));
+  expect(newVar.id).not.toBe("var1");
+  expect(newVar.id).not.toBe("var2");
+  expect(newVar.id).not.toBe("var3");
+  expect(newVar.id).not.toBe("var4");
+  expect(newVar.id).not.toBe("var5");
+  expect(doc.variables).toHaveLength(6);
+});

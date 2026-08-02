@@ -338,19 +338,6 @@ function clampMinOffset(val: number, min = 10): number {
   return val;
 }
 
-/**
- * Same idea, but also caps the far end: a line-distance dimension's
- * extension lines are meant to be a small, constant witness-line gap (some
- * breathing room off the object), not a draggable-to-anywhere leader — an
- * arbitrarily large offset just stretches the dimension far past the two
- * lines it's measuring for no visual benefit. Dragging past the cap simply
- * pins at it rather than continuing to grow.
- */
-function clampOffsetRange(val: number, min = 10, max = 16): number {
-  const mag = Math.max(min, Math.min(max, Math.abs(val)));
-  return (val >= 0 ? 1 : -1) * mag;
-}
-
 /** Recompute `offset` from the cursor for the dimension's current type. */
 export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2): number {
   if (dim.type === "radius" || dim.type === "diameter") {
@@ -374,17 +361,11 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     if (!ag) return dim.offset;
     return Math.max(5, dist(cursor, ag.vertex));
   }
-  if (dim.type === "line-distance") {
-    const l1 = readLineGeom(geo, dim.entities[0]);
-    const l2 = readLineGeom(geo, dim.entities[1]);
-    if (!l1 || !l2) return dim.offset;
-    const ref = add(l1.a, scale(sub(l1.b, l1.a), dim.anchors?.[0] ?? 0.5));
-    const { p, q } = resolveLineDistanceCrossing(ref, l1, l2);
-    const m = mid(p, q);
-    let n = perp(normalize(sub(l1.b, l1.a)));
-    if (dot(sub(q, p), n) < 0) n = scale(n, -1);
-    return clampOffsetRange(dot(sub(cursor, m), n));
-  }
+  // A gap dimension has no perpendicular standoff to compute: its shaft IS
+  // the span between the two lines, so it has nowhere to sit but between
+  // them. Where it slides ALONG the lines is `anchors`, not `offset` — see
+  // dimensionAnchorsFromCursor and the layout branch.
+  if (dim.type === "line-distance") return 0;
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
   if (!p || !q) return dim.offset;
@@ -629,6 +610,35 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
   if (!p || !q) return null;
   const type = dim.type as LinearDimType;
 
+  if (type === "line-distance") {
+    // A gap dimension IS its span: the shaft runs from one line to the
+    // other, arrows landing ON the two lines it measures, with no extension
+    // lines and no perpendicular standoff.
+    //
+    // It used to offset both ends by `n` before drawing — but for two
+    // parallel lines `n` is the ACROSS-the-gap direction, i.e. the very
+    // direction being measured. So a non-zero offset slid the whole shaft
+    // ALONG the measurement: both arrows moved off the lines (leaving one
+    // outside the space entirely), and because the extension lines were
+    // then collinear with the shaft, they read as line sticking out past
+    // the arrowheads rather than as witness lines. Offsetting is meaningful
+    // for a point-to-point dim, which can sit clear of the geometry; a gap
+    // dim has nowhere to go but between the two lines. Sliding it ALONG
+    // the lines is `anchors` — see resolveLineDistanceCrossing.
+    const span = len(sub(q, p));
+    const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
+    return {
+      segments: [[p, q]],
+      // Arrows point outward, each into the line it touches.
+      arrows: [
+        { tip: p, dir: scale(u, -1) },
+        { tip: q, dir: u },
+      ],
+      textPos: mid(p, q),
+      label: formatLengthWithUnit(displayVal, unit),
+    };
+  }
+
   let p2: Vec2;
   let q2: Vec2;
   if (type === "horizontal") {
@@ -639,27 +649,6 @@ export function dimensionLayout(dim: Dimension, geo: Geo, unit: Unit): DimLayout
     const x = (p.x + q.x) / 2 + dim.offset;
     p2 = { x, y: p.y };
     q2 = { x, y: q.y };
-  } else if (type === "line-distance") {
-    // Both extension lines run the SAME perpendicular distance out from
-    // their own anchor — mirroring the generic aligned-dim branch below.
-    // Deriving q2 from p2 and the p→q gap instead (as this used to) ignores
-    // any tangential offset between the two anchors (t1 ≠ t2, now reachable
-    // by dragging one end along its line — see dimensionAnchorsFromCursor),
-    // so q2 could land far from q and draw a long, wrongly-angled second
-    // extension line instead of a straight dimension.
-    //
-    // The distance itself is clampOffsetRange'd, not raw dim.offset: these
-    // extension lines are meant to be a small, fixed witness-line gap giving
-    // the arrows some breathing room off the object, not a leader you drag
-    // out arbitrarily far — a large offset just left extra line sticking out
-    // past the arrowheads, back toward the real measured points, with the
-    // arrows sitting nowhere near either object.
-    const l1 = readLineGeom(geo, dim.entities[0])!;
-    let n = perp(normalize(sub(l1.b, l1.a)));
-    if (dot(sub(q, p), n) < 0) n = scale(n, -1);
-    const ext = clampOffsetRange(dim.offset);
-    p2 = add(p, scale(n, ext));
-    q2 = add(q, scale(n, ext));
   } else {
     const n = linearNormal("distance", p, q);
     p2 = add(p, scale(n, dim.offset));
