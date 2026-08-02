@@ -13,6 +13,8 @@ import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { orthoSnap } from "../input/snapping";
 
+import { autoJoin } from "./lineTool";
+
 export class PolylineTool implements Tool {
   readonly id = "polyline";
   readonly label = "Polyline";
@@ -27,7 +29,7 @@ export class PolylineTool implements Tool {
     const prev = this.points[this.points.length - 1];
     const shifted = e.shiftKey && prev != null;
     const world = shifted ? orthoSnap(prev, e.world) : e.world;
-    const snap = shifted ? null : e.snap?.key ? e.snap : null;
+    const snap = shifted ? null : e.snap;
 
     if (prev && distSq(prev, world) < 1e-9) return; // ignore duplicate click
 
@@ -90,16 +92,7 @@ export class PolylineTool implements Tool {
       ent.isConstruction = ctx.doc.isConstructionMode;
       ctx.doc.addSelected(ent);
       for (let i = 0; i < snaps.length; i++) {
-        const snap = snaps[i];
-        if (!snap?.key) continue;
-        ctx.doc.addConstraint(
-          makeConstraint("coincident", {
-            points: [
-              { entityId: ent.id, key: `v${ent.vertexIds[i]}` },
-              { entityId: snap.entityId, key: snap.key },
-            ],
-          }),
-        );
+        autoJoin(ctx, ent.id, `v${ent.vertexIds[i]}`, snaps[i]);
       }
 
       // Auto-add H/V constraints to each segment if perfectly orthogonal

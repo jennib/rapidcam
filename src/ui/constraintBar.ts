@@ -10,13 +10,15 @@ import {
   type Constraint,
   type ConstraintType,
   type Geo,
+  lineRefEntityId,
   makeConstraint,
   measureAngleBetweenLines,
   resolveLineGeom,
   segmentRef,
+  seedConstraintPoints,
   tangentContactOutsideArcSweep,
 } from "../model/constraints";
-import type { CADDocument } from "../model/document";
+import { type CADDocument, STOCK_ENTITY_ID } from "../model/document";
 import { type CircleEntity, type Entity, type LineEntity, PolylineEntity } from "../model/entities";
 import { constraintJacobianRankChange, type SolveResult } from "../solver/solver";
 
@@ -65,12 +67,12 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
   const circles = ents.filter((e) => e.type === "circle");
   const arcs = ents.filter((e) => e.type === "arc");
   const circular = [...circles, ...arcs];
-  const pts = doc.selectedPoints;
+  const stockPts = doc.selectedPoints.filter((p) => p.entityId === STOCK_ENTITY_ID);
+  const pts = doc.selectedPoints.filter((p) => p.entityId !== STOCK_ENTITY_ID);
   const ids = (es: Entity[]) => es.map((e) => e.id);
 
   // Line-like references for line-type constraints: whole LineEntities PLUS any
-  // selected polyline segments (encoded as `${polylineId}#${index}`). This lets
-  // parallel/perpendicular/equal/etc. address individual polyline edges.
+  // selected polyline segments (encoded as `${polylineId}#${index}`) OR stock edges.
   const lineRefs: string[] = [
     ...lines.map((l) => l.id),
     ...doc.selectedSegments.map((s) => {
@@ -81,6 +83,15 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
       return segmentRef(s.entityId, startId);
     }),
   ];
+
+  for (const sp of stockPts) {
+    if (sp.key === "mid_l" || sp.key === "bl" || sp.key === "tl")
+      lineRefs.push(`${STOCK_ENTITY_ID}#left`);
+    else if (sp.key === "mid_r" || sp.key === "br" || sp.key === "tr")
+      lineRefs.push(`${STOCK_ENTITY_ID}#right`);
+    else if (sp.key === "mid_t") lineRefs.push(`${STOCK_ENTITY_ID}#top`);
+    else if (sp.key === "mid_b") lineRefs.push(`${STOCK_ENTITY_ID}#bottom`);
+  }
 
   const ok = (constraints: Constraint[]): BuildResult => ({ ok: true, constraints });
   const err = (error: string): BuildResult => ({ ok: false, error });
@@ -133,24 +144,34 @@ export function buildConstraintsFor(type: ConstraintType, doc: CADDocument): Bui
       return err("Select 1 line/segment and 1 circle/arc, or 2 arcs/circles");
     }
 
-    case "pointOnLine":
-      return pts.length === 1 && lineRefs.length === 1
-        ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [lineRefs[0]] })])
+    case "pointOnLine": {
+      const targetLines =
+        pts.length === 1
+          ? lineRefs.filter((l) => lineRefEntityId(l) !== pts[0].entityId)
+          : lineRefs;
+      return pts.length === 1 && targetLines.length === 1
+        ? ok([makeConstraint("pointOnLine", { points: [pts[0]], entities: [targetLines[0]] })])
         : err("Select 1 point and 1 line/segment");
+    }
 
     case "pointOnArc":
       return pts.length === 1 && arcs.length === 1
         ? ok([makeConstraint("pointOnArc", { points: [pts[0]], entities: [arcs[0].id] })])
         : err("Select 1 point and 1 arc");
 
-    case "midpoint":
-      if (pts.length === 1 && lineRefs.length === 1)
-        return ok([makeConstraint("midpoint", { points: [pts[0]], entities: [lineRefs[0]] })]);
+    case "midpoint": {
+      const targetLines =
+        pts.length === 1
+          ? lineRefs.filter((l) => lineRefEntityId(l) !== pts[0].entityId)
+          : lineRefs;
+      if (pts.length === 1 && targetLines.length === 1)
+        return ok([makeConstraint("midpoint", { points: [pts[0]], entities: [targetLines[0]] })]);
       // Two-point variant: the first selected point becomes the midpoint of
       // the other two (e.g. circle centre + two opposite rectangle corners).
       if (pts.length === 3 && ents.length === 0)
         return ok([makeConstraint("midpoint", { points: [pts[0], pts[1], pts[2]] })]);
       return err("Select 1 point and 1 line, or 3 points (first selected = midpoint)");
+    }
 
     case "symmetric":
       return pts.length === 2 && lineRefs.length === 1
@@ -259,6 +280,10 @@ export class ConstraintBar {
       this.message(res.error, "error");
       return;
     }
+
+    // Seed mover points onto reference targets so starting residual is satisfied
+    // and reference geometry doesn't drift or distort existing dimensions.
+    seedConstraintPoints(this.doc, res.constraints);
 
     // Rank-based check: compute how much the Jacobian rank actually increases.
     // This correctly handles redundant constraints (rank stays the same even

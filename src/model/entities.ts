@@ -40,7 +40,15 @@ export interface Bounds {
   max: Vec2;
 }
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "vertex" | "intersection";
+export type SnapKind =
+  | "endpoint"
+  | "midpoint"
+  | "center"
+  | "quadrant"
+  | "vertex"
+  | "intersection"
+  | "pointOnLine"
+  | "nearest";
 
 export interface SnapPoint {
   pos: Vec2;
@@ -148,7 +156,7 @@ export class LineEntity extends Entity {
     return [
       { pos: clone(this.a), kind: "endpoint", entityId: this.id, key: "a" },
       { pos: clone(this.b), kind: "endpoint", entityId: this.id, key: "b" },
-      { pos: mid(this.a, this.b), kind: "midpoint", entityId: this.id },
+      { pos: mid(this.a, this.b), kind: "midpoint", entityId: this.id, key: "mid" },
     ];
   }
   override translate(d: Vec2): void {
@@ -324,10 +332,16 @@ export class RectEntity extends Entity {
       entityId: this.id,
       key: cornerKeys[i],
     }));
+    const midKeys = ["mid_b", "mid_r", "mid_t", "mid_l"] as const;
     for (let i = 0; i < 4; i++) {
-      pts.push({ pos: mid(c[i], c[(i + 1) % 4]), kind: "midpoint", entityId: this.id });
+      pts.push({
+        pos: mid(c[i], c[(i + 1) % 4]),
+        kind: "midpoint",
+        entityId: this.id,
+        key: midKeys[i],
+      });
     }
-    pts.push({ pos: mid(this.minPt, this.maxPt), kind: "center", entityId: this.id });
+    pts.push({ pos: mid(this.minPt, this.maxPt), kind: "center", entityId: this.id, key: "center" });
     return pts;
   }
   override translate(d: Vec2): void {
@@ -527,7 +541,12 @@ export class PolylineEntity extends Entity {
     const segs = this.segmentCount();
     for (let i = 0; i < segs; i++) {
       const [s0, s1] = this.segment(i);
-      pts.push({ pos: mid(s0, s1), kind: "midpoint", entityId: this.id });
+      pts.push({
+        pos: mid(s0, s1),
+        kind: "midpoint",
+        entityId: this.id,
+        key: `mid_${this.vertexIds[i]}`,
+      });
     }
     return pts;
   }

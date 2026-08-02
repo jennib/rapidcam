@@ -7,8 +7,9 @@
  * to the nearest minor grid intersection.
  */
 
-import { type Vec2, dist } from "../core/vec2";
-import type { SnapPoint, EntityId } from "../model/entities";
+import { type Vec2, dist, sub, dot, add, scale } from "../core/vec2";
+import { distToSegment } from "../core/geom";
+import { type SnapPoint, type EntityId, LineEntity, RectEntity } from "../model/entities";
 import type { CADDocument } from "../model/document";
 import type { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
@@ -32,7 +33,7 @@ export class SnapEngine {
   gridEnabled = true;
   objectSnapEnabled = true;
   /** Object-snap pickup radius in screen pixels. */
-  pixelTolerance = 10;
+  pixelTolerance = 12;
 
   resolve(screen: Vec2, view: Viewport, doc: CADDocument, exclude?: Set<EntityId>): SnapResult {
     const rawWorld = view.screenToWorld(screen);
@@ -58,6 +59,47 @@ export class SnapEngine {
           best = { pos: { ...p }, kind: "intersection", entityId: "" };
         }
       }
+
+      // Point-on-line / edge snap: if no endpoint, midpoint or intersection is close,
+      // snap to the nearest point on any line / edge body within pixelTolerance.
+      if (!best) {
+        for (const e of this.snappableEntities(doc, exclude)) {
+          if (e instanceof LineEntity) {
+            const dWorld = distToSegment(rawWorld, e.a, e.b);
+            const dPx = dWorld * view.scale;
+            if (dPx <= this.pixelTolerance) {
+              const dir = sub(e.b, e.a);
+              const lenSq = dot(dir, dir);
+              const t = lenSq > 1e-12 ? Math.max(0, Math.min(1, dot(sub(rawWorld, e.a), dir) / lenSq)) : 0;
+              const proj = add(e.a, scale(dir, t));
+              const projPx = dist(view.worldToScreen(proj), screen);
+              if (projPx <= bestPx) {
+                bestPx = projPx;
+                best = { pos: proj, kind: "pointOnLine", entityId: e.id };
+              }
+            }
+          } else if (e instanceof RectEntity) {
+            const corners = e.corners();
+            for (let i = 0; i < 4; i++) {
+              const ca = corners[i];
+              const cb = corners[(i + 1) % 4];
+              const dWorld = distToSegment(rawWorld, ca, cb);
+              if (dWorld * view.scale <= this.pixelTolerance) {
+                const dir = sub(cb, ca);
+                const lenSq = dot(dir, dir);
+                const t = lenSq > 1e-12 ? Math.max(0, Math.min(1, dot(sub(rawWorld, ca), dir) / lenSq)) : 0;
+                const proj = add(ca, scale(dir, t));
+                const projPx = dist(view.worldToScreen(proj), screen);
+                if (projPx <= bestPx) {
+                  bestPx = projPx;
+                  best = { pos: proj, kind: "pointOnLine", entityId: e.id };
+                }
+              }
+            }
+          }
+        }
+      }
+
       if (best) return { world: { ...best.pos }, snap: best };
     }
 

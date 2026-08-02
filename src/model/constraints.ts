@@ -13,7 +13,8 @@
  */
 
 import { angleInArc, arcAngleDiff, clampAngleToArc } from "../core/geom";
-import { cross, dot, len, mid, normalize, sub, type Vec2 } from "../core/vec2";
+import { add, cross, dot, len, mid, normalize, scale, sub, type Vec2 } from "../core/vec2";
+import type { CADDocument } from "./document";
 import {
   ArcEntity,
   CircleEntity,
@@ -127,8 +128,42 @@ export interface LineGeom {
  * polyline-segment ref (`polylineId#index`). Returns null for non-line refs
  * (circles, arcs, missing entities) so callers can fall through.
  */
+const STOCK_ENTITY_ID = "__stock__";
+
 function lineGeom(geo: Geo, ref: EntityId | undefined): LineGeom | null {
   if (!ref) return null; // entity-less constraint (e.g. point-pair horizontal/vertical) — let caller fall through
+  if (ref.startsWith(STOCK_ENTITY_ID)) {
+    const stock = geo(STOCK_ENTITY_ID);
+    if (!stock) return null;
+    try {
+      const bl = stock.getPoint("bl");
+      const br = stock.getPoint("br");
+      const tr = stock.getPoint("tr");
+      const tl = stock.getPoint("tl");
+      const edge = ref.slice(STOCK_ENTITY_ID.length + 1);
+      switch (edge) {
+        case "right":
+        case "r":
+        case "mid_r":
+          return { a: br, b: tr };
+        case "top":
+        case "t":
+        case "mid_t":
+          return { a: tl, b: tr };
+        case "bottom":
+        case "b":
+        case "mid_b":
+          return { a: bl, b: br };
+        case "left":
+        case "l":
+        case "mid_l":
+        default:
+          return { a: bl, b: tl };
+      }
+    } catch {
+      return null;
+    }
+  }
   const sep = ref.indexOf(SEGMENT_SEP);
   if (sep >= 0) {
     const poly = geo(ref.slice(0, sep));
@@ -571,4 +606,65 @@ export function constraintAnchors(c: Constraint, geo: Geo): Vec2[] {
   }
 
   return anchors;
+}
+
+/**
+ * Seed mover points of newly created constraints onto their target references
+ * before solving so that the solver starts with a satisfied equation and
+ * reference geometry doesn't drift or distort.
+ */
+export function seedConstraintPoints(doc: CADDocument, constraints: Constraint[]): void {
+  const byId = new Map(doc.entities.map((e) => [e.id, e]));
+  const geo: Geo = (id) => byId.get(id);
+
+  for (const c of constraints) {
+    if (c.type === "pointOnLine" && c.points.length > 0 && c.entities.length > 0) {
+      const p = readPoint(geo, c.points[0]);
+      const l = lineGeom(geo, c.entities[0]);
+      if (p && l) {
+        const dir = sub(l.b, l.a);
+        const lenSq = dot(dir, dir);
+        if (lenSq > 1e-12) {
+          const t = Math.max(0, Math.min(1, dot(sub(p, l.a), dir) / lenSq));
+          const proj = add(l.a, scale(dir, t));
+          const ent = byId.get(c.points[0].entityId);
+          if (ent) ent.setPoint(c.points[0].key, proj);
+        }
+      }
+    } else if (c.type === "midpoint") {
+      if (c.points.length === 1 && c.entities.length === 1) {
+        const l = lineGeom(geo, c.entities[0]);
+        if (l) {
+          const m = mid(l.a, l.b);
+          const ent = byId.get(c.points[0].entityId);
+          if (ent) ent.setPoint(c.points[0].key, m);
+        }
+      } else if (c.points.length === 3) {
+        const p1 = readPoint(geo, c.points[1]);
+        const p2 = readPoint(geo, c.points[2]);
+        if (p1 && p2) {
+          const m = mid(p1, p2);
+          const ent = byId.get(c.points[0].entityId);
+          if (ent) ent.setPoint(c.points[0].key, m);
+        }
+      }
+    } else if (c.type === "coincident" && c.points.length === 2) {
+      const p2 = readPoint(geo, c.points[1]);
+      if (p2) {
+        const ent = byId.get(c.points[0].entityId);
+        if (ent) ent.setPoint(c.points[0].key, p2);
+      }
+    } else if (c.type === "pointOnCircle" && c.points.length > 0 && c.entities.length > 0) {
+      const p = readPoint(geo, c.points[0]);
+      const circ = asCircle(geo, c.entities[0]);
+      if (p && circ) {
+        const v = sub(p, circ.center);
+        const d = len(v);
+        const dir = d > 1e-9 ? scale(v, 1 / d) : { x: 1, y: 0 };
+        const proj = add(circ.center, scale(dir, circ.radius));
+        const ent = byId.get(c.points[0].entityId);
+        if (ent) ent.setPoint(c.points[0].key, proj);
+      }
+    }
+  }
 }

@@ -22,6 +22,7 @@ import {
   type DocSnapshot,
   STOCK_ENTITY_ID,
   stockRefEntity,
+  stockSnapPoints,
 } from "../model/document";
 import {
   type Bounds,
@@ -126,9 +127,16 @@ export class SelectTool implements Tool {
           }
         }
       }
+      for (const sp of stockSnapPoints(ctx.doc)) {
+        const d = dist(e.screen, ctx.view.worldToScreen(sp.pos));
+        if (d < 14 && d < bestD) {
+          bestRef = { entityId: sp.entityId, key: sp.key! };
+          bestD = d;
+        }
+      }
       if (bestRef) {
-        const ent = ctx.doc.entities.find((x) => x.id === bestRef!.entityId)!;
-        if (!ent.selected) ent.selected = true;
+        const ent = ctx.doc.entities.find((x) => x.id === bestRef!.entityId);
+        if (ent && !ent.selected) ent.selected = true;
         ctx.doc.togglePoint(bestRef);
         return;
       }
@@ -139,6 +147,12 @@ export class SelectTool implements Tool {
         const ent = ctx.doc.entities.find((x) => x.id === seg.entityId)!;
         if (!ent.selected) ent.selected = true;
         ctx.doc.toggleSegment(seg);
+        return;
+      }
+      const stockEdge = this.pickStockEdge(e, ctx);
+      if (stockEdge) {
+        ctx.doc.togglePoint(stockEdge);
+        return;
       }
       return;
     }
@@ -828,6 +842,35 @@ export class SelectTool implements Tool {
       }
     }
     return best;
+  }
+
+  /** Nearest stock edge under the cursor (within 10px on screen), or null. */
+  private pickStockEdge(e: ToolPointerEvent, ctx: ToolContext): PointRef | null {
+    const stock = stockRefEntity(ctx.doc);
+    try {
+      const bl = stock.getPoint("bl");
+      const br = stock.getPoint("br");
+      const tr = stock.getPoint("tr");
+      const tl = stock.getPoint("tl");
+      const edges: { key: string; a: Vec2; b: Vec2 }[] = [
+        { key: "mid_l", a: bl, b: tl },
+        { key: "mid_r", a: br, b: tr },
+        { key: "mid_t", a: tl, b: tr },
+        { key: "mid_b", a: bl, b: br },
+      ];
+      let bestKey: string | null = null;
+      let bestPx = 10;
+      for (const edge of edges) {
+        const px = distToSegment(e.worldRaw, edge.a, edge.b) * ctx.view.scale;
+        if (px <= bestPx) {
+          bestPx = px;
+          bestKey = edge.key;
+        }
+      }
+      return bestKey ? { entityId: STOCK_ENTITY_ID, key: bestKey } : null;
+    } catch {
+      return null;
+    }
   }
 
   private getTransformBox(ctx: ToolContext): TransformBox | null {

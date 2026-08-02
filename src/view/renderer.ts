@@ -27,6 +27,7 @@ import {
   CONSTRAINT_GLYPH,
   type Geo,
   constraintEntityIds,
+  lineRefEntityId,
 } from "../model/constraints";
 import { dimensionLayout } from "../model/dimensions";
 import type { Viewport } from "./viewport";
@@ -765,12 +766,17 @@ export class Renderer {
     if (doc.constraints.length === 0) return;
     const ctx = this.ctx;
     const byId = new Map(doc.entities.map((e) => [e.id, e]));
-    const geo: Geo = (id) => byId.get(id);
+    const geo: Geo = (id) =>
+      id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID)
+        ? stockRefEntity(doc)
+        : byId.get(id);
     const stack = new Map<string, number>(); // spread multiple badges at one anchor
 
     const isVisible = (id: string) => {
-      if (id === ORIGIN_ENTITY_ID) return true;
-      const e = byId.get(id);
+      if (id === ORIGIN_ENTITY_ID || id === STOCK_ENTITY_ID || id.startsWith(STOCK_ENTITY_ID))
+        return true;
+      const cleanId = lineRefEntityId(id);
+      const e = byId.get(cleanId);
       if (!e) return false;
       const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       return layer.visible;
@@ -791,14 +797,17 @@ export class Renderer {
             shouldShow = true;
             break;
           }
-          const e = byId.get(eid);
+          const cleanId = lineRefEntityId(eid);
+          const e = byId.get(cleanId);
           if (e?.selected) {
             shouldShow = true;
             break;
           }
           if (
-            eid === ORIGIN_ENTITY_ID &&
-            doc.selectedPoints.some((p) => p.entityId === ORIGIN_ENTITY_ID)
+            (cleanId === ORIGIN_ENTITY_ID || cleanId === STOCK_ENTITY_ID) &&
+            doc.selectedPoints.some(
+              (p) => p.entityId === ORIGIN_ENTITY_ID || p.entityId === STOCK_ENTITY_ID,
+            )
           ) {
             shouldShow = true;
             break;
@@ -1212,24 +1221,33 @@ export class Renderer {
     const s = view.worldToScreen(overlay.snap.pos);
     ctx.save();
     ctx.strokeStyle = COLORS.snapMarker;
-    ctx.lineWidth = 1.5;
-    const r = 5;
+    ctx.fillStyle = "rgba(47, 158, 143, 0.25)";
+    ctx.lineWidth = 2.5;
+    const r = 9;
     // Marker shape hints at the snap kind.
     switch (overlay.snap.kind) {
       case "center":
         ctx.beginPath();
         ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(s.x - 4, s.y);
+        ctx.lineTo(s.x + 4, s.y);
+        ctx.moveTo(s.x, s.y - 4);
+        ctx.lineTo(s.x, s.y + 4);
         ctx.stroke();
         break;
       case "midpoint":
         ctx.beginPath();
         ctx.moveTo(s.x, s.y - r);
-        ctx.lineTo(s.x + r, s.y + r);
-        ctx.lineTo(s.x - r, s.y + r);
+        ctx.lineTo(s.x + r + 1, s.y + r);
+        ctx.lineTo(s.x - r - 1, s.y + r);
         ctx.closePath();
+        ctx.fill();
         ctx.stroke();
         break;
-      case "intersection": // X
+      case "intersection": // X with box
         ctx.beginPath();
         ctx.moveTo(s.x - r, s.y - r);
         ctx.lineTo(s.x + r, s.y + r);
@@ -1237,8 +1255,22 @@ export class Renderer {
         ctx.lineTo(s.x - r, s.y + r);
         ctx.stroke();
         break;
+      case "pointOnLine":
+      case "nearest":
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y - r);
+        ctx.lineTo(s.x + r, s.y);
+        ctx.lineTo(s.x, s.y + r);
+        ctx.lineTo(s.x - r, s.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
       default: // endpoint / vertex / quadrant → square
-        ctx.strokeRect(s.x - r, s.y - r, r * 2, r * 2);
+        ctx.beginPath();
+        ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
+        ctx.fill();
+        ctx.stroke();
         break;
     }
     ctx.restore();

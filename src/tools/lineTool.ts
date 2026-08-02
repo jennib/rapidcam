@@ -23,12 +23,12 @@ export class LineTool implements Tool {
     if (e.button !== 0) return;
     if (!this.start) {
       this.start = e.world;
-      this.startSnap = e.snap?.key ? e.snap : null;
+      this.startSnap = e.snap;
       this.anchorScreen = e.screen;
     } else {
       const shifted = e.shiftKey;
       const world = shifted ? orthoSnap(this.start, e.world) : e.world;
-      const endSnap = shifted ? null : e.snap?.key ? e.snap : null;
+      const endSnap = shifted ? null : e.snap;
       if (distSq(this.start, world) > 1e-9) {
         ctx.pushHistory();
         const ent = new LineEntity(this.start, world);
@@ -90,20 +90,29 @@ export class LineTool implements Tool {
   }
 }
 
-/** If `snap` has a point key, add a coincident constraint between the new entity's point and the snapped entity's point. */
-function autoJoin(
+/** If `snap` has a point key or is on a line, add the appropriate constraint. */
+export function autoJoin(
   ctx: ToolContext,
   newEntityId: string,
   newKey: string,
   snap: SnapPoint | null,
 ): void {
-  if (!snap?.key) return;
-  ctx.doc.addConstraint(
-    makeConstraint("coincident", {
-      points: [
-        { entityId: newEntityId, key: newKey },
-        { entityId: snap.entityId, key: snap.key },
-      ],
-    }),
-  );
+  if (!snap) return;
+  if (snap.key && snap.entityId) {
+    ctx.doc.addConstraint(
+      makeConstraint("coincident", {
+        points: [
+          { entityId: newEntityId, key: newKey },
+          { entityId: snap.entityId, key: snap.key },
+        ],
+      }),
+    );
+  } else if (snap.kind === "pointOnLine" && snap.entityId) {
+    ctx.doc.addConstraint(
+      makeConstraint("pointOnLine", {
+        points: [{ entityId: newEntityId, key: newKey }],
+        entities: [snap.entityId],
+      }),
+    );
+  }
 }
