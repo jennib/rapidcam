@@ -29,7 +29,7 @@ import {
   constraintEntityIds,
   lineRefEntityId,
 } from "../model/constraints";
-import { dimensionLayout } from "../model/dimensions";
+import { dimensionLayout, setDimLabelMeasurer } from "../model/dimensions";
 import type { Viewport } from "./viewport";
 import { computeGrid } from "./grid";
 import { COLORS } from "./colors";
@@ -43,6 +43,9 @@ import type {
 import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 import { rotaryWrapHint, tickLabel } from "./rotaryOverlay";
+
+/** The one font dimension labels are drawn AND measured in — see setDimLabelMeasurer. */
+const DIM_LABEL_FONT = "11px ui-monospace, monospace";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -67,6 +70,13 @@ export class Renderer {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas context unavailable");
     this.ctx = ctx;
+    // Let dimension layout measure labels in the font they are drawn in, so
+    // "does this label fit between the arrows" matches what appears — and so
+    // hit-testing, which asks the same question, agrees with the drawing.
+    setDimLabelMeasurer((label) => {
+      ctx.font = DIM_LABEL_FONT;
+      return ctx.measureText(label).width;
+    });
   }
 
   /** Resize the backing store to the host element; returns CSS pixel size. */
@@ -745,7 +755,7 @@ export class Renderer {
 
   private drawDimText(pos: Vec2, label: string, driving: boolean, isSelected = false): void {
     const ctx = this.ctx;
-    ctx.font = "11px ui-monospace, monospace";
+    ctx.font = DIM_LABEL_FONT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const w = ctx.measureText(label).width;

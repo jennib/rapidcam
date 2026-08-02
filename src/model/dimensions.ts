@@ -489,6 +489,22 @@ export function dimensionAnchorsFromCursor(
 }
 
 /**
+ * Real on-screen width of a dimension label, installed by the renderer so the
+ * fit test uses the font the label is actually drawn in.
+ *
+ * A per-character estimate was measurably wrong — 6.7px/char guessed 115px for
+ * a label that measures 97px, a 19% overshoot that pushed labels outside spans
+ * they comfortably fitted. The exact width also depends on which monospace
+ * face the platform resolves, so no constant is right everywhere. Hit-testing
+ * calls the same function, so the clickable label cannot drift from the drawn
+ * one.
+ */
+let measureLabelPx: ((label: string) => number) | null = null;
+export function setDimLabelMeasurer(fn: ((label: string) => number) | null): void {
+  measureLabelPx = fn;
+}
+
+/**
  * Where the value text sits on a linear dimension: centred on the dimension
  * line normally, shifted just past the far arrow when it would not fit
  * between them.
@@ -515,14 +531,37 @@ function linearTextPos(
 ): Vec2 {
   const centre = mid(p2, q2);
   if (!pxPerMm || pxPerMm <= 0) return centre;
-  // Matches drawDimText: 11px ui-monospace, 4px padding each side. Monospace
-  // makes a per-character estimate accurate enough to decide fit.
-  const textPx = label.length * 6.7 + 8;
+  // + 4px padding each side, matching drawDimText's background box. The
+  // fallback estimate is only used before the renderer installs a measurer
+  // (headless callers, tests).
+  const textPx = (measureLabelPx?.(label) ?? label.length * 6.05) + 8;
   const spanPx = len(sub(q2, p2)) * pxPerMm;
   if (spanPx >= textPx + 6) return centre; // fits, with a little clearance
   // Doesn't fit: park it just beyond the far arrow, on the dimension line.
   const outMm = (textPx / 2 + 8) / pxPerMm;
   return add(q2, scale(dir, outMm));
+}
+
+/**
+ * Prefix a driven dimension's label with the formula driving it, so
+ * "width = 50.00 mm" rather than a bare "50.00 mm".
+ *
+ * A variable-driven dimension used to render identically to a hand-typed
+ * one — the expression lived only in the editor, so nothing on the canvas
+ * said the number came from a variable, let alone which. CAD tools differ on
+ * whether to show the name or the value, but they agree a driven dimension
+ * must not look like a plain number (SolidWorks marks equation-driven dims,
+ * AutoCAD's parametric constraints show name = value by default).
+ *
+ * Angles are excluded to stay in step with dimEditor, which does not offer
+ * expression editing for them: a label reading "x = 45" that opened an editor
+ * showing only "45" would invite committing the formula away by accident.
+ * A non-driving (reference) dimension shows no formula either — its expression
+ * drives nothing, so claiming otherwise would be a lie.
+ */
+function withExpr(dim: Dimension, label: string): string {
+  if (!dim.driving || !dim.expr || dim.type === "angle") return label;
+  return `${dim.expr} = ${label}`;
 }
 
 export function dimensionLayout(
@@ -546,7 +585,7 @@ export function dimensionLayout(
         segments: isArcEnt ? [[edge, end]] : [[g.center, end]],
         arrows: [{ tip: edge, dir: u }],
         textPos: end,
-        label: `R${formatLengthWithUnit(displayVal, unit)}`,
+        label: withExpr(dim, `R${formatLengthWithUnit(displayVal, unit)}`),
       };
     }
     const e2 = sub(g.center, scale(u, g.radius));
@@ -559,7 +598,7 @@ export function dimensionLayout(
             { tip: e2, dir: scale(u, -1) },
           ],
       textPos: end,
-      label: `⌀${formatLengthWithUnit(displayVal, unit)}`,
+      label: withExpr(dim, `⌀${formatLengthWithUnit(displayVal, unit)}`),
     };
   }
 
@@ -581,7 +620,7 @@ export function dimensionLayout(
         { tip: pOuter, dir: scale(u, -1) }, // points inward across the gap
       ],
       textPos: end,
-      label: formatLengthWithUnit(displayVal, unit),
+      label: withExpr(dim, formatLengthWithUnit(displayVal, unit)),
     };
   }
 
@@ -606,7 +645,7 @@ export function dimensionLayout(
         { tip: add(a.center, scale(d2, R)), dir: arrow2Dir },
       ],
       textPos: add(a.center, scale({ x: Math.cos(midAngle), y: Math.sin(midAngle) }, R + 2)),
-      label: `∩${formatLengthWithUnit(displayVal, unit)}`,
+      label: withExpr(dim, `∩${formatLengthWithUnit(displayVal, unit)}`),
       arc: { center: a.center, radius: R, startDir: d1, endDir: d2, ccw: true },
     };
   }
@@ -679,7 +718,7 @@ export function dimensionLayout(
     // the lines is `anchors` — see resolveLineDistanceCrossing.
     const span = len(sub(q, p));
     const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
-    const gapLabel = formatLengthWithUnit(displayVal, unit);
+    const gapLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
     return {
       segments: [[p, q]],
       // Arrows point outward, each into the line it touches.
@@ -710,7 +749,7 @@ export function dimensionLayout(
 
   const along = len(sub(q2, p2));
   const dir = along > 1e-9 ? scale(sub(q2, p2), 1 / along) : { x: 1, y: 0 };
-  const linLabel = formatLengthWithUnit(displayVal, unit);
+  const linLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
   return {
     segments: [
       [p, p2],

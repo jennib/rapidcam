@@ -705,3 +705,91 @@ const pr = (e: LineEntity, k: "a" | "b") => ({ entityId: e.id, key: k });
     `d=${dimensionHitDistance(dim, geo, tight.textPos, "mm", 1.864)}`,
   );
 }
+
+// 20) A variable-driven dimension must not render as a bare number. The
+//     expression lived only in the editor, so on canvas "width" and a
+//     hand-typed 50 looked identical — you could not tell which dimensions
+//     were parametric, let alone what drove them.
+{
+  const doc = new CADDocument({ width: 300, height: 200 });
+  const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 50, y: 0 })) as LineEntity;
+  const geo = geoOf(doc);
+
+  const driven = makeDimension("distance", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 50,
+    offset: 12,
+    expr: "width",
+  });
+  check(
+    "a driven dimension shows 'expr = value'",
+    dimensionLayout(driven, geo, "mm")?.label === "width = 50.00 mm",
+    `label=${dimensionLayout(driven, geo, "mm")?.label}`,
+  );
+
+  // A real formula reads the same way, not just a bare variable name.
+  const formula = makeDimension("distance", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 50,
+    offset: 12,
+    expr: "width * 2",
+  });
+  check(
+    "a formula-driven dimension shows the whole expression",
+    dimensionLayout(formula, geo, "mm")?.label === "width * 2 = 50.00 mm",
+    `label=${dimensionLayout(formula, geo, "mm")?.label}`,
+  );
+
+  const plain = makeDimension("distance", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 50,
+    offset: 12,
+  });
+  check(
+    "a hand-typed dimension is unchanged — no stray '=' prefix",
+    dimensionLayout(plain, geo, "mm")?.label === "50.00 mm",
+    `label=${dimensionLayout(plain, geo, "mm")?.label}`,
+  );
+
+  // A reference dim's expression drives nothing, so it must not claim to.
+  const reference = makeDimension("distance", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 50,
+    offset: 12,
+    expr: "width",
+    driving: false,
+  });
+  check(
+    "a NON-driving dimension shows no formula",
+    !dimensionLayout(reference, geo, "mm")?.label.includes("width"),
+    `label=${dimensionLayout(reference, geo, "mm")?.label}`,
+  );
+
+  // Radius keeps its R marker alongside the formula.
+  const c = doc.add(new CircleEntity({ x: 100, y: 100 }, 20)) as CircleEntity;
+  const rad = makeDimension("radius", {
+    entities: [c.id],
+    value: 20,
+    offset: 0.7,
+    expr: "holeR",
+  });
+  check(
+    "radius keeps its R prefix as well as the formula",
+    dimensionLayout(rad, geoOf(doc), "mm")?.label === "holeR = R20.00 mm",
+    `label=${dimensionLayout(rad, geoOf(doc), "mm")?.label}`,
+  );
+
+  // The longer label must feed the fit test, or it will overflow its span.
+  const longNamed = makeDimension("distance", {
+    points: [pr(l, "a"), pr(l, "b")],
+    value: 50,
+    offset: 12,
+    expr: "someRatherLongVariableName",
+  });
+  const fitted = dimensionLayout(longNamed, geo, "mm", 1.864)!;
+  check(
+    "a long formula label is pushed outside the span like any other overflow",
+    fitted.textPos.x > 50,
+    `textPos.x=${fitted.textPos.x.toFixed(2)} (span x 0..50)`,
+  );
+}
