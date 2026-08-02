@@ -11,8 +11,15 @@
  * click. Since the stock usually fills or nearly fills the canvas, an ordinary
  * "click open space to place the dimension" click routinely lands within
  * tolerance of ITS edge too, silently swallowing the click instead of committing
- * (caught via imageDimensionOrphan.test.ts going from 1 dimension to 0). The
- * second test below guards that regression directly.
+ * (caught via imageDimensionOrphan.test.ts going from 1 dimension to 0). That
+ * regressed the "pick a real entity FIRST, then the stock edge SECOND" gesture
+ * entirely (reported: starting from a line, clicking the stock edge just kept
+ * defining the line's own length). The actual fix: pickStockEdge only matches
+ * when `doc.stockRect` is explicitly set — the legacy "stock fills the canvas"
+ * case draws no distinct stock rectangle at all (see renderer.ts), so there is
+ * no visible line for a click near the canvas edge to have meant, and it's
+ * exactly that case the regression test exercises. With a real, visibly-drawn
+ * stock rect there's an actual edge to redirect onto.
  */
 import { describe, expect, it } from "vitest";
 import type { Vec2 } from "../src/core/vec2";
@@ -87,6 +94,37 @@ describe("continuous stock-edge picking", () => {
     expect(stockPoint?.key).toBe("mid_l");
     expect(dim.points.some((p) => p.entityId === line.id)).toBe(true);
     expect(dim.value).toBeCloseTo(100, 3); // |150 - 50|
+  });
+
+  it("clicking the LINE first, then the stock edge mid-point second, redirects onto the stock (not the line's own length)", () => {
+    // The exact reported failure: starting from the stock worked, starting
+    // from the line did not — clicking the stock edge second just kept
+    // defining the line's own length, because the FIRST fix attempt disabled
+    // the continuous stock pick entirely during "placeLinear" (see the file
+    // banner comment) rather than gating it on a real, visible stockRect.
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 50, y: 50, width: 200, height: 150 }; // left edge y:50..200
+    const line = doc.add(new LineEntity({ x: 150, y: 70 }, { x: 150, y: 170 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // y=100, not the line's exact endpoints/midpoint (70/120/170) — a generic
+    // body click (hits the "first" phase's hit.type==="line" branch, which goes
+    // straight to "placeLinear"), not an exact-point pick (which would instead
+    // land in "second" phase — a different, discrete-points-only code path).
+    click(tool, ctx, { x: 150, y: 100 }); // the line's body -> starts as "measure my own length"
+    move(tool, ctx, { x: 50, y: 90 }); // the stock's left edge, off any hotspot
+    click(tool, ctx, { x: 50, y: 90 });
+    move(tool, ctx, { x: 100, y: 260 }); // place well above the midpoint -> horizontal type
+    click(tool, ctx, { x: 100, y: 260 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    // Must NOT be the line's own two endpoints (its length, 100mm) — must be
+    // redirected to measure against the stock edge instead.
+    expect(dim.points.some((p) => p.entityId === STOCK_ENTITY_ID)).toBe(true);
+    expect(dim.points.some((p) => p.entityId === line.id)).toBe(true);
+    expect(dim.value).toBeCloseTo(100, 3); // |150 - 50|, same edge, different anchor
   });
 
   it("an open-space placement click near the stock edge still commits — it is not reinterpreted as a re-pick", () => {

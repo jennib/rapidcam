@@ -273,18 +273,23 @@ export class DimensionTool implements Tool {
               if (this.firstMid) newP1 = this.firstMid;
             }
           }
+        } else if (this.p1!.ref.entityId !== STOCK_ENTITY_ID) {
+          // Not a hitTest candidate — the stock rect isn't an entity — so check it
+          // explicitly, same as any other edge. pickStockEdge itself refuses to
+          // match unless doc.stockRect is explicitly set (see its doc comment):
+          // this SAME branch also handles the FINAL placement click, and the
+          // legacy "stock fills the whole canvas" case draws no distinct stock
+          // rectangle at all, so an ordinary "click open space to place" click
+          // could land near the invisible canvas edge and get silently
+          // reinterpreted as re-picking the stock instead of committing (caught
+          // via imageDimensionOrphan.test.ts going from 1 dimension to 0). With a
+          // real, visibly-drawn stock rect there's an actual line to have meant.
+          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
+          if (edge) {
+            newP2 = edge.mid;
+            if (this.firstMid) newP1 = this.firstMid;
+          }
         }
-        // Deliberately NOT offering a continuous stock-edge fallback here (unlike
-        // the "first" phase and hover-preview below): this same branch also
-        // handles the FINAL placement click, and the stock rect usually fills or
-        // nearly fills the whole canvas — an ordinary "click open space to place
-        // the dimension" click routinely lands within tolerance of ITS edge too.
-        // That turned "place below this image" into a silent no-op (the click was
-        // reinterpreted as re-picking p2 onto the stock instead of committing) —
-        // see the regression this caused in imageDimensionOrphan.test.ts. Picking
-        // the stock as the SECOND point still works at its 8 corner/midpoint
-        // hotspots via pickPoint above; only picking anywhere along a stock edge
-        // as the second point specifically requires clicking the stock FIRST.
         if (newP2) {
           this.forcedLinearType = null;
           // See the matching guard in recompute(): a stock edge can't feed the
@@ -383,10 +388,14 @@ export class DimensionTool implements Tool {
               if (this.firstMid) newP1 = this.firstMid;
             }
           }
+        } else if (this.p1!.ref.entityId !== STOCK_ENTITY_ID) {
+          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
+          if (edge) {
+            newP2 = edge.mid;
+            if (this.firstMid) newP1 = this.firstMid;
+            this.hoverRaw = e.worldRaw;
+          }
         }
-        // No stock fallback here either — see the matching comment in
-        // onPointerDown's "placeLinear" case; the preview must not promise an
-        // anchor the click won't actually commit to.
         if (newP2) {
           this.hoverP1 = newP1;
           this.hoverP2 = newP2;
@@ -830,12 +839,23 @@ function pickRectOrImageEdge(
  * Without this, only the stock's 8 exact corner/midpoint points (each an
  * ~8px hotspot) were clickable — the rest of every edge was dead space, unlike
  * every other edge in the app.
+ *
+ * Requires an explicit `doc.stockRect` — the legacy null case ("stock fills
+ * the whole canvas") draws no distinct stock rectangle at all (see
+ * renderer.ts's drawWorkArea), so its "edge" is visually indistinguishable
+ * from the plain work-area boundary. Offering a full-length click target
+ * along a line the user can't even see is how a placement click ended up
+ * silently hijacked (see the guard in onPointerDown's "placeLinear" case).
+ * The 8 discrete corner/midpoint hotspots (pickPoint, in document.ts) stay
+ * available in the legacy case too — their tiny footprint doesn't carry the
+ * same risk.
  */
 function pickStockEdge(
   doc: CADDocument,
   p: Vec2,
   tol: number,
 ): { p1: Pick; p2: Pick; mid: Pick } | null {
+  if (!doc.stockRect) return null;
   const bl = stockRefPoint(doc, "bl");
   const br = stockRefPoint(doc, "br");
   const tr = stockRefPoint(doc, "tr");
