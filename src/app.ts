@@ -1035,6 +1035,7 @@ export class App {
       displayUnit: this.doc.displayUnit,
       vars: varMap(this.doc.variables, this.doc.stockThickness),
       onCommit: (v, expr) => this.commitDimValue(dim, v, expr),
+      onError: (msg) => this.statusBar.flash(msg),
     });
   }
 
