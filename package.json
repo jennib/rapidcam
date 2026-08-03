@@ -18,7 +18,8 @@
     "cli": "tsx cli/rapidcam.ts",
     "mcp": "tsx mcp/server.ts",
     "test:e2e": "playwright test",
-    "validate": "npm run lint && npm run typecheck && npm test && npm run build",
+    "//validate": "Ends with `vite build`, not `npm run build`, so tsc runs once. Do NOT 'simplify' this the other two ways: stripping tsc from `build` would let a manual/host deploy ship type-broken code (CI only runs validate, so it would not notice), and dropping the separate typecheck would push type errors behind the 35s test run instead of surfacing them in 4s.",
+    "validate": "npm run lint && npm run typecheck && npm test && vite build",
     "validate:all": "npm run validate && npm run test:e2e",
     "clean": "node clean.js"
   },
