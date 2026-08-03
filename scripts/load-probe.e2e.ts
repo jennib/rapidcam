@@ -27,13 +27,13 @@ for (const p of PROFILES) {
     // Warm the preview server first: the very first request pays disk reads the
     // later ones do not, which made the first profile measured look slowest
     // regardless of its throttle.
-    await page.goto("http://localhost:4173/", { waitUntil: "domcontentloaded" });
+    await page.goto("http://127.0.0.1:4173/", { waitUntil: "domcontentloaded" });
     await page.locator(".welcome-backdrop").waitFor({ timeout: 120_000 });
     bytes = 0;
     await page.goto("about:blank");
 
     const t0 = Date.now();
-    await page.goto("http://localhost:4173/", { waitUntil: "domcontentloaded" });
+    await page.goto("http://127.0.0.1:4173/", { waitUntil: "domcontentloaded" });
     const domReady = Date.now() - t0;
     // `window.__app` is a DEV-only hook, so on a production build the honest
     // interactive signal is the start surface actually being on screen.

@@ -31,7 +31,7 @@ import { StorageKeys } from "../src/core/storageKeys";
 export { expect };
 
 /** Where the Playwright-managed Vite dev server listens (see playwright.config.ts). */
-export const APP_URL = "http://localhost:5173/";
+export const APP_URL = "http://127.0.0.1:5173/";
 
 /** `test`, but the consent banner never renders. Use this for app-driving specs. */
 export const test = base.extend({

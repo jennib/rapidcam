@@ -18,7 +18,7 @@ export default defineConfig({
   workers: 1,
   globalTimeout: 30 * 60_000,
   reporter: "list",
-  use: { baseURL: "http://localhost:5173", trace: "off" },
+  use: { baseURL: "http://127.0.0.1:5173", trace: "off" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   // Two servers, because the probes measure two different things: the
   // interaction probes drive the dev server, while load-probe times
@@ -27,14 +27,14 @@ export default defineConfig({
   // once rather than on every run.
   webServer: [
     {
-      command: "npm run dev",
-      url: "http://localhost:5173",
+      command: "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort",
+      url: "http://127.0.0.1:5173",
       reuseExistingServer: true,
       timeout: 120_000,
     },
     {
-      command: "npm run build && npm run preview",
-      url: "http://localhost:4173",
+      command: "npm run build && npx vite preview --host 127.0.0.1 --port 4173 --strictPort",
+      url: "http://127.0.0.1:4173",
       reuseExistingServer: true,
       timeout: 180_000,
     },

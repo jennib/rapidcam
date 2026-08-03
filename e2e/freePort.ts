@@ -1,5 +1,12 @@
 /**
- * Force-free the dev-server port, before and after a Playwright run.
+ * Force-free the dev-server port AFTER a Playwright run.
+ *
+ * globalTeardown ONLY. Do not wire this to globalSetup: Playwright starts the
+ * `webServer` before globalSetup runs, so freeing the port there kills the very
+ * server the tests need, and every spec fails with ERR_CONNECTION_REFUSED while
+ * the server appears to have started normally. That mistake shipped and broke
+ * CI; it passes locally right up until there is a leaked server on the port for
+ * the setup hook to find.
  *
  * Playwright cannot be relied on to stop the server it started. It has no
  * SIGTERM on Windows, so it force-kills the process *group*, and a Vite server
@@ -11,10 +18,10 @@
  * in all of them. Clearing them cut this suite's wall time from ~2.9 min to ~50s.
  *
  * Rather than hoping a shorter process chain gets killed (it mostly does, which
- * is precisely the trap), this makes it deterministic: whoever holds the port
- * dies, both before the run and after it. Killing beforehand also means a stale
- * server can never be silently reused by `reuseExistingServer` — the suite
- * always tests the code in the working tree.
+ * is precisely the trap), this makes it deterministic: after the run, whoever
+ * holds the port dies. One leaked server can still be present at the START of a
+ * run if the previous one was killed mid-flight; `reuseExistingServer` is left
+ * on locally so that case is reused rather than fought over.
  *
  * Deliberately kills by PORT, not by process name: the target is "whatever is
  * squatting on 5173", which is the actual problem, and node processes unrelated

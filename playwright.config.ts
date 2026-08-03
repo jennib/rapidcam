@@ -16,19 +16,30 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "list" : "html",
   use: {
-    baseURL: "http://localhost:5173",
+    // 127.0.0.1, not "localhost". "localhost" resolves to both ::1 and
+    // 127.0.0.1 while Vite listens on IPv4 only, so the family a given client
+    // picks decides whether it connects. Pinning the literal address takes name
+    // resolution out of the picture. (This was NOT what broke CI — see the
+    // teardown note below — but it is one less thing that can.)
+    baseURL: "http://127.0.0.1:5173",
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // Kill whatever holds :5173 before the run — see e2e/freePort.ts.
-  globalSetup: "./e2e/freePort.ts",
+  // TEARDOWN ONLY. Never globalSetup — see e2e/freePort.ts.
+  //
+  // Playwright starts `webServer` BEFORE it runs globalSetup, so a setup hook
+  // that frees the port kills the server the run is about to use. Every test
+  // then fails with ERR_CONNECTION_REFUSED while the server looks like it
+  // started fine, which is exactly how this reached CI: green locally, because
+  // the ordering is only exposed once there is something on the port to find.
+  globalTeardown: "./e2e/freePort.ts",
   webServer: {
     // Vite invoked directly rather than through `npm run dev`, which buries the
     // server four processes deep (cmd → npm → cmd → vite). Fewer wrappers is
     // not the fix — freePort.ts is — but there is no reason to make the tree
     // deeper than it needs to be.
-    command: "node node_modules/vite/bin/vite.js --port 5173 --strictPort",
-    url: "http://localhost:5173",
+    command: "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort",
+    url: "http://127.0.0.1:5173",
     // --strictPort matters as much as the command: without it Vite silently
     // moves to 5174 when 5173 is taken, so a leaked server from a previous run
     // leaves the suite testing a DIFFERENT server than the one it just
