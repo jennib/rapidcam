@@ -367,6 +367,48 @@ test("live: the tree holds still during a scale drag, then catches up", async ({
   await expect(rectRow).toContainText("Rectangle");
 });
 
+test("live: a cancelled pointer still releases the tree's hold", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, threeShapes());
+  await page.locator("#design-tree-toggle").click();
+  await expect
+    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
+    .toBe(250);
+
+  const rectRow = page.locator(".tree-row", { hasText: "Rectangle" }).locator(".tree-label");
+  await rectRow.click();
+  const handle = await toPx(page, [120, 20]);
+  const target = await toPx(page, [100, 0]);
+
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await expect(rectRow).toHaveText("Rectangle 60.00 mm × 40.00 mm"); // held, as designed
+
+  // The browser takes the pointer away: no pointerup will ever arrive. Without
+  // a pointercancel handler the panel keeps showing the pre-drag document.
+  await page.evaluate(() => {
+    document
+      .querySelector("canvas")!
+      .dispatchEvent(new PointerEvent("pointercancel", { pointerId: 1, bubbles: true }));
+  });
+
+  await expect(rectRow).not.toHaveText("Rectangle 60.00 mm × 40.00 mm");
+  // And the gesture is over: a plain move must not keep resizing anything.
+  const after = await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: { entities: any[] } } }).__app.doc;
+    const r = doc.entities.find((e: any) => e.type === "rectangle");
+    return Math.abs(r.p1.x - r.p0.x);
+  });
+  await page.mouse.move(target.x - 60, target.y - 60);
+  const settled = await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: { entities: any[] } } }).__app.doc;
+    const r = doc.entities.find((e: any) => e.type === "rectangle");
+    return Math.abs(r.p1.x - r.p0.x);
+  });
+  expect(settled).toBeCloseTo(after, 6);
+});
+
 test("live: Ctrl+B toggles the panel", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());

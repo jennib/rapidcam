@@ -832,6 +832,7 @@ export class App {
     c.addEventListener("pointerdown", this.onPointerDown);
     c.addEventListener("pointermove", this.onPointerMove);
     c.addEventListener("pointerup", this.onPointerUp);
+    c.addEventListener("pointercancel", this.onPointerCancel);
     c.addEventListener("dblclick", this.onDoubleClick);
     c.addEventListener("wheel", this.onWheel, { passive: false });
     c.addEventListener("contextmenu", (e) => {
@@ -1055,6 +1056,33 @@ export class App {
     this.pointerActive = false;
     this.designTree.setSuspended(false);
     this.pressCursor = null;
+    this.updateCursor();
+    this.requestRender();
+  };
+
+  /**
+   * The browser took the pointer away mid-gesture — a touch interruption, an OS
+   * gesture, capture lost. No `pointerup` follows, so anything a drag is holding
+   * has to be let go here or it stays stuck.
+   *
+   * That matters most for the state a drag deliberately freezes: the design tree
+   * suspends its rebuilds for the gesture, so without this it would keep showing
+   * the pre-drag document (until the next click happened to re-run a down/up
+   * pair), and the held drag cursor would never clear.
+   *
+   * Abandons the gesture the way Escape does — via the tool's own `cancel`,
+   * which drops the drag without committing its hints. Geometry keeps whatever
+   * the drag last applied rather than snapping back; that is this app's existing
+   * convention for an interrupted drag, not a new decision made here.
+   */
+  private onPointerCancel = (ev: PointerEvent): void => {
+    this.panning = false;
+    this.pointerActive = false;
+    this.pressCursor = null;
+    this.designTree.setSuspended(false);
+    this.tools.cancelActive();
+    if (this.canvas.hasPointerCapture(ev.pointerId))
+      this.canvas.releasePointerCapture(ev.pointerId);
     this.updateCursor();
     this.requestRender();
   };
