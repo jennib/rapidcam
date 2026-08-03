@@ -197,7 +197,8 @@ export function openTextDialog(
   backdrop.appendChild(dialog);
   unregister = registerModal(backdrop, cancel);
   document.body.appendChild(backdrop);
-  setTimeout(() => textInp.focus(), 0);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  textInp.focus();
 
   return close;
 }

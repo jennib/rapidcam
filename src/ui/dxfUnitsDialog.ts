@@ -130,7 +130,8 @@ export function chooseDxfUnits(opts: DxfUnitsPromptOptions): Promise<DxfUnitChoi
     });
 
     document.body.appendChild(backdrop);
-    setTimeout(() => buttons[0].focus(), 40);
+    // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+    buttons[0].focus();
   });
 }
 

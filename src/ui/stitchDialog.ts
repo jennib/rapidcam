@@ -250,5 +250,6 @@ export function openStitchDialog(params: StitchDialogParams): void {
 
   document.body.appendChild(backdrop);
   update();
-  setTimeout(() => wIn.focus(), 40);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  wIn.focus();
 }

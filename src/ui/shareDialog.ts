@@ -177,6 +177,7 @@ export function showShareDialog(): void {
   unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
 
-  // Select the URL on show so it's ready to copy with Ctrl+C
-  setTimeout(() => linkInput.select(), 50);
+  // Select the URL on show so it's ready to copy with Ctrl+C. Synchronously:
+  // a deferred focus steals typed input (see ui/modal.ts).
+  linkInput.select();
 }

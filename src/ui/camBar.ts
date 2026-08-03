@@ -1865,7 +1865,8 @@ export class CamBar {
     dialog.appendChild(footer);
 
     document.body.appendChild(backdrop);
-    setTimeout(() => nameInput.select(), 40);
+    // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+    nameInput.select();
   }
 
   // --- material test ---------------------------------------------------------

@@ -96,5 +96,6 @@ export function showFeedbackDialog(): void {
 
   unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
-  setTimeout(() => descArea.focus(), 50);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  descArea.focus();
 }

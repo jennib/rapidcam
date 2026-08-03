@@ -275,7 +275,8 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
 
   document.body.appendChild(backdrop);
   const first = inputs.values().next().value;
-  if (first) setTimeout(() => first.focus(), 0);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  if (first) first.focus();
 }
 
 // --- validation helpers ------------------------------------------------------

@@ -223,5 +223,6 @@ export function openFlipDialog(params: FlipDialogParams): void {
 
   document.body.appendChild(backdrop);
   update();
-  setTimeout(() => enableChk.focus(), 40);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  enableChk.focus();
 }

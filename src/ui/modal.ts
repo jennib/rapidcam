@@ -176,6 +176,20 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     okBtn.addEventListener("click", () => finish(true));
 
     document.body.appendChild(backdrop);
-    setTimeout(() => okBtn.focus(), 40);
+    // Synchronously, NOT on a timer.
+    //
+    // Every dialog in this app used to defer its opening focus by 40-50ms, and
+    // it was never buying anything: these dialogs have no open animation and no
+    // layout to settle (no `animation`/`transition` on .tp-backdrop or
+    // .tp-dialog), and the element is in the document by this line. What the
+    // delay DID do was leave a window where a focusable dialog is about to move
+    // focus somewhere else, so anything typed in it lands in the wrong control —
+    // and where the target is select()ed, replaces its contents.
+    //
+    // That is a real input bug for a fast user, and it made the e2e suite fail
+    // about one run in three, presenting as wrong VALUES with no hint that focus
+    // was involved (see newProjectDialog.ts, where a typed stock width ended up
+    // in the project name box). Focus on open, immediately, everywhere.
+    okBtn.focus();
   });
 }
