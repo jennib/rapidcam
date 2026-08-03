@@ -1,9 +1,16 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { CADDocument, ORIGIN_ENTITY_ID } from "../src/model/document";
-import { CircleEntity, LineEntity, RectEntity } from "../src/model/entities";
+import { CircleEntity, LineEntity, PolylineEntity, RectEntity } from "../src/model/entities";
 import { makeDimension } from "../src/model/dimensions";
-import { DesignTreePanel, describeDimension, describeEntity } from "../src/ui/designTree";
+import { CONSTRAINT_GLYPH, makeConstraint } from "../src/model/constraints";
+import {
+  constraintSubject,
+  DesignTreePanel,
+  describeDimension,
+  describeEntity,
+  shortLabels,
+} from "../src/ui/designTree";
 
 /**
  * Cover for the design tree, whose whole job is to be a faithful view of the
@@ -36,22 +43,27 @@ interface Harness {
   doc: CADDocument;
   host: HTMLElement;
   pushHistory: ReturnType<typeof vi.fn>;
+  onSolve: ReturnType<typeof vi.fn>;
+  hoveredConstraints: (string | null)[];
 }
 
 function mount(doc: CADDocument, open = true): Harness {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const pushHistory = vi.fn();
+  const onSolve = vi.fn();
+  const hoveredConstraints: (string | null)[] = [];
   const panel = new DesignTreePanel({
     container: host,
     doc,
     onHoverEntity: () => {},
     onHoverDimension: () => {},
-    onHoverConstraint: () => {},
+    onHoverConstraint: (id) => hoveredConstraints.push(id),
     pushHistory,
+    onSolve,
   });
   if (open) panel.setOpen(true);
-  return { panel, doc, host, pushHistory };
+  return { panel, doc, host, pushHistory, onSolve, hoveredConstraints };
 }
 
 /** Every row label currently rendered, in tree order. */
@@ -411,6 +423,154 @@ describe("open / close", () => {
     h.panel.toggle();
     expect(h.panel.isOpen).toBe(false);
     expect(document.body.classList.contains("design-tree-open")).toBe(false);
+  });
+});
+
+describe("constraints section", () => {
+  /** A rectangle-ish sketch: two lines, plus the circle from beforeEach. */
+  function withTwoLines(): LineEntity {
+    return doc.add(new LineEntity({ x: 0, y: 20 }, { x: 40, y: 20 }));
+  }
+
+  test("names what each constraint joins, so same-type rows differ", async () => {
+    const line2 = withTwoLines();
+    doc.addConstraint(
+      makeConstraint("perpendicular", { entities: [line.id, line2.id] }),
+    );
+    doc.addConstraint(makeConstraint("horizontal", { entities: [line2.id] }));
+    const h = mount(doc);
+    await flush();
+
+    // The whole point: two rows that would otherwise read identically.
+    expect(row(h, "Perpendicular").textContent).toContain("Line 1 · Line 2");
+    expect(row(h, "Horizontal").textContent).toContain("Line 2");
+    expect(row(h, "Horizontal").textContent).not.toContain("Line 1");
+  });
+
+  test("uses a custom name over the ordinal, without renumbering the rest", async () => {
+    const line2 = withTwoLines();
+    line.name = "Hinge axis";
+    doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+    const h = mount(doc);
+    await flush();
+
+    // Ordinals are positional, so naming the first line does NOT promote the
+    // second to "Line 1" — a label that shifts under you when you rename
+    // something else is worse than no label.
+    expect(row(h, "Parallel").textContent).toContain("Hinge axis · Line 2");
+  });
+
+  test("names the same entity once, however many times a constraint cites it", () => {
+    const labels = shortLabels(doc);
+    const con = makeConstraint("fixedPoint", {
+      points: [
+        { entityId: line.id, key: "a" },
+        { entityId: line.id, key: "b" },
+      ],
+    });
+    expect(constraintSubject(con, labels)).toBe("Line 1");
+  });
+
+  test("names the document's own datums, which are not in `entities`", () => {
+    const labels = shortLabels(doc);
+    const con = makeConstraint("coincident", {
+      points: [
+        { entityId: line.id, key: "a" },
+        { entityId: "__origin__", key: "p" },
+      ],
+    });
+    expect(constraintSubject(con, labels)).toBe("Line 1 · Origin");
+    expect(labels.get("__stock__")).toBe("Stock");
+  });
+
+  test("resolves a polyline segment reference back to its polyline", () => {
+    const poly = doc.add(
+      new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], false),
+    );
+    const labels = shortLabels(doc);
+    const con = makeConstraint("horizontal", {
+      entities: [`${poly.id}#${poly.vertexIds[0]}`],
+    });
+    expect(constraintSubject(con, labels)).toBe("Polyline 1");
+  });
+
+  test("shows a locked angle's target, which is its entire content", async () => {
+    const line2 = withTwoLines();
+    doc.addConstraint(
+      makeConstraint("angle", { entities: [line.id, line2.id], params: [Math.PI / 4] }),
+    );
+    const h = mount(doc);
+    await flush();
+    expect(labels(h).some((l) => l === "Lock angle 45.00°")).toBe(true);
+  });
+
+  test("carries the same glyph the canvas badge draws", async () => {
+    const line2 = withTwoLines();
+    doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+    const h = mount(doc);
+    await flush();
+    expect(row(h, "Parallel").querySelector(".tree-constraint-glyph")?.textContent).toBe(
+      CONSTRAINT_GLYPH.parallel,
+    );
+  });
+
+  test("clicking a row selects the constraint", async () => {
+    const line2 = withTwoLines();
+    const con = doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+    const h = mount(doc);
+    await flush();
+
+    row(h, "Parallel").click();
+    expect(doc.selectedConstraintId).toBe(con.id);
+  });
+
+  test("hovering a row asks the canvas to highlight that constraint", async () => {
+    const line2 = withTwoLines();
+    const con = doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+    const h = mount(doc);
+    await flush();
+
+    const r = row(h, "Parallel");
+    r.dispatchEvent(new Event("mouseenter"));
+    expect(h.hoveredConstraints.at(-1)).toBe(con.id);
+    r.dispatchEvent(new Event("mouseleave"));
+    expect(h.hoveredConstraints.at(-1)).toBeNull();
+  });
+
+  test("the bin removes that constraint and leaves its neighbour alone", async () => {
+    const line2 = withTwoLines();
+    const perp = doc.addConstraint(
+      makeConstraint("perpendicular", { entities: [line.id, line2.id] }),
+    );
+    const horiz = doc.addConstraint(makeConstraint("horizontal", { entities: [line2.id] }));
+    const h = mount(doc);
+    await flush();
+
+    const del = [...row(h, "Perpendicular").querySelectorAll<HTMLButtonElement>(".tree-action-btn")].find(
+      (b) => /Delete/.test(b.title),
+    );
+    expect(del).toBeDefined();
+    del!.click();
+
+    expect(doc.constraints.map((c) => c.id)).toEqual([horiz.id]);
+    expect(doc.constraints.map((c) => c.id)).not.toContain(perp.id);
+    expect(h.pushHistory).toHaveBeenCalledTimes(1); // undoable
+    expect(h.onSolve).toHaveBeenCalledTimes(1); // DOF readout refreshed
+    // The row is gone from under the pointer, so the canvas highlight must go
+    // too — otherwise a deleted constraint stays lit until the next mouse move.
+    expect(h.hoveredConstraints.at(-1)).toBeNull();
+  });
+
+  test("the section disappears when the last constraint is deleted", async () => {
+    const line2 = withTwoLines();
+    doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+    const h = mount(doc);
+    await flush();
+    expect(labels(h)).toContain("Parallel");
+
+    doc.removeConstraint(doc.constraints[0].id);
+    await flush();
+    expect(labels(h)).not.toContain("Parallel");
   });
 });
 

@@ -23,7 +23,8 @@
 import { test, expect, openDoc, waitForApp, APP_URL } from "./appFixture";
 import type { Page } from "@playwright/test";
 import { CADDocument } from "../src/model/document";
-import { RectEntity } from "../src/model/entities";
+import { LineEntity, RectEntity } from "../src/model/entities";
+import { makeConstraint } from "../src/model/constraints";
 import { serializeDoc } from "../src/io/fileio";
 
 /** A control laid out beyond a container that offers no way to scroll to it. */
@@ -170,6 +171,11 @@ test("the design tree fits its rows, including the eye and lock", async ({ page 
   // if there is geometry, and this route also clears the welcome screen.
   const doc = new CADDocument({ width: 200, height: 150 }, "mm");
   doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 60 }));
+  // A constraint row is the densest in the panel — glyph, name, subject and a
+  // delete button all inside 250px — so the sweep needs one present.
+  const a = doc.add(new LineEntity({ x: 10, y: 100 }, { x: 90, y: 100 }));
+  const b = doc.add(new LineEntity({ x: 10, y: 100 }, { x: 10, y: 140 }));
+  doc.addConstraint(makeConstraint("perpendicular", { entities: [a.id, b.id] }));
   await openDoc(page, JSON.stringify(serializeDoc(doc, "one-rect")));
   await page.locator("#design-tree-toggle").click();
   // Settle the open animation before sweeping. The panel slides 0 → 250px and
@@ -200,6 +206,8 @@ test("the design tree fits its rows, including the eye and lock", async ({ page 
     // filters out, so naming it renders nothing at all.
     const ent = doc.entities.find((e) => e.id !== "__origin__")!;
     ent.name = "Cabinet hinge cup bore, left stile";
+    // A long name also lands in the constraint subjects below it.
+    doc.entities[doc.entities.length - 1].name = "Left stile reference edge";
     ent.locked = true; // pins the lock button visible rather than hover-only
     doc.groups.push({
       id: "grp-long",
@@ -217,6 +225,10 @@ test("the design tree fits its rows, including the eye and lock", async ({ page 
   // Two: the entity's own lock, and its group's, which reads locked because
   // every member is. Both are pinned visible, which is the crowded case.
   await expect(page.locator(".tree-action-btn.on")).toHaveCount(2);
+  // And the constraint row, whose long subject is the widest thing in the panel.
+  await expect(
+    page.locator(".tree-row", { hasText: "Perpendicular" }).locator(".tree-subject"),
+  ).toHaveText(/Left stile reference edge/);
 
   expect(await unreachableControls(page)).toEqual([]);
 });

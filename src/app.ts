@@ -290,6 +290,7 @@ export class App {
       onHoverDimension: (id) => this.setTreeHover({ dimension: id }),
       onHoverConstraint: (id) => this.setTreeHover({ constraint: id }),
       pushHistory: this.project.pushHistory,
+      onSolve: () => this.runSolve(),
     });
     new ToolPalette(dom.palette, this.tools, () => this.designTree.toggle());
     new TopBar(dom.topbar, this.doc, {

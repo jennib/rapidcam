@@ -2621,6 +2621,37 @@ body.design-tree-open #design-tree-toggle {
   font-weight: 600;
 }
 
+/* What a constraint joins. Dimmed and allowed to shrink away first, so a long
+   subject clips before the constraint's own name does — the name is what you
+   scan for, the subject is what you confirm with. */
+.tree-subject {
+  /* Shrink factor 8 against the label's default 1: both can clip, but the
+     subject gives up its width first. */
+  flex: 0 8 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+}
+.tree-row.selected .tree-subject {
+  color: #cfe6ff;
+}
+
+/* The canvas draws these same glyphs as constraint badges — keep them legible
+   at row size rather than letting a "∥" or "◀▶" render as a smudge. */
+.tree-constraint-glyph {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.tree-row.selected .tree-constraint-glyph {
+  color: #fff;
+}
+
+.tree-action-btn.tree-action-danger:hover {
+  background: rgba(220, 80, 80, 0.25);
+}
+
 .tree-count {
   flex: 0 0 auto;
   color: var(--text-dim);

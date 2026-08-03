@@ -2,6 +2,7 @@ import { expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity, LineEntity, RectEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
+import { makeConstraint } from "../src/model/constraints";
 
 /**
  * The design tree's WIRING and its LAYOUT, neither of which the component tests
@@ -219,6 +220,42 @@ test("live: hidden geometry is dropped from the program, and pre-flight says so"
   const body = await page.locator(".tp-backdrop").first().innerText();
   expect(body).toMatch(/hidden object is assigned to toolpath "holes"/i);
   expect(body).toMatch(/NOT cut/);
+});
+
+/** Two perpendicular lines plus a horizontal, so the list has same-type rows. */
+function constrainedSketch(): string {
+  const doc = new CADDocument({ width: 200, height: 150 }, "mm");
+  const a = doc.add(new LineEntity({ x: 10, y: 120 }, { x: 90, y: 120 }));
+  const b = doc.add(new LineEntity({ x: 10, y: 120 }, { x: 10, y: 60 }));
+  doc.addConstraint(makeConstraint("perpendicular", { entities: [a.id, b.id] }));
+  doc.addConstraint(makeConstraint("horizontal", { entities: [a.id] }));
+  return JSON.stringify(serializeDoc(doc, "constrained"));
+}
+
+test("live: constraint rows name what they join, and delete in place", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, constrainedSketch());
+  await page.locator("#design-tree-toggle").click();
+
+  const perp = page.locator(".tree-row", { hasText: "Perpendicular" });
+  await expect(perp.locator(".tree-subject")).toHaveText("Line 1 · Line 2");
+  await expect(page.locator(".tree-row", { hasText: "Horizontal" }).locator(".tree-subject"))
+    .toHaveText("Line 1");
+
+  // The degrees-of-freedom readout is what someone deleting a constraint is
+  // watching, so assert the delete reaches the solver and not just the model.
+  const dofBefore = await page.locator("#statusbar").innerText();
+  await perp.hover();
+  await perp.locator("button[title='Delete this constraint']").click();
+
+  await expect(page.locator(".tree-row", { hasText: "Perpendicular" })).toHaveCount(0);
+  await expect(page.locator(".tree-row", { hasText: "Horizontal" })).toHaveCount(1);
+  await expect.poll(() => page.locator("#statusbar").innerText()).not.toBe(dofBefore);
+
+  // Undoable: the tree's own edits go on the same stack as everything else.
+  await page.locator("#scene").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".tree-row", { hasText: "Perpendicular" })).toHaveCount(1);
 });
 
 test("live: Ctrl+B toggles the panel", async ({ page }) => {

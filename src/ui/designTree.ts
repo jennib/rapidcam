@@ -14,8 +14,13 @@
  * rows. A closed panel marks itself dirty and rebuilds when it reopens.
  */
 
-import { CONSTRAINT_LABELS, type Constraint } from "../model/constraints";
-import { type CADDocument, ORIGIN_ENTITY_ID } from "../model/document";
+import {
+  CONSTRAINT_GLYPH,
+  CONSTRAINT_LABELS,
+  type Constraint,
+  constraintEntityIds,
+} from "../model/constraints";
+import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID } from "../model/document";
 import type { Dimension } from "../model/dimensions";
 import {
   ArcEntity,
@@ -39,6 +44,8 @@ export interface DesignTreeOptions {
   onHoverConstraint: (id: string | null) => void;
   /** Snapshot the document *before* a tree edit, so it lands on the undo stack. */
   pushHistory: () => void;
+  /** Re-solve after removing a constraint, so the DOF readout stops being stale. */
+  onSolve: () => void;
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -71,6 +78,7 @@ export class DesignTreePanel {
   private readonly onHoverDimension: (id: string | null) => void;
   private readonly onHoverConstraint: (id: string | null) => void;
   private readonly pushHistory: () => void;
+  private readonly onSolve: () => void;
 
   private readonly panelEl: HTMLElement;
   private readonly bodyEl: HTMLElement;
@@ -88,6 +96,8 @@ export class DesignTreePanel {
   private editing: string | null = null;
   /** Selection key at the last rebuild, so we only auto-scroll on a real change. */
   private lastSelectionKey = "";
+  /** Entity id → short label ("Line 2"), rebuilt each pass. See {@link shortLabels}. */
+  private labels = new Map<string, string>();
 
   constructor(opts: DesignTreeOptions) {
     this.doc = opts.doc;
@@ -95,6 +105,7 @@ export class DesignTreePanel {
     this.onHoverDimension = opts.onHoverDimension;
     this.onHoverConstraint = opts.onHoverConstraint;
     this.pushHistory = opts.pushHistory;
+    this.onSolve = opts.onSolve;
 
     this.panelEl = document.createElement("div");
     this.panelEl.className = "design-tree-panel";
@@ -176,6 +187,7 @@ export class DesignTreePanel {
     this.bodyEl.innerHTML = "";
 
     const drawable = this.doc.entities.filter((e) => e.id !== ORIGIN_ENTITY_ID);
+    this.labels = shortLabels(this.doc);
 
     for (const layer of this.doc.layers) {
       const layerEnts = drawable.filter((e) => e.layerId === layer.id);
@@ -517,24 +529,71 @@ export class DesignTreePanel {
     return row;
   }
 
+  /**
+   * One constraint row: `⟂  Perpendicular   Line 1 · Line 2   🗑`.
+   *
+   * The subject is the whole point of this section. A bare list of type names
+   * is unreadable the moment a sketch has two of anything — "Coincident,
+   * Coincident, Coincident" tells you nothing about which one is holding the
+   * geometry you are trying to move, which is the only question anyone opens
+   * this list to answer. So each row names what it joins, carries the same
+   * glyph the canvas badge draws (so eye and list agree), and can be deleted
+   * in place: identify, locate by hovering, remove.
+   */
   private constraintNode(con: Constraint): HTMLElement {
     const row = document.createElement("div");
     row.className = "tree-row tree-item";
     row.classList.toggle("selected", this.doc.selectedConstraintId === con.id);
 
+    const name = CONSTRAINT_LABELS[con.type] ?? con.type;
+    const subject = constraintSubject(con, this.labels);
+    row.title = subject ? `${name} — ${subject}` : name;
+
     const label = document.createElement("div");
     label.className = "tree-label-group";
 
     const icon = document.createElement("span");
-    icon.className = "tree-icon";
-    icon.textContent = "⚯";
+    icon.className = "tree-icon tree-constraint-glyph";
+    icon.textContent = CONSTRAINT_GLYPH[con.type] ?? "⚯";
 
     const text = document.createElement("span");
     text.className = "tree-label";
-    text.textContent = CONSTRAINT_LABELS[con.type] ?? con.type;
+    // A locked angle's target is the constraint's whole content — without it
+    // two "Lock angle" rows on the same pair of lines are indistinguishable.
+    text.textContent =
+      con.type === "angle" && con.params?.[0] !== undefined
+        ? `${name} ${formatAngle(con.params[0])}`
+        : name;
 
     label.append(icon, text);
+
+    if (subject) {
+      const subjectEl = document.createElement("span");
+      subjectEl.className = "tree-subject";
+      subjectEl.textContent = subject;
+      label.appendChild(subjectEl);
+    }
+
     row.appendChild(label);
+
+    const actions = document.createElement("div");
+    actions.className = "tree-actions";
+    const del = document.createElement("button");
+    del.className = "tree-action-btn tree-action-danger";
+    del.textContent = "🗑";
+    del.title = "Delete this constraint";
+    del.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.pushHistory();
+      this.doc.removeConstraint(con.id);
+      this.onHoverConstraint(null); // the row is about to vanish under the pointer
+      // Removing an equation can't violate the ones left, so this isn't for
+      // correctness — it's to refresh the degrees-of-freedom readout, which
+      // is exactly what someone deleting a constraint is watching.
+      this.onSolve();
+    });
+    actions.appendChild(del);
+    row.appendChild(actions);
 
     row.addEventListener("mouseenter", () => this.onHoverConstraint(con.id));
     row.addEventListener("mouseleave", () => this.onHoverConstraint(null));
@@ -630,6 +689,62 @@ export class DesignTreePanel {
     });
     if (this.editing === editKey) queueMicrotask(start);
   }
+}
+
+/** Short type names for the constraint subjects — "Line 2", not "Line 40.00 mm". */
+const SHORT_TYPE: Record<string, string> = {
+  line: "Line",
+  circle: "Circle",
+  arc: "Arc",
+  rectangle: "Rect",
+  polyline: "Polyline",
+  bezier: "Curve",
+  text: "Text",
+  image: "Image",
+  point: "Point",
+};
+
+/**
+ * Entity id → a short, *distinguishable* label: the user's custom name when
+ * there is one, otherwise the type plus a per-type ordinal in document order —
+ * `Line 1`, `Line 2`, `Circle 1`, the SolidWorks convention.
+ *
+ * The ordinal is what makes the constraints list usable. Without it every row
+ * on a rectangle's four sides reads "Line", and the list cannot answer which
+ * one it means.
+ */
+export function shortLabels(doc: CADDocument): Map<string, string> {
+  const out = new Map<string, string>();
+  const counts: Record<string, number> = {};
+  for (const e of doc.entities) {
+    if (e.id === ORIGIN_ENTITY_ID) continue;
+    const type = SHORT_TYPE[e.type] ?? e.type;
+    counts[type] = (counts[type] ?? 0) + 1;
+    out.set(e.id, e.name || `${type} ${counts[type]}`);
+  }
+  // Both are real constraint targets but neither is in `entities`: the origin is
+  // the document's own datum and the stock rectangle is derived geometry.
+  out.set(ORIGIN_ENTITY_ID, "Origin");
+  out.set(STOCK_ENTITY_ID, "Stock");
+  return out;
+}
+
+/**
+ * What a constraint joins, as a display string — `Line 1 · Circle 2`.
+ *
+ * Deduplicated, because a constraint routinely names one entity several times
+ * (a `fixedPoint` over three vertices of the same polyline, a `midpoint` whose
+ * point and line are the same shape); repeating it would be noise. Empty when
+ * nothing resolves, so the caller can fall back to the bare type name rather
+ * than render a dangling separator.
+ */
+export function constraintSubject(con: Constraint, labels: Map<string, string>): string {
+  const seen: string[] = [];
+  for (const id of constraintEntityIds(con)) {
+    const label = labels.get(id);
+    if (label && !seen.includes(label)) seen.push(label);
+  }
+  return seen.join(" · ");
 }
 
 /** One-line human description of an entity, used when it has no custom name. */
