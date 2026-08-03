@@ -28,17 +28,33 @@ export function selectionBounds(entities: Entity[]): Bounds | null {
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 
+/**
+ * Scale `entities` about (cx, cy).
+ *
+ * Returns how many of them could only take a UNIFORM scale — circles, arcs and
+ * text, none of which have an elliptical/stretched form in this model, so a
+ * non-uniform request scales them by `sx` on both axes. Callers are expected to
+ * tell the user; see SelectTool's scale drag and the properties bar's W/H fields.
+ *
+ * This used to `console.warn` per entity instead, from inside the loop. That is
+ * a signal no user ever sees, and it made the interactive scale drag hundreds of
+ * times more expensive than the arithmetic it was guarding: one drag over 500
+ * circles emitted 500 warnings PER POINTER MOVE, and in a dev build Vite's
+ * console hook made that a quarter of the frame. Report it once, as data.
+ */
 export function applyScale(
   entities: Entity[],
   cx: number,
   cy: number,
   sx: number,
   sy: number,
-): void {
+): { uniformOnly: number } {
   const scalePt = (p: Vec2) => {
     p.x = cx + (p.x - cx) * sx;
     p.y = cy + (p.y - cy) * sy;
   };
+  const nonUniform = Math.abs(sx - sy) > 1e-6;
+  let uniformOnly = 0;
 
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i];
@@ -53,19 +69,11 @@ export function applyScale(
       scalePt(e.p2);
       scalePt(e.p3);
     } else if (e instanceof CircleEntity) {
-      if (Math.abs(sx - sy) > 1e-6) {
-        console.warn(
-          "[transform] Non-uniform scale applied to CircleEntity — will result in distortion (ellipse not supported)",
-        );
-      }
+      if (nonUniform) uniformOnly++;
       scalePt(e.center);
       e.radius *= Math.abs(sx);
     } else if (e instanceof ArcEntity) {
-      if (Math.abs(sx - sy) > 1e-6) {
-        console.warn(
-          "[transform] Non-uniform scale applied to ArcEntity — will result in distortion (ellipse not supported)",
-        );
-      }
+      if (nonUniform) uniformOnly++;
       scalePt(e.center);
       e.radius *= Math.abs(sx);
       // If scale is negative, it implies a flip.
@@ -85,15 +93,12 @@ export function applyScale(
       e.widthMM *= Math.abs(sx);
       e.heightMM *= Math.abs(sy);
     } else if (e instanceof TextEntity) {
-      if (Math.abs(sx - sy) > 1e-6) {
-        console.warn(
-          "[transform] Non-uniform scale applied to TextEntity — glyphs scale uniformly (stretch not supported)",
-        );
-      }
+      if (nonUniform) uniformOnly++;
       scalePt(e.position);
       e.sizeMM *= Math.abs(sx);
     }
   }
+  return { uniformOnly };
 }
 
 export function applyRotate(

@@ -935,6 +935,9 @@ export class App {
     // Freeze the affordance cursor for the duration of the drag.
     if (ev.button === 0) {
       this.pointerActive = true;
+      // Hold the design tree's rebuilds for the gesture — a scale/rotate drag
+      // emits a document change per pointer move. See DesignTreePanel.setSuspended.
+      this.designTree.setSuspended(true);
       const c = this.computeCursor();
       this.pressCursor = c === "default" ? null : c;
     }
@@ -1050,6 +1053,7 @@ export class App {
     this.tools.pointerUp(this.toolEvent(ev, screen));
     this.canvas.releasePointerCapture(ev.pointerId);
     this.pointerActive = false;
+    this.designTree.setSuspended(false);
     this.pressCursor = null;
     this.updateCursor();
     this.requestRender();

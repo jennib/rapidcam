@@ -568,15 +568,14 @@ export class SelectTool implements Tool {
 
       if (Math.abs(sx) > 0.001 || Math.abs(sy) > 0.001) {
         const unfixedSelected = ctx.doc.selected.filter((x) => ctx.doc.isMovable(x));
-        if (
-          !this.scaleWarned &&
-          Math.abs(sx - sy) > 1e-6 &&
-          unfixedSelected.some((x) => x.type === "circle" || x.type === "arc" || x.type === "text")
-        ) {
+        // The transform reports which entities could only take a uniform scale,
+        // so this no longer re-scans the selection to work it out. Still capped
+        // at one notice per drag: it is the same fact every pointer move.
+        const { uniformOnly } = applyScale(unfixedSelected, cx, cy, sx, sy);
+        if (uniformOnly > 0 && !this.scaleWarned) {
           ctx.notify("Circles, arcs and text scale uniformly — stretch not applied to them");
           this.scaleWarned = true;
         }
-        applyScale(unfixedSelected, cx, cy, sx, sy);
       }
 
       ctx.solve();

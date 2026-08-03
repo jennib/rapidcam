@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   LineEntity,
   CircleEntity,
@@ -40,6 +40,53 @@ describe("transform.ts", () => {
     applyScale([line], 0, 0, 2, 0.5);
     expect(line.a.x).toBe(0);
     expect(line.a.y).toBe(0);
+    expect(line.b.x).toBe(20);
+    expect(line.b.y).toBe(5);
+  });
+
+  /**
+   * `applyScale` used to `console.warn` from inside its per-entity loop, once for
+   * every circle/arc/text on every call. In an interactive scale drag that is one
+   * warning per entity PER POINTER MOVE — 3000 of them from a six-move drag over
+   * 500 circles — and it made the gesture ~48× slower than the arithmetic it was
+   * guarding. It now reports the same fact once, as a count.
+   *
+   * The console assertion is the load-bearing one: the behaviour it guards is a
+   * performance cliff, so a well-meaning "let's warn about this" would reinstate
+   * it invisibly. Every case pairs it with a `uniformOnly` assertion, so the test
+   * cannot pass by way of the scale never having been non-uniform.
+   */
+  it("reports uniform-only entities instead of logging, once per call", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const circles = Array.from(
+      { length: 50 },
+      (_, i) => new CircleEntity({ x: i * 10, y: 0 }, 4),
+    );
+
+    const res = applyScale(circles, 0, 0, 2, 0.5);
+
+    expect(res.uniformOnly).toBe(50); // the non-uniform case really was hit
+    expect(warn).not.toHaveBeenCalled();
+    // Circles take the uniform (sx) scale on both axes rather than distorting.
+    expect(circles[0].radius).toBe(8);
+    warn.mockRestore();
+  });
+
+  it("counts nothing, and still says nothing, on a uniform scale", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = applyScale([new CircleEntity({ x: 0, y: 0 }, 4)], 0, 0, 2, 2);
+    expect(res.uniformOnly).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("counts only the shapes that cannot stretch", () => {
+    const circle = new CircleEntity({ x: 0, y: 0 }, 4);
+    const line = new LineEntity({ x: 0, y: 0 }, { x: 10, y: 10 });
+    const rect = new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 });
+    const res = applyScale([circle, line, rect, new ArcEntity({ x: 0, y: 0 }, 5, 0, 1)], 0, 0, 2, 0.5);
+    expect(res.uniformOnly).toBe(2); // the circle and the arc, not the line or rect
+    // Positive control: the ones that CAN stretch actually did.
     expect(line.b.x).toBe(20);
     expect(line.b.y).toBe(5);
   });

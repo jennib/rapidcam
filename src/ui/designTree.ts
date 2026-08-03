@@ -87,6 +87,8 @@ export class DesignTreePanel {
   private open = false;
   private dirty = true;
   private frame = 0;
+  /** True between pointer-down and pointer-up on the canvas. See setSuspended. */
+  private suspended = false;
   /** Folder id → collapsed. Absent = expanded, so new folders open by default. */
   private readonly folded: Record<string, boolean> = {};
   /**
@@ -175,10 +177,27 @@ export class DesignTreePanel {
     this.refresh();
   }
 
+  /**
+   * Hold rebuilds for the duration of a pointer gesture.
+   *
+   * A scale or rotate drag restores a snapshot per pointer move, so the document
+   * emits on every frame; rebuilding a few thousand rows each time costs far more
+   * than everything else the drag does put together (6× the whole gesture at 2000
+   * entities, measured — scripts/design-tree-probe.e2e.ts). Nothing STRUCTURAL
+   * changes mid-drag anyway: the same objects, in the same groups, under the same
+   * names. Only the geometry in each label moves, and no one is reading it while
+   * dragging. So mark dirty and catch up on pointer-up, exactly as a closed panel
+   * catches up when it opens.
+   */
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    if (!suspended && this.dirty) this.refresh();
+  }
+
   /** Queue a rebuild for the next frame (no-op while closed — see class docs). */
   refresh(): void {
     this.dirty = true;
-    if (!this.open || this.frame) return;
+    if (!this.open || this.suspended || this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       if (this.dirty) this.rebuild();

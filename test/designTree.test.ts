@@ -664,6 +664,50 @@ describe("solve status on the Constraints folder", () => {
   });
 });
 
+describe("suspension during a gesture", () => {
+  test("holds rebuilds while a drag is in flight, then catches up", async () => {
+    const h = mount(doc);
+    expect(labels(h)).toContain("Line 40.00 mm");
+
+    h.panel.setSuspended(true);
+    doc.add(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }));
+    await flush();
+    // Still the pre-drag view: a scale drag emits per pointer move, and
+    // rebuilding thousands of rows each time costs more than the drag itself.
+    expect(labels(h)).not.toContain("Rectangle 10.00 mm × 10.00 mm");
+
+    h.panel.setSuspended(false);
+    await flush();
+    expect(labels(h)).toContain("Rectangle 10.00 mm × 10.00 mm");
+  });
+
+  test("resuming with nothing changed does not force a rebuild", async () => {
+    const h = mount(doc);
+    await flush();
+    const before = row(h, "Line 40.00 mm");
+
+    h.panel.setSuspended(true);
+    h.panel.setSuspended(false);
+    await flush();
+
+    // Node identity: a pointer-down/up that changed nothing (a plain click)
+    // must not repaint the whole panel.
+    expect(row(h, "Line 40.00 mm")).toBe(before);
+  });
+
+  test("a suspended panel that is also closed still catches up on open", async () => {
+    const h = mount(doc, false);
+    h.panel.setSuspended(true);
+    doc.add(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }));
+    h.panel.setSuspended(false);
+    await flush();
+    expect(labels(h)).toEqual([]); // closed: still nothing rendered
+
+    h.panel.setOpen(true);
+    expect(labels(h)).toContain("Rectangle 10.00 mm × 10.00 mm");
+  });
+});
+
 describe("descriptions", () => {
   test("read as geometry, in the document's display unit", () => {
     expect(describeEntity(new LineEntity({ x: 0, y: 0 }, { x: 40, y: 0 }))).toBe("Line 40.00 mm");

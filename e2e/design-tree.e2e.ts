@@ -323,6 +323,50 @@ test("live: an over-constrained sketch flags in both places, and clears in both"
   await expect(badge).not.toHaveText("⚠ Conflicting");
 });
 
+test("live: the tree holds still during a scale drag, then catches up", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, threeShapes());
+  await page.locator("#design-tree-toggle").click();
+
+  const rectRow = page.locator(".tree-row", { hasText: "Rectangle" }).locator(".tree-label");
+  await expect(rectRow).toHaveText("Rectangle 60.00 mm × 40.00 mm");
+
+  // Select the rectangle from the tree, then drag its top-right scale handle.
+  // Wait for the flyout to finish sliding first: it shifts and resizes the
+  // canvas, so a screen position computed mid-animation misses the handle.
+  await rectRow.click();
+  await expect
+    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
+    .toBe(250);
+  // The BOTTOM-LEFT handle, not the top-right: the open flyout takes 250px off
+  // the canvas, which pushes the rectangle's far corner past its right edge, and
+  // a press outside the canvas never reaches the tool at all.
+  const handle = await toPx(page, [120, 20]);
+  const target = await toPx(page, [100, 0]);
+
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+
+  // Mid-gesture the panel is suspended: the geometry has already changed, but
+  // the tree has not repainted. Asserting the label is STALE here is what
+  // proves App wires setSuspended() up at all — the unit tests only prove the
+  // panel obeys the flag when something sets it.
+  const midDrag = await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: { entities: any[] } } }).__app.doc;
+    const r = doc.entities.find((e: any) => e.type === "rectangle");
+    return { w: Math.abs(r.p1.x - r.p0.x), label: document.querySelector(".tree-row .tree-label")?.textContent };
+  });
+  expect(midDrag.w).toBeGreaterThan(61); // the drag really did resize it
+  await expect(rectRow).toHaveText("Rectangle 60.00 mm × 40.00 mm"); // …and the tree held
+
+  await page.mouse.up();
+
+  // Pointer-up releases the hold and the tree catches up in one rebuild.
+  await expect(rectRow).not.toHaveText("Rectangle 60.00 mm × 40.00 mm");
+  await expect(rectRow).toContainText("Rectangle");
+});
+
 test("live: Ctrl+B toggles the panel", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
