@@ -70,6 +70,7 @@ import { openGeneratorDialog } from "./ui/generatorDialog";
 import { CamBar } from "./ui/camBar";
 import { ConstraintBar } from "./ui/constraintBar";
 import { ContextMenu, type ContextMenuEntry } from "./ui/contextMenu";
+import { DesignTreePanel } from "./ui/designTree";
 import { DimEditor } from "./ui/dimEditor";
 import { LayersBar } from "./ui/layersBar";
 import { closeAllModals, confirmDialog, isModalOpen } from "./ui/modal";
@@ -126,6 +127,7 @@ export class App {
   private snapEngine = new SnapEngine();
   private tools: ToolManager;
   private statusBar: StatusBar;
+  private designTree: DesignTreePanel;
   private contextMenu = new ContextMenu();
 
   private currentSnap: SnapResult["snap"] = null;
@@ -189,6 +191,7 @@ export class App {
     private canvas: HTMLCanvasElement,
     dom: {
       palette: HTMLElement;
+      designtree: HTMLElement;
       topbar: HTMLElement;
       settingsbar: HTMLElement;
       propertiesbar: HTMLElement;
@@ -280,7 +283,15 @@ export class App {
     });
     this.updateCursor();
 
-    new ToolPalette(dom.palette, this.tools);
+    this.designTree = new DesignTreePanel({
+      container: dom.designtree,
+      doc: this.doc,
+      onHoverEntity: (id) => this.setTreeHover({ entity: id }),
+      onHoverDimension: (id) => this.setTreeHover({ dimension: id }),
+      onHoverConstraint: (id) => this.setTreeHover({ constraint: id }),
+      pushHistory: this.project.pushHistory,
+    });
+    new ToolPalette(dom.palette, this.tools, () => this.designTree.toggle());
     new TopBar(dom.topbar, this.doc, {
       onUndo: () => this.project.undoRedo("undo"),
       onRedo: () => this.project.undoRedo("redo"),
@@ -928,6 +939,35 @@ export class App {
     this.requestRender();
   };
 
+  /**
+   * Highlight what the pointer is over in the design tree. Exactly one kind of
+   * hover can be live at a time — the same invariant the canvas hover keeps —
+   * so passing one clears the other two, and passing null clears everything.
+   * Safe to leave set while the pointer is on the panel: the next canvas
+   * pointermove recomputes all three from the cursor anyway.
+   */
+  private setTreeHover(h: {
+    entity?: EntityId | null;
+    dimension?: string | null;
+    constraint?: EntityId | null;
+  }): void {
+    const next = {
+      hover: h.entity ?? null,
+      dim: h.dimension ?? null,
+      con: h.constraint ?? null,
+    };
+    if (
+      this.currentHover === next.hover &&
+      this.currentHoverDimension === next.dim &&
+      this.currentHoverConstraint === next.con
+    )
+      return;
+    this.currentHover = next.hover;
+    this.currentHoverDimension = next.dim;
+    this.currentHoverConstraint = next.con;
+    this.requestRender();
+  }
+
   private onPointerMove = (ev: PointerEvent): void => {
     const screen = this.screenOf(ev);
     this.lastScreen = screen;
@@ -1435,8 +1475,7 @@ export class App {
     let changed = false;
     for (const e of this.doc.entities) {
       if (e.id === ORIGIN_ENTITY_ID || e.selected) continue;
-      const layer = this.doc.layers.find((l) => l.id === e.layerId) || this.doc.layers[0];
-      if (!layer.visible || layer.locked) continue;
+      if (!this.doc.isPickable(e)) continue;
       e.selected = true;
       changed = true;
     }
@@ -1644,6 +1683,15 @@ export class App {
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "n") {
       this.project.fileNew();
+      ev.preventDefault();
+      return;
+    }
+
+    // Ctrl+B, not the plain "B" the design docs suggested: "b" is already the
+    // Bezier tool (tools/shortcuts.ts), and a modifier-less key that both draws
+    // and opens a panel is not a trade worth making.
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "b") {
+      this.designTree.toggle();
       ev.preventDefault();
       return;
     }

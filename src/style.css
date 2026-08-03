@@ -2444,3 +2444,240 @@ button.btn.btn-primary:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--text-dim);
 }
+
+/* ---------- Design Tree (left flyout) ---------- */
+/* Closed is width:0, not display:none, so the open/close slide can animate and
+   so the transitionend that re-sizes the canvas actually fires. */
+#design-tree-container {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.design-tree-panel {
+  width: 0;
+  display: flex;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 0 solid var(--border);
+  overflow: hidden;
+  user-select: none;
+  transition: width 0.15s ease;
+}
+
+.design-tree-panel.open {
+  width: 250px;
+  border-right-width: 1px;
+}
+
+/* Fixed width so the rows never reflow as the panel slides — the panel clips it. */
+.design-tree-shell {
+  flex: 0 0 auto;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#design-tree-toggle {
+  font-size: 20px;
+}
+body.design-tree-open #design-tree-toggle {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.design-tree-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 6px 8px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.design-tree-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.tree-close-btn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 7px;
+}
+.tree-close-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.design-tree-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 12px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.design-tree-empty {
+  padding: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* arrow | label | actions. The actions keep their space when transparent
+   (opacity, not display) so the label never reflows as the pointer crosses a
+   row — with hundreds of rows that shimmer is very noticeable. */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 8px;
+  border-radius: 4px;
+  margin: 0 4px;
+  cursor: default;
+  white-space: nowrap;
+}
+.tree-row:hover {
+  background: var(--hover);
+}
+.tree-row.selected {
+  background: var(--accent-dim);
+  color: #fff;
+}
+.tree-row.active-layer .tree-label {
+  font-weight: 600;
+}
+.tree-row.hidden-item .tree-label-group {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+.tree-folder-row {
+  padding-left: 2px;
+}
+
+.tree-arrow {
+  flex: 0 0 auto;
+  width: 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1;
+  padding: 3px 0;
+}
+.tree-arrow:hover {
+  color: var(--text);
+}
+
+.tree-label-group {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.tree-icon {
+  flex: 0 0 auto;
+  width: 13px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.tree-row.selected .tree-icon {
+  color: #cfe6ff;
+}
+
+.tree-color-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-label.named {
+  font-weight: 600;
+}
+
+.tree-count {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tree-row.selected .tree-count {
+  color: #cfe6ff;
+}
+
+.tree-construction-badge {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.tree-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font: inherit;
+  padding: 0 3px;
+}
+
+/* Hidden until the row is hovered, EXCEPT when the control is in its non-default
+   state — a hidden or locked object has to advertise it without being hovered,
+   or the panel silently lies about what is on the canvas. */
+.tree-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 1px;
+}
+
+.tree-action-btn {
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 4px;
+  opacity: 0;
+}
+.tree-row:hover .tree-action-btn,
+.tree-action-btn.off,
+.tree-action-btn.on,
+.tree-action-btn:focus-visible {
+  opacity: 0.75;
+}
+.tree-row:hover .tree-action-btn:hover,
+.tree-action-btn.off:hover,
+.tree-action-btn.on:hover {
+  opacity: 1;
+  background: var(--hover);
+}
+
+.tree-children {
+  padding-left: 13px;
+}

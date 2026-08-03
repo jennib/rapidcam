@@ -7,6 +7,7 @@
 import { dist } from "../core/vec2";
 import {
   CONSTRAINT_GLYPH,
+  CONSTRAINT_LABELS,
   type Constraint,
   type ConstraintType,
   type Geo,
@@ -24,38 +25,36 @@ import { constraintJacobianRankChange, type SolveResult } from "../solver/solver
 
 interface ButtonSpec {
   type: ConstraintType;
-  name: string;
   hint: string;
 }
 
 const BUTTONS: (ButtonSpec | "sep")[] = [
-  { type: "coincident", name: "Coincident", hint: "Select 2 points, or 1 circle + 1 line" },
+  { type: "coincident", hint: "Select 2 points, or 1 circle + 1 line" },
   "sep",
-  { type: "horizontal", name: "Horizontal", hint: "Select 1 line or 2 points" },
-  { type: "vertical", name: "Vertical", hint: "Select 1 line or 2 points" },
+  { type: "horizontal", hint: "Select 1 line or 2 points" },
+  { type: "vertical", hint: "Select 1 line or 2 points" },
   "sep",
-  { type: "parallel", name: "Parallel", hint: "Select 2 lines" },
-  { type: "perpendicular", name: "Perpendicular", hint: "Select 2 lines" },
-  { type: "equal", name: "Equal", hint: "Select 2 lines or 2 circles" },
+  { type: "parallel", hint: "Select 2 lines" },
+  { type: "perpendicular", hint: "Select 2 lines" },
+  { type: "equal", hint: "Select 2 lines or 2 circles" },
   "sep",
-  { type: "concentric", name: "Concentric", hint: "Select 2 circles" },
-  { type: "tangent", name: "Tangent", hint: "Select 1 line and 1 circle/arc, or 2 arcs/circles" },
-  { type: "pointOnLine", name: "Point on line", hint: "Select 1 point and 1 line" },
-  { type: "pointOnArc", name: "Point on arc", hint: "Select 1 point and 1 arc" },
+  { type: "concentric", hint: "Select 2 circles" },
+  { type: "tangent", hint: "Select 1 line and 1 circle/arc, or 2 arcs/circles" },
+  { type: "pointOnLine", hint: "Select 1 point and 1 line" },
+  { type: "pointOnArc", hint: "Select 1 point and 1 arc" },
   {
     type: "midpoint",
-    name: "Midpoint",
     hint: "Select 1 point and 1 line, or 3 points (first = midpoint)",
   },
   "sep",
-  { type: "symmetric", name: "Symmetric", hint: "Select 2 points and 1 line (symmetry axis)" },
-  { type: "collinear", name: "Collinear", hint: "Select 2 lines" },
+  { type: "symmetric", hint: "Select 2 points and 1 line (symmetry axis)" },
+  { type: "collinear", hint: "Select 2 lines" },
   "sep",
-  { type: "pointOnCircle", name: "Point on circle", hint: "Select 1 point and 1 circle" },
-  { type: "angle", name: "Lock angle", hint: "Select 2 lines (locks current angle)" },
-  { type: "fixedPoint", name: "Fix point", hint: "Select 1+ points to lock in place" },
+  { type: "pointOnCircle", hint: "Select 1 point and 1 circle" },
+  { type: "angle", hint: "Select 2 lines (locks current angle)" },
+  { type: "fixedPoint", hint: "Select 1+ points to lock in place" },
   "sep",
-  { type: "fixed", name: "Fix", hint: "Select 1+ entities to lock in place" },
+  { type: "fixed", hint: "Select 1+ entities to lock in place" },
 ];
 
 type BuildResult = { ok: true; constraints: Constraint[] } | { ok: false; error: string };
@@ -259,7 +258,7 @@ export class ConstraintBar {
       const btn = document.createElement("button");
       btn.className = "cbtn";
       btn.textContent = CONSTRAINT_GLYPH[b.type];
-      btn.title = `${b.name} — ${b.hint}`;
+      btn.title = `${CONSTRAINT_LABELS[b.type]} — ${b.hint}`;
       btn.addEventListener("click", () => this.apply(b));
       this.host.appendChild(btn);
       this.typeButtons.push({ spec: b, el: btn });
@@ -329,7 +328,7 @@ export class ConstraintBar {
       return;
     }
 
-    this.message(`Added ${spec.name.toLowerCase()}`, "ok");
+    this.message(`Added ${CONSTRAINT_LABELS[spec.type].toLowerCase()}`, "ok");
   }
 
   private refresh(): void {

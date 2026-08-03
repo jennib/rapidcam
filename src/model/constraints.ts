@@ -422,6 +422,32 @@ export function tangentContactOutsideArcSweep(c: Constraint, geo: Geo): boolean 
 // ---------------------------------------------------------------------------
 // Rendering helpers
 
+/**
+ * Human name per constraint type. One source of truth, shared by the constraint
+ * bar's buttons and the design tree's rows, so a rename can't leave the two
+ * disagreeing about what the same constraint is called.
+ */
+export const CONSTRAINT_LABELS: Record<ConstraintType, string> = {
+  coincident: "Coincident",
+  horizontal: "Horizontal",
+  vertical: "Vertical",
+  parallel: "Parallel",
+  perpendicular: "Perpendicular",
+  equal: "Equal",
+  concentric: "Concentric",
+  pointOnLine: "Point on line",
+  tangent: "Tangent",
+  pointOnArc: "Point on arc",
+  pointOnCircle: "Point on circle",
+  symmetric: "Symmetric",
+  collinear: "Collinear",
+  midpoint: "Midpoint",
+  angle: "Lock angle",
+  fixedPoint: "Fix point",
+  center: "Follow centre",
+  fixed: "Fix",
+};
+
 export const CONSTRAINT_GLYPH: Record<ConstraintType, string> = {
   coincident: "+",
   horizontal: "H",

@@ -285,6 +285,9 @@
         "a": { "$ref": "#/$defs/vec2" },
         "b": { "$ref": "#/$defs/vec2" },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -300,6 +303,9 @@
         "center": { "$ref": "#/$defs/vec2" },
         "radius": { "type": "number", "exclusiveMinimum": 0 },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -315,6 +321,9 @@
         "p0": { "$ref": "#/$defs/vec2" },
         "p1": { "$ref": "#/$defs/vec2" },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -347,6 +356,9 @@
           }
         },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -364,6 +376,9 @@
         "startAngle": { "type": "number", "description": "radians" },
         "endAngle": { "type": "number", "description": "radians" },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -381,6 +396,9 @@
         "p2": { "$ref": "#/$defs/vec2" },
         "p3": { "$ref": "#/$defs/vec2" },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -400,6 +418,9 @@
         "position": { "$ref": "#/$defs/vec2" },
         "angle": { "type": "number", "description": "radians" },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },
@@ -423,6 +444,9 @@
         "constraintResize": { "type": "boolean", "description": "Whether geometric constraints and dimensions may RESIZE the image. Default false (omitted), which makes the image a rigid body that constraints merely move — its corners are nonlinear in width/height/angle, so an image left free reflows ambiguously under a single point constraint. With \"aspectLocked\" the two size scalars are ONE degree of freedom, so the ratio is exact rather than converged; without it, width and height are independent. The main use is calibrating a scan: dimension a feature of known size and the whole image scales to suit." },
         "constraintRotate": { "type": "boolean", "description": "Whether geometric constraints and dimensions may ROTATE the image (e.g. levelling a tilted scan by making one of its edges horizontal). Default false (omitted). Kept independent of \"constraintResize\" because each freedom lets the solver satisfy the other's constraint the wrong way — a free angle meets a size dimension by tilting, and a free size meets a levelling constraint by shrinking the image away — so grant only the freedom the intent needs." },
         "isConstruction": { "type": "boolean" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
         "layerId": { "type": "string" }
       }
     },

@@ -62,6 +62,7 @@ function bootApp(): void {
 
   const canvas = document.getElementById("scene") as HTMLCanvasElement | null;
   const palette = document.getElementById("toolpalette");
+  const designtree = document.getElementById("design-tree-container");
   const topbar = document.getElementById("topbar");
   const layersbar = document.getElementById("layersbar");
   const settingsbar = document.getElementById("settingsbar");
@@ -78,6 +79,7 @@ function bootApp(): void {
   if (
     !canvas ||
     !palette ||
+    !designtree ||
     !topbar ||
     !layersbar ||
     !settingsbar ||
@@ -96,6 +98,7 @@ function bootApp(): void {
 
   const app = new App(canvas, {
     palette,
+    designtree,
     topbar,
     layersbar,
     settingsbar,

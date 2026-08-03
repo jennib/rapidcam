@@ -471,6 +471,7 @@ export class Renderer {
         continue;
       const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
       if (!layer.visible) continue;
+      if (e.visible === false) continue;
 
       const isHover = overlay.hover === e.id;
       const isToolpathHighlight = doc.toolpathHighlightIds?.has(e.id) ?? false;

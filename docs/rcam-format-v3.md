@@ -247,9 +247,17 @@ omitted entirely.
 
 ## Entities
 
-Each entity is an object tagged by `type`. Common optional fields: `isConstruction`
-(default false — construction/reference geometry, excluded from CAM) and `layerId`
-(default `"layer-0"`).
+Each entity is an object tagged by `type`. Common optional fields:
+
+- `isConstruction` (default false) — construction/reference geometry, excluded from CAM.
+- `layerId` (default `"layer-0"`).
+- `name` — a custom label shown in the design tree. Omit it and the tree derives
+  a description from the geometry (`Circle ⌀35.00 mm`); it has no effect on output.
+- `visible` (default true) — `false` hides the entity on the canvas, and it stops
+  being pickable and snappable. It is **not** excluded from CAM: hiding geometry
+  never silently changes a toolpath that already references it.
+- `locked` (default false) — `true` stops the entity being picked, dragged or
+  deleted on the canvas. Editor-only, like `visible`.
 
 The **point keys** below are the addresses constraints and dimensions use to refer
 to a specific point on an entity (via a `{ "entityId", "key" }` pair). Getting

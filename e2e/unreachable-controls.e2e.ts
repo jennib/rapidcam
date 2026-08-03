@@ -20,8 +20,11 @@
  * The app measured clean in every scene below at the time of writing, so a
  * failure here is a new defect, not a pre-existing backlog item.
  */
-import { test, expect, waitForApp, APP_URL } from "./appFixture";
+import { test, expect, openDoc, waitForApp, APP_URL } from "./appFixture";
 import type { Page } from "@playwright/test";
+import { CADDocument } from "../src/model/document";
+import { RectEntity } from "../src/model/entities";
+import { serializeDoc } from "../src/io/fileio";
 
 /** A control laid out beyond a container that offers no way to scroll to it. */
 interface Unreachable {
@@ -159,6 +162,55 @@ test("no control is laid out beyond a container that cannot scroll", async ({ pa
     doc.emitChange();
   });
   await expect(page.locator("#layersbar .layer-beam-toggle")).toHaveCount(0);
+  expect(await unreachableControls(page)).toEqual([]);
+});
+
+test("the design tree fits its rows, including the eye and lock", async ({ page }) => {
+  // Via a real document rather than `goto`: the tree only has rows to squeeze
+  // if there is geometry, and this route also clears the welcome screen.
+  const doc = new CADDocument({ width: 200, height: 150 }, "mm");
+  doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 60 }));
+  await openDoc(page, JSON.stringify(serializeDoc(doc, "one-rect")));
+  await page.locator("#design-tree-toggle").click();
+
+  // A long custom name is what squeezes a row: the label flexes and the two
+  // action buttons sit to the right of it inside a 250px panel.
+  await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __app: {
+          doc: {
+            entities: { id: string; name?: string; locked?: boolean }[];
+            layers: { name: string }[];
+            groups: { id: string; name: string; entityIds: string[] }[];
+            emitChange: () => void;
+          };
+        };
+      }
+    ).__app.doc;
+    doc.layers[0].name = "Cut through 6mm birch plywood";
+    // NOT entities[0] — that is the hidden WCS origin point, which the tree
+    // filters out, so naming it renders nothing at all.
+    const ent = doc.entities.find((e) => e.id !== "__origin__")!;
+    ent.name = "Cabinet hinge cup bore, left stile";
+    ent.locked = true; // pins the lock button visible rather than hover-only
+    doc.groups.push({
+      id: "grp-long",
+      name: "Concealed hinge boring pattern (35mm)",
+      entityIds: [ent.id],
+    });
+    doc.emitChange();
+  });
+
+  // Positive control: the crowded rows really rendered, so a clean sweep below
+  // means "they fit" and not "the hard case never appeared".
+  await expect(
+    page.locator(".tree-row", { hasText: "Cabinet hinge cup bore, left stile" }),
+  ).toHaveCount(1);
+  // Two: the entity's own lock, and its group's, which reads locked because
+  // every member is. Both are pinned visible, which is the crowded case.
+  await expect(page.locator(".tree-action-btn.on")).toHaveCount(2);
+
   expect(await unreachableControls(page)).toEqual([]);
 });
 

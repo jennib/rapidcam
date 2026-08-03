@@ -149,6 +149,9 @@ export abstract class Entity {
   selected = false;
   isConstruction = false;
   layerId = "layer-0";
+  name?: string;
+  visible = true;
+  locked = false;
 
   constructor(id?: EntityId) {
     this.id = id ?? nextId("ent");

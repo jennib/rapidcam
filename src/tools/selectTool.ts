@@ -20,6 +20,7 @@ import {
 import {
   type CADDocument,
   type DocSnapshot,
+  ORIGIN_ENTITY_ID,
   STOCK_ENTITY_ID,
   stockRefEntity,
   stockSnapPoints,
@@ -184,7 +185,7 @@ export class SelectTool implements Tool {
     let hitPoint: PointRef | null = null;
     let hitDist = Infinity;
     for (const ent of ctx.doc.entities) {
-      if (!ent.selected) continue;
+      if (!ent.selected || ent.locked) continue;
       if (ctx.doc.groupOf(ent.id)) continue;
       for (const p of ent.dofPoints()) {
         const d = dist(e.screen, ctx.view.worldToScreen(p.pos));
@@ -501,7 +502,7 @@ export class SelectTool implements Tool {
         );
         if (d.x !== 0 || d.y !== 0) {
           for (const ent of ctx.doc.selected) {
-            if (!isEntityFixed(ctx.doc, ent.id)) ent.translate(d);
+            if (!isEntityFixed(ctx.doc, ent.id) && !ent.locked) ent.translate(d);
           }
           ctx.solve(pinsForSelected(ctx.doc));
           // Detect the solver fighting the move: when constraints anchored to
@@ -815,6 +816,9 @@ export class SelectTool implements Tool {
 
     const toSelect = new Set<string>();
     for (const ent of ctx.doc.entities) {
+      // Was missing entirely: a marquee used to sweep up geometry on hidden and
+      // locked layers, and the WCS origin marker with it.
+      if (ent.id === ORIGIN_ENTITY_ID || !ctx.doc.isPickable(ent)) continue;
       const eb = ent.bounds();
       const inside = crossing ? boundsIntersect(eb, rect) : boundsContainsBounds(rect, eb);
       if (inside) {

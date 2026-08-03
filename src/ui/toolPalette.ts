@@ -12,7 +12,25 @@ export class ToolPalette {
   constructor(
     host: HTMLElement,
     private manager: ToolManager,
+    onToggleTree?: () => void,
   ) {
+    // The design-tree toggle isn't a tool — it opens a panel — so it sits above
+    // the separator and never participates in the active-tool highlight.
+    if (onToggleTree) {
+      const treeBtn = document.createElement("button");
+      treeBtn.id = "design-tree-toggle";
+      treeBtn.className = "tool-btn tree-toggle-btn";
+      treeBtn.dataset.tip = "Design Tree (^B)";
+      treeBtn.setAttribute("aria-label", "Toggle the design tree");
+      treeBtn.textContent = "🌳";
+      treeBtn.addEventListener("click", () => onToggleTree());
+      host.appendChild(treeBtn);
+
+      const topSep = document.createElement("div");
+      topSep.className = "tool-sep";
+      host.appendChild(topSep);
+    }
+
     const tools = manager.list();
     tools.forEach((tool) => {
       const btn = document.createElement("button");

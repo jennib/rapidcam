@@ -477,102 +477,84 @@ function cloneLayer(l: LayerDef): LayerDef {
   return { ...l, ...(l.laser ? { laser: { ...l.laser } } : {}) };
 }
 
-type EntitySnapshot =
-  | {
-      type: "line";
-      id: string;
-      a: Vec2;
-      b: Vec2;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "circle";
-      id: string;
-      center: Vec2;
-      radius: number;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "rectangle";
-      id: string;
-      p0: Vec2;
-      p1: Vec2;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "polyline";
-      id: string;
-      points: Vec2[];
-      vertexIds?: string[];
-      closed: boolean;
-      polygon?: PolygonParams;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "arc";
-      id: string;
-      center: Vec2;
-      radius: number;
-      startAngle: number;
-      endAngle: number;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "bezier";
-      id: string;
-      p0: Vec2;
-      p1: Vec2;
-      p2: Vec2;
-      p3: Vec2;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  | {
-      type: "text";
-      id: string;
-      text: string;
-      fontId: string;
-      sizeMM: number;
-      position: Vec2;
-      angle: number;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    }
-  // widthExpr/heightExpr/angleExpr are LEGACY (read-only): pre-unification image
-  // formulas, migrated to scalar bindings on load and never written back out.
-  | {
-      type: "image";
-      id: string;
-      imageId: string;
-      position: Vec2;
-      widthMM: number;
-      heightMM: number;
-      angle: number;
-      flipX?: boolean;
-      flipY?: boolean;
-      widthExpr?: string;
-      heightExpr?: string;
-      angleExpr?: string;
-      aspectLocked?: boolean;
-      /** Both omitted when false (the rigid default) — see RasterImageEntity. */
-      constraintResize?: boolean;
-      constraintRotate?: boolean;
-      selected: boolean;
-      isConstruction: boolean;
-      layerId?: string;
-    };
+/**
+ * Fields every entity snapshot carries whatever its geometry. Factored out so a
+ * new one can't be added to seven of the eight shapes and silently dropped from
+ * the eighth. Mirrored by the published schema — see public/schema/rcam-v3.schema.json.
+ */
+interface EntitySnapshotCommon {
+  id: string;
+  selected: boolean;
+  isConstruction: boolean;
+  layerId?: string;
+  /** Design-tree custom name. Absent = derive a description from the geometry. */
+  name?: string;
+  /** Omitted when visible (the default); only a hidden entity writes `false`. */
+  visible?: boolean;
+  /** Omitted when unlocked (the default); only a locked entity writes `true`. */
+  locked?: boolean;
+}
+
+type EntitySnapshot = EntitySnapshotCommon &
+  (
+    | { type: "line"; a: Vec2; b: Vec2 }
+    | { type: "circle"; center: Vec2; radius: number }
+    | { type: "rectangle"; p0: Vec2; p1: Vec2 }
+    | {
+        type: "polyline";
+        points: Vec2[];
+        vertexIds?: string[];
+        closed: boolean;
+        polygon?: PolygonParams;
+      }
+    | { type: "arc"; center: Vec2; radius: number; startAngle: number; endAngle: number }
+    | { type: "bezier"; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2 }
+    | {
+        type: "text";
+        text: string;
+        fontId: string;
+        sizeMM: number;
+        position: Vec2;
+        angle: number;
+      }
+    // widthExpr/heightExpr/angleExpr are LEGACY (read-only): pre-unification image
+    // formulas, migrated to scalar bindings on load and never written back out.
+    | {
+        type: "image";
+        imageId: string;
+        position: Vec2;
+        widthMM: number;
+        heightMM: number;
+        angle: number;
+        flipX?: boolean;
+        flipY?: boolean;
+        widthExpr?: string;
+        heightExpr?: string;
+        angleExpr?: string;
+        aspectLocked?: boolean;
+        /** Both omitted when false (the rigid default) — see RasterImageEntity. */
+        constraintResize?: boolean;
+        constraintRotate?: boolean;
+      }
+  );
+
+/**
+ * The geometry-independent half of an entity snapshot. `name`, `visible` and
+ * `locked` are written only when they differ from the default, so a document
+ * that never touched the design tree serialises byte-for-byte as it did before
+ * those fields existed.
+ */
+function entityCommon(e: Entity): EntitySnapshotCommon {
+  return {
+    id: e.id,
+    selected: e.selected,
+    isConstruction: e.isConstruction,
+    layerId: e.layerId,
+    ...(e.name ? { name: e.name } : {}),
+    ...(e.visible ? {} : { visible: false }),
+    ...(e.locked ? { locked: true } : {}),
+  };
+}
 
 export interface DocSnapshot {
   entities: EntitySnapshot[];
@@ -814,9 +796,16 @@ export class CADDocument {
       this.emitChange();
     }
   }
+  /**
+   * Delete the selection. Locked entities survive — locking has to mean
+   * something once the design tree can put one in the selection that the canvas
+   * would never have let you click.
+   */
   removeSelected(): void {
     const before = this.entities.length;
-    this.entities = this.entities.filter((e) => !e.selected || e.id === ORIGIN_ENTITY_ID);
+    this.entities = this.entities.filter(
+      (e) => !e.selected || e.locked || e.id === ORIGIN_ENTITY_ID,
+    );
     if (this.entities.length !== before) {
       this.pruneReferences();
       this.emitChange();
@@ -1198,8 +1187,7 @@ export class CADDocument {
     let bestD = tol;
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
-      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
-      if (!layer.visible || layer.locked) continue;
+      if (!this.isPickable(e)) continue;
 
       for (const dp of e.pickablePoints()) {
         const d = dist(dp.pos, p);
@@ -1220,13 +1208,27 @@ export class CADDocument {
   }
 
   // --- queries -------------------------------------------------------------
+  /**
+   * Can the user reach this entity on the canvas — click it, marquee it, drag
+   * it? False when its layer is hidden or locked, and false when the entity
+   * itself is (see the design tree). The single gate for hit-testing, marquee
+   * and Select All, so hiding and locking mean the same thing however the
+   * selection is made.
+   *
+   * Deliberately NOT consulted by the CAM side: hiding geometry is a drafting
+   * convenience and must never quietly change a toolpath that references it.
+   */
+  isPickable(e: Entity): boolean {
+    if (!e.visible || e.locked) return false;
+    const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
+    return layer.visible && !layer.locked;
+  }
+
   /** Topmost entity whose outline is within `tol` mm of `p`, or null. */
   hitTest(p: Vec2, tol: number): Entity | null {
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const e = this.entities[i];
-      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
-      if (!layer.visible || layer.locked) continue;
-
+      if (!this.isPickable(e)) continue;
       if (e.distanceTo(p) <= tol) return e;
     }
     return null;
@@ -1241,7 +1243,9 @@ export class CADDocument {
     for (const e of this.entities) {
       if (exclude?.has(e.id)) continue;
       const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
-      if (!layer.visible) continue; // snapping still works on locked layers, but not invisible ones
+      // Snapping still works on locked geometry — that's what a locked datum is
+      // FOR — but never on something you cannot see.
+      if (!layer.visible || !e.visible) continue;
       out.push(...e.snapPoints());
     }
     out.push(...stockSnapPoints(this));
@@ -1277,74 +1281,55 @@ export class CADDocument {
           if (e instanceof LineEntity)
             return {
               type: "line",
-              id: e.id,
               a: { ...e.a },
               b: { ...e.b },
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof CircleEntity)
             return {
               type: "circle",
-              id: e.id,
               center: { ...e.center },
               radius: e.radius,
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof RectEntity)
             return {
               type: "rectangle",
-              id: e.id,
               p0: { ...e.p0 },
               p1: { ...e.p1 },
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof ArcEntity)
             return {
               type: "arc",
-              id: e.id,
               center: { ...e.center },
               radius: e.radius,
               startAngle: e.startAngle,
               endAngle: e.endAngle,
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof BezierEntity)
             return {
               type: "bezier",
-              id: e.id,
               p0: { ...e.p0 },
               p1: { ...e.p1 },
               p2: { ...e.p2 },
               p3: { ...e.p3 },
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof TextEntity)
             return {
               type: "text",
-              id: e.id,
               text: e.text,
               fontId: e.fontId,
               sizeMM: e.sizeMM,
               position: { ...e.position },
               angle: e.angle,
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           if (e instanceof RasterImageEntity)
             return {
               type: "image",
-              id: e.id,
               imageId: e.imageId,
               position: { ...e.position },
               widthMM: e.widthMM,
@@ -1355,21 +1340,16 @@ export class CADDocument {
               aspectLocked: e.aspectLocked,
               ...(e.constraintResize ? { constraintResize: true } : {}),
               ...(e.constraintRotate ? { constraintRotate: true } : {}),
-              selected: e.selected,
-              isConstruction: e.isConstruction,
-              layerId: e.layerId,
+              ...entityCommon(e),
             };
           const pe = e as PolylineEntity;
           return {
             type: "polyline",
-            id: pe.id,
             points: pe.points.map((p) => ({ ...p })),
             vertexIds: [...pe.vertexIds],
             closed: pe.closed,
             ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
-            selected: pe.selected,
-            isConstruction: pe.isConstruction,
-            layerId: pe.layerId,
+            ...entityCommon(pe),
           };
         }),
       constraints: this.constraints.map((c) => ({
@@ -1505,6 +1485,12 @@ export class CADDocument {
         e.selected = es.selected ?? false;
         e.isConstruction = es.isConstruction ?? false;
         e.layerId = es.layerId ?? "layer-0";
+        e.name = es.name || undefined;
+        // Absent = the default, so a pre-design-tree file loads fully visible
+        // and unlocked. Coerced rather than trusted: applyFile doesn't
+        // schema-validate (see the image branch above).
+        e.visible = es.visible !== false;
+        e.locked = es.locked === true;
       }
       return e!;
     });
