@@ -20,11 +20,8 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // Kill whatever holds :5173 before AND after the run — see e2e/freePort.ts.
-  // Playwright's own teardown does not reliably stop the server it started on
-  // Windows, and it fails *intermittently*, so the leak accumulates unnoticed.
+  // Kill whatever holds :5173 before the run — see e2e/freePort.ts.
   globalSetup: "./e2e/freePort.ts",
-  globalTeardown: "./e2e/freePort.ts",
   webServer: {
     // Vite invoked directly rather than through `npm run dev`, which buries the
     // server four processes deep (cmd → npm → cmd → vite). Fewer wrappers is
