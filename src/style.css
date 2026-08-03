@@ -2459,7 +2459,6 @@ button.btn.btn-primary:hover:not(:disabled) {
   display: flex;
   min-height: 0;
   background: var(--panel);
-  border-right: 0 solid var(--border);
   overflow: hidden;
   user-select: none;
   transition: width 0.15s ease;
@@ -2467,16 +2466,19 @@ button.btn.btn-primary:hover:not(:disabled) {
 
 .design-tree-panel.open {
   width: 250px;
-  border-right-width: 1px;
 }
 
-/* Fixed width so the rows never reflow as the panel slides — the panel clips it. */
+/* Fixed width so the rows never reflow as the panel slides — the panel clips it.
+   The right border lives here rather than on the panel so that an open panel's
+   content box is exactly 250px and nothing hangs 1px past it (box-sizing is
+   border-box globally). */
 .design-tree-shell {
   flex: 0 0 auto;
   width: 250px;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border-right: 1px solid var(--border);
 }
 
 #design-tree-toggle {

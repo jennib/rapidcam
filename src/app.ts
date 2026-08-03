@@ -1493,12 +1493,10 @@ export class App {
       return;
     }
     if (firstPress) this.project.pushHistory();
-    const isFixed = (id: string) =>
-      this.doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
     const before = selectionSnapPositions(this.doc);
     const pins: PinMap = new Map();
     for (const e of this.doc.selected) {
-      if (!isFixed(e.id)) e.translate({ x: dx, y: dy });
+      if (this.doc.isMovable(e)) e.translate({ x: dx, y: dy });
       for (const p of e.dofPoints()) pins.set(`${e.id}:${p.key}`, p.pos);
     }
     this.runSolve(pins);

@@ -112,6 +112,115 @@ test("live: hiding a row removes it from the canvas and from picking", async ({ 
   expect(hitBack).not.toBeNull();
 });
 
+/** World mm → viewport px, via the app's own view transform. */
+async function toPx(
+  page: import("@playwright/test").Page,
+  mm: [number, number],
+): Promise<{ x: number; y: number }> {
+  return page.evaluate(([x, y]) => {
+    const app = (
+      window as unknown as {
+        __app: {
+          view: { worldToScreen(p: { x: number; y: number }): { x: number; y: number } };
+          canvas: HTMLElement;
+        };
+      }
+    ).__app;
+    const p = app.view.worldToScreen({ x, y });
+    const r = app.canvas.getBoundingClientRect();
+    return { x: r.left + p.x, y: r.top + p.y };
+  }, mm);
+}
+
+test("live: a locked entity still selects but refuses to be dragged", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, threeShapes());
+  await page.locator("#design-tree-toggle").click();
+
+  // Lock the rectangle from the tree, then try to drag it on the canvas. This
+  // is the half `doc.isMovable` unit tests cannot prove: that the select tool
+  // actually consults it.
+  const rectRow = page.locator(".tree-row", { hasText: "Rectangle" });
+  await rectRow.locator("button[title^='Lock']").click();
+
+  // ON the bottom edge: a rectangle is hit-tested against its outline, not its
+  // interior, so the centre would miss and start a marquee instead.
+  const before = await toPx(page, [150, 20]);
+  const target = await toPx(page, [150, 50]);
+  await page.mouse.move(before.x, before.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 10 });
+  await page.mouse.up();
+
+  const state = await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __app: { doc: { entities: { type: string; selected: boolean; p0?: { y: number } }[] } };
+      }
+    ).__app.doc;
+    const r = doc.entities.find((e) => e.type === "rectangle")!;
+    return { selected: r.selected, y: r.p0!.y };
+  });
+
+  // SolidWorks semantics: the click selected it, the drag moved nothing.
+  expect(state.selected).toBe(true);
+  expect(state.y).toBeCloseTo(20, 3);
+
+  // Positive control: unlock, drag again, and it moves — so the assertion above
+  // is about the lock and not about the drag gesture failing to register.
+  await rectRow.locator("button[title='Unlock']").click();
+  await page.mouse.move(before.x, before.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 10 });
+  await page.mouse.up();
+
+  const movedY = await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: { entities: any[] } } }).__app.doc;
+    return doc.entities.find((e) => e.type === "rectangle")!.p0.y;
+  });
+  expect(movedY).toBeGreaterThan(21);
+});
+
+test("live: hidden geometry is dropped from the program, and pre-flight says so", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, threeShapes());
+  await page.locator("#design-tree-toggle").click();
+
+  // Put both circles in one drill toolpath, then hide one of them.
+  await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: any } }).__app.doc;
+    const circles = doc.entities.filter((e: any) => e.type === "circle");
+    doc.operations.push({
+      id: "op1",
+      name: "holes",
+      type: "drill",
+      side: "outside",
+      entityIds: circles.map((c: any) => c.id),
+      toolType: "drill",
+      toolNumber: 1,
+      diameter: 3,
+      stepover: 0.4,
+      feedrate: 600,
+      plungeRate: 200,
+      spindleSpeed: 12000,
+      safeZ: 5,
+      depth: -5,
+      stepdown: 2,
+    });
+    doc.emitChange();
+  });
+
+  await page.locator(".tree-row", { hasText: "Circle" }).first().locator("button[title='Hide']").click();
+  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".cam-gen-btn").click();
+
+  const body = await page.locator(".tp-backdrop").first().innerText();
+  expect(body).toMatch(/hidden object is assigned to toolpath "holes"/i);
+  expect(body).toMatch(/NOT cut/);
+});
+
 test("live: Ctrl+B toggles the panel", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());

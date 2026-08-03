@@ -172,6 +172,13 @@ test("the design tree fits its rows, including the eye and lock", async ({ page 
   doc.add(new RectEntity({ x: 10, y: 10 }, { x: 90, y: 60 }));
   await openDoc(page, JSON.stringify(serializeDoc(doc, "one-rect")));
   await page.locator("#design-tree-toggle").click();
+  // Settle the open animation before sweeping. The panel slides 0 → 250px and
+  // its contents are a fixed-width shell it clips, so mid-flight the shell is
+  // legitimately wider than its parent. This guard is about controls that are
+  // permanently out of reach, not ones 100ms from arriving.
+  await expect
+    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
+    .toBe(250);
 
   // A long custom name is what squeezes a row: the label flexes and the two
   // action buttons sit to the right of it inside a 250px panel.

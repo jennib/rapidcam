@@ -394,7 +394,6 @@ export class DesignTreePanel {
       onToggleLock: () => {
         this.pushHistory();
         for (const e of ents) e.locked = !allLocked;
-        if (!allLocked) this.doc.clearSelection();
         this.doc.emitChange();
       },
       onRename: (newName) => {
@@ -474,7 +473,6 @@ export class DesignTreePanel {
         onToggleLock: () => {
           this.pushHistory();
           ent.locked = !ent.locked;
-          if (ent.locked) ent.selected = false;
           this.doc.emitChange();
         },
       }),
@@ -571,7 +569,7 @@ export class DesignTreePanel {
       btn.className = "tree-action-btn";
       btn.classList.toggle("on", opts.locked === true);
       btn.textContent = opts.locked ? "🔒" : "🔓";
-      btn.title = opts.locked ? "Unlock" : "Lock (stops it being picked or moved)";
+      btn.title = opts.locked ? "Unlock" : "Lock (stays selectable, but won't move)";
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         opts.onToggleLock?.();

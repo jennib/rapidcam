@@ -24,6 +24,7 @@
 import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
+import { hiddenOpEntityIds } from "./machinable";
 import { checkMachinability } from "./machinability";
 
 export type LintSeverity = "error" | "warning";
@@ -528,6 +529,40 @@ function checkEmptyOps(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: an operation bound to geometry that is hidden, and which CAM
+ * therefore did not cut (see machinable.ts).
+ *
+ * This is the safety net for that policy. Excluding hidden geometry is the
+ * behaviour users expect — if it isn't on screen it isn't in the program — but
+ * a toolpath that quietly got shorter because a layer was switched off while
+ * drafting is exactly how a part gets scrapped. So the exclusion is allowed to
+ * happen, and then it is named, with the ids attached so the pre-flight dialog
+ * highlights the missing geometry on the canvas.
+ */
+function checkHiddenGeometry(doc: CADDocument): LintFinding | null {
+  const affected = new Map<string, string[]>();
+  for (const op of doc.operations) {
+    const hidden = hiddenOpEntityIds(doc, op.entityIds);
+    if (hidden.length > 0) affected.set(op.name, hidden);
+  }
+  if (affected.size === 0) return null;
+
+  const ids = [...new Set([...affected.values()].flat())];
+  const names = [...affected.keys()].map((n) => `"${n}"`).join(", ");
+  return {
+    code: "hidden-geometry",
+    severity: "warning",
+    message:
+      `${ids.length} hidden object${ids.length > 1 ? "s are" : " is"} assigned to ` +
+      `toolpath${affected.size > 1 ? "s" : ""} ${names} and ${ids.length > 1 ? "were" : "was"} ` +
+      `NOT cut — hidden geometry is left out of the program. Show ${ids.length > 1 ? "them" : "it"} ` +
+      `in the Design Tree to cut ${ids.length > 1 ? "them" : "it"}, or remove ` +
+      `${ids.length > 1 ? "them" : "it"} from the toolpath to silence this.`,
+    entityIds: ids,
+  };
+}
+
+/**
  * Lint a generated G-code program against its document-derived context. Returns
  * findings ordered errors-first; an empty array means the program passed.
  */
@@ -541,6 +576,8 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // Empty-toolpath is doc-level and machine-agnostic (an empty cut/engrave on a
   // laser cuts nothing too); the move stream can't see it since it emits none.
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
+  // Also machine-agnostic, and paired with machinable.ts — see that module.
+  if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));
   if (ctx.machineKind !== "laser") {
     findings.push(checkRapidThroughStock(moves, ctx));
     findings.push(checkOverDeep(moves, ctx));

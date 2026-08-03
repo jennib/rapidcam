@@ -12,6 +12,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
+import { machinableEntityMap } from "./machinable";
 import { flattenBezier } from "../core/geom";
 import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
 import {
@@ -347,7 +348,7 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       },
     ];
 
-  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+  const entityMap = machinableEntityMap(doc);
   // A score/fold follows the geometry centreline with no kerf offset (like a
   // vector engrave) — only "profile" is a kerf-compensated cut.
   const profile = op.type === "profile";

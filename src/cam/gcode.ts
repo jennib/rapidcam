@@ -1,5 +1,6 @@
 import type { Vec2 } from "../core/vec2";
 import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
+import { machinableEntityMap } from "./machinable";
 import {
   type Entity,
   LineEntity,
@@ -1307,7 +1308,7 @@ function toolpathBody(
   pp: PostProcessor,
 ): string[] {
   const lines: string[] = [];
-  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+  const entityMap = machinableEntityMap(doc);
 
   // A chamfer needs a V-bit (the bevel angle comes from the tool) and a width.
   if (op.type === "chamfer") {

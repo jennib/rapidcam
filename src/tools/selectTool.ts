@@ -49,10 +49,6 @@ const CONSTRAINT_KEYS: Record<string, ConstraintType> = {
   c: "coincident",
 };
 
-function isEntityFixed(doc: CADDocument, id: string): boolean {
-  return doc.constraints.some((c) => c.type === "fixed" && c.entities.includes(id));
-}
-
 type Mode =
   | "idle"
   | "maybeDragPoint"
@@ -409,7 +405,7 @@ export class SelectTool implements Tool {
           const origPos = ent.getPoint(this.dragPoint!.key);
           const d = sub(e.world, origPos);
           for (const se of ctx.doc.selected) {
-            if (!isEntityFixed(ctx.doc, se.id)) se.translate(d);
+            if (ctx.doc.isMovable(se)) se.translate(d);
           }
 
           if (e.snap && e.snap.entityId !== ent.id) {
@@ -437,7 +433,7 @@ export class SelectTool implements Tool {
                 const targetAngle = Math.atan2(targetDir.y, targetDir.x) + Math.PI; // point away
 
                 const unfixedSelected = ctx.doc.selected.filter(
-                  (x) => !isEntityFixed(ctx.doc, x.id),
+                  (x) => ctx.doc.isMovable(x),
                 );
                 applyRotate(
                   unfixedSelected,
@@ -469,7 +465,7 @@ export class SelectTool implements Tool {
         const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
         const angle = currentAngle - startAngle;
 
-        const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
+        const unfixedSelected = ctx.doc.selected.filter((x) => ctx.doc.isMovable(x));
         applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
           const idx = ctx.doc.entities.findIndex((x) => x.id === oldE.id);
           if (idx >= 0) ctx.doc.entities[idx] = newE;
@@ -502,7 +498,7 @@ export class SelectTool implements Tool {
         );
         if (d.x !== 0 || d.y !== 0) {
           for (const ent of ctx.doc.selected) {
-            if (!isEntityFixed(ctx.doc, ent.id) && !ent.locked) ent.translate(d);
+            if (ctx.doc.isMovable(ent)) ent.translate(d);
           }
           ctx.solve(pinsForSelected(ctx.doc));
           // Detect the solver fighting the move: when constraints anchored to
@@ -571,7 +567,7 @@ export class SelectTool implements Tool {
       }
 
       if (Math.abs(sx) > 0.001 || Math.abs(sy) > 0.001) {
-        const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
+        const unfixedSelected = ctx.doc.selected.filter((x) => ctx.doc.isMovable(x));
         if (
           !this.scaleWarned &&
           Math.abs(sx - sy) > 1e-6 &&
@@ -594,7 +590,7 @@ export class SelectTool implements Tool {
       const currentAngle = Math.atan2(e.worldRaw.y - cy, e.worldRaw.x - cx);
       const angle = currentAngle - startAngle;
 
-      const unfixedSelected = ctx.doc.selected.filter((x) => !isEntityFixed(ctx.doc, x.id));
+      const unfixedSelected = ctx.doc.selected.filter((x) => ctx.doc.isMovable(x));
       applyRotate(unfixedSelected, cx, cy, angle, (oldE, newE) => {
         const idx = ctx.doc.entities.findIndex((x) => x.id === oldE.id);
         if (idx >= 0) ctx.doc.entities[idx] = newE;
@@ -927,7 +923,7 @@ export function computeTransformBox(doc: CADDocument, view: Viewport): Transform
 export function selectionSnapPositions(doc: CADDocument, cap = 40): Vec2[] {
   const out: Vec2[] = [];
   for (const s of doc.selected) {
-    if (isEntityFixed(doc, s.id)) continue; // won't move
+    if (!doc.isMovable(s)) continue; // won't move
     for (const sp of s.snapPoints()) {
       out.push(clone(sp.pos));
       if (out.length >= cap) return out;

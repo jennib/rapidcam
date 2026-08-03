@@ -16,6 +16,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
+import { machinableEntityMap } from "./machinable";
 import { laserFillGeometry } from "./lasergcode";
 import { type CADDocument, stockFootprint } from "../model/document";
 import {
@@ -103,7 +104,7 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   const gridH = Math.ceil(stockH * RES);
   const data = new Float32Array(gridW * gridH).fill(stockT);
 
-  const entityMap = new Map(doc.entities.map((e) => [e.id, e]));
+  const entityMap = machinableEntityMap(doc);
   // Expand pattern targets so the 3D preview matches the toolpath: an op on
   // patterned geometry renders all instances and follows the count.
   const isLaser = doc.isLaser;

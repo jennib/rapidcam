@@ -1219,9 +1219,27 @@ export class CADDocument {
    * convenience and must never quietly change a toolpath that references it.
    */
   isPickable(e: Entity): boolean {
-    if (!e.visible || e.locked) return false;
+    if (!e.visible) return false;
     const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
     return layer.visible && !layer.locked;
+  }
+
+  /**
+   * May the user move this entity — drag, scale, rotate, nudge, delete it?
+   *
+   * False when the design tree has locked it, and false when a `fixed`
+   * constraint pins it. Locking is deliberately SolidWorks-flavoured and is a
+   * weaker thing than {@link isPickable}: a locked entity stays clickable,
+   * dimensionable and snappable, it just refuses to move. Locking a *layer*
+   * remains the blunter tool — that takes its geometry out of reach entirely.
+   *
+   * Note this does not pin the SOLVER. A locked entity coincident with one you
+   * drag still follows, because that is the constraint doing its job; use the
+   * `fixed` constraint when you mean "the solver may not move this".
+   */
+  isMovable(e: Entity): boolean {
+    if (e.locked) return false;
+    return !this.constraints.some((c) => c.type === "fixed" && c.entities.includes(e.id));
   }
 
   /** Topmost entity whose outline is within `tol` mm of `p`, or null. */

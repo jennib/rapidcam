@@ -253,11 +253,15 @@ Each entity is an object tagged by `type`. Common optional fields:
 - `layerId` (default `"layer-0"`).
 - `name` — a custom label shown in the design tree. Omit it and the tree derives
   a description from the geometry (`Circle ⌀35.00 mm`); it has no effect on output.
-- `visible` (default true) — `false` hides the entity on the canvas, and it stops
-  being pickable and snappable. It is **not** excluded from CAM: hiding geometry
-  never silently changes a toolpath that already references it.
-- `locked` (default false) — `true` stops the entity being picked, dragged or
-  deleted on the canvas. Editor-only, like `visible`.
+- `visible` (default true) — `false` hides the entity on the canvas; it stops
+  being pickable and snappable, and it **is excluded from CAM output**, exactly
+  as geometry on a hidden layer is. If it isn't on screen, it isn't in the
+  program. Pre-flight warns (`hidden-geometry`) when a toolpath still references
+  something hidden, so the exclusion is never silent.
+- `locked` (default false) — `true` stops the entity being dragged, scaled,
+  rotated, nudged or deleted. It stays selectable, dimensionable and snappable
+  (the SolidWorks sense of "lock"), and it is still cut. Locking a whole *layer*
+  is the blunter tool: that takes its geometry out of reach entirely.
 
 The **point keys** below are the addresses constraints and dimensions use to refer
 to a specific point on an entity (via a `{ "entityId", "key" }` pair). Getting

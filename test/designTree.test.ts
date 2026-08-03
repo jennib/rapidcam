@@ -157,7 +157,7 @@ describe("visibility", () => {
     expect(line.selected).toBe(false);
   });
 
-  test("Select All skips hidden and locked entities", () => {
+  test("Select All skips hidden entities but takes locked ones", () => {
     line.visible = false;
     circle.locked = true;
     const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 10, y: 10 }));
@@ -166,7 +166,8 @@ describe("visibility", () => {
 
     expect(rect.selected).toBe(true); // positive control
     expect(line.selected).toBe(false);
-    expect(circle.selected).toBe(false);
+    // Locked is SolidWorks-flavoured: still selectable, just immovable.
+    expect(circle.selected).toBe(true);
   });
 
   test("a group's eye hides every member at once", async () => {
@@ -186,21 +187,39 @@ describe("visibility", () => {
 });
 
 describe("locking", () => {
-  test("locking stops the entity being picked", () => {
+  test("locking stops movement but not selection — the SolidWorks rule", () => {
     const h = mount(doc);
-    expect(doc.hitTest({ x: 20, y: 0 }, 1)?.id).toBe(line.id); // positive control
+    expect(doc.isMovable(line)).toBe(true); // positive control
 
     action(row(h, "Line 40.00 mm"), /Lock/).click();
 
     expect(line.locked).toBe(true);
-    expect(doc.hitTest({ x: 20, y: 0 }, 1)).toBeNull();
-    expect(doc.hitTest({ x: 110, y: 100 }, 1)?.id).toBe(circle.id);
+    expect(doc.isMovable(line)).toBe(false);
+    // Still reachable: you can click it, dimension to it, snap to it.
+    expect(doc.hitTest({ x: 20, y: 0 }, 1)?.id).toBe(line.id);
+    expect(doc.isPickable(line)).toBe(true);
+    // The unlocked sibling is unaffected, so this isn't just a blanket refusal.
+    expect(doc.isMovable(circle)).toBe(true);
   });
 
   test("locking leaves snapping alone — a locked datum is still a datum", () => {
     const h = mount(doc);
     action(row(h, "Line 40.00 mm"), /Lock/).click();
     expect(doc.snapPoints().some((p) => p.entityId === line.id)).toBe(true);
+  });
+
+  test("locking keeps the entity selected rather than dropping it", () => {
+    line.selected = true;
+    const h = mount(doc);
+    action(row(h, "Line 40.00 mm"), /Lock/).click();
+    expect(line.selected).toBe(true);
+  });
+
+  test("a `fixed` constraint makes an entity immovable too, without locking it", () => {
+    doc.addConstraint({ id: "c1", type: "fixed", points: [], entities: [circle.id] });
+    expect(doc.isMovable(circle)).toBe(false);
+    expect(circle.locked).toBe(false); // the two reasons stay distinguishable
+    expect(doc.isMovable(line)).toBe(true);
   });
 
   test("a locked entity survives Delete while its unlocked neighbour goes", () => {

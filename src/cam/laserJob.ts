@@ -90,7 +90,10 @@ function isUserGeometry(e: Entity): boolean {
  * image, which can never be anything but engraved.
  */
 function usableFor(kind: LaserJobKind, e: Entity): boolean {
-  if (e.isConstruction) return false;
+  // Hidden means not cut, the same rule the layer check above applies — see
+  // cam/machinable.ts. An individually hidden object is no more burnable than
+  // one on a hidden layer.
+  if (e.isConstruction || !e.visible) return false;
   if (e instanceof RasterImageEntity) return kind === "engrave" || kind === "fill";
   return hasCuttablePath(e);
 }
@@ -133,14 +136,18 @@ export function buildJobFromLayers(doc: CADDocument): LayerJob {
       // count the document's implicit WCS origin point, which sits on layer 0
       // of every drawing and would make a genuinely empty first layer report
       // the wrong reason. That point has now caused three separate bugs here.
-      const anything = doc.entities.some(
-        (e) => e.layerId === layer.id && isUserGeometry(e),
-      );
+      const onLayer = doc.entities.filter((e) => e.layerId === layer.id && isUserGeometry(e));
+      // All of it hidden is its own answer. Reporting "nothing on it can be
+      // cut" would send the user looking for the wrong problem when the fix is
+      // one click in the design tree.
+      const allHidden = onLayer.length > 0 && onLayer.every((e) => !e.visible);
       skipped.push({
         layer: layer.name,
-        why: anything
-          ? `nothing on it can be ${JOB_KIND_LABELS[recipe.kind].toLowerCase()} (an image can only be engraved)`
-          : "no geometry on it",
+        why: allHidden
+          ? "everything on it is hidden"
+          : onLayer.length > 0
+            ? `nothing on it can be ${JOB_KIND_LABELS[recipe.kind].toLowerCase()} (an image can only be engraved)`
+            : "no geometry on it",
       });
       continue;
     }
