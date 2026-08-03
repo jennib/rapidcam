@@ -34,6 +34,7 @@ import {
   TextEntity,
 } from "../model/entities";
 import { formatAngle, formatLengthWithUnit } from "../core/units";
+import type { SolveStatusLabel } from "./statusBar";
 
 export interface DesignTreeOptions {
   container: HTMLElement;
@@ -98,6 +99,8 @@ export class DesignTreePanel {
   private lastSelectionKey = "";
   /** Entity id → short label ("Line 2"), rebuilt each pass. See {@link shortLabels}. */
   private labels = new Map<string, string>();
+  /** Latest solve status, pushed in by the app. See {@link setSolveStatus}. */
+  private solveStatus: SolveStatusLabel | null = null;
 
   constructor(opts: DesignTreeOptions) {
     this.doc = opts.doc;
@@ -152,6 +155,24 @@ export class DesignTreePanel {
       { once: true },
     );
     if (open && this.dirty) this.rebuild();
+  }
+
+  /**
+   * Take the sketch's solve status, for the badge on the Constraints folder.
+   *
+   * The app hands over the result of the very same `solveStatusLabel()` call the
+   * status bar renders, from the same solve and the same `hasUnderDefined` — so
+   * the badge and the bar cannot end up telling the user different things. Do
+   * not compute definedness here.
+   *
+   * Ignores no-op updates because a solve runs on every frame of a drag, and a
+   * tree rebuild per frame is exactly what the rAF coalescing exists to avoid.
+   */
+  setSolveStatus(label: SolveStatusLabel | null): void {
+    if (label?.short === this.solveStatus?.short && label?.color === this.solveStatus?.color)
+      return;
+    this.solveStatus = label;
+    this.refresh();
   }
 
   /** Queue a rebuild for the next frame (no-op while closed — see class docs). */
@@ -262,6 +283,10 @@ export class DesignTreePanel {
         title: "Constraints",
         count: this.doc.constraints.length,
         badge: "⚯",
+        // Whether the sketch is over-, under- or fully constrained belongs here
+        // because this folder is where it gets fixed — the status bar tells you
+        // there is a problem, this list is what you delete from to resolve it.
+        status: this.solveStatus,
       });
       for (const con of this.doc.constraints) folder.childrenEl.appendChild(this.constraintNode(con));
       this.bodyEl.appendChild(folder.nodeEl);
@@ -310,6 +335,8 @@ export class DesignTreePanel {
     onRename?: (name: string) => void;
     /** Identity for the rename editor, so an in-progress edit survives rebuilds. */
     editKey?: string;
+    /** Solve-status badge shown at the right of the row. */
+    status?: SolveStatusLabel | null;
   }): { nodeEl: HTMLElement; rowEl: HTMLElement; childrenEl: HTMLElement } {
     const nodeEl = document.createElement("div");
     nodeEl.className = "tree-node";
@@ -355,6 +382,15 @@ export class DesignTreePanel {
     if (opts.onLabelClick) label.addEventListener("click", opts.onLabelClick);
     if (opts.onRename && opts.editKey)
       this.wireRename(text, opts.title, opts.editKey, opts.onRename);
+
+    if (opts.status) {
+      const badge = document.createElement("span");
+      badge.className = "tree-solve-badge";
+      badge.textContent = opts.status.short;
+      badge.style.color = opts.status.color;
+      badge.title = opts.status.tooltip;
+      label.appendChild(badge);
+    }
 
     rowEl.append(arrow, label, this.actionsEl(opts));
 

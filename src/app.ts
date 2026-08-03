@@ -79,7 +79,7 @@ import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { SettingsBar } from "./ui/settingsBar";
 import { showShortcutOverlay } from "./ui/shortcutOverlay";
-import { StatusBar } from "./ui/statusBar";
+import { solveStatusLabel, StatusBar } from "./ui/statusBar";
 import { toast } from "./ui/toast";
 import { ToolPalette } from "./ui/toolPalette";
 import { TopBar } from "./ui/topBar";
@@ -735,6 +735,10 @@ export class App {
       (s) => s === "under-defined",
     );
     this.statusBar.setSolveStatus(res, anyUnderDefined);
+    // The design tree's Constraints folder shows the SAME verdict, from the same
+    // call on the same inputs — not its own reading of the solve result, so the
+    // two can never contradict each other.
+    this.designTree.setSolveStatus(solveStatusLabel(res, anyUnderDefined));
     this.requestRender();
   }
 

@@ -10,6 +10,13 @@ import type { SolveResult } from "../solver/solver";
  *  unconstrained sketch has no meaningful "definedness" to report yet). */
 export interface SolveStatusLabel {
   html: string;
+  /**
+   * The same state in a few characters, for places too narrow for `html` — the
+   * design tree's Constraints folder. Produced HERE, by the same branch that
+   * writes `html`, so the two renderings can differ in wording but can never
+   * disagree about which state the sketch is in.
+   */
+  short: string;
   /** CSS color (token or literal) for the status text. */
   color: string;
   /** Plain-language explanation, shown on hover — the DOF number alone tells a
@@ -46,6 +53,7 @@ export function solveStatusLabel(
   if (!res.converged) {
     return {
       html: "⚠ Over-constrained / conflicting",
+      short: "⚠ Conflicting",
       color: "var(--danger)",
       tooltip:
         "Conflicting or redundant constraints — the sketch can't satisfy them all at once. Remove a constraint or dimension to resolve it.",
@@ -54,6 +62,7 @@ export function solveStatusLabel(
   if (!underDefined) {
     return {
       html: "Fully constrained ✓",
+      short: "✓",
       color: "#3fb950",
       tooltip:
         "Nothing is loose — the geometry can't move unless you change a dimension, a variable, or a feature parameter.",
@@ -62,6 +71,7 @@ export function solveStatusLabel(
   const n = res.dof;
   return {
     html: `Under-constrained · <b>${n}</b> free`,
+    short: `${n} free`,
     color: "var(--accent)",
     tooltip:
       `${n} degree${n === 1 ? "" : "s"} of freedom (DOF) are still unconstrained — this sketch can move, ` +

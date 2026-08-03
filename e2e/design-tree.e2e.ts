@@ -232,6 +232,27 @@ function constrainedSketch(): string {
   return JSON.stringify(serializeDoc(doc, "constrained"));
 }
 
+/**
+ * A sketch with no solution: both endpoints of a sloped line pinned to world
+ * positions at different heights, and the line also required to be horizontal.
+ *
+ * Note horizontal+vertical on one line is NOT a conflict — the solver satisfies
+ * both by collapsing it to a zero-length point, which is a real solution. This
+ * needs the endpoints pinned so there is nowhere left to go.
+ */
+function conflictingSketch(): string {
+  const doc = new CADDocument({ width: 200, height: 150 }, "mm");
+  const a = doc.add(new LineEntity({ x: 10, y: 120 }, { x: 90, y: 60 }));
+  doc.addConstraint(
+    makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "a" }], params: [10, 120] }),
+  );
+  doc.addConstraint(
+    makeConstraint("fixedPoint", { points: [{ entityId: a.id, key: "b" }], params: [90, 60] }),
+  );
+  doc.addConstraint(makeConstraint("horizontal", { entities: [a.id] }));
+  return JSON.stringify(serializeDoc(doc, "conflicting"));
+}
+
 test("live: constraint rows name what they join, and delete in place", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, constrainedSketch());
@@ -256,6 +277,50 @@ test("live: constraint rows name what they join, and delete in place", async ({ 
   await page.locator("#scene").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Control+z");
   await expect(page.locator(".tree-row", { hasText: "Perpendicular" })).toHaveCount(1);
+});
+
+test("live: the Constraints folder agrees with the status bar, and follows it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, constrainedSketch());
+  await page.locator("#design-tree-toggle").click();
+
+  const badge = page.locator(".tree-solve-badge");
+  const status = page.locator("#statusbar");
+
+  // Under-constrained: the bar spells it out, the folder shows the same count.
+  await expect(status).toContainText("Under-constrained");
+  const free = (await status.innerText()).match(/(\d+)\s*free/)?.[1];
+  expect(free).toBeDefined();
+  await expect(badge).toHaveText(`${free} free`);
+});
+
+test("live: an over-constrained sketch flags in both places, and clears in both", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  // Horizontal AND vertical on one line: unsatisfiable, so the solver cannot
+  // converge. Built into the file rather than poked in afterwards — mutating
+  // `doc` and calling emitChange() notifies listeners but never runs a solve,
+  // so the status would just be whatever the load left behind.
+  await openDoc(page, conflictingSketch());
+  await page.locator("#design-tree-toggle").click();
+
+  const badge = page.locator(".tree-solve-badge");
+  const status = page.locator("#statusbar");
+
+  await expect(status).toContainText("Over-constrained");
+  await expect(badge).toHaveText("⚠ Conflicting");
+
+  // Deleting the culprit from the tree must clear BOTH — the tree's delete
+  // re-solves, and the badge follows the same value the bar does.
+  const culprit = page.locator(".tree-row", { hasText: "Horizontal" });
+  await culprit.hover();
+  await culprit.locator("button[title='Delete this constraint']").click();
+
+  await expect(status).not.toContainText("Over-constrained");
+  await expect(badge).not.toHaveText("⚠ Conflicting");
 });
 
 test("live: Ctrl+B toggles the panel", async ({ page }) => {

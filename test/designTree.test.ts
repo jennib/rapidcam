@@ -4,6 +4,8 @@ import { CADDocument, ORIGIN_ENTITY_ID } from "../src/model/document";
 import { CircleEntity, LineEntity, PolylineEntity, RectEntity } from "../src/model/entities";
 import { makeDimension } from "../src/model/dimensions";
 import { CONSTRAINT_GLYPH, makeConstraint } from "../src/model/constraints";
+import { solveStatusLabel } from "../src/ui/statusBar";
+import type { SolveResult } from "../src/solver/solver";
 import {
   constraintSubject,
   DesignTreePanel,
@@ -571,6 +573,94 @@ describe("constraints section", () => {
     doc.removeConstraint(doc.constraints[0].id);
     await flush();
     expect(labels(h)).not.toContain("Parallel");
+  });
+});
+
+describe("solve status on the Constraints folder", () => {
+  /** A SolveResult in one of the three states the status bar distinguishes. */
+  const result = (state: "over" | "under" | "full"): SolveResult => ({
+    hasConstraints: true,
+    converged: state !== "over",
+    residualNorm: state === "over" ? 1 : 0,
+    dof: state === "under" ? 5 : 0,
+    variables: 8,
+    equations: state === "under" ? 3 : 8,
+  });
+
+  /** A doc with one constraint, so the folder exists to carry the badge. */
+  function withConstraint(): void {
+    const line2 = doc.add(new LineEntity({ x: 0, y: 20 }, { x: 40, y: 20 }));
+    doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
+  }
+
+  const badge = (h: Harness): HTMLElement | null =>
+    h.host.querySelector<HTMLElement>(".tree-solve-badge");
+
+  test.each(["over", "under", "full"] as const)(
+    "renders exactly what solveStatusLabel says, for %s-constrained",
+    async (state) => {
+      withConstraint();
+      const h = mount(doc);
+      const label = solveStatusLabel(result(state))!;
+
+      h.panel.setSolveStatus(label);
+      await flush();
+
+      // Not "a red warning appears" — the SAME strings the status bar paints
+      // from the SAME helper. That is what makes disagreement impossible.
+      expect(badge(h)?.textContent).toBe(label.short);
+      expect(badge(h)?.style.color).toBe(label.color);
+      expect(badge(h)?.title).toBe(label.tooltip);
+    },
+  );
+
+  test("the three states are actually distinguishable", () => {
+    // Guards the test above: if `short` were the same string for every state it
+    // would still pass, while telling the user nothing.
+    const shorts = (["over", "under", "full"] as const).map(
+      (s) => solveStatusLabel(result(s))!.short,
+    );
+    expect(new Set(shorts).size).toBe(3);
+    expect(shorts[0]).toMatch(/⚠/); // over-constrained is the one that must shout
+  });
+
+  test("shows nothing when there is no status to report", async () => {
+    withConstraint();
+    const h = mount(doc);
+    h.panel.setSolveStatus(solveStatusLabel(result("under"))!);
+    await flush();
+    expect(badge(h)).not.toBeNull(); // positive control
+
+    h.panel.setSolveStatus(null);
+    await flush();
+    expect(badge(h)).toBeNull();
+  });
+
+  test("an unchanged status does not rebuild the tree", async () => {
+    withConstraint();
+    const h = mount(doc);
+    const label = solveStatusLabel(result("under"))!;
+    h.panel.setSolveStatus(label);
+    await flush();
+
+    // Solves run on every frame of a drag, so a repeated identical status must
+    // not cost a full rebuild — node identity is the observable for that.
+    const before = badge(h);
+    h.panel.setSolveStatus(solveStatusLabel(result("under"))!);
+    await flush();
+    expect(badge(h)).toBe(before);
+
+    // Positive control: a real change does replace it.
+    h.panel.setSolveStatus(solveStatusLabel(result("over"))!);
+    await flush();
+    expect(badge(h)).not.toBe(before);
+  });
+
+  test("no Constraints folder means no badge, rather than a stray one", async () => {
+    const h = mount(doc); // no constraints in this doc
+    h.panel.setSolveStatus(solveStatusLabel(result("over"))!);
+    await flush();
+    expect(badge(h)).toBeNull();
   });
 });
 

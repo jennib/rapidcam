@@ -2652,6 +2652,17 @@ body.design-tree-open #design-tree-toggle {
   background: rgba(220, 80, 80, 0.25);
 }
 
+/* Solve status on the Constraints folder. Colour comes from the same label the
+   status bar paints with, so the two always agree — see solveStatusLabel(). */
+.tree-solve-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .tree-count {
   flex: 0 0 auto;
   color: var(--text-dim);
