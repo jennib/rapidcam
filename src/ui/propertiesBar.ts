@@ -457,6 +457,8 @@ export class PropertiesBar {
     });
     row.appendChild(lbl);
     row.appendChild(inp);
+    // Angle dimensions take no formula, so they get no name suggestions either.
+    if (!isAngle) this.attachVarAutocomplete(inp, row);
     // Angle dimensions don't support formulas at all (see the isAngle branches
     // above) — no picker to offer there. Every other type already can via
     // dim.expr; it just had no way to find a variable's name short of typing it
@@ -646,6 +648,37 @@ export class PropertiesBar {
    *   - bound: accent `ƒx`; click unbinds (`onUnbind`).
    *   - broken: danger `⚠`; click unbinds.
    */
+  /**
+   * Native type-ahead for variable names on a field that accepts a formula.
+   *
+   * The ƒx badge next to these fields is a *click-to-pick* popup; it does
+   * nothing for someone who has started typing. The on-canvas dimension editor
+   * has offered a `<datalist>` since it was written (see ui/dimEditor.ts), so
+   * typing `wid` there suggests `width` while the identical field in this panel
+   * suggested nothing — reported as "Rectangle H and W in properties does not
+   * have auto complete for variable".
+   *
+   * Same name set as the dimension editor, `varMap` — which includes the
+   * implicit `stock` (stock thickness) alongside the document's own variables,
+   * so the two surfaces cannot disagree about what is in scope.
+   *
+   * The datalist is parented to the ROW, so the panel's next rebuild disposes of
+   * it along with everything else; there is no separate cleanup to forget.
+   */
+  private attachVarAutocomplete(input: HTMLInputElement, row: HTMLElement): void {
+    const names = [...varMap(this.doc.variables, this.doc.stockThickness).keys()];
+    if (names.length === 0) return;
+    const dl = document.createElement("datalist");
+    dl.id = `_pv-${Math.random().toString(36).slice(2)}`;
+    for (const name of names) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      dl.appendChild(opt);
+    }
+    row.appendChild(dl);
+    input.setAttribute("list", dl.id);
+  }
+
   private fxBadge(opts: {
     input: HTMLInputElement;
     bound: boolean;
@@ -729,6 +762,7 @@ export class PropertiesBar {
     inp.style.flex = "1";
     inp.value = binding ? binding.expr : fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
+    this.attachVarAutocomplete(inp, row);
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
     // deleted) is flagged red — the value silently held its last number otherwise.
     const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
@@ -854,6 +888,7 @@ export class PropertiesBar {
     inp.style.flex = "1";
     inp.value = dim?.expr ?? fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
+    this.attachVarAutocomplete(inp, row);
     const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
