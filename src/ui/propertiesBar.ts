@@ -501,6 +501,20 @@ export class PropertiesBar {
     });
 
     btnRow.append(drivingBtn, delBtn);
+
+    if (dim.textOffset) {
+      const resetPosBtn = document.createElement("button");
+      resetPosBtn.className = "btn";
+      resetPosBtn.textContent = "Reset Text";
+      resetPosBtn.title = "Reset label position back to default";
+      resetPosBtn.addEventListener("click", () => {
+        this.pushHistory();
+        delete dim.textOffset;
+        this.doc.emitChange();
+      });
+      btnRow.appendChild(resetPosBtn);
+    }
+
     sec.appendChild(btnRow);
     this.content.appendChild(sec);
   }

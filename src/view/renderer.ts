@@ -106,7 +106,7 @@ export class Renderer {
     this.drawRegionFills(doc, view);
     this.drawEntities(doc, view, overlay);
     if (this.laserPreview) this.drawLaserPreview(view);
-    if (this.showDimensions) this.drawDimensions(doc, view);
+    if (this.showDimensions) this.drawDimensions(doc, view, overlay);
     this.drawConstraints(doc, view, overlay);
     this.drawSelectedSegments(doc, view);
     this.drawSelectedPoints(doc, view);
@@ -674,7 +674,7 @@ export class Renderer {
   }
 
   // --- dimensions ----------------------------------------------------------
-  private drawDimensions(doc: CADDocument, view: Viewport): void {
+  private drawDimensions(doc: CADDocument, view: Viewport, overlay?: Overlay): void {
     if (doc.dimensions.length === 0) return;
     const ctx = this.ctx;
     const byId = new Map(doc.entities.map((e) => [e.id, e]));
@@ -699,10 +699,13 @@ export class Renderer {
       if (dim.entities.some((id) => !isVisible(id))) continue;
       if (dim.points.some((p) => !isVisible(p.entityId))) continue;
 
-      const layout = dimensionLayout(dim, geo, unit, view.scale);
+      const isSelected = dim.id === doc.selectedDimensionId;
+      const isHovered = dim.id === overlay?.hoverDimension;
+      const showExpr = isSelected || isHovered;
+
+      const layout = dimensionLayout(dim, geo, unit, view.scale, showExpr);
       if (!layout) continue;
 
-      const isSelected = dim.id === doc.selectedDimensionId;
       ctx.strokeStyle = isSelected ? COLORS.entitySelected : COLORS.dimension;
       ctx.fillStyle = isSelected ? COLORS.entitySelected : COLORS.dimension;
       ctx.lineWidth = isSelected ? 1.5 : 1;

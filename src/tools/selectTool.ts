@@ -241,6 +241,7 @@ export class SelectTool implements Tool {
       ctx.doc.emitChange();
       ctx.pushHistory();
       this.dragDimLabelId = hitLabelDim.id;
+      this.dragStartWorld = e.worldRaw;
       this.mode = "maybeDragDimLabel";
       return;
     }
@@ -387,6 +388,13 @@ export class SelectTool implements Tool {
         const anchors = dimensionAnchorsFromCursor(dim, geo, e.worldRaw);
         if (anchors) dim.anchors = anchors;
         dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
+
+        const d = sub(e.worldRaw, this.dragStartWorld);
+        dim.textOffset = {
+          x: (dim.textOffset?.x ?? 0) + d.x,
+          y: (dim.textOffset?.y ?? 0) + d.y,
+        };
+        this.dragStartWorld = e.worldRaw;
         ctx.requestRender();
       }
       return;

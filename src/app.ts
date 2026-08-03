@@ -19,7 +19,7 @@ import { SnapEngine, type SnapResult } from "./input/snapping";
 import { ProjectManager } from "./io/projectManager";
 import { consumeSharedDesign } from "./io/shareLink";
 import type { Geo } from "./model/constraints";
-import { type Dimension, dimensionLayout } from "./model/dimensions";
+import { type Dimension, dimensionLayout, dimensionHitDistance } from "./model/dimensions";
 import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "./model/document";
 import type { Bounds, Entity, EntityId } from "./model/entities";
 import { nextId } from "./model/ids";
@@ -131,6 +131,7 @@ export class App {
   private currentSnap: SnapResult["snap"] = null;
   private currentHover: EntityId | null = null;
   private currentHoverConstraint: EntityId | null = null;
+  private currentHoverDimension: string | null = null;
   /** Babel diagnose-mode markers over located DXF-import problems, if any. */
   private dxfDiagnostics: DiagnosticMarker[] | null = null;
   /** Stitch tiled-milling preview (tile grid + registration features), if any. */
@@ -761,6 +762,7 @@ export class App {
       snap: to.snap ?? this.currentSnap,
       hover: this.currentHover,
       hoverConstraint: this.currentHoverConstraint,
+      hoverDimension: this.currentHoverDimension,
       transformBox: to.transformBox,
       diagnostics: this.dxfDiagnostics,
       stitchPreview: this.stitchPreview,
@@ -940,6 +942,7 @@ export class App {
     if (this.doc.regionHoverHandler) this.doc.regionHoverHandler(e.worldRaw);
     const prevHover = this.currentHover;
     const prevHoverConstraint = this.currentHoverConstraint;
+    const prevHoverDim = this.currentHoverDimension;
 
     this.currentHover =
       this.tools.active.id === "select" || this.tools.active.id === "offset"
@@ -950,6 +953,23 @@ export class App {
       this.tools.active.id === "select"
         ? (pickConstraintAt(this.doc, this.view, e.screen)?.id ?? null)
         : null;
+
+    let hitHoverDimId: string | null = null;
+    if (this.tools.active.id === "select") {
+      const byId = new Map(this.doc.entities.map((ent) => [ent.id, ent]));
+      const geo: Geo = (id) =>
+        id === STOCK_ENTITY_ID ? stockRefEntity(this.doc) : byId.get(id);
+      for (const dim of this.doc.dimensions) {
+        const d =
+          dimensionHitDistance(dim, geo, e.worldRaw, this.doc.displayUnit, this.view.scale) *
+          this.view.scale;
+        if (d < 10) {
+          hitHoverDimId = dim.id;
+          break;
+        }
+      }
+    }
+    this.currentHoverDimension = hitHoverDimId;
 
     this.statusBar.setCursor(e.world);
     this.tools.pointerMove(e);
@@ -968,7 +988,9 @@ export class App {
     // than a plain hover still repaints exactly as before.
     const idleHover = ev.buttons === 0;
     const hoverChanged =
-      this.currentHover !== prevHover || this.currentHoverConstraint !== prevHoverConstraint;
+      this.currentHover !== prevHover ||
+      this.currentHoverConstraint !== prevHoverConstraint ||
+      this.currentHoverDimension !== prevHoverDim;
     if (!idleHover || hoverChanged) this.requestRender();
   };
 

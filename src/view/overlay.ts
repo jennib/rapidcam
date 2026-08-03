@@ -65,10 +65,12 @@ export interface Overlay {
   hover: EntityId | null;
   /** Constraint currently under the cursor. */
   hoverConstraint: string | null;
+  /** Dimension currently under the cursor. */
+  hoverDimension?: string | null;
   /** Interactive transform handles (drawn in fixed screen size) */
   transformBox?: TransformBox | null;
 }
 
 export function emptyOverlay(): Overlay {
-  return { previews: [], snap: null, selectionRect: null, hover: null, hoverConstraint: null };
+  return { previews: [], snap: null, selectionRect: null, hover: null, hoverConstraint: null, hoverDimension: null };
 }

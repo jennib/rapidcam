@@ -76,6 +76,8 @@ export interface Dimension {
    * the parametric plan / property-field bindings.
    */
   hidden?: boolean;
+  /** Custom user-dragged offset (dx, dy) for the text label. */
+  textOffset?: Vec2;
 }
 
 export function makeDimension(
@@ -560,8 +562,8 @@ function linearTextPos(
  * A non-driving (reference) dimension shows no formula either — its expression
  * drives nothing, so claiming otherwise would be a lie.
  */
-function withExpr(dim: Dimension, label: string): string {
-  if (!dim.driving || !dim.expr || dim.type === "angle") return label;
+function withExpr(dim: Dimension, label: string, showExpr = false): string {
+  if (!showExpr || !dim.driving || !dim.expr || dim.type === "angle") return label;
   return `${dim.expr} = ${label}`;
 }
 
@@ -570,6 +572,7 @@ export function dimensionLayout(
   geo: Geo,
   unit: Unit,
   pxPerMm?: number,
+  showExpr = true,
 ): DimLayout | null {
   const displayVal = dim.driving ? dim.value : (dimensionMeasure(dim, geo) ?? 0);
 
@@ -579,19 +582,24 @@ export function dimensionLayout(
     const isArcEnt = readArc(geo, dim.entities[0]) !== null;
     const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
     const edge = add(g.center, scale(u, g.radius));
-    const end = add(g.center, scale(u, g.radius + LEADER_MM));
+    const baseEnd = add(g.center, scale(u, g.radius + LEADER_MM));
+    const end = dim.textOffset ? add(baseEnd, dim.textOffset) : baseEnd;
+    const segments: [Vec2, Vec2][] = isArcEnt ? [[edge, baseEnd]] : [[g.center, baseEnd]];
+    if (dim.textOffset && dist(baseEnd, end) > 0.1) segments.push([baseEnd, end]);
+
     if (dim.type === "radius") {
       return {
-        // Arcs: short leader from arc surface only (circle: full center-to-label).
-        segments: isArcEnt ? [[edge, end]] : [[g.center, end]],
+        segments,
         arrows: [{ tip: edge, dir: u }],
         textPos: end,
-        label: withExpr(dim, `R${formatLengthWithUnit(displayVal, unit)}`),
+        label: withExpr(dim, `R${formatLengthWithUnit(displayVal, unit)}`, showExpr),
       };
     }
     const e2 = sub(g.center, scale(u, g.radius));
+    const segs: [Vec2, Vec2][] = isArcEnt ? [[edge, baseEnd]] : [[e2, baseEnd]];
+    if (dim.textOffset && dist(baseEnd, end) > 0.1) segs.push([baseEnd, end]);
     return {
-      segments: isArcEnt ? [[edge, end]] : [[e2, end]],
+      segments: segs,
       arrows: isArcEnt
         ? [{ tip: edge, dir: u }]
         : [
@@ -599,7 +607,7 @@ export function dimensionLayout(
             { tip: e2, dir: scale(u, -1) },
           ],
       textPos: end,
-      label: withExpr(dim, `⌀${formatLengthWithUnit(displayVal, unit)}`),
+      label: withExpr(dim, `⌀${formatLengthWithUnit(displayVal, unit)}`, showExpr),
     };
   }
 
@@ -609,19 +617,21 @@ export function dimensionLayout(
     const u = { x: Math.cos(dim.offset), y: Math.sin(dim.offset) };
     const pInner = add(g.cInner, scale(u, g.rInner));
     const pOuter = add(g.cOuter, scale(u, g.rOuter));
-    const end = add(g.cOuter, scale(u, g.rOuter + LEADER_MM));
+    const baseEnd = add(g.cOuter, scale(u, g.rOuter + LEADER_MM));
+    const end = dim.textOffset ? add(baseEnd, dim.textOffset) : baseEnd;
+    const segments: [Vec2, Vec2][] = [
+      [pInner, pOuter],
+      [pOuter, baseEnd],
+    ];
+    if (dim.textOffset && dist(baseEnd, end) > 0.1) segments.push([baseEnd, end]);
     return {
-      // Span the gap between the two boundaries, then lead out to the label.
-      segments: [
-        [pInner, pOuter],
-        [pOuter, end],
-      ],
+      segments,
       arrows: [
-        { tip: pInner, dir: u }, // points outward across the gap
-        { tip: pOuter, dir: scale(u, -1) }, // points inward across the gap
+        { tip: pInner, dir: u },
+        { tip: pOuter, dir: scale(u, -1) },
       ],
       textPos: end,
-      label: withExpr(dim, formatLengthWithUnit(displayVal, unit)),
+      label: withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr),
     };
   }
 
@@ -719,10 +729,17 @@ export function dimensionLayout(
     // the lines is `anchors` — see resolveLineDistanceCrossing.
     const span = len(sub(q, p));
     const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
-    const gapLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
+    const gapLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr);
     const textRes = linearTextPos(p, q, u, gapLabel, pxPerMm);
     const segments: [Vec2, Vec2][] = [[p, q]];
     if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
+    if (dim.textOffset) {
+      const customPos = add(textRes.pos, dim.textOffset);
+      if (dist(textRes.pos, customPos) > 0.1) {
+        segments.push([textRes.pos, customPos]);
+      }
+      textRes.pos = customPos;
+    }
     return {
       segments,
       // Arrows point outward, each into the line it touches.
@@ -753,7 +770,7 @@ export function dimensionLayout(
 
   const along = len(sub(q2, p2));
   const dir = along > 1e-9 ? scale(sub(q2, p2), 1 / along) : { x: 1, y: 0 };
-  const linLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
+  const linLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr);
   const textRes = linearTextPos(p2, q2, dir, linLabel, pxPerMm);
   const segments: [Vec2, Vec2][] = [
     [p, p2],
@@ -761,6 +778,13 @@ export function dimensionLayout(
     [p2, q2],
   ];
   if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
+  if (dim.textOffset) {
+    const customPos = add(textRes.pos, dim.textOffset);
+    if (dist(textRes.pos, customPos) > 0.1) {
+      segments.push([textRes.pos, customPos]);
+    }
+    textRes.pos = customPos;
+  }
   return {
     segments,
     arrows: [
