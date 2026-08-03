@@ -528,18 +528,19 @@ function linearTextPos(
   dir: Vec2,
   label: string,
   pxPerMm: number | undefined,
-): Vec2 {
+): { pos: Vec2; leaderSegment?: [Vec2, Vec2] } {
   const centre = mid(p2, q2);
-  if (!pxPerMm || pxPerMm <= 0) return centre;
+  if (!pxPerMm || pxPerMm <= 0) return { pos: centre };
   // + 4px padding each side, matching drawDimText's background box. The
   // fallback estimate is only used before the renderer installs a measurer
   // (headless callers, tests).
   const textPx = (measureLabelPx?.(label) ?? label.length * 6.05) + 8;
   const spanPx = len(sub(q2, p2)) * pxPerMm;
-  if (spanPx >= textPx + 6) return centre; // fits, with a little clearance
+  if (spanPx >= textPx + 6) return { pos: centre }; // fits, with a little clearance
   // Doesn't fit: park it just beyond the far arrow, on the dimension line.
   const outMm = (textPx / 2 + 8) / pxPerMm;
-  return add(q2, scale(dir, outMm));
+  const pos = add(q2, scale(dir, outMm));
+  return { pos, leaderSegment: [q2, pos] };
 }
 
 /**
@@ -719,14 +720,17 @@ export function dimensionLayout(
     const span = len(sub(q, p));
     const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
     const gapLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
+    const textRes = linearTextPos(p, q, u, gapLabel, pxPerMm);
+    const segments: [Vec2, Vec2][] = [[p, q]];
+    if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
     return {
-      segments: [[p, q]],
+      segments,
       // Arrows point outward, each into the line it touches.
       arrows: [
         { tip: p, dir: scale(u, -1) },
         { tip: q, dir: u },
       ],
-      textPos: linearTextPos(p, q, u, gapLabel, pxPerMm),
+      textPos: textRes.pos,
       label: gapLabel,
     };
   }
@@ -750,17 +754,20 @@ export function dimensionLayout(
   const along = len(sub(q2, p2));
   const dir = along > 1e-9 ? scale(sub(q2, p2), 1 / along) : { x: 1, y: 0 };
   const linLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit));
+  const textRes = linearTextPos(p2, q2, dir, linLabel, pxPerMm);
+  const segments: [Vec2, Vec2][] = [
+    [p, p2],
+    [q, q2],
+    [p2, q2],
+  ];
+  if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
   return {
-    segments: [
-      [p, p2],
-      [q, q2],
-      [p2, q2],
-    ],
+    segments,
     arrows: [
       { tip: p2, dir: scale(dir, -1) },
       { tip: q2, dir },
     ],
-    textPos: linearTextPos(p2, q2, dir, linLabel, pxPerMm),
+    textPos: textRes.pos,
     label: linLabel,
   };
 }
