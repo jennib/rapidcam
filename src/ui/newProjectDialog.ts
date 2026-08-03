@@ -470,19 +470,48 @@ export function openNewProjectDialog(
 
   unregister = registerModal(backdrop, close);
   document.body.appendChild(backdrop);
-  setTimeout(() => {
-    nameInput.focus();
-    nameInput.select();
-  }, 40);
+  // Synchronously, NOT on a timer. This used to run 40ms after the dialog was
+  // appended, which opened a window where the user is looking at a focusable
+  // dialog that is about to yank focus somewhere else: type a stock width in
+  // those first 40ms and the keystrokes land in the name box instead — and,
+  // because the name is select()ed, replace it.
+  //
+  // It reads as a rare glitch by hand and as a flaky test suite in CI, where
+  // "type immediately" is the normal speed. It cost about one run in three of
+  // the New Project specs, presenting as a wrong stock size with no clue that
+  // focus was the cause. The element is in the document by this line, so there
+  // is nothing to wait for.
+  nameInput.focus();
+  nameInput.select();
 }
 
 // ---- DOM helpers ------------------------------------------------------------
+
+let fieldSeq = 0;
 
 function row(label: string, control: HTMLElement): HTMLElement {
   const g = document.createElement("div");
   g.className = "tp-field";
   const l = document.createElement("label");
   l.textContent = label;
+  // Bind the label to its control. This is an accessibility fix first — the
+  // label was decorative text next to an input, so clicking it focused nothing
+  // and a screen reader had no name to announce.
+  //
+  // It also removes a real trap. With no association, the only way to find a
+  // field was to guess from text proximity ("the input inside the .tp-field
+  // that contains the text 'Width'"), and that resolved to the WRONG input
+  // often enough — roughly one run in three — to look like a flaky test suite.
+  // It put a typed stock width into the Project name box. `getByLabel` is
+  // unambiguous; prefer it over any proximity search.
+  if (
+    control instanceof HTMLInputElement ||
+    control instanceof HTMLSelectElement ||
+    control instanceof HTMLTextAreaElement
+  ) {
+    if (!control.id) control.id = `npd-field-${++fieldSeq}`;
+    l.htmlFor = control.id;
+  }
   g.appendChild(l);
   g.appendChild(control);
   return g;

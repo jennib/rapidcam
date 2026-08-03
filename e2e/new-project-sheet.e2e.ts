@@ -21,8 +21,13 @@ const state = (p: import("@playwright/test").Page) =>
 async function create(page: import("@playwright/test").Page, w: string, h: string) {
   const npd = page.locator("#npd-backdrop");
   await expect(npd).toBeVisible();
-  const field = (label: string) =>
-    npd.locator(".tp-field").filter({ has: page.getByText(label, { exact: true }) }).locator("input");
+  // By LABEL, not by text proximity. The previous form — the input inside the
+  // `.tp-field` containing the text "Width" — resolved to the wrong field in
+  // about one run in three, typing the stock width into the Project name box.
+  // The document then correctly built a 200×200 stock from the defaults it was
+  // actually given, and this spec reported it as a size bug. See the label/id
+  // binding in newProjectDialog.ts `row()`.
+  const field = (label: string) => npd.getByLabel(label, { exact: true });
   await field("Width").fill(w);
   await field("Width").dispatchEvent("change");
   await field("Height").fill(h);
