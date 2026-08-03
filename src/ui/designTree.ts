@@ -18,7 +18,8 @@ import {
   CONSTRAINT_GLYPH,
   CONSTRAINT_LABELS,
   type Constraint,
-  constraintEntityIds,
+  lineRefEntityId,
+  SEGMENT_SEP,
 } from "../model/constraints";
 import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID } from "../model/document";
 import type { Dimension } from "../model/dimensions";
@@ -45,8 +46,13 @@ export interface DesignTreeOptions {
   onHoverConstraint: (id: string | null) => void;
   /** Snapshot the document *before* a tree edit, so it lands on the undo stack. */
   pushHistory: () => void;
-  /** Re-solve after removing a constraint, so the DOF readout stops being stale. */
-  onSolve: () => void;
+  /**
+   * Delete whatever is currently selected. Row bins select their own subject and
+   * then call this, rather than removing anything themselves — the app's delete
+   * already warns when geometry belongs to a toolpath, spares locked entities,
+   * pushes history and re-solves, and a second delete path would drift from it.
+   */
+  onDeleteSelection: () => void;
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -79,7 +85,7 @@ export class DesignTreePanel {
   private readonly onHoverDimension: (id: string | null) => void;
   private readonly onHoverConstraint: (id: string | null) => void;
   private readonly pushHistory: () => void;
-  private readonly onSolve: () => void;
+  private readonly onDeleteSelection: () => void;
 
   private readonly panelEl: HTMLElement;
   private readonly bodyEl: HTMLElement;
@@ -101,6 +107,8 @@ export class DesignTreePanel {
   private lastSelectionKey = "";
   /** Entity id → short label ("Line 2"), rebuilt each pass. See {@link shortLabels}. */
   private labels = new Map<string, string>();
+  /** Entity id → entity, rebuilt each pass, for naming constrained points. */
+  private byId = new Map<string, Entity>();
   /** Latest solve status, pushed in by the app. See {@link setSolveStatus}. */
   private solveStatus: SolveStatusLabel | null = null;
 
@@ -110,7 +118,7 @@ export class DesignTreePanel {
     this.onHoverDimension = opts.onHoverDimension;
     this.onHoverConstraint = opts.onHoverConstraint;
     this.pushHistory = opts.pushHistory;
-    this.onSolve = opts.onSolve;
+    this.onDeleteSelection = opts.onDeleteSelection;
 
     this.panelEl = document.createElement("div");
     this.panelEl.className = "design-tree-panel";
@@ -228,6 +236,10 @@ export class DesignTreePanel {
 
     const drawable = this.doc.entities.filter((e) => e.id !== ORIGIN_ENTITY_ID);
     this.labels = shortLabels(this.doc);
+    // Built once per rebuild rather than per constraint row: naming the exact
+    // point a constraint holds means resolving its entity, and a sketch can
+    // carry far more constraints than entities.
+    this.byId = new Map(this.doc.entities.map((e) => [e.id, e]));
 
     for (const layer of this.doc.layers) {
       const layerEnts = drawable.filter((e) => e.layerId === layer.id);
@@ -544,6 +556,17 @@ export class DesignTreePanel {
         },
       }),
     );
+    row.appendChild(
+      this.deleteEl(
+        "object",
+        () => {
+          this.doc.clearSelection();
+          ent.selected = true;
+          this.onHoverEntity(null);
+        },
+        ent.locked ? "Locked — unlock it to delete" : undefined,
+      ),
+    );
 
     row.addEventListener("mouseenter", () => this.onHoverEntity(ent.id));
     row.addEventListener("mouseleave", () => this.onHoverEntity(null));
@@ -578,6 +601,13 @@ export class DesignTreePanel {
     }
 
     row.appendChild(label);
+    row.appendChild(
+      this.deleteEl("dimension", () => {
+        this.doc.selectDimension(dim.id);
+        this.onHoverDimension(null);
+      }),
+    );
+
     row.addEventListener("mouseenter", () => this.onHoverDimension(dim.id));
     row.addEventListener("mouseleave", () => this.onHoverDimension(null));
     row.addEventListener("click", () => this.doc.selectDimension(dim.id));
@@ -601,7 +631,7 @@ export class DesignTreePanel {
     row.classList.toggle("selected", this.doc.selectedConstraintId === con.id);
 
     const name = CONSTRAINT_LABELS[con.type] ?? con.type;
-    const subject = constraintSubject(con, this.labels);
+    const subject = constraintSubject(con, this.labels, (id) => this.byId.get(id));
     row.title = subject ? `${name} — ${subject}` : name;
 
     const label = document.createElement("div");
@@ -631,29 +661,49 @@ export class DesignTreePanel {
 
     row.appendChild(label);
 
-    const actions = document.createElement("div");
-    actions.className = "tree-actions";
-    const del = document.createElement("button");
-    del.className = "tree-action-btn tree-action-danger";
-    del.textContent = "🗑";
-    del.title = "Delete this constraint";
-    del.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      this.pushHistory();
-      this.doc.removeConstraint(con.id);
-      this.onHoverConstraint(null); // the row is about to vanish under the pointer
-      // Removing an equation can't violate the ones left, so this isn't for
-      // correctness — it's to refresh the degrees-of-freedom readout, which
-      // is exactly what someone deleting a constraint is watching.
-      this.onSolve();
-    });
-    actions.appendChild(del);
-    row.appendChild(actions);
+    row.appendChild(
+      this.deleteEl("constraint", () => {
+        this.doc.selectConstraint(con.id);
+        this.onHoverConstraint(null); // the row is about to vanish under the pointer
+      }),
+    );
 
     row.addEventListener("mouseenter", () => this.onHoverConstraint(con.id));
     row.addEventListener("mouseleave", () => this.onHoverConstraint(null));
     row.addEventListener("click", () => this.doc.selectConstraint(con.id));
     return row;
+  }
+
+  /**
+   * A row's delete bin. `select` puts this row's subject — and only it — into
+   * the document's selection; the app's own delete then handles the rest.
+   *
+   * Only leaf rows get one. Folders (a layer, a feature group) are containers,
+   * and a one-click bin on a container is too easy to hit for how much it
+   * removes; select the group and press Delete if that is really the intent.
+   */
+  private deleteEl(what: string, select: () => void, blockedBy?: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "tree-actions";
+    const btn = document.createElement("button");
+    btn.className = "tree-action-btn tree-action-danger";
+    btn.textContent = "🗑";
+    if (blockedBy) {
+      // Shown but refused, rather than hidden: a bin that silently does nothing
+      // (which is what deleting a locked entity would do) is worse than one that
+      // says why not.
+      btn.disabled = true;
+      btn.title = blockedBy;
+    } else {
+      btn.title = `Delete this ${what}`;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        select();
+        this.onDeleteSelection();
+      });
+    }
+    el.appendChild(btn);
+    return el;
   }
 
   private actionsEl(opts: {
@@ -784,22 +834,97 @@ export function shortLabels(doc: CADDocument): Map<string, string> {
   return out;
 }
 
+/** Friendly names for the point-DOF keys entities expose (see entities.ts). */
+const POINT_NAMES: Record<string, string> = {
+  a: "start",
+  b: "end",
+  mid: "midpoint",
+  c: "centre",
+  center: "centre",
+  start: "start",
+  end: "end",
+  bl: "bottom-left",
+  br: "bottom-right",
+  tr: "top-right",
+  tl: "top-left",
+  mid_b: "bottom edge",
+  mid_r: "right edge",
+  mid_t: "top edge",
+  mid_l: "left edge",
+  p0: "start",
+  p1: "handle 1",
+  p2: "handle 2",
+  p3: "end",
+};
+
 /**
- * What a constraint joins, as a display string — `Line 1 · Circle 2`.
+ * Which point of an entity a constraint means — `start`, `centre`, `vertex 3` —
+ * or null when naming it adds nothing (a text/image anchor, a bare point: the
+ * entity *is* the point).
  *
- * Deduplicated, because a constraint routinely names one entity several times
- * (a `fixedPoint` over three vertices of the same polyline, a `midpoint` whose
- * point and line are the same shape); repeating it would be noise. Empty when
- * nothing resolves, so the caller can fall back to the bare type name rather
- * than render a dangling separator.
+ * Polyline vertices are keyed by stable id rather than index (so constraints
+ * survive an edit that renumbers them — see polyline vertex ids), which is
+ * unreadable in a list; this resolves the id back to its current position.
  */
-export function constraintSubject(con: Constraint, labels: Map<string, string>): string {
-  const seen: string[] = [];
-  for (const id of constraintEntityIds(con)) {
-    const label = labels.get(id);
-    if (label && !seen.includes(label)) seen.push(label);
+export function pointName(e: Entity | undefined, key: string): string | null {
+  if (e instanceof PolylineEntity && key.startsWith("v")) {
+    const i = e.vertexIds.indexOf(key.slice(1));
+    return i >= 0 ? `vertex ${i + 1}` : null;
   }
-  return seen.join(" · ");
+  return POINT_NAMES[key] ?? null;
+}
+
+/** The polyline edge a segment reference points at, as `edge 2`, else null. */
+function segmentName(e: Entity | undefined, ref: string): string | null {
+  const sep = ref.indexOf(SEGMENT_SEP);
+  if (sep < 0 || !(e instanceof PolylineEntity)) return null;
+  const i = e.vertexIds.indexOf(ref.slice(sep + 1));
+  return i >= 0 ? `edge ${i + 1}` : null;
+}
+
+/**
+ * What a constraint joins, as a display string — `Line 1 start · Circle 2 centre`.
+ *
+ * Grouped by entity, because a constraint routinely names one entity several
+ * times and repeating its name would be noise. Where it contributes a single
+ * identifiable point that point is named, which is the difference between two
+ * rows reading `Fix point Line 1` twice and reading `Fix point Line 1 start` /
+ * `Fix point Line 1 end`. Where it contributes several, they collapse to a
+ * count rather than a list, so a row cannot grow without bound.
+ *
+ * Empty when nothing resolves, so the caller can fall back to the bare type
+ * name rather than render a dangling separator.
+ */
+export function constraintSubject(
+  con: Constraint,
+  labels: Map<string, string>,
+  geo?: (id: string) => Entity | undefined,
+): string {
+  // Insertion-ordered so the subject reads in the order the constraint stores
+  // its operands — "point on line" names the point first, as the user picked it.
+  const parts = new Map<string, string[]>();
+  const add = (id: string, detail: string | null): void => {
+    const label = labels.get(id);
+    if (!label) return;
+    const list = parts.get(label);
+    if (list) {
+      if (detail) list.push(detail);
+    } else parts.set(label, detail ? [detail] : []);
+  };
+
+  for (const ref of con.entities) {
+    const id = lineRefEntityId(ref);
+    add(id, segmentName(geo?.(id), ref));
+  }
+  for (const p of con.points) add(p.entityId, pointName(geo?.(p.entityId), p.key));
+
+  return [...parts.entries()]
+    .map(([label, details]) => {
+      if (details.length === 0) return label;
+      if (details.length === 1) return `${label} ${details[0]}`;
+      return `${label} (${details.length} points)`;
+    })
+    .join(" · ");
 }
 
 /** One-line human description of an entity, used when it has no custom name. */

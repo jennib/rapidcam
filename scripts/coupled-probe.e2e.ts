@@ -1,4 +1,4 @@
-import { test, expect, waitForApp } from "./appFixture";
+import { test, expect, waitForApp } from "../e2e/appFixture";
 
 /**
  * The COUPLED case: a chain of lines joined end-to-end by coincident

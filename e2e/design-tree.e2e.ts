@@ -409,6 +409,40 @@ test("live: a cancelled pointer still releases the tree's hold", async ({ page }
   expect(settled).toBeCloseTo(after, 6);
 });
 
+test("live: an object's bin runs the app's real delete, warnings and all", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openDoc(page, threeShapes());
+  await page.locator("#design-tree-toggle").click();
+
+  // Bind the circle to a toolpath. The tree's bin must inherit the app's
+  // confirm — deleting cut geometry from a side panel with no warning is the
+  // one thing this shortcut must not make easy.
+  await page.evaluate(() => {
+    const doc = (window as unknown as { __app: { doc: any } }).__app.doc;
+    const circle = doc.entities.find((e: any) => e.type === "circle");
+    doc.operations.push({
+      id: "op1", name: "bore", type: "drill", side: "outside", entityIds: [circle.id],
+      toolType: "drill", toolNumber: 1, diameter: 3, stepover: 0.4, feedrate: 600,
+      plungeRate: 200, spindleSpeed: 12000, safeZ: 5, depth: -5, stepdown: 2,
+    });
+    doc.emitChange();
+  });
+
+  const circleRow = page.locator(".tree-row", { hasText: "Circle ⌀35.00 mm" });
+  await circleRow.hover();
+  await circleRow.locator("button[title='Delete this object']").click();
+
+  const dialog = page.locator(".tp-backdrop").first();
+  await expect(dialog).toContainText(/toolpath/i);
+  await expect(dialog).toContainText("bore");
+  await dialog.getByRole("button", { name: "Delete" }).click();
+
+  await expect(page.locator(".tree-row", { hasText: "Circle ⌀35.00 mm" })).toHaveCount(0);
+  // The line and rectangle are untouched: the bin deleted its own row's object.
+  await expect(page.locator(".tree-row", { hasText: "Line 80.00 mm" })).toHaveCount(1);
+  await expect(page.locator(".tree-row", { hasText: "Rectangle" })).toHaveCount(1);
+});
+
 test("live: Ctrl+B toggles the panel", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());

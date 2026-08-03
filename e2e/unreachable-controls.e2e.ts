@@ -225,6 +225,13 @@ test("the design tree fits its rows, including the eye and lock", async ({ page 
   // Two: the entity's own lock, and its group's, which reads locked because
   // every member is. Both are pinned visible, which is the crowded case.
   await expect(page.locator(".tree-action-btn.on")).toHaveCount(2);
+  // An object row is eye + lock + bin beside a flexing label; the constraint
+  // row below adds a subject. Both must have been rendered for the sweep to
+  // mean anything.
+  await expect(
+    page.locator(".tree-row", { hasText: "Cabinet hinge cup bore, left stile" })
+      .locator(".tree-action-btn"),
+  ).toHaveCount(3);
   // And the constraint row, whose long subject is the widest thing in the panel.
   await expect(
     page.locator(".tree-row", { hasText: "Perpendicular" }).locator(".tree-subject"),

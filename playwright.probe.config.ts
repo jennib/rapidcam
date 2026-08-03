@@ -20,10 +20,23 @@ export default defineConfig({
   reporter: "list",
   use: { baseURL: "http://localhost:5173", trace: "off" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  // Two servers, because the probes measure two different things: the
+  // interaction probes drive the dev server, while load-probe times
+  // time-to-interactive on the PRODUCTION bundle and so needs `vite preview`
+  // on 4173. Both reuse an already-running instance, so the build tax is paid
+  // once rather than on every run.
+  webServer: [
+    {
+      command: "npm run dev",
+      url: "http://localhost:5173",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: "npm run build && npm run preview",
+      url: "http://localhost:4173",
+      reuseExistingServer: true,
+      timeout: 180_000,
+    },
+  ],
 });

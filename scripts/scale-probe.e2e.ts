@@ -1,4 +1,4 @@
-import { test, expect, waitForApp } from "./appFixture";
+import { test, expect, waitForApp } from "../e2e/appFixture";
 
 /**
  * Scale probe. Generates a realistic complex part — a perforated mounting plate

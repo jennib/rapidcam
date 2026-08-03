@@ -45,7 +45,7 @@ interface Harness {
   doc: CADDocument;
   host: HTMLElement;
   pushHistory: ReturnType<typeof vi.fn>;
-  onSolve: ReturnType<typeof vi.fn>;
+  onDeleteSelection: ReturnType<typeof vi.fn>;
   hoveredConstraints: (string | null)[];
 }
 
@@ -53,7 +53,13 @@ function mount(doc: CADDocument, open = true): Harness {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const pushHistory = vi.fn();
-  const onSolve = vi.fn();
+  // Stands in for App.deleteSelected: the panel selects a row's subject and then
+  // asks the app to delete the selection, so the fake does exactly that much.
+  const onDeleteSelection = vi.fn(() => {
+    if (doc.selectedConstraintId) doc.removeConstraint(doc.selectedConstraintId);
+    else if (doc.selectedDimensionId) doc.removeDimension(doc.selectedDimensionId);
+    else doc.removeSelected();
+  });
   const hoveredConstraints: (string | null)[] = [];
   const panel = new DesignTreePanel({
     container: host,
@@ -62,10 +68,10 @@ function mount(doc: CADDocument, open = true): Harness {
     onHoverDimension: () => {},
     onHoverConstraint: (id) => hoveredConstraints.push(id),
     pushHistory,
-    onSolve,
+    onDeleteSelection,
   });
   if (open) panel.setOpen(true);
-  return { panel, doc, host, pushHistory, onSolve, hoveredConstraints };
+  return { panel, doc, host, pushHistory, onDeleteSelection, hoveredConstraints };
 }
 
 /** Every row label currently rendered, in tree order. */
@@ -462,7 +468,17 @@ describe("constraints section", () => {
     expect(row(h, "Parallel").textContent).toContain("Hinge axis · Line 2");
   });
 
-  test("names the same entity once, however many times a constraint cites it", () => {
+  test("names WHICH point it holds, so same-entity rows differ", () => {
+    const labels = shortLabels(doc);
+    const atStart = makeConstraint("fixedPoint", { points: [{ entityId: line.id, key: "a" }] });
+    const atEnd = makeConstraint("fixedPoint", { points: [{ entityId: line.id, key: "b" }] });
+
+    // The two pins are on the same line; without the point they read identically.
+    expect(constraintSubject(atStart, labels)).toBe("Line 1 start");
+    expect(constraintSubject(atEnd, labels)).toBe("Line 1 end");
+  });
+
+  test("names an entity once, collapsing several of its points to a count", () => {
     const labels = shortLabels(doc);
     const con = makeConstraint("fixedPoint", {
       points: [
@@ -470,7 +486,33 @@ describe("constraints section", () => {
         { entityId: line.id, key: "b" },
       ],
     });
-    expect(constraintSubject(con, labels)).toBe("Line 1");
+    // Not "Line 1 start · Line 1 end": a row must not grow without bound.
+    expect(constraintSubject(con, labels)).toBe("Line 1 (2 points)");
+  });
+
+  test("resolves a polyline vertex id back to its position", () => {
+    const poly = doc.add(
+      new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], false),
+    );
+    const labels = shortLabels(doc);
+    const geo = (id: string) => doc.entities.find((e) => e.id === id);
+    const con = makeConstraint("fixedPoint", {
+      points: [{ entityId: poly.id, key: `v${poly.vertexIds[2]}` }],
+    });
+    // The key is a stable id, which is unreadable; the row shows the position.
+    expect(constraintSubject(con, labels, geo)).toBe("Polyline 1 vertex 3");
+  });
+
+  test("names a polyline segment reference as an edge", () => {
+    const poly = doc.add(
+      new PolylineEntity([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], false),
+    );
+    const labels = shortLabels(doc);
+    const geo = (id: string) => doc.entities.find((e) => e.id === id);
+    const con = makeConstraint("horizontal", {
+      entities: [`${poly.id}#${poly.vertexIds[1]}`],
+    });
+    expect(constraintSubject(con, labels, geo)).toBe("Polyline 1 edge 2");
   });
 
   test("names the document's own datums, which are not in `entities`", () => {
@@ -481,8 +523,17 @@ describe("constraints section", () => {
         { entityId: "__origin__", key: "p" },
       ],
     });
-    expect(constraintSubject(con, labels)).toBe("Line 1 · Origin");
+    // The origin's key names nothing useful — the entity IS the point.
+    expect(constraintSubject(con, labels)).toBe("Line 1 start · Origin");
     expect(labels.get("__stock__")).toBe("Stock");
+  });
+
+  test("falls back to the bare entity when a key has no readable name", () => {
+    const labels = shortLabels(doc);
+    const con = makeConstraint("coincident", {
+      points: [{ entityId: circle.id, key: "wat" }],
+    });
+    expect(constraintSubject(con, labels)).toBe("Circle 1");
   });
 
   test("resolves a polyline segment reference back to its polyline", () => {
@@ -556,8 +607,9 @@ describe("constraints section", () => {
 
     expect(doc.constraints.map((c) => c.id)).toEqual([horiz.id]);
     expect(doc.constraints.map((c) => c.id)).not.toContain(perp.id);
-    expect(h.pushHistory).toHaveBeenCalledTimes(1); // undoable
-    expect(h.onSolve).toHaveBeenCalledTimes(1); // DOF readout refreshed
+    // Routed through the app's delete rather than removing anything itself, so
+    // history, the toolpath warning and the re-solve all come for free.
+    expect(h.onDeleteSelection).toHaveBeenCalledTimes(1);
     // The row is gone from under the pointer, so the canvas highlight must go
     // too — otherwise a deleted constraint stays lit until the next mouse move.
     expect(h.hoveredConstraints.at(-1)).toBeNull();
@@ -661,6 +713,74 @@ describe("solve status on the Constraints folder", () => {
     h.panel.setSolveStatus(solveStatusLabel(result("over"))!);
     await flush();
     expect(badge(h)).toBeNull();
+  });
+});
+
+describe("deleting from a row", () => {
+  const bin = (r: HTMLElement): HTMLButtonElement => {
+    const b = [...r.querySelectorAll<HTMLButtonElement>(".tree-action-btn")].find((x) =>
+      /Delete|Locked/.test(x.title),
+    );
+    if (!b) throw new Error(`no bin on row: ${r.textContent}`);
+    return b;
+  };
+
+  test("an object's bin deletes it and leaves its neighbour", () => {
+    const h = mount(doc);
+    bin(row(h, "Line 40.00 mm")).click();
+
+    expect(doc.entities.map((e) => e.id)).not.toContain(line.id);
+    expect(doc.entities.map((e) => e.id)).toContain(circle.id); // positive control
+  });
+
+  test("the bin selects only its own row's object before deleting", () => {
+    circle.selected = true; // a pre-existing selection that must NOT be swept up
+    const h = mount(doc);
+    bin(row(h, "Line 40.00 mm")).click();
+
+    expect(doc.entities.map((e) => e.id)).not.toContain(line.id);
+    expect(doc.entities.map((e) => e.id)).toContain(circle.id);
+  });
+
+  test("a locked object's bin refuses, and says why", () => {
+    line.locked = true;
+    const h = mount(doc);
+    const b = bin(row(h, "Line 40.00 mm"));
+
+    expect(b.disabled).toBe(true);
+    expect(b.title).toMatch(/unlock/i);
+    b.click();
+    // Deleting a locked entity is a silent no-op at the document level, which is
+    // exactly why the button refuses up front rather than appearing to work.
+    expect(doc.entities.map((e) => e.id)).toContain(line.id);
+    expect(h.onDeleteSelection).not.toHaveBeenCalled();
+  });
+
+  test("a dimension's bin removes that dimension", () => {
+    const dim = doc.addDimension(
+      makeDimension("diameter", { entities: [circle.id], value: 20, offset: 0 }),
+    );
+    const keep = doc.addDimension(
+      makeDimension("radius", { entities: [circle.id], value: 10, offset: 0 }),
+    );
+    const h = mount(doc);
+
+    bin(row(h, "Diameter 20.00 mm")).click();
+
+    expect(doc.dimensions.map((d) => d.id)).toEqual([keep.id]);
+    expect(doc.dimensions.map((d) => d.id)).not.toContain(dim.id);
+  });
+
+  test("folders have no bin — too much removed for one stray click", async () => {
+    doc.groups.push({ id: "grp-1", name: "Hinge Cup", entityIds: [line.id] });
+    const h = mount(doc);
+    await flush();
+
+    for (const label of ["Default", "Hinge Cup"]) {
+      const buttons = [...row(h, label).querySelectorAll<HTMLButtonElement>(".tree-action-btn")];
+      expect(buttons.some((b) => /Delete/.test(b.title))).toBe(false);
+      expect(buttons.length).toBeGreaterThan(0); // they DO have eye/lock controls
+    }
   });
 });
 
