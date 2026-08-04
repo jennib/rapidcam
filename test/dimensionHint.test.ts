@@ -14,6 +14,8 @@ describe("dimensionHint (phase-aware Dimension tool guidance)", () => {
 
   it("guides the intermediate picks", () => {
     expect(dimensionHint("second")).toMatch(/second point/i);
-    expect(dimensionHint("secondLine")).toMatch(/second line/i);
+    // The angle-from-horizontal gesture has no second thing to click, so the
+    // hint is the only place it can be discovered.
+    expect(dimensionHint("second")).toMatch(/angle from horizontal/i);
   });
 });

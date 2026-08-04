@@ -70,7 +70,6 @@ export type Phase =
   | "second"
   | "placeLinear"
   | "placeCircle"
-  | "secondLine"
   | "placeAngle";
 const POINT_PICK_PX = 8;
 
@@ -84,9 +83,7 @@ const POINT_PICK_PX = 8;
 export function dimensionHint(phase: Phase): string | null {
   switch (phase) {
     case "second":
-      return "Click the second point or edge — or Esc to cancel";
-    case "secondLine":
-      return "Click a second line to dimension the angle between them";
+      return "Click the second point or edge — or, from a line, open space for its angle from horizontal";
     case "placeLinear":
     case "placeCircle":
     case "placeAngle":
@@ -116,6 +113,8 @@ export class DimensionTool implements Tool {
   // gap dimension between the two (e.g. inner/outer offset). null = radius/⌀.
   private gapTargetId: string | null = null;
   private line1Id: string | null = null;
+  /** True once the second operand was chosen as the X axis rather than a line. */
+  private angleToAxis = false;
   private line2Id: string | null = null;
   private firstMid: Pick | null = null;
   private hoverP1: Pick | null = null;
@@ -214,14 +213,6 @@ export class DimensionTool implements Tool {
         }
         break;
       }
-      case "secondLine": {
-        const hit2 = ctx.doc.hitTest(e.worldRaw, tol);
-        if (hit2 && hit2.type === "line" && hit2.id !== this.line1Id) {
-          this.line2Id = hit2.id;
-          this.phase = "placeAngle";
-        }
-        break;
-      }
       case "second": {
         const pick =
           ctx.doc.pickPoint(e.worldRaw, tol) ??
@@ -241,6 +232,18 @@ export class DimensionTool implements Tool {
             this.forcedLinearType = null;
             this.phase = "placeLinear";
           }
+          break;
+        }
+        // Open space, having started on a LINE: dimension that line's angle
+        // from horizontal. There is no second thing to click for it — the X
+        // axis is named by the dimension type rather than being selectable
+        // geometry — so a miss is the only gesture available. It was dead
+        // before (an open-space click here did nothing at all), and the phase
+        // hint advertises it.
+        if (this.p1 && ctx.doc.entities.find((x) => x.id === this.p1!.ref.entityId)?.type === "line") {
+          this.line1Id = this.p1.ref.entityId;
+          this.angleToAxis = true;
+          this.phase = "placeAngle";
         }
         break;
       }
@@ -458,6 +461,7 @@ export class DimensionTool implements Tool {
     this.gapTargetId = null;
     this.line1Id = null;
     this.line2Id = null;
+    this.angleToAxis = false;
     this.forcedLinearType = null;
     this.preview = { previews: [], selectionRect: null };
     this.updateHint(ctx); // phase reset to "first" → restore the default hint
@@ -513,7 +517,7 @@ export class DimensionTool implements Tool {
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
       this.previewFromLayout(dim, geo, unit);
-    } else if (this.phase === "placeAngle" && this.line1Id && this.line2Id) {
+    } else if (this.phase === "placeAngle" && this.line1Id && (this.line2Id || this.angleToAxis)) {
       const dim = this.angleDim(0);
       this.curOffset = dimensionOffsetFromCursor(dim, geo, this.cursor);
       dim.offset = this.curOffset;
@@ -540,6 +544,8 @@ export class DimensionTool implements Tool {
   }
 
   private angleDim(offset: number): Dimension {
+    if (this.angleToAxis)
+      return makeDimension("angle-x", { entities: [this.line1Id!], value: 0, offset });
     return makeDimension("angle", {
       entities: [this.line1Id!, this.line2Id!],
       value: 0,
@@ -555,6 +561,7 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.line1Id = null;
     this.line2Id = null;
+    this.angleToAxis = false;
     this.firstMid = null;
     this.hoverP1 = null;
     this.hoverP2 = null;

@@ -144,6 +144,15 @@ test("live: a locked entity still selects but refuses to be dragged", async ({ p
   const rectRow = page.locator(".tree-row", { hasText: "Rectangle" });
   await rectRow.locator("button[title^='Lock']").click();
 
+  // Let the flyout finish sliding before converting world mm to screen px.
+  // `toPx` reads the canvas rect, and the panel animates 0 -> 250px, shifting
+  // AND resizing the canvas as it goes — a point computed mid-slide lands
+  // somewhere else entirely. Every sibling test here waits for this; this one
+  // did not, and duly failed only under full-suite load.
+  await expect
+    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
+    .toBe(250);
+
   // ON the bottom edge: a rectangle is hit-tested against its outline, not its
   // interior, so the centre would miss and start a marquee instead.
   const before = await toPx(page, [150, 20]);

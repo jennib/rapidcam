@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { type SnapPoint } from "../src/model/entities";
+import type { SnapPoint } from "../src/model/entities";
 import { resolveShiftedSnap } from "../src/tools/lineTool";
 
 describe("Ortho / Shift snap resolution test", () => {

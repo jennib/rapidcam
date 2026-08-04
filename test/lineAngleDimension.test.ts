@@ -2,7 +2,12 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
-import { dimensionMeasure, dimensionResiduals, makeDimension } from "../src/model/dimensions";
+import {
+  dimensionLayout,
+  dimensionMeasure,
+  dimensionResiduals,
+  makeDimension,
+} from "../src/model/dimensions";
 import { solve } from "../src/solver/solver";
 import { makeVariable } from "../src/model/variables";
 import { evaluateAll } from "../src/model/variables";
@@ -148,5 +153,37 @@ describe("the property field", () => {
     expect(dim?.expr).toBe("tilt");
     expect(dim?.hidden, "hidden — a property formula draws nothing").toBe(true);
     expect(dim?.entities).toEqual([line.id]);
+  });
+});
+
+describe("drawn on the canvas", () => {
+  test("lays out an arc from +X to the line, at the line's start", () => {
+    const l = doc.add(new LineEntity({ x: 10, y: 10 }, { x: 40, y: 40 })); // 45°
+    const dim = makeDimension("angle-x", { entities: [l.id], value: 45, offset: 8 });
+    const layout = dimensionLayout(dim, geoOf(doc), "mm")!;
+
+    expect(layout, "angle-x is drawable — it used to return null").not.toBeNull();
+    expect(layout.arc, "has an arc").toBeDefined();
+    // Pivot at the line's start, not the world origin.
+    expect(layout.arc!.center).toEqual({ x: 10, y: 10 });
+    expect(layout.arc!.startDir).toEqual({ x: 1, y: 0 }); // from +X
+    expect(layout.arc!.endDir.x).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(layout.arc!.endDir.y).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(layout.arrows).toHaveLength(2);
+    // The +X reference has no geometry of its own, so it must be stroked or the
+    // arc floats with nothing showing what it is measured from.
+    const drawsAxis = layout.segments.some(
+      ([a, b]) => a.y === 10 && b.y === 10 && b.x > a.x,
+    );
+    expect(drawsAxis, "draws the +X reference ray").toBe(true);
+  });
+
+  test("labels in degrees — formatAngle would read the value as radians", () => {
+    const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 10, y: 10 }));
+    const dim = makeDimension("angle-x", { entities: [l.id], value: 45, offset: 8 });
+    const layout = dimensionLayout(dim, geoOf(doc), "mm")!;
+    // 45 treated as radians would render as 2578.31°.
+    expect(layout.label).toContain("45.00");
+    expect(layout.label).not.toContain("2578");
   });
 });

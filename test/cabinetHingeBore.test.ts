@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { LineEntity } from "../src/model/entities";
+import type { LineEntity } from "../src/model/entities";
 import { seedConstraintPoints } from "../src/model/constraints";
 import { solve } from "../src/solver/solver";
 import { buildConstraintsFor } from "../src/ui/constraintBar";

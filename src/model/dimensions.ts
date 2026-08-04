@@ -428,6 +428,10 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
     if (!ag) return dim.offset;
     return Math.max(5, dist(cursor, ag.vertex));
   }
+  if (dim.type === "angle-x") {
+    const l = readLineGeom(geo, dim.entities[0]);
+    return l ? Math.max(5, dist(cursor, l.a)) : dim.offset;
+  }
   // A gap dimension has no perpendicular standoff to compute: its shaft IS
   // the span between the two lines, so it has nowhere to sit but between
   // them. Where it slides ALONG the lines is `anchors`, not `offset` — see
@@ -717,6 +721,46 @@ export function dimensionLayout(
   }
 
   // angle
+  if (dim.type === "angle-x") {
+    const l = readLineGeom(geo, dim.entities[0]);
+    if (!l) return null;
+    const d = sub(l.b, l.a);
+    if (len(d) < 1e-9) return null;
+    // Vertex at the line's START: the angle is a property OF this line, so the
+    // arc belongs where the line begins rather than at the world origin.
+    const vertex = l.a;
+    const dLine = normalize(d);
+    const dAxis: Vec2 = { x: 1, y: 0 };
+    const R = Math.max(2, dim.offset);
+    const ccw = cross(dAxis, dLine) > 0;
+    const sum = add(dAxis, dLine);
+    const bisectDir = len(sum) > 1e-6 ? normalize(sum) : perp(dAxis);
+    const gap = R * 0.12;
+    const perpSign = ccw ? 1 : -1;
+    return {
+      segments: [
+        // The +X reference has no geometry of its own, so it is drawn: without
+        // it the arc floats and there is nothing showing what it measures from.
+        [vertex, add(vertex, scale(dAxis, R))],
+        [add(vertex, scale(dLine, gap)), add(vertex, scale(dLine, R))],
+      ],
+      arrows: [
+        {
+          tip: add(vertex, scale(dAxis, R)),
+          dir: { x: -dAxis.y * perpSign, y: dAxis.x * perpSign },
+        },
+        {
+          tip: add(vertex, scale(dLine, R)),
+          dir: { x: dLine.y * perpSign, y: -dLine.x * perpSign },
+        },
+      ],
+      textPos: add(vertex, scale(bisectDir, R + 3)),
+      // `displayVal` is already DEGREES for this type — formatAngle would treat
+      // it as radians and report a 45° line as 2578°.
+      label: withExpr(dim, `${displayVal.toFixed(2)}°`, showExpr),
+      arc: { center: vertex, radius: R, startDir: dAxis, endDir: dLine, ccw },
+    };
+  }
   if (dim.type === "angle") {
     const l1 = readLineGeom(geo, dim.entities[0]);
     const l2 = readLineGeom(geo, dim.entities[1]);
@@ -768,7 +812,7 @@ export function dimensionLayout(
   // Only ever created hidden (a property-field formula), and a hidden dimension
   // is not drawn. Bail rather than fall into the linear path below, which would
   // render an angle as if it were a length.
-  if (dim.type === "angle-x" || dim.type === "arc-sweep") return null;
+  if (dim.type === "arc-sweep") return null;
   const type = dim.type as LinearDimType;
 
   if (type === "line-distance") {
