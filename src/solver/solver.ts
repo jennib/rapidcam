@@ -24,7 +24,7 @@ import {
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
-import { ArcEntity, type Entity, RasterImageEntity } from "../model/entities";
+import { ArcEntity, type Entity, RasterImageEntity, TextEntity } from "../model/entities";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
 export interface SolveResult {
@@ -102,7 +102,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixImageScalars(doc, fixed);
+  fixRigidBodyScalars(doc, fixed);
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
   // the cursor by a weak residual, so hard constraints win in a conflict while a
@@ -590,14 +590,21 @@ export function freeImageScalars(ent: RasterImageEntity): string[] {
 }
 
 /**
- * Fix every image scalar {@link freeImageScalars} doesn't release. A scalar
- * driven by a formula binding is always free regardless, so parametric formulas
- * keep working on a rigid image.
+ * Pin the scalars of the entities that are RIGID bodies — images and text.
+ *
+ * An image releases what {@link freeImageScalars} allows; text releases nothing,
+ * having no equivalent opt-in. Everything else is fixed, so a constraint
+ * translates the object rather than stretching or spinning it to satisfy itself,
+ * and a sketch's DOF count doesn't grow by two for every label on it.
+ *
+ * A scalar driven by a formula binding is always free regardless — that is the
+ * channel the parametric fields use, and it must keep working on a rigid body.
  */
-function fixImageScalars(doc: CADDocument, fixed: Set<string>): void {
+function fixRigidBodyScalars(doc: CADDocument, fixed: Set<string>): void {
   for (const ent of doc.entities) {
-    if (!(ent instanceof RasterImageEntity)) continue;
-    const free = freeImageScalars(ent);
+    const isImage = ent instanceof RasterImageEntity;
+    if (!isImage && !(ent instanceof TextEntity)) continue;
+    const free = isImage ? freeImageScalars(ent) : [];
     for (const s of ent.dofScalars())
       if (
         !free.includes(s.key) &&
@@ -747,7 +754,7 @@ export function computeEntityDofStatus(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixImageScalars(doc, fixed);
+  fixRigidBodyScalars(doc, fixed);
 
   // Build variable list with per-variable entity tracking
   const vars: Variable[] = [];
@@ -928,7 +935,7 @@ export function constraintJacobianRankChange(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixImageScalars(doc, fixed);
+  fixRigidBodyScalars(doc, fixed);
 
   // Build variable list
   const vars: Variable[] = [];

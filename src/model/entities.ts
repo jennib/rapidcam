@@ -1161,6 +1161,31 @@ export class TextEntity extends Entity {
     const l = this.localBoxPoint(key);
     if (l) this.position = add(this.position, sub(v, this.toWorld(l)));
   }
+
+  /**
+   * Size and orientation as scalar DOFs, so a formula can drive them the way it
+   * already drives a circle's radius or an image's width — `sizeMM` from a
+   * variable is the whole point of a parametric label ("part number at
+   * `plateW/10`"). Declaring them here is what makes a ScalarBinding on
+   * `(id, "size" | "angle")` legal; the solver rejects an unknown scalar key.
+   *
+   * Text stays RIGID by default all the same: solver.ts pins both unless a
+   * binding drives them, exactly as it does for an image. Leaving them free
+   * would let a constraint stretch or spin a label to satisfy itself, and would
+   * add two degrees of freedom per text object to every sketch's DOF readout.
+   */
+  override dofScalars(): DofScalar[] {
+    return [
+      { key: "size", value: this.sizeMM },
+      { key: "angle", value: this.angle },
+    ];
+  }
+  override setScalar(key: string, v: number): void {
+    // Guard the size: glyph outlines are generated at this scale, and a zero or
+    // negative one yields no contours at all (an empty toolpath, silently).
+    if (key === "size") this.sizeMM = Math.max(1e-6, v);
+    else if (key === "angle") this.angle = v;
+  }
 }
 
 // ---------------------------------------------------------------------------

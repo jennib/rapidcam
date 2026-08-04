@@ -858,6 +858,13 @@ export class PropertiesBar {
     unit: string | null,
     applyLiteral: (v: number) => void,
     decimals = 3,
+    /**
+     * True when the field is a POSITION rather than a size. Sizes (W/H, radius,
+     * length) are rejected at <= 0 because there is no such shape; a coordinate
+     * has no such rule — x = 0 is the origin and x = -10 is to the left of it —
+     * and applying the size rule to coordinates silently reverted them.
+     */
+    allowNonPositive = false,
   ): void {
     const pkey = (p: PointRef) => `${p.entityId}:${p.key}`;
     const wantKeys = new Set(points.map(pkey));
@@ -930,7 +937,7 @@ export class PropertiesBar {
           : null;
       if (lit !== null) {
         const v = lit;
-        if (v <= 0) {
+        if (!allowNonPositive && v <= 0) {
           reset();
           return;
         }
@@ -1015,48 +1022,12 @@ export class PropertiesBar {
       currentValue,
       "mm",
       applyLiteral,
+      3,
+      true, // a coordinate: 0 and negatives are ordinary positions
     );
   }
 
   /** A two-field "Lx [x] Ly [y]" coordinate row committing both values together. */
-  private coordRow(
-    parent: HTMLElement,
-    labelA: string,
-    a: number,
-    labelB: string,
-    b: number,
-    onCommit: (a: number, b: number) => void,
-  ): void {
-    const row = document.createElement("div");
-    row.className = "props-row";
-    // Coordinates are lengths — show and read them in the document's unit.
-    const du = this.doc.displayUnit;
-    const fmt = (mm: number) => formatLength(mm, du);
-    const lblA = document.createElement("span");
-    lblA.textContent = labelA;
-    const inA = document.createElement("input");
-    inA.type = "text";
-    inA.value = fmt(a);
-    const lblB = document.createElement("span");
-    lblB.textContent = labelB;
-    const inB = document.createElement("input");
-    inB.type = "text";
-    inB.value = fmt(b);
-    const apply = () => {
-      const va = parseLength(inA.value, du),
-        vb = parseLength(inB.value, du);
-      if (va === null || vb === null) {
-        inA.value = fmt(a);
-        inB.value = fmt(b);
-        return;
-      }
-      onCommit(va, vb);
-    };
-    inA.addEventListener("change", apply);
-    inB.addEventListener("change", apply);
-    row.append(lblA, inA, lblB, inB);
-    parent.appendChild(row);
-  }
 
   private flashInput(inp: HTMLInputElement): void {
     inp.style.borderColor = "#e05555";
@@ -1120,45 +1091,31 @@ export class PropertiesBar {
     fontRow.append(fontLbl, fontSel);
     sec.appendChild(fontRow);
 
-    // Size
-    const sizeRow = document.createElement("div");
-    sizeRow.className = "props-row";
-    const sizeLbl = document.createElement("span");
-    sizeLbl.textContent = "Size";
-    const sizeIn = document.createElement("input");
-    sizeIn.type = "text";
-    sizeIn.value = entity.sizeMM.toFixed(1);
-    const sizeUnit = document.createElement("span");
-    sizeUnit.textContent = "mm";
-    sizeIn.addEventListener("change", () => {
-      const v = parseFloat(sizeIn.value);
-      if (Number.isNaN(v) || v <= 0) return;
-      this.applyEdit(() => {
-        entity.sizeMM = v;
-      });
-    });
-    sizeRow.append(sizeLbl, sizeIn, sizeUnit);
-    sec.appendChild(sizeRow);
-
-    // Angle
-    const angleRow = document.createElement("div");
-    angleRow.className = "props-row";
-    const angleLbl = document.createElement("span");
-    angleLbl.textContent = "Angle";
-    const angleIn = document.createElement("input");
-    angleIn.type = "text";
-    angleIn.value = ((entity.angle * 180) / Math.PI).toFixed(1);
-    const angleUnit = document.createElement("span");
-    angleUnit.textContent = "°";
-    angleIn.addEventListener("change", () => {
-      const v = parseFloat(angleIn.value);
-      if (Number.isNaN(v)) return;
-      this.applyEdit(() => {
-        entity.angle = (v * Math.PI) / 180;
-      });
-    });
-    angleRow.append(angleLbl, angleIn, angleUnit);
-    sec.appendChild(angleRow);
+    // Size and Angle go through the binding engine, like an image's — so both
+    // take a formula, show the ƒx badge and suggest variable names. They were
+    // hand-rolled parseFloat inputs, which is why a label could not be sized
+    // from a variable while an image could.
+    this.bindingRow(
+      sec,
+      "Size",
+      entity.id,
+      "size",
+      entity.sizeMM,
+      "mm",
+      (v) => entity.setScalar("size", v),
+    );
+    this.bindingRow(
+      sec,
+      "Angle",
+      entity.id,
+      "angle",
+      (entity.angle * 180) / Math.PI,
+      "°",
+      (v) => entity.setScalar("angle", (v * Math.PI) / 180),
+      1,
+      // Formula reads in degrees; the "angle" DOF stays radians.
+      Math.PI / 180,
+    );
 
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
@@ -1378,14 +1335,26 @@ export class PropertiesBar {
     // closed polyline) has many vertices.
     const list = document.createElement("div");
     list.className = "props-vertex-list";
+    // One row per coordinate, through the same origin-referenced hidden dim a
+    // line's Ax/Ay uses — so a vertex takes a formula, shows the ƒx badge and
+    // suggests variable names. It costs a row per vertex over the old paired
+    // X/Y layout, which is the price of these being parametric at all.
     entity.points.forEach((p, i) => {
-      this.coordRow(list, `${i} X`, p.x, "Y", p.y, (x, y) => {
-        // Hand-editing a vertex breaks regularity — forget the polygon params.
+      // Hand-editing a vertex breaks regularity — forget the polygon params.
+      const setVertex = (x: number, y: number) =>
         this.applyEdit(() => {
           entity.points[i] = { x, y };
           entity.polygon = undefined;
         });
-      });
+      // Vertices are keyed by STABLE id, not index, so a formula survives an
+      // edit that renumbers them (see PolylineEntity.dofPoints).
+      const key = `v${entity.vertexIds[i]}`;
+      this.originCoordRow(list, `${i} X`, "x", entity.id, key, p.x, (v) =>
+        setVertex(v, entity.points[i].y),
+      );
+      this.originCoordRow(list, `${i} Y`, "y", entity.id, key, p.y, (v) =>
+        setVertex(entity.points[i].x, v),
+      );
     });
     sec.appendChild(list);
 
