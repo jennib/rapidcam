@@ -1,7 +1,7 @@
 /** Line tool: click start, click end. Stays active to draw more lines. */
 
 import { type Vec2, distSq } from "../core/vec2";
-import { LineEntity, type SnapPoint } from "../model/entities";
+import { ArcEntity, CircleEntity, LineEntity, type SnapPoint } from "../model/entities";
 import { makeConstraint, SEGMENT_SEP } from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
@@ -98,6 +98,35 @@ export function autoJoin(
   snap: SnapPoint | null,
 ): void {
   if (!snap) return;
+  if (snap.kind === "intersection" && snap.crossIds) {
+    // A crossing is held by TWO constraints, one per entity — that is what
+    // makes it an intersection rather than a coincidence of coordinates. With
+    // only one the point slides along the other curve the moment anything moves.
+    for (const id of snap.crossIds) {
+      const target = ctx.doc.entities.find((x) => x.id === id);
+      // Which "point on X" applies depends on what was crossed. An entity whose
+      // crossing cannot be named to a single curve — a rectangle or polyline,
+      // where only one EDGE is meant and the id names the whole shape — is
+      // skipped: `pointOnLine` against a bare rect id resolves to nothing and
+      // holds the point nowhere, which is worse than leaving it free.
+      const type =
+        target instanceof LineEntity
+          ? "pointOnLine"
+          : target instanceof CircleEntity
+            ? "pointOnCircle"
+            : target instanceof ArcEntity
+              ? "pointOnArc"
+              : null;
+      if (!type) continue;
+      ctx.doc.addConstraint(
+        makeConstraint(type, {
+          points: [{ entityId: newEntityId, key: newKey }],
+          entities: [id],
+        }),
+      );
+    }
+    return;
+  }
   if (snap.key && snap.entityId) {
     ctx.doc.addConstraint(
       makeConstraint("coincident", {

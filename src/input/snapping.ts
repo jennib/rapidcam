@@ -57,11 +57,13 @@ export class SnapEngine {
       // Intersection snaps rank just below exact points: a real vertex on/near
       // the crossing keeps priority (strict <), but otherwise the crossing wins.
       const tolWorld = view.toWorldLen(this.pixelTolerance);
-      for (const p of intersectionsNear(this.snappableEntities(doc, exclude), rawWorld, tolWorld)) {
-        const d = dist(view.worldToScreen(p), screen);
+      for (const h of intersectionsNear(this.snappableEntities(doc, exclude), rawWorld, tolWorld)) {
+        const d = dist(view.worldToScreen(h.pos), screen);
         if (d < bestPx) {
           bestPx = d;
-          best = { pos: { ...p }, kind: "intersection", entityId: "" };
+          // `crossIds` is what lets a tool CONSTRAIN to the crossing rather than
+          // merely land on it — see autoJoin in tools/lineTool.ts.
+          best = { pos: { ...h.pos }, kind: "intersection", entityId: "", crossIds: h.ids };
         }
       }
 

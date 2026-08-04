@@ -15,6 +15,7 @@ import type {
   RectEntity,
   PolylineEntity,
   BezierEntity,
+  EntityId,
 } from "../model/entities";
 import {
   segSegIntersect,
@@ -115,7 +116,24 @@ function pairIntersections(a: Prims, b: Prims, out: Vec2[]): void {
  * Intersection points between the given entities that lie within `tolWorld`
  * (mm) of `near`. Entities are pre-filtered to those whose bounds reach `near`.
  */
-export function intersectionsNear(entities: Entity[], near: Vec2, tolWorld: number): Vec2[] {
+/**
+ * A crossing, and the two entities that made it.
+ *
+ * The ids are the point of this type. Snapping to a crossing and NOT recording
+ * what crossed is how a circle centred on an intersection ended up with no
+ * constraint at all: the position was right and nothing held it there, so the
+ * first edit to either line left the circle behind.
+ */
+export interface IntersectionHit {
+  pos: Vec2;
+  ids: [EntityId, EntityId];
+}
+
+export function intersectionsNear(
+  entities: Entity[],
+  near: Vec2,
+  tolWorld: number,
+): IntersectionHit[] {
   const cand = entities.filter((e) => {
     const b = e.bounds();
     return (
@@ -126,14 +144,15 @@ export function intersectionsNear(entities: Entity[], near: Vec2, tolWorld: numb
     );
   });
   const prims = cand.map(primitives);
-  const hits: Vec2[] = [];
+  const hits: IntersectionHit[] = [];
   const raw: Vec2[] = [];
   for (let i = 0; i < cand.length; i++) {
     for (let j = i + 1; j < cand.length; j++) {
       raw.length = 0;
       pairIntersections(prims[i], prims[j], raw);
       for (const p of raw) {
-        if (Math.abs(p.x - near.x) <= tolWorld && Math.abs(p.y - near.y) <= tolWorld) hits.push(p);
+        if (Math.abs(p.x - near.x) <= tolWorld && Math.abs(p.y - near.y) <= tolWorld)
+          hits.push({ pos: p, ids: [cand[i].id, cand[j].id] });
       }
     }
   }

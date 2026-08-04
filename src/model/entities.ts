@@ -129,6 +129,12 @@ export interface SnapPoint {
    * point" — an edge snap must slide ALONG the edge, not weld to its midpoint.
    */
   edgeKey?: string;
+  /**
+   * For an `intersection` snap: the two entities whose crossing this is. Without
+   * them the snap knows WHERE the crossing is but not WHAT crossed, so a tool
+   * can place a point there and cannot hold it there.
+   */
+  crossIds?: [EntityId, EntityId];
 }
 
 /** A draggable/solvable point degree-of-freedom, addressed within an entity by `key`. */
