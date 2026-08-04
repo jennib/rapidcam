@@ -456,12 +456,35 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
 
       const A: number[][] = Array.from({ length: cn }, () => new Array<number>(cn).fill(0));
       const g = new Array<number>(cn).fill(0);
-      for (let i = 0; i < cn; i++) {
-        for (let k = 0; k < m; k++) g[i] += J[k][i] * fx[k];
-        for (let j = 0; j < cn; j++) {
-          let acc = 0;
-          for (let k = 0; k < m; k++) acc += J[k][i] * J[k][j];
-          A[i][j] = acc;
+      // Normal equations A = JᵀJ and g = Jᵀf, accumulated over the NON-ZERO
+      // entries of each Jacobian row only.
+      //
+      // A constraint's residual depends on the handful of variables it names —
+      // a coincident touches 4 of them — so a row of J is nearly all zeros, and
+      // the textbook triple loop spent essentially all of its time adding
+      // products that are zero: 98% of a 200-segment chain's solve (6077ms of
+      // 6215ms), growing as O(n²·m). Such a chain is ONE connected component,
+      // so partitioning cannot shrink it either. Sparse accumulation took that
+      // case to 172ms total, and it converges in 2 iterations either way.
+      //
+      // Zeros contribute nothing to a sum, so this is arithmetically identical,
+      // not an approximation. The finite-difference Jacobian yields EXACT zeros
+      // for untouched variables — perturbing one variable leaves an unrelated
+      // residual bit-identical — so testing `!== 0` is safe.
+      for (let k = 0; k < m; k++) {
+        const row = J[k];
+        const fk = fx[k];
+        // Collected per row rather than all up front: each support is used
+        // twice here and never again, and keeping them all costs memory
+        // proportional to the dense matrix this exists to avoid.
+        const cols: number[] = [];
+        for (let i = 0; i < cn; i++) if (row[i] !== 0) cols.push(i);
+        for (let a = 0; a < cols.length; a++) {
+          const i = cols[a];
+          const jki = row[i];
+          g[i] += jki * fk;
+          const Ai = A[i];
+          for (let b = 0; b < cols.length; b++) Ai[cols[b]] += jki * row[cols[b]];
         }
       }
 
