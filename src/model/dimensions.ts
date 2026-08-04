@@ -71,7 +71,18 @@ export type DimensionType =
    * The behaviour a user sees is the same either way — dimension a line's angle
    * to horizontal, drive it with a formula.
    */
-  | "angle-x";
+  | "angle-x"
+  /**
+   * An arc's included angle (its sweep), in DEGREES, normalised to [0, 360).
+   *
+   * Degrees for the same reason as `angle-x` — it backs a property field, and a
+   * dimension's `expr` lands in `value` with no unit applied.
+   *
+   * NOT wrapped in the residual, unlike `angle-x`: a direction of 350° and one
+   * of -10° are the same line, but a sweep of 350° and a sweep of 10° are very
+   * different arcs. The shortest path is the wrong answer here.
+   */
+  | "arc-sweep";
 export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
@@ -296,6 +307,13 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       if (!a) return null;
       const span = (((a.endAngle - a.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       return a.radius * span;
+    }
+    case "arc-sweep": {
+      const e = geo(dim.entities[0]);
+      if (!(e instanceof ArcEntity)) return null;
+      const tau = Math.PI * 2;
+      const span = (((e.endAngle - e.startAngle) % tau) + tau) % tau;
+      return (span * 180) / Math.PI;
     }
     case "angle-x": {
       const l = readLineGeom(geo, dim.entities[0]);
@@ -749,8 +767,8 @@ export function dimensionLayout(
   if (!p || !q) return null;
   // Only ever created hidden (a property-field formula), and a hidden dimension
   // is not drawn. Bail rather than fall into the linear path below, which would
-  // render a direction in radians as if it were a length.
-  if (dim.type === "angle-x") return null;
+  // render an angle as if it were a length.
+  if (dim.type === "angle-x" || dim.type === "arc-sweep") return null;
   const type = dim.type as LinearDimType;
 
   if (type === "line-distance") {

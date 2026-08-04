@@ -78,6 +78,7 @@ const DIM_LABELS: Record<string, string> = {
   "line-distance": "Point to line",
   "circle-gap": "Gap",
   "angle-x": "Angle to X",
+  "arc-sweep": "Arc Sweep",
 };
 
 export class DesignTreePanel {

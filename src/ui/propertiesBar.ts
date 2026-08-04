@@ -67,6 +67,7 @@ const DIM_LABELS: Record<DimensionType, string> = {
   "line-distance": "Point to Line",
   "circle-gap": "Circle Gap",
   "angle-x": "Angle to X",
+  "arc-sweep": "Arc Sweep",
 };
 
 const CON_LABELS: Record<ConstraintType, string> = {
@@ -1190,16 +1191,25 @@ export class PropertiesBar {
       DEG,
     );
 
-    const sweepRow = document.createElement("div");
-    sweepRow.className = "props-row";
-    const swLbl = document.createElement("span");
-    swLbl.textContent = "Sweep";
-    const swVal = document.createElement("input");
-    swVal.type = "text";
-    swVal.value = `${toDeg(span).toFixed(1)}°`;
-    swVal.disabled = true;
-    sweepRow.append(swLbl, swVal);
-    sec.appendChild(sweepRow);
+    // Sweep was a disabled readout — you could see the included angle but not
+    // set it, and certainly not drive it from a variable. A literal now moves the
+    // END angle, keeping Start put (the arc grows the way it is drawn); a formula
+    // parks in a hidden `arc-sweep` dimension and the solver holds it, which is
+    // what lets Start move instead when something else pins the end.
+    this.hiddenDimRow(
+      sec,
+      "Sweep",
+      "arc-sweep",
+      [],
+      toDeg(span),
+      "°",
+      (deg) => {
+        entity.endAngle = entity.startAngle + deg * DEG;
+      },
+      1,
+      false, // a sweep of 0 or less is not an arc
+      { entities: [entity.id] },
+    );
 
     this.originCoordRow(sec, "Cx", "x", entity.id, "c", entity.center.x, (v) => {
       entity.center = { x: v, y: entity.center.y };

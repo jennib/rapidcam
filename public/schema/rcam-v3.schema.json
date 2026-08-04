@@ -528,7 +528,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance", "circle-gap", "angle-x"]
+          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance", "circle-gap", "angle-x", "arc-sweep"]
         },
         "points": {
           "type": "array",
