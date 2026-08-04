@@ -17,6 +17,7 @@ import { type Dimension, type DimensionType, makeDimension } from "../model/dime
 import { ORIGIN_ENTITY_ID, type CADDocument, type GroupDef } from "../model/document";
 import {
   ArcEntity,
+  BezierEntity,
   type EntityId,
   type Bounds,
   CircleEntity,
@@ -250,6 +251,8 @@ export class PropertiesBar {
       this.buildLineProperties(entity);
     } else if (entity instanceof RectEntity) {
       this.buildRectProperties(entity);
+    } else if (entity instanceof BezierEntity) {
+      this.buildBezierProperties(entity);
     } else if (entity instanceof PolylineEntity) {
       this.buildPolylineProperties(entity);
     } else if (entity instanceof RasterImageEntity) {
@@ -1217,6 +1220,37 @@ export class PropertiesBar {
     this.originCoordRow(sec, "Cy", "y", entity.id, "c", entity.center.y, (v) => {
       entity.center = { x: entity.center.x, y: v };
     });
+    this.constructionRow(sec, entity);
+    this.content.appendChild(sec);
+  }
+
+  /**
+   * A cubic's four control points, each coordinate parametric.
+   *
+   * The bezier was the last entity type with no property section at all — its
+   * points were solver DOFs you could drag and constrain on the canvas, but
+   * there was no way to type one, let alone drive it from a variable. Same
+   * origin-referenced hidden dimension every other coordinate uses.
+   *
+   * Named for what they DO rather than p0..p3: the middle two are handles that
+   * the curve does not pass through, which the names should say.
+   */
+  private buildBezierProperties(entity: BezierEntity): void {
+    const sec = this.createSection("BEZIER");
+    const pts: [string, string, "p0" | "p1" | "p2" | "p3"][] = [
+      ["Start", "p0", "p0"],
+      ["Handle 1", "p1", "p1"],
+      ["Handle 2", "p2", "p2"],
+      ["End", "p3", "p3"],
+    ];
+    for (const [label, , key] of pts) {
+      this.originCoordRow(sec, `${label} X`, "x", entity.id, key, entity[key].x, (v) => {
+        entity[key] = { x: v, y: entity[key].y };
+      });
+      this.originCoordRow(sec, `${label} Y`, "y", entity.id, key, entity[key].y, (v) => {
+        entity[key] = { x: entity[key].x, y: v };
+      });
+    }
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
   }

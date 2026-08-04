@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, test } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { LineEntity, PolylineEntity, TextEntity } from "../src/model/entities";
+import { BezierEntity, LineEntity, PolylineEntity, TextEntity } from "../src/model/entities";
 import { makeVariable } from "../src/model/variables";
 import { PropertiesBar } from "../src/ui/propertiesBar";
 
@@ -175,5 +175,26 @@ describe("polyline vertices", () => {
     expect(driven, "a hidden driving dimension was created").toBeDefined();
     // Keyed by the vertex's STABLE id, so the formula survives renumbering.
     expect(driven?.points.some((p) => p.key === `v${poly.vertexIds[1]}`)).toBe(true);
+  });
+});
+
+describe("bezier control points", () => {
+  test("are parametric per coordinate — the type had no properties at all", () => {
+    const curve = doc.add(
+      new BezierEntity({ x: 0, y: 0 }, { x: 10, y: 30 }, { x: 30, y: 30 }, { x: 40, y: 0 }),
+    );
+    curve.selected = true;
+    const host = mount(doc);
+
+    // Named for what they do: the middle two are handles the curve misses.
+    for (const label of ["Start X", "Handle 1 Y", "Handle 2 X", "End Y"])
+      expect(hasAutocomplete(host, label), `${label} suggests variables`).toBe(true);
+
+    commit(host, "Handle 1 X", "-15"); // negative: a handle may sit behind the start
+    expect(curve.p1.x).toBe(-15);
+
+    commit(host, "End Y", "plateW/4");
+    const dim = doc.dimensions.find((d) => d.expr === "plateW/4");
+    expect(dim, "a formula parks in a driving dimension").toBeDefined();
   });
 });
