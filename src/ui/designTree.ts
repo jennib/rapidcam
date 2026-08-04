@@ -143,6 +143,7 @@ export class DesignTreePanel {
     this.panelEl.appendChild(shell);
     opts.container.appendChild(this.panelEl);
 
+
     this.doc.onChange(() => this.refresh());
     this.setOpen(false);
   }
@@ -190,17 +191,26 @@ export class DesignTreePanel {
     this.refresh();
   }
 
-  /** Update per-entity definedness status map for tree icon coloring. */
+  /**
+   * Per-entity definedness, for the colour of each row's type icon.
+   *
+   * Goes through `refresh()` like every other update. It used to cancel any
+   * pending frame and rebuild SYNCHRONOUSLY, which broke the contract this
+   * panel is built on (see the class docs) in a way that bit: `runSolve` calls
+   * this, so any solve replaced every row instantly — and a solve landing
+   * between a click's target being resolved and the click being delivered sent
+   * it to a detached node, where it did nothing. That is what made the "hiding
+   * a row" e2e fail about one run in seven with the row simply not hidden.
+   *
+   * Skips the no-op case because a solve runs on every frame of a drag.
+   */
   setEntityStatus(statusMap: Map<string, "defined" | "under-defined" | "conflict"> | null): void {
-    this.entityStatusMap = statusMap;
-    this.dirty = true;
-    if (this.open && !this.suspended) {
-      if (this.frame) {
-        cancelAnimationFrame(this.frame);
-        this.frame = 0;
-      }
-      this.rebuild();
-    }
+    if (sameStatusMap(this.entityStatusMap, statusMap)) return;
+    // A COPY: callers are free to reuse and mutate one map, and holding their
+    // reference would make the comparison above compare a thing with itself and
+    // never see a change.
+    this.entityStatusMap = statusMap ? new Map(statusMap) : null;
+    this.refresh();
   }
 
   /**
@@ -958,6 +968,17 @@ export function constraintSubject(
       return `${label} (${details.length} points)`;
     })
     .join(" · ");
+}
+
+/** Cheap equality for the per-entity status map, to skip no-op rebuilds. */
+function sameStatusMap(
+  a: Map<string, string> | null,
+  b: Map<string, string> | null,
+): boolean {
+  if (a === null && b === null) return true;
+  if (!a || !b || a.size !== b.size) return false;
+  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  return true;
 }
 
 /** One-line human description of an entity, used when it has no custom name. */

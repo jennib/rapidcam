@@ -827,18 +827,21 @@ describe("suspension during a gesture", () => {
     expect(labels(h)).toContain("Rectangle 10.00 mm × 10.00 mm");
   });
 
-  test("colors tree item icons based on setEntityStatus", () => {
+  test("colors tree item icons based on setEntityStatus", async () => {
     const h = mount(doc, true);
+    // Deliberately the SAME map, mutated — the app is free to reuse one, and the
+    // panel must not miss a change by holding the caller's reference.
     const map = new Map<string, "defined" | "under-defined" | "conflict">();
     map.set(line.id, "under-defined");
     h.panel.setEntityStatus(map);
+    await flush();
 
-    const rowEl = row(h, "Line 40.00 mm");
-    const icon = rowEl.querySelector(".tree-icon") as HTMLElement;
+    const icon = row(h, "Line 40.00 mm").querySelector(".tree-icon") as HTMLElement;
     expect(icon.getAttribute("title")).toBe("Under-constrained (loose)");
 
     map.set(line.id, "defined");
     h.panel.setEntityStatus(map);
+    await flush();
     const icon2 = row(h, "Line 40.00 mm").querySelector(".tree-icon") as HTMLElement;
     expect(icon2.getAttribute("title")).toBe("Fully constrained");
   });

@@ -497,9 +497,13 @@ export class SelectTool implements Tool {
               : null,
         );
         if (d.x !== 0 || d.y !== 0) {
-          for (const ent of ctx.doc.selected) {
-            if (ctx.doc.isMovable(ent)) ent.translate(d);
-          }
+          const moving = ctx.doc.selected.filter((ent) => ctx.doc.isMovable(ent));
+          for (const ent of moving) ent.translate(d);
+          // Carry whatever is positionally constrained to the selection. A rigid
+          // translation keeps those constraints satisfied, so the solver starts
+          // with nothing to undo — without this it "satisfies" them by springing
+          // the dragged geometry back, and the drag does nothing at all.
+          for (const ent of ctx.doc.carriedBy(moving)) ent.translate(d);
           ctx.solve(pinsForSelected(ctx.doc));
           // Detect the solver fighting the move: when constraints anchored to
           // unselected geometry pull the selection back, the points land far

@@ -386,6 +386,7 @@ import {
   sameSegmentRef,
   samePointRef,
   constraintEntityIds,
+  type ConstraintType,
   lineRefEntityId,
   type Geo,
 } from "./constraints";
@@ -394,6 +395,20 @@ import type { Variable } from "./variables";
 import type { ScalarBinding } from "./bindings";
 import { type PatternDef, clonePatternDef } from "./patterns";
 import { updateCounter, nextId } from "./ids";
+
+/** Constraint types that tie one entity's POSITION to another's — see carriedBy. */
+const POSITION_COUPLING = new Set<ConstraintType>([
+  "coincident",
+  "pointOnLine",
+  "pointOnArc",
+  "pointOnCircle",
+  "concentric",
+  "midpoint",
+  "symmetric",
+  "collinear",
+  "tangent",
+  "center",
+]);
 
 export interface GroupDef {
   id: string;
@@ -1251,6 +1266,51 @@ export class CADDocument {
   isMovable(e: Entity): boolean {
     if (e.locked) return false;
     return !this.constraints.some((c) => c.type === "fixed" && c.entities.includes(e.id));
+  }
+
+  /**
+   * Everything that must travel WITH a drag: entities tied to `moving` by a
+   * position-coupling constraint, transitively, excluding `moving` itself.
+   *
+   * Dragging geometry that something else is constrained to used to do nothing
+   * at all. Both outcomes satisfy the constraint — carry the circle, or refuse
+   * to move the line — and the solver picked the second, because a drag pin is
+   * weighted far below the anchor holding the circle still. So the line sprang
+   * back and the gesture was silently discarded.
+   *
+   * Translating the attached geometry by the same delta BEFORE solving fixes it
+   * at the source rather than by re-weighting: a rigid translation preserves
+   * every positional constraint exactly, so the solver starts already satisfied
+   * and has nothing to undo. It then still resolves whatever the carried
+   * geometry is ALSO tied to — a circle on two lines slides along the one that
+   * did not move.
+   *
+   * Orientation and size couplings (parallel, equal, an angle) are deliberately
+   * excluded: two parallel lines a metre apart are related, but moving one does
+   * not move the other. `fixed`/`fixedPoint` anchor to the world, not to
+   * another entity, and immovable geometry is skipped outright.
+   */
+  carriedBy(moving: Entity[]): Entity[] {
+    const seen = new Set(moving.map((e) => e.id));
+    const queue = moving.map((e) => e.id);
+    const out: Entity[] = [];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      for (const c of this.constraints) {
+        if (!POSITION_COUPLING.has(c.type)) continue;
+        const ids = constraintEntityIds(c);
+        if (!ids.includes(id)) continue;
+        for (const other of ids) {
+          if (seen.has(other)) continue;
+          seen.add(other);
+          const ent = this.entities.find((x) => x.id === other);
+          if (!ent || !this.isMovable(ent)) continue;
+          out.push(ent);
+          queue.push(other);
+        }
+      }
+    }
+    return out;
   }
 
   /** Topmost entity whose outline is within `tol` mm of `p`, or null. */

@@ -34,6 +34,21 @@ const selectedIds = (page: import("@playwright/test").Page): Promise<string[]> =
     return doc.entities.filter((e) => e.selected).map((e) => e.id);
   });
 
+/**
+ * Open the flyout and wait for it to STOP MOVING.
+ *
+ * It animates 0 -> 250px, shifting and resizing as it goes, so a click issued
+ * mid-slide is aimed where the control used to be and quietly lands on nothing.
+ * That was worth about one failure in ninety — rare enough to look like a flaky
+ * suite and to survive several wrong diagnoses.
+ */
+async function openTree(page: import("@playwright/test").Page): Promise<void> {
+  await page.locator("#design-tree-toggle").click();
+  await expect
+    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
+    .toBe(250);
+}
+
 test("live: the tree opens from the palette and lists the drawing", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
@@ -66,7 +81,7 @@ test("live: the tree opens from the palette and lists the drawing", async ({ pag
 test("live: clicking a row selects that entity on the canvas", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   expect(await selectedIds(page)).toEqual([]);
   await page.locator(".tree-row", { hasText: "Circle ⌀35.00 mm" }).locator(".tree-label").click();
@@ -83,7 +98,7 @@ test("live: clicking a row selects that entity on the canvas", async ({ page }) 
 test("live: hiding a row removes it from the canvas and from picking", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   const circleRow = page.locator(".tree-row", { hasText: "Circle ⌀35.00 mm" });
   await circleRow.locator("button[title='Hide']").click();
@@ -136,22 +151,13 @@ async function toPx(
 test("live: a locked entity still selects but refuses to be dragged", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   // Lock the rectangle from the tree, then try to drag it on the canvas. This
   // is the half `doc.isMovable` unit tests cannot prove: that the select tool
   // actually consults it.
   const rectRow = page.locator(".tree-row", { hasText: "Rectangle" });
   await rectRow.locator("button[title^='Lock']").click();
-
-  // Let the flyout finish sliding before converting world mm to screen px.
-  // `toPx` reads the canvas rect, and the panel animates 0 -> 250px, shifting
-  // AND resizing the canvas as it goes — a point computed mid-slide lands
-  // somewhere else entirely. Every sibling test here waits for this; this one
-  // did not, and duly failed only under full-suite load.
-  await expect
-    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
-    .toBe(250);
 
   // ON the bottom edge: a rectangle is hit-tested against its outline, not its
   // interior, so the centre would miss and start a marquee instead.
@@ -196,7 +202,7 @@ test("live: hidden geometry is dropped from the program, and pre-flight says so"
 }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   // Put both circles in one drill toolpath, then hide one of them.
   await page.evaluate(() => {
@@ -265,7 +271,7 @@ function conflictingSketch(): string {
 test("live: constraint rows name what they join, and delete in place", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, constrainedSketch());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   const perp = page.locator(".tree-row", { hasText: "Perpendicular" });
   await expect(perp.locator(".tree-subject")).toHaveText("Line 1 · Line 2");
@@ -293,7 +299,7 @@ test("live: the Constraints folder agrees with the status bar, and follows it", 
 }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, constrainedSketch());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   const badge = page.locator(".tree-solve-badge");
   const status = page.locator("#statusbar");
@@ -314,7 +320,7 @@ test("live: an over-constrained sketch flags in both places, and clears in both"
   // `doc` and calling emitChange() notifies listeners but never runs a solve,
   // so the status would just be whatever the load left behind.
   await openDoc(page, conflictingSketch());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   const badge = page.locator(".tree-solve-badge");
   const status = page.locator("#statusbar");
@@ -335,7 +341,7 @@ test("live: an over-constrained sketch flags in both places, and clears in both"
 test("live: the tree holds still during a scale drag, then catches up", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   const rectRow = page.locator(".tree-row", { hasText: "Rectangle" }).locator(".tree-label");
   await expect(rectRow).toHaveText("Rectangle 60.00 mm × 40.00 mm");
@@ -379,10 +385,7 @@ test("live: the tree holds still during a scale drag, then catches up", async ({
 test("live: a cancelled pointer still releases the tree's hold", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
-  await expect
-    .poll(async () => (await page.locator(".design-tree-panel").boundingBox())?.width ?? 0)
-    .toBe(250);
+  await openTree(page);
 
   const rectRow = page.locator(".tree-row", { hasText: "Rectangle" }).locator(".tree-label");
   await rectRow.click();
@@ -421,7 +424,7 @@ test("live: a cancelled pointer still releases the tree's hold", async ({ page }
 test("live: an object's bin runs the app's real delete, warnings and all", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openDoc(page, threeShapes());
-  await page.locator("#design-tree-toggle").click();
+  await openTree(page);
 
   // Bind the circle to a toolpath. The tree's bin must inherit the app's
   // confirm — deleting cut geometry from a side panel with no warning is the

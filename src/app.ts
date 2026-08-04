@@ -1534,8 +1534,11 @@ export class App {
     if (firstPress) this.project.pushHistory();
     const before = selectionSnapPositions(this.doc);
     const pins: PinMap = new Map();
+    const moving = this.doc.selected.filter((e) => this.doc.isMovable(e));
+    for (const e of moving) e.translate({ x: dx, y: dy });
+    // Same carry rule as a mouse drag — a nudge is a drag by another name.
+    for (const e of this.doc.carriedBy(moving)) e.translate({ x: dx, y: dy });
     for (const e of this.doc.selected) {
-      if (this.doc.isMovable(e)) e.translate({ x: dx, y: dy });
       for (const p of e.dofPoints()) pins.set(`${e.id}:${p.key}`, p.pos);
     }
     this.runSolve(pins);
