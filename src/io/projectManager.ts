@@ -286,6 +286,14 @@ export class ProjectManager {
     track("project_saved");
   }
 
+  /** Copy the serialized .rcam project JSON to the clipboard. */
+  copyFileToClipboard(): void {
+    const file = serializeDoc(this.doc, this.currentFileName);
+    const text = JSON.stringify(file, null, 2);
+    copyToClipboard(text);
+    toast("Project file copied to clipboard");
+  }
+
   /** Copy a self-contained link to the current design to the clipboard. */
   async copyShareLink(): Promise<void> {
     const { url, tooLong } = await buildDesignLink(this.doc, this.currentFileName);

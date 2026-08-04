@@ -308,6 +308,7 @@ export class App {
         onStartScreen: () => this.openStartScreen(true),
         onOpen: () => this.project.fileOpen(),
         onSave: () => this.project.fileSave(),
+        onCopyFile: () => this.project.copyFileToClipboard(),
         onShareLink: () => {
           void this.project.copyShareLink();
         },

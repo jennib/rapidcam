@@ -8,6 +8,7 @@ export interface FileMenuCallbacks {
   onStartScreen: () => void;
   onOpen: () => void;
   onSave: () => void;
+  onCopyFile: () => void;
   onShareLink: () => void;
   onOpenRecent: (entry: RecentEntry) => void;
   onOpenExample: (entry: ExampleEntry) => void;
@@ -86,6 +87,10 @@ export class FileMenu {
     this.item("Save…", "Ctrl+S", () => {
       this.close();
       this.cb.onSave();
+    });
+    this.item("Copy File to Clipboard", "", () => {
+      this.close();
+      this.cb.onCopyFile();
     });
     this.item("Copy Share Link", "", () => {
       this.close();
