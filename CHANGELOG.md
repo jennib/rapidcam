@@ -10,6 +10,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Crash reports and a solver-health signal.** RapidCAM now records the two
+  things that indicate it failed to do its job, rather than only which buttons
+  were pressed.
+
+  Uncaught exceptions and unhandled promise rejections are captured with their
+  stack trace. Repeats are collapsed to the first occurrence — the canvas render
+  loop runs at frame rate, so one bad entity would otherwise report sixty times a
+  second — and a session reports at most 25 distinct faults. Failed image and
+  script loads fire the same browser event but are *not* crashes, and are not
+  reported as such.
+
+  Separately, a sketch that stops converging emits `solve_unconverged` with
+  residual, DOF and object counts. It is edge-triggered: a broken sketch
+  re-solves on every subsequent edit, so what's recorded is the moment it broke,
+  not every keystroke until it was fixed. Solves during a drag are never
+  reported, because transient non-convergence mid-drag is normal.
+
+  Both sit behind the **existing** analytics consent — nothing is captured from a
+  browser that declined or has Do Not Track set, and errors thrown before the
+  user answers the banner are dropped rather than queued. Errors thrown while
+  PostHog is still loading *are* held and flushed, but only for a user who had
+  already consented in a previous session. The consent banner and Privacy dialog
+  now say crash reports are included.
+
 - **Laser jobs from layers.** A layer on a laser document can carry its own beam
   recipe — power, speed, passes, optional kerf and air assist — and say what its
   geometry is *for*: cut, score, engrave, or filled engrave. **Toolpaths from

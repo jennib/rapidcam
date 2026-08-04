@@ -37,6 +37,50 @@ export interface SolveResult {
   equations: number;
 }
 
+/**
+ * Whether a solve is healthy. An unconstrained sketch has nothing to converge,
+ * so `converged: false` on it is not a failure — only a sketch that HAS
+ * constraints and failed to satisfy them counts.
+ */
+export function solveConverged(res: SolveResult): boolean {
+  return !res.hasConstraints || res.converged;
+}
+
+/** Object counts that go into a solve-failure report. Counts only — never geometry. */
+export interface SolveHealthCounts {
+  entities: number;
+  constraints: number;
+  dimensions: number;
+}
+
+/**
+ * Build the analytics payload for a sketch that has just stopped solving, or
+ * `null` if there is nothing worth reporting.
+ *
+ * Edge-triggered against `prevConverged`: a broken sketch re-solves on every
+ * subsequent edit, so a level-triggered report would fire on every keystroke
+ * until it was fixed. The moment it broke is the signal; the rest is noise.
+ *
+ * Pure, so the decision is testable without standing up an App and its DOM —
+ * the caller owns only the previous-state bookkeeping.
+ */
+export function solveFailureEvent(
+  res: SolveResult,
+  prevConverged: boolean,
+  counts: SolveHealthCounts,
+): Record<string, number> | null {
+  if (solveConverged(res) || !prevConverged) return null;
+  return {
+    residual_norm: res.residualNorm,
+    dof: res.dof,
+    variables: res.variables,
+    equations: res.equations,
+    entities: counts.entities,
+    constraints: counts.constraints,
+    dimensions: counts.dimensions,
+  };
+}
+
 /** Maps a point DOF to one solver variable component. */
 interface Variable {
   get(): number;

@@ -1,5 +1,5 @@
 import "./style.css";
-import { showConsentBannerIfNeeded } from "./analytics";
+import { installErrorCapture, showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
 import { syncColorsFromTheme } from "./view/colors";
 
@@ -119,5 +119,10 @@ function bootApp(): void {
     window.__app = app;
   }
 }
+
+// Before anything runs, so a failure during App construction or draft restore is
+// reported too. Consent-gated internally — installing early captures nothing on
+// its own.
+installErrorCapture();
 
 if (!showMobileWarning()) bootApp();

@@ -104,11 +104,130 @@ export async function initAnalytics(): Promise<void> {
     },
   });
   initialised = true;
+  flushPendingErrors();
 }
 
 export function track(event: string, props?: Record<string, unknown>): void {
   if (!initialised || !posthog) return;
   posthog.capture(event, props);
+}
+
+/* ------------------------------------------------------------------------- *
+ * Error capture
+ *
+ * Consent-gated exactly like `track()`: `captureError` no-ops until PostHog is
+ * initialised, so an exception thrown before the user answers the banner (or by
+ * a user who declined, or has DNT set) is dropped rather than queued. That is
+ * deliberate — a stack trace can name a file the user opened, so it is analytics
+ * data and lives behind the same gate, not outside it.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Signatures already reported this session. The canvas render loop runs at
+ * frame rate, so a single bad entity can throw 60×/second — without this, one
+ * bug becomes thousands of identical events and the quota is gone in a minute.
+ * Reporting the FIRST occurrence of each distinct signature keeps the signal.
+ */
+const seenErrors = new Set<string>();
+
+/**
+ * Hard cap on distinct signatures per session. A stack that varies every frame
+ * (e.g. a coordinate baked into the message) would defeat the dedupe set above,
+ * so this bounds the damage even then.
+ */
+const MAX_DISTINCT_ERRORS = 25;
+
+let errorCaptureInstalled = false;
+
+/** name + message + first stack frame — stable across repeats, distinct across bugs. */
+function errorSignature(err: unknown): string {
+  if (err instanceof Error) {
+    const frame = err.stack?.split("\n")[1]?.trim() ?? "";
+    return `${err.name}: ${err.message} @ ${frame}`;
+  }
+  return String(err);
+}
+
+/**
+ * Report a caught exception. Safe to call from anywhere, including a `catch`
+ * that must not itself throw — every failure path here is swallowed.
+ *
+ * `context` should carry only non-identifying facts (counts, enum values, which
+ * operation was running). Never pass geometry, file contents or file paths.
+ */
+export function captureError(err: unknown, context?: Record<string, unknown>): void {
+  try {
+    // Dedupe ONCE, on the way in — before the send/buffer fork. Doing it here
+    // rather than at send time is what bounds `pendingErrors`: a render loop
+    // throwing at frame rate during startup adds one entry, not hundreds.
+    const sig = errorSignature(err);
+    if (seenErrors.has(sig)) return;
+    if (seenErrors.size >= MAX_DISTINCT_ERRORS) return;
+    seenErrors.add(sig);
+
+    if (!initialised || !posthog) {
+      // PostHog loads via dynamic import, so there is a window at startup where
+      // consent is granted but the library is still in flight — exactly when the
+      // worst errors (boot, document restore) happen. Hold those, and ONLY those:
+      // a user who has not consented, or declined, gets nothing buffered.
+      if (getConsent() === "granted" && !doNotTrack()) pendingErrors.push([err, context]);
+      return;
+    }
+
+    posthog.captureException(err, context);
+  } catch {
+    /* analytics must never break the app it is measuring */
+  }
+}
+
+/**
+ * Errors caught while the PostHog import was still in flight. Bounded by the
+ * dedupe in `captureError`, which runs before anything lands here.
+ */
+const pendingErrors: [unknown, Record<string, unknown> | undefined][] = [];
+
+/**
+ * Drain the startup buffer once PostHog is live. Sends directly rather than
+ * re-entering `captureError`, whose dedupe has already accepted these and would
+ * now reject them as repeats.
+ */
+function flushPendingErrors(): void {
+  if (!posthog) return;
+  for (const [err, context] of pendingErrors.splice(0, pendingErrors.length)) {
+    try {
+      posthog.captureException(err, context);
+    } catch {
+      /* analytics must never break the app it is measuring */
+    }
+  }
+}
+
+/**
+ * Install global handlers for otherwise-unreported failures: exceptions that
+ * escape to the window, and rejected promises nobody caught.
+ *
+ * Installed unconditionally at boot rather than on consent, because consent can
+ * be granted mid-session and the handler is itself consent-gated — installing
+ * early costs nothing and means the first error after a grant is still caught.
+ * Idempotent.
+ */
+export function installErrorCapture(): void {
+  if (errorCaptureInstalled) return;
+  if (typeof window === "undefined") return;
+  errorCaptureInstalled = true;
+
+  window.addEventListener("error", (e: ErrorEvent) => {
+    // The `error` event also fires for failed resource loads (<img>, <script>),
+    // where there is no exception object and the target is an element, not the
+    // window. Those are not crashes — reporting them as such would bury the
+    // real ones.
+    if (!e.error) return;
+    captureError(e.error, { source: "window.error" });
+  });
+
+  window.addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
+    captureError(e.reason, { source: "unhandledrejection" });
+  });
 }
 
 /** Whether the browser has Do Not Track set (exposed for the privacy dialog). */
@@ -218,8 +337,8 @@ function renderBanner(): void {
   const text = document.createElement("span");
   text.style.flex = "1 1 240px";
   text.textContent =
-    "RapidCAM can send anonymous usage analytics to help improve the app. " +
-    "Nothing is collected unless you allow it.";
+    "RapidCAM can send anonymous usage analytics and crash reports to help " +
+    "improve the app. Nothing is collected unless you allow it.";
 
   // Separate, opt-in-only checkbox for session replay. This records the actual
   // on-screen drawing (canvas pixels), so it's clearly distinguished from the

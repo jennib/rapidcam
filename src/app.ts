@@ -31,6 +31,8 @@ import {
   constraintJacobianRankChange,
   type PinMap,
   solve,
+  solveConverged,
+  solveFailureEvent,
 } from "./solver/solver";
 import { ArcTool } from "./tools/arcTool";
 import { BezierTool } from "./tools/bezierTool";
@@ -725,6 +727,7 @@ export class App {
       this.lastSolveResult = res;
       this.renderer.entityStatus = computeEntityDofStatus(this.doc, res);
       this.updatePatternStaleness();
+      this.reportSolveHealth(res);
     }
     // Always report definedness (solveStatusLabel blanks an empty canvas): a
     // fresh, unconstrained sketch reads "under-constrained" and draws blue, per
@@ -742,6 +745,30 @@ export class App {
     this.designTree.setSolveStatus(solveStatusLabel(res, anyUnderDefined));
     this.designTree.setEntityStatus(this.renderer.entityStatus);
     this.requestRender();
+  }
+
+  /** Whether the last committed solve converged, so only the TRANSITION is reported. */
+  private lastSolveConverged = true;
+
+  /**
+   * Report a sketch that stopped solving.
+   *
+   * A failed solve is the strongest quality signal this app has and it is
+   * otherwise invisible after the fact — the user sees red geometry, fixes or
+   * undoes it, and nothing records that it happened.
+   *
+   * The edge-triggering decision lives in `solveFailureEvent` (pure, tested);
+   * this keeps only the previous-state bookkeeping. Drag solves (`pins`) never
+   * reach here — mid-drag non-convergence is normal and transient.
+   */
+  private reportSolveHealth(res: import("./solver/solver").SolveResult): void {
+    const payload = solveFailureEvent(res, this.lastSolveConverged, {
+      entities: this.doc.entities.length,
+      constraints: this.doc.constraints.length,
+      dimensions: this.doc.dimensions.length,
+    });
+    if (payload) track("solve_unconverged", payload);
+    this.lastSolveConverged = solveConverged(res);
   }
 
   private updatePatternStaleness(): void {

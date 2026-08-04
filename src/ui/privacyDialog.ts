@@ -49,8 +49,9 @@ export function showPrivacyDialog(): void {
   analyticsCheck.checked = getConsent() === "granted";
   const analyticsRow = labelledRow(
     analyticsCheck,
-    "Anonymous usage analytics",
-    'Coarse interaction events only (e.g. "tool activated"). No geometry.',
+    "Anonymous usage analytics and crash reports",
+    'Coarse interaction events (e.g. "tool activated"), and the error message ' +
+      "and stack trace when something goes wrong. No geometry.",
   );
 
   // --- Session replay row (stricter, depends on analytics) ---
