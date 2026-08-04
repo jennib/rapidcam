@@ -2715,13 +2715,28 @@ body.design-tree-open #design-tree-toggle {
 .tree-action-btn:focus-visible {
   opacity: 0.75;
 }
+/* Hidden / locked state. No frame or glow: those existed to rescue a DARK
+   sunglasses emoji from a dark panel, and the drawn icons (ui/stateIcons.ts)
+   stroke in currentColor, so they cannot vanish into the background. State now
+   reads from the icon's shape — a struck-through eye, a closed shackle — and
+   colour only reinforces it. */
 .tree-action-btn.off,
 .icon-btn.off {
-  border: 1px solid #ffffff;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.6);
-  opacity: 0.95;
+  color: var(--text-dim);
+  opacity: 0.9;
+}
+.tree-action-btn.on,
+.icon-btn.on {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* The state toggles carry SVG, not text, so they need an explicit box. */
+.icon-btn svg,
+.tree-action-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 .tree-row:hover .tree-action-btn:hover,
 .tree-action-btn.off:hover,

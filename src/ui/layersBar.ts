@@ -5,6 +5,7 @@ import { DEFAULTS, getAssociatedOperations, type LaserJobKind } from "../cam/typ
 import { JOB_KIND_LABELS } from "../cam/laserJob";
 import { loadPresets } from "../cam/laserPresets";
 import { fromMM, toMM } from "../core/units";
+import { STATE_ICONS } from "./stateIcons";
 
 export class LayersBar {
   private content!: HTMLElement;
@@ -138,9 +139,9 @@ export class LayersBar {
 
       // Visibility toggle (eye)
       const visBtn = document.createElement("button");
-      visBtn.className = "icon-btn";
-      visBtn.innerHTML = layer.visible ? "👁" : "🕶";
-      visBtn.title = "Toggle Visibility";
+      visBtn.className = layer.visible ? "icon-btn" : "icon-btn off";
+      visBtn.innerHTML = layer.visible ? STATE_ICONS.eye : STATE_ICONS.eyeOff;
+      visBtn.title = layer.visible ? "Hide this layer" : "Show this layer";
       visBtn.onclick = () => {
         this.pushHistory();
         layer.visible = !layer.visible;
@@ -151,9 +152,9 @@ export class LayersBar {
 
       // Lock toggle
       const lockBtn = document.createElement("button");
-      lockBtn.className = "icon-btn";
-      lockBtn.innerHTML = layer.locked ? "🔒" : "🔓";
-      lockBtn.title = "Toggle Lock";
+      lockBtn.className = layer.locked ? "icon-btn on" : "icon-btn";
+      lockBtn.innerHTML = layer.locked ? STATE_ICONS.lock : STATE_ICONS.unlock;
+      lockBtn.title = layer.locked ? "Unlock this layer" : "Lock this layer";
       lockBtn.onclick = () => {
         this.pushHistory();
         layer.locked = !layer.locked;

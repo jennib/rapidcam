@@ -36,6 +36,7 @@ import {
 } from "../model/entities";
 import { formatAngle, formatLengthWithUnit } from "../core/units";
 import type { SolveStatusLabel } from "./statusBar";
+import { STATE_ICONS } from "./stateIcons";
 
 export interface DesignTreeOptions {
   container: HTMLElement;
@@ -751,7 +752,7 @@ export class DesignTreePanel {
       const btn = document.createElement("button");
       btn.className = "tree-action-btn";
       btn.classList.toggle("off", opts.visible === false);
-      btn.textContent = opts.visible === false ? "🕶" : "👁";
+      btn.innerHTML = opts.visible === false ? STATE_ICONS.eyeOff : STATE_ICONS.eye;
       btn.title = opts.visible === false ? "Show" : "Hide";
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -764,7 +765,7 @@ export class DesignTreePanel {
       const btn = document.createElement("button");
       btn.className = "tree-action-btn";
       btn.classList.toggle("on", opts.locked === true);
-      btn.textContent = opts.locked ? "🔒" : "🔓";
+      btn.innerHTML = opts.locked ? STATE_ICONS.lock : STATE_ICONS.unlock;
       btn.title = opts.locked ? "Unlock" : "Lock (stays selectable, but won't move)";
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
