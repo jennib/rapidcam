@@ -740,6 +740,7 @@ export class App {
     // call on the same inputs — not its own reading of the solve result, so the
     // two can never contradict each other.
     this.designTree.setSolveStatus(solveStatusLabel(res, anyUnderDefined));
+    this.designTree.setEntityStatus(this.renderer.entityStatus);
     this.requestRender();
   }
 

@@ -113,6 +113,8 @@ export class DesignTreePanel {
   private byId = new Map<string, Entity>();
   /** Latest solve status, pushed in by the app. See {@link setSolveStatus}. */
   private solveStatus: SolveStatusLabel | null = null;
+  /** Per-entity DOF status map, pushed in by the app. See {@link setEntityStatus}. */
+  private entityStatusMap: Map<string, "defined" | "under-defined" | "conflict"> | null = null;
 
   constructor(opts: DesignTreeOptions) {
     this.doc = opts.doc;
@@ -185,6 +187,19 @@ export class DesignTreePanel {
       return;
     this.solveStatus = label;
     this.refresh();
+  }
+
+  /** Update per-entity definedness status map for tree icon coloring. */
+  setEntityStatus(statusMap: Map<string, "defined" | "under-defined" | "conflict"> | null): void {
+    this.entityStatusMap = statusMap;
+    this.dirty = true;
+    if (this.open && !this.suspended) {
+      if (this.frame) {
+        cancelAnimationFrame(this.frame);
+        this.frame = 0;
+      }
+      this.rebuild();
+    }
   }
 
   /**
@@ -504,6 +519,21 @@ export class DesignTreePanel {
     const icon = document.createElement("span");
     icon.className = "tree-icon";
     icon.textContent = TYPE_ICONS[ent.type] ?? "◇";
+
+    const dofStatus = this.entityStatusMap?.get(ent.id);
+    if (dofStatus === "under-defined") {
+      icon.style.color = "var(--accent, #1665c0)";
+      icon.title = "Under-constrained (loose)";
+      icon.setAttribute("title", "Under-constrained (loose)");
+    } else if (dofStatus === "defined") {
+      icon.style.color = "#3fb950";
+      icon.title = "Fully constrained";
+      icon.setAttribute("title", "Fully constrained");
+    } else if (dofStatus === "conflict") {
+      icon.style.color = "var(--danger, #f85149)";
+      icon.title = "Over-constrained / conflicting";
+      icon.setAttribute("title", "Over-constrained / conflicting");
+    }
 
     const text = document.createElement("span");
     text.className = "tree-label";

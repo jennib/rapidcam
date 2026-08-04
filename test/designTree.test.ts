@@ -826,6 +826,22 @@ describe("suspension during a gesture", () => {
     h.panel.setOpen(true);
     expect(labels(h)).toContain("Rectangle 10.00 mm × 10.00 mm");
   });
+
+  test("colors tree item icons based on setEntityStatus", () => {
+    const h = mount(doc, true);
+    const map = new Map<string, "defined" | "under-defined" | "conflict">();
+    map.set(line.id, "under-defined");
+    h.panel.setEntityStatus(map);
+
+    const rowEl = row(h, "Line 40.00 mm");
+    const icon = rowEl.querySelector(".tree-icon") as HTMLElement;
+    expect(icon.getAttribute("title")).toBe("Under-constrained (loose)");
+
+    map.set(line.id, "defined");
+    h.panel.setEntityStatus(map);
+    const icon2 = row(h, "Line 40.00 mm").querySelector(".tree-icon") as HTMLElement;
+    expect(icon2.getAttribute("title")).toBe("Fully constrained");
+  });
 });
 
 describe("descriptions", () => {
