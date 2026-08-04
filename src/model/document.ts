@@ -386,6 +386,7 @@ import {
   sameSegmentRef,
   samePointRef,
   constraintEntityIds,
+  lineRefEntityId,
   type Geo,
 } from "./constraints";
 import { type Dimension, dimensionHitDistance } from "./dimensions";
@@ -863,12 +864,22 @@ export class CADDocument {
     // resolved on demand, not removable, so a dimension anchored to it is never
     // "orphaned". Without this, deleting ANY unrelated entity would silently
     // drop every stock-anchored dimension the next time this runs.
-    const stillExists = (id: EntityId) => id === STOCK_ENTITY_ID || ids.has(id);
+    // Applied to EVERY reference, not just a dimension's points. The exemption
+    // used to cover `d.points` alone, so a constraint or dimension anchored to a
+    // stock EDGE (`__stock__#mid_b`, which arrives here in `entities`) was
+    // silently destroyed the next time any unrelated entity was deleted —
+    // exactly the failure this guard was written to prevent, missed on the two
+    // paths that carry an edge reference. `lineRefEntityId` strips the `#edge`
+    // suffix so the check asks about the entity, not the edge.
+    const stillExists = (ref: EntityId) => {
+      const id = lineRefEntityId(ref);
+      return id === STOCK_ENTITY_ID || ids.has(id);
+    };
     this.constraints = this.constraints.filter((c) =>
-      constraintEntityIds(c).every((id) => ids.has(id)),
+      constraintEntityIds(c).every(stillExists),
     );
     this.dimensions = this.dimensions.filter(
-      (d) => d.entities.every((id) => ids.has(id)) && d.points.every((p) => stillExists(p.entityId)),
+      (d) => d.entities.every(stillExists) && d.points.every((p) => stillExists(p.entityId)),
     );
     this.bindings = this.bindings.filter((b) => ids.has(b.entityId));
     this.selectedPoints = this.selectedPoints.filter((p) => ids.has(p.entityId));
