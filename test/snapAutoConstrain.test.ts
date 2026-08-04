@@ -3,6 +3,7 @@ import { CADDocument } from "../src/model/document";
 import { makeConstraint } from "../src/model/constraints";
 import {
   ArcEntity,
+  BezierEntity,
   CircleEntity,
   LineEntity,
   RectEntity,
@@ -128,24 +129,60 @@ describe("autoJoin on an intersection", () => {
     expect(doc.constraints.map((c) => c.type).sort()).toEqual(["pointOnArc", "pointOnLine"]);
   });
 
-  test("skips an entity whose crossing cannot be named to one curve", () => {
-    // A rectangle id names four edges, and `pointOnLine` against it resolves to
-    // nothing — an inert constraint that LOOKS like the point is held. Adding
-    // none is the honest outcome until the edge can be identified.
+  test("names the EDGE of a rectangle, not the whole rectangle", () => {
+    // A bare rectangle id means four edges, and `pointOnLine` against it
+    // resolves to nothing — an inert constraint that LOOKS like the point is
+    // held. The crossing now carries which edge produced it.
     const doc = new CADDocument({ width: 200, height: 150 }, "mm");
     const line = doc.add(new LineEntity({ x: 0, y: 50 }, { x: 150, y: 50 }));
     const rect = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 100, y: 80 }));
     const dot = doc.add(new CircleEntity({ x: 20, y: 50 }, 1));
 
+    const hits = intersectionsNear([line, rect], { x: 20, y: 50 }, 2);
+    expect(hits).toHaveLength(1);
+    const rectRef = hits[0].ids.find((i) => i.startsWith(rect.id))!;
+    expect(rectRef, "qualified with the LEFT edge").toBe(`${rect.id}#mid_l`);
+
     autoJoin(ctxFor(doc), dot.id, "c", {
-      pos: { x: 20, y: 50 },
+      pos: hits[0].pos,
       kind: "intersection",
       entityId: "",
-      crossIds: [line.id, rect.id],
+      crossIds: hits[0].ids,
     });
 
-    // The line half is still held; the rectangle half is skipped rather than
-    // faked.
+    expect(doc.constraints).toHaveLength(2);
+    expect(doc.constraints.every((c) => c.type === "pointOnLine")).toBe(true);
+
+    // And it RESOLVES: an inert constraint against a bare rectangle id would
+    // leave the residual at zero wherever the point sat, so move the dot off
+    // and check the solver drags it back. The line and rectangle are FIXED
+    // first — otherwise they are free to travel to meet the dot instead, which
+    // satisfies the constraint just as well and proves nothing about it.
+    doc.addConstraint(makeConstraint("fixed", { entities: [line.id] }));
+    doc.addConstraint(makeConstraint("fixed", { entities: [rect.id] }));
+    dot.center = { x: 60, y: 20 };
+    solve(doc);
+    expect(dot.center.x, "pulled back onto the rectangle's left edge").toBeCloseTo(20, 1);
+    expect(dot.center.y, "and onto the line").toBeCloseTo(50, 1);
+  });
+
+  test("still skips a curve whose parts cannot be named", () => {
+    // A bezier flattens to many nameless segments; no constraint is better than
+    // one that holds nothing.
+    const doc = new CADDocument({ width: 200, height: 150 }, "mm");
+    const line = doc.add(new LineEntity({ x: 0, y: 50 }, { x: 150, y: 50 }));
+    const curve = doc.add(
+      new BezierEntity({ x: 10, y: 10 }, { x: 40, y: 90 }, { x: 80, y: 10 }, { x: 110, y: 90 }),
+    );
+    const dot = doc.add(new CircleEntity({ x: 60, y: 50 }, 1));
+
+    autoJoin(ctxFor(doc), dot.id, "c", {
+      pos: { x: 60, y: 50 },
+      kind: "intersection",
+      entityId: "",
+      crossIds: [line.id, curve.id],
+    });
+
     expect(doc.constraints).toHaveLength(1);
     expect(doc.constraints[0].entities).toEqual([line.id]);
   });

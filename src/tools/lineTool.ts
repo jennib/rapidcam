@@ -2,7 +2,7 @@
 
 import { type Vec2, distSq } from "../core/vec2";
 import { ArcEntity, CircleEntity, LineEntity, type SnapPoint } from "../model/entities";
-import { makeConstraint, SEGMENT_SEP } from "../model/constraints";
+import { lineRefEntityId, makeConstraint, SEGMENT_SEP } from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { isDragRelease } from "./dragDraw";
@@ -102,26 +102,29 @@ export function autoJoin(
     // A crossing is held by TWO constraints, one per entity — that is what
     // makes it an intersection rather than a coincidence of coordinates. With
     // only one the point slides along the other curve the moment anything moves.
-    for (const id of snap.crossIds) {
-      const target = ctx.doc.entities.find((x) => x.id === id);
-      // Which "point on X" applies depends on what was crossed. An entity whose
-      // crossing cannot be named to a single curve — a rectangle or polyline,
-      // where only one EDGE is meant and the id names the whole shape — is
-      // skipped: `pointOnLine` against a bare rect id resolves to nothing and
-      // holds the point nowhere, which is worse than leaving it free.
+    for (const ref of snap.crossIds) {
+      // `ref` may name one EDGE of a multi-edge shape (`<id>#mid_b`, or a
+      // polyline segment's start-vertex id). Resolve the owner to choose the
+      // constraint, but constrain against the qualified ref, or `pointOnLine`
+      // would target the whole rectangle and hold the point nowhere.
+      const target = ctx.doc.entities.find((x) => x.id === lineRefEntityId(ref));
+      const isEdge = ref.includes(SEGMENT_SEP);
       const type =
-        target instanceof LineEntity
-          ? "pointOnLine"
+        isEdge || target instanceof LineEntity
+          ? "pointOnLine" // an edge or segment IS a line
           : target instanceof CircleEntity
             ? "pointOnCircle"
             : target instanceof ArcEntity
               ? "pointOnArc"
               : null;
+      // Anything whose crossing still cannot be named to a single curve — a
+      // flattened bezier, a text outline — is skipped rather than given an
+      // inert constraint.
       if (!type) continue;
       ctx.doc.addConstraint(
         makeConstraint(type, {
           points: [{ entityId: newEntityId, key: newKey }],
-          entities: [id],
+          entities: [ref],
         }),
       );
     }

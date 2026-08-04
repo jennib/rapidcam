@@ -28,6 +28,17 @@ import {
 interface Seg {
   a: Vec2;
   b: Vec2;
+  /**
+   * Which sub-curve of the owning entity this is, as a `#suffix` — a rectangle
+   * edge (`mid_b`) or a polyline segment (its start-vertex id). Absent when the
+   * entity IS the curve (a line), or when its parts cannot be named (a
+   * flattened bezier or text outline).
+   *
+   * Without this an intersection could only name the whole entity, and
+   * `pointOnLine` against a bare rectangle id resolves to nothing — a
+   * constraint that looks real and holds the point nowhere.
+   */
+  ref?: string;
 }
 /** A full circle (a0/a1 undefined) or an arc spanning CCW from a0 to a1. */
 interface Circ {
@@ -48,13 +59,15 @@ function primitives(e: Entity): Prims {
       return { segs: [{ a: l.a, b: l.b }], circs: [] };
     }
     case "rectangle": {
+      // corners() is bl, br, tr, tl — so the edges run bottom, right, top, left,
+      // which is exactly the order RECT_EDGE_CORNERS names them in.
       const c = (e as RectEntity).corners();
       return {
         segs: [
-          { a: c[0], b: c[1] },
-          { a: c[1], b: c[2] },
-          { a: c[2], b: c[3] },
-          { a: c[3], b: c[0] },
+          { a: c[0], b: c[1], ref: "mid_b" },
+          { a: c[1], b: c[2], ref: "mid_r" },
+          { a: c[2], b: c[3], ref: "mid_t" },
+          { a: c[3], b: c[0], ref: "mid_l" },
         ],
         circs: [],
       };
@@ -64,7 +77,10 @@ function primitives(e: Entity): Prims {
       const segs: Seg[] = [];
       const n = p.points.length;
       const count = p.closed ? n : n - 1;
-      for (let i = 0; i < count; i++) segs.push({ a: p.points[i], b: p.points[(i + 1) % n] });
+      // Keyed by the segment's START VERTEX id, which is what
+      // `segmentByStartVertexId` resolves and what survives a vertex insert.
+      for (let i = 0; i < count; i++)
+        segs.push({ a: p.points[i], b: p.points[(i + 1) % n], ref: p.vertexIds[i] });
       return { segs, circs: [] };
     }
     case "circle": {
@@ -92,24 +108,34 @@ function onArc(c: Circ, p: Vec2): boolean {
   return angleInArc(Math.atan2(p.y - c.c.y, p.x - c.c.x), c.a0, c.a1);
 }
 
-function pairIntersections(a: Prims, b: Prims, out: Vec2[]): void {
+/** A crossing plus which sub-curve of each side produced it (see Seg.ref). */
+interface PairHit {
+  point: Vec2;
+  refA?: string;
+  refB?: string;
+}
+
+function pairIntersections(a: Prims, b: Prims, out: PairHit[]): void {
   for (const s1 of a.segs)
     for (const s2 of b.segs) {
       const r = segSegIntersect(s1.a, s1.b, s2.a, s2.b);
-      if (r) out.push(r.point);
+      if (r) out.push({ point: r.point, refA: s1.ref, refB: s2.ref });
     }
-  const segVsCirc = (segs: Seg[], circs: Circ[]) => {
+  // `flip` keeps the refs on the side they came from: the second call passes
+  // b's segments against a's circles, so its seg ref belongs to B.
+  const segVsCirc = (segs: Seg[], circs: Circ[], flip: boolean) => {
     for (const s of segs)
       for (const c of circs)
         for (const h of segCircleIntersect(s.a, s.b, c.c, c.r))
-          if (onArc(c, h.point)) out.push(h.point);
+          if (onArc(c, h.point))
+            out.push(flip ? { point: h.point, refB: s.ref } : { point: h.point, refA: s.ref });
   };
-  segVsCirc(a.segs, b.circs);
-  segVsCirc(b.segs, a.circs);
+  segVsCirc(a.segs, b.circs, false);
+  segVsCirc(b.segs, a.circs, true);
   for (const c1 of a.circs)
     for (const c2 of b.circs)
       for (const p of circleCircleIntersect(c1.c, c1.r, c2.c, c2.r))
-        if (onArc(c1, p) && onArc(c2, p)) out.push(p);
+        if (onArc(c1, p) && onArc(c2, p)) out.push({ point: p });
 }
 
 /**
@@ -145,14 +171,20 @@ export function intersectionsNear(
   });
   const prims = cand.map(primitives);
   const hits: IntersectionHit[] = [];
-  const raw: Vec2[] = [];
+  const raw: PairHit[] = [];
+  // `<id>#<edge>` when the crossing is on one named edge of a multi-edge shape,
+  // so the constraint names the EDGE and not the whole rectangle.
+  const qualify = (id: EntityId, ref?: string) => (ref ? `${id}#${ref}` : id);
   for (let i = 0; i < cand.length; i++) {
     for (let j = i + 1; j < cand.length; j++) {
       raw.length = 0;
       pairIntersections(prims[i], prims[j], raw);
-      for (const p of raw) {
-        if (Math.abs(p.x - near.x) <= tolWorld && Math.abs(p.y - near.y) <= tolWorld)
-          hits.push({ pos: p, ids: [cand[i].id, cand[j].id] });
+      for (const h of raw) {
+        if (Math.abs(h.point.x - near.x) <= tolWorld && Math.abs(h.point.y - near.y) <= tolWorld)
+          hits.push({
+            pos: h.point,
+            ids: [qualify(cand[i].id, h.refA), qualify(cand[j].id, h.refB)],
+          });
       }
     }
   }
