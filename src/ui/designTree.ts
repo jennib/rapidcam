@@ -77,6 +77,7 @@ const DIM_LABELS: Record<string, string> = {
   arclength: "Arc length",
   "line-distance": "Point to line",
   "circle-gap": "Gap",
+  "angle-x": "Angle to X",
 };
 
 export class DesignTreePanel {

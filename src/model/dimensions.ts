@@ -49,7 +49,29 @@ export type DimensionType =
   | "angle"
   | "arclength"
   | "line-distance"
-  | "circle-gap";
+  | "circle-gap"
+  /**
+   * A single line's direction from the +X axis, in DEGREES (signed).
+   *
+   * Degrees, unlike every other angular value in this file, because this type
+   * exists to back a property FIELD and a field must mean one thing. A
+   * dimension's `expr` is evaluated straight into `value` with no unit applied
+   * (a ScalarBinding has a `scale`; a Dimension does not), so storing radians
+   * made the literal path and the formula path disagree: typing `45` gave 45°
+   * while typing a variable worth 30 gave 30 RADIANS, landing the line at -81°.
+   * Storing the unit the user types removes the discrepancy at the source.
+   *
+   * Both SolidWorks and Fusion express this by dimensioning against the sketch's
+   * origin AXES, which are selectable reference geometry. That was the other
+   * candidate here and it was rejected on cost, not fidelity: the one synthetic
+   * entity this codebase already has (`__origin__`) needs special-casing in 44
+   * places across 10 files, and two more axes would triple that. Referencing the
+   * real line and naming the axis in the TYPE keeps the surface at this file.
+   *
+   * The behaviour a user sees is the same either way — dimension a line's angle
+   * to horizontal, drive it with a formula.
+   */
+  | "angle-x";
 export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
@@ -275,6 +297,11 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       const span = (((a.endAngle - a.startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       return a.radius * span;
     }
+    case "angle-x": {
+      const l = readLineGeom(geo, dim.entities[0]);
+      if (!l) return null;
+      return (Math.atan2(l.b.y - l.a.y, l.b.x - l.a.x) * 180) / Math.PI;
+    }
     case "angle": {
       const l1 = readLineGeom(geo, dim.entities[0]);
       const l2 = readLineGeom(geo, dim.entities[1]);
@@ -306,10 +333,20 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
 }
 
 /** Residual for a driving dimension: measured − target. Empty if non-driving/unresolved. */
+/** Shortest signed difference between two angles, in (-180, 180] degrees. */
+function wrapDeg(a: number): number {
+  return ((((a + 180) % 360) + 360) % 360) - 180;
+}
+
 export function dimensionResiduals(dim: Dimension, geo: Geo): number[] {
   if (!dim.driving) return [];
   const m = dimensionMeasure(dim, geo);
-  return m === null ? [] : [m - dim.value];
+  if (m === null) return [];
+  // An angle read from atan2 wraps at ±180°, so a raw difference is enormous
+  // whenever the line sits near that seam (179° vs -179° reads as 358° of error)
+  // and would drive the solver the long way round. Compare on the circle.
+  if (dim.type === "angle-x") return [wrapDeg(m - dim.value)];
+  return [m - dim.value];
 }
 
 // ---------------------------------------------------------------------------
@@ -710,6 +747,10 @@ export function dimensionLayout(
   }
 
   if (!p || !q) return null;
+  // Only ever created hidden (a property-field formula), and a hidden dimension
+  // is not drawn. Bail rather than fall into the linear path below, which would
+  // render a direction in radians as if it were a length.
+  if (dim.type === "angle-x") return null;
   const type = dim.type as LinearDimType;
 
   if (type === "line-distance") {

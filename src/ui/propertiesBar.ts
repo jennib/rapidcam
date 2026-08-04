@@ -17,6 +17,7 @@ import { type Dimension, type DimensionType, makeDimension } from "../model/dime
 import { ORIGIN_ENTITY_ID, type CADDocument, type GroupDef } from "../model/document";
 import {
   ArcEntity,
+  type EntityId,
   type Bounds,
   CircleEntity,
   type Entity,
@@ -65,6 +66,7 @@ const DIM_LABELS: Record<DimensionType, string> = {
   arclength: "Arc Length",
   "line-distance": "Point to Line",
   "circle-gap": "Circle Gap",
+  "angle-x": "Angle to X",
 };
 
 const CON_LABELS: Record<ConstraintType, string> = {
@@ -752,7 +754,8 @@ export class PropertiesBar {
     // document's unit (formulas over variables always evaluate in internal mm).
     const du = this.doc.displayUnit;
     const isLen = unit === "mm";
-    const fmtLit = (mm: number) => (isLen ? formatLength(mm, du, decimals) : mm.toFixed(decimals));
+    const fmtLit = (v: number) =>
+      isLen ? formatLength(v, du, decimals) : (v / scale).toFixed(decimals);
     const row = document.createElement("div");
     row.className = "props-row";
     const lbl = document.createElement("span");
@@ -865,20 +868,33 @@ export class PropertiesBar {
      * and applying the size rule to coordinates silently reverted them.
      */
     allowNonPositive = false,
+    /**
+     * `entities` switches the row to an ENTITY-referenced dimension (an angle to
+     * the X axis names one line, not a pair of points); `scale` converts the
+     * displayed unit to the stored one, so an angle can read in degrees while
+     * `Dimension.value` stays radians.
+     */
+    opts: { entities?: EntityId[]; scale?: number } = {},
   ): void {
+    const byEntities = opts.entities;
+    const scale = opts.scale ?? 1;
     const pkey = (p: PointRef) => `${p.entityId}:${p.key}`;
     const wantKeys = new Set(points.map(pkey));
     // Match ANY driving dimension of this measurement (hidden OR a user's visible
     // one) so the field reflects/edits it instead of adding a conflicting second
     // driver. Reference (non-driving) dims are ignored — they don't constrain.
     const findDim = () =>
-      this.doc.dimensions.find(
-        (d) =>
-          d.driving &&
-          d.type === dimType &&
-          d.points.length === points.length &&
-          d.points.every((p) => wantKeys.has(pkey(p))),
-      );
+      this.doc.dimensions.find((d) => {
+        if (!d.driving || d.type !== dimType) return false;
+        if (byEntities)
+          return (
+            d.entities.length === byEntities.length &&
+            d.entities.every((id) => byEntities.includes(id))
+          );
+        return (
+          d.points.length === points.length && d.points.every((p) => wantKeys.has(pkey(p)))
+        );
+      });
     const dim = findDim();
 
     // A field declared in "mm" is a length: show/read its literal in the
@@ -936,7 +952,8 @@ export class PropertiesBar {
           ? parseFloat(raw)
           : null;
       if (lit !== null) {
-        const v = lit;
+        // `lit` is in the DISPLAY unit; dimensions store internal (mm, radians).
+        const v = lit * scale;
         if (!allowNonPositive && v <= 0) {
           reset();
           return;
@@ -968,7 +985,7 @@ export class PropertiesBar {
         else
           this.doc.dimensions.push(
             makeDimension(dimType, {
-              points,
+              ...(byEntities ? { entities: byEntities } : { points }),
               value: currentValue,
               offset: 0,
               driving: true,
@@ -1196,7 +1213,6 @@ export class PropertiesBar {
 
   private buildLineProperties(entity: LineEntity): void {
     const sec = this.createSection("LINE");
-    const angleDeg = (Math.atan2(entity.b.y - entity.a.y, entity.b.x - entity.a.x) * 180) / Math.PI;
 
     // Length — a formula parks in a hidden distance dimension (a→b); a literal
     // resizes along the current direction, anchoring endpoint A.
@@ -1218,20 +1234,28 @@ export class PropertiesBar {
         entity.b = { x: entity.a.x + (dx / L) * v, y: entity.a.y + (dy / L) * v };
       },
     );
-    // Angle — rotate endpoint B about A, keeping the length.
-    this.numRow(
+    // Angle — a literal rotates endpoint B about A keeping the length; a formula
+    // parks in a hidden `angle-x` dimension and the SOLVER holds the direction,
+    // exactly as Length above parks in a hidden distance dimension. Which end
+    // moves is then the solver's answer, decided by the sketch's other
+    // constraints, rather than something this field picks.
+    this.hiddenDimRow(
       sec,
       "Angle",
-      angleDeg,
+      "angle-x",
+      [],
+      (Math.atan2(entity.b.y - entity.a.y, entity.b.x - entity.a.x) * 180) / Math.PI,
       "°",
-      (v) => {
-        this.applyEdit(() => {
-          const L = entity.length;
-          const r = (v * Math.PI) / 180;
-          entity.b = { x: entity.a.x + L * Math.cos(r), y: entity.a.y + L * Math.sin(r) };
-        });
+      (deg) => {
+        const L = entity.length;
+        const r = (deg * Math.PI) / 180;
+        entity.b = { x: entity.a.x + L * Math.cos(r), y: entity.a.y + L * Math.sin(r) };
       },
       1,
+      true, // any direction is valid, including 0 and negatives
+      // No scale: `angle-x` stores degrees precisely so a literal and a formula
+      // in this box mean the same thing.
+      { entities: [entity.id] },
     );
     this.originCoordRow(sec, "Ax", "x", entity.id, "a", entity.a.x, (v) => {
       entity.a = { x: v, y: entity.a.y };
