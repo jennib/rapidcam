@@ -22,6 +22,7 @@
 interface ModalEntry {
   el: HTMLElement;
   close: () => void;
+  escapable?: boolean;
 }
 
 const stack: ModalEntry[] = [];
@@ -36,8 +37,12 @@ const ESCAPABLE_SELECTOR = ".tp-backdrop";
  * close function; call the returned disposer from inside that close function so
  * the entry leaves the stack exactly once.
  */
-export function registerModal(el: HTMLElement, close: () => void): () => void {
-  const entry: ModalEntry = { el, close };
+export function registerModal(
+  el: HTMLElement,
+  close: () => void,
+  opts: { escapable?: boolean } = {},
+): () => void {
+  const entry: ModalEntry = { el, close, escapable: opts.escapable ?? true };
   stack.push(entry);
   return () => {
     const i = stack.indexOf(entry);
@@ -53,7 +58,10 @@ export function isModalOpen(): boolean {
 /** Close the topmost modal (registered first, else the last editor backdrop). */
 function closeTopModal(): void {
   if (stack.length > 0) {
-    stack[stack.length - 1].close();
+    const top = stack[stack.length - 1];
+    if (top.escapable !== false) {
+      top.close();
+    }
     return;
   }
   const backs = document.querySelectorAll<HTMLElement>(ESCAPABLE_SELECTOR);

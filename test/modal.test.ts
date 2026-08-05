@@ -120,6 +120,30 @@ describe("Escape", () => {
     expect(document.querySelector(".welcome-backdrop")).not.toBeNull();
   });
 
+  test("does not dismiss a modal registered with escapable: false", () => {
+    let closes = 0;
+    const el = document.createElement("div");
+    el.className = "tp-backdrop";
+    document.body.appendChild(el);
+    const dispose = registerModal(
+      el,
+      () => {
+        closes++;
+        dispose();
+        el.remove();
+      },
+      { escapable: false },
+    );
+
+    pressEscape();
+    expect(closes).toBe(0);
+    expect(isModalOpen()).toBe(true);
+
+    // closeAllModals still cleans it up
+    closeAllModals();
+    expect(closes).toBe(1);
+  });
+
   test("is inert when nothing is open", () => {
     expect(() => pressEscape()).not.toThrow();
     expect(isModalOpen()).toBe(false);

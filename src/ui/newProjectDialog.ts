@@ -148,9 +148,6 @@ export function openNewProjectDialog(
     unregister();
     backdrop.remove();
   };
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog npd-dialog";
@@ -462,13 +459,13 @@ export function openNewProjectDialog(
     tInp.value = formatLength(t, unit);
   });
 
-  // keyboard (Escape is also handled globally by the modal manager; Enter here
-  // submits from any field except when the Cancel button holds focus)
+  // keyboard (Enter submits from any field except when the Cancel button holds focus)
   backdrop.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && document.activeElement !== cancelBtn) createBtn.click();
   });
 
-  unregister = registerModal(backdrop, close);
+  // Strict modal: only explicit Create / Cancel dismisses the dialog (no backdrop click, no Escape)
+  unregister = registerModal(backdrop, close, { escapable: false });
   document.body.appendChild(backdrop);
   // Synchronously, NOT on a timer. This used to run 40ms after the dialog was
   // appended, which opened a window where the user is looking at a focusable
