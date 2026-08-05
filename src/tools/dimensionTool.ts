@@ -234,6 +234,24 @@ export class DimensionTool implements Tool {
           }
           break;
         }
+        // Stock rect edge click (not an entity, so hitTest won't catch it)
+        if (this.p1 && this.p1.ref.entityId !== STOCK_ENTITY_ID) {
+          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
+          if (edge) {
+            this.p2 = edge.mid;
+            const edgeEnds = getEdgeEnds(ctx.doc, edge.mid);
+            if (edgeEnds) {
+              const dir = normalize(sub(edgeEnds.b, edgeEnds.a));
+              if (Math.abs(dir.y) > Math.abs(dir.x) * 1.4) this.forcedLinearType = "horizontal";
+              else if (Math.abs(dir.x) > Math.abs(dir.y) * 1.4) this.forcedLinearType = "vertical";
+              else this.forcedLinearType = null;
+            } else {
+              this.forcedLinearType = null;
+            }
+            this.phase = "placeLinear";
+            break;
+          }
+        }
         // Open space, having started on a LINE: dimension that line's angle
         // from horizontal. There is no second thing to click for it — the X
         // axis is named by the dimension type rather than being selectable
@@ -248,63 +266,21 @@ export class DimensionTool implements Tool {
         break;
       }
       case "placeLinear": {
-        const pick =
-          ctx.doc.pickPoint(e.worldRaw, tol) ??
-          pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
-        if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
-          this.p2 = pick;
-          this.hoverP2 = null;
-          this.forcedLinearType = null;
-          break;
-        }
-        const hit = ctx.doc.hitTest(e.worldRaw, tol);
-        let newP1: Pick | null = null;
-        let newP2: Pick | null = null;
-        if (hit) {
-          if (hit.type === "rectangle" || hit.type === "image") {
-            const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
-            if (edge && hit.id !== this.p1!.ref.entityId) {
-              newP2 = edge.mid;
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          } else if (hit.type === "line") {
-            const line = hit as LineEntity;
-            if (hit.id !== this.p1!.ref.entityId) {
-              newP2 = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          } else {
-            const pt = pickNearestEntityPoint(hit, e.worldRaw, tol);
-            if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
-              newP2 = pt;
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          }
-        } else if (this.p1!.ref.entityId !== STOCK_ENTITY_ID) {
-          // Not a hitTest candidate — the stock rect isn't an entity — so check it
-          // explicitly, same as any other edge. pickStockEdge itself refuses to
-          // match unless doc.stockRect is explicitly set (see its doc comment):
-          // this SAME branch also handles the FINAL placement click, and the
-          // legacy "stock fills the whole canvas" case draws no distinct stock
-          // rectangle at all, so an ordinary "click open space to place" click
-          // could land near the invisible canvas edge and get silently
-          // reinterpreted as re-picking the stock instead of committing (caught
-          // via imageDimensionOrphan.test.ts going from 1 dimension to 0). With a
-          // real, visibly-drawn stock rect there's an actual line to have meant.
-          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
-          if (edge) {
-            newP2 = edge.mid;
-            if (this.firstMid) newP1 = this.firstMid;
-          }
-        }
-        if (newP2) {
-          this.forcedLinearType = null;
-          // See the matching guard in recompute(): a stock edge can't feed the
-          // angle-dimension path either (readLineGeom can't resolve WHICH of its
-          // 4 edges from a bare entity id) — stays a plain point dimension.
+        const resolved = resolveSecondPick(
+          ctx.doc,
+          this.p1!,
+          this.p2,
+          this.firstMid,
+          this.firstRaw,
+          e.worldRaw,
+          tol,
+        );
+        if (resolved) {
+          const { newP1, newP2, forcedType } = resolved;
+          this.forcedLinearType = forcedType;
           if (
             newP1?.ref.key.startsWith("mid") &&
-            newP2.ref.key.startsWith("mid") &&
+            newP2?.ref.key.startsWith("mid") &&
             newP1.ref.entityId !== STOCK_ENTITY_ID &&
             newP2.ref.entityId !== STOCK_ENTITY_ID
           ) {
@@ -324,7 +300,7 @@ export class DimensionTool implements Tool {
             }
           }
           if (newP1) this.p1 = newP1;
-          this.p2 = newP2;
+          if (newP2) this.p2 = newP2;
           this.hoverP1 = null;
           this.hoverP2 = null;
           break;
@@ -365,46 +341,18 @@ export class DimensionTool implements Tool {
       this.hoverP1 = null;
       this.hoverP2 = null;
       const tol = ctx.view.toWorldLen(POINT_PICK_PX);
-      const pick =
-        ctx.doc.pickPoint(e.worldRaw, tol) ??
-        pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
-      if (pick && !samePos(pick.pos, this.p1!.pos) && !samePos(pick.pos, this.p2!.pos)) {
-        this.hoverP2 = pick;
-      } else {
-        const hit = ctx.doc.hitTest(e.worldRaw, tol);
-        let newP1: Pick | null = null;
-        let newP2: Pick | null = null;
-        if (hit) {
-          if (hit.type === "rectangle" || hit.type === "image") {
-            const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
-            if (edge && hit.id !== this.p1!.ref.entityId) {
-              newP2 = edge.mid;
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          } else if (hit.type === "line") {
-            const line = hit as LineEntity;
-            if (hit.id !== this.p1!.ref.entityId) {
-              newP2 = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          } else {
-            const pt = pickNearestEntityPoint(hit, e.worldRaw, tol);
-            if (pt && !samePos(pt.pos, this.p1!.pos) && !samePos(pt.pos, this.p2!.pos)) {
-              newP2 = pt;
-              if (this.firstMid) newP1 = this.firstMid;
-            }
-          }
-        } else if (this.p1!.ref.entityId !== STOCK_ENTITY_ID) {
-          const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
-          if (edge) {
-            newP2 = edge.mid;
-            if (this.firstMid) newP1 = this.firstMid;
-          }
-        }
-        if (newP2) {
-          this.hoverP1 = newP1;
-          this.hoverP2 = newP2;
-        }
+      const resolved = resolveSecondPick(
+        ctx.doc,
+        this.p1!,
+        this.p2,
+        this.firstMid,
+        this.firstRaw,
+        e.worldRaw,
+        tol,
+      );
+      if (resolved) {
+        this.hoverP1 = resolved.newP1;
+        this.hoverP2 = resolved.newP2;
       }
     }
 
@@ -483,13 +431,8 @@ export class DimensionTool implements Tool {
       const activeP1 = this.hoverP1 ?? this.p1;
       const activeP2 = this.hoverP2 ?? this.p2;
 
-      const isSameEntityEdge =
-        this.firstMid !== null &&
-        this.hoverP2 === null &&
-        activeP1.ref.entityId === activeP2.ref.entityId;
-
       this.curType =
-        (isSameEntityEdge ? this.forcedLinearType : null) ??
+        this.forcedLinearType ??
         chooseLinearType(activeP1.pos, activeP2.pos, this.cursor);
       // Two parallel edges measure as a true edge-to-edge gap, drawn where you
       // clicked. This used to exclude the stock (and any rect/image edge could
@@ -931,3 +874,110 @@ function pickStockEdge(
 function measuresStockOnly(dim: Dimension): boolean {
   return dim.points.length === 2 && dim.points.every((p) => p.entityId === STOCK_ENTITY_ID);
 }
+
+function resolveSecondPick(
+  doc: CADDocument,
+  p1: Pick,
+  p2: Pick | null,
+  firstMid: Pick | null,
+  firstRaw: Vec2 | null,
+  raw: Vec2,
+  tol: number,
+): { newP1: Pick | null; newP2: Pick | null; forcedType: LinearDimType | null } | null {
+  const pick =
+    doc.pickPoint(raw, tol) ??
+    pickVirtualRectCorner(doc.entities, raw, tol);
+  if (pick && !samePos(pick.pos, p1.pos) && (!p2 || !samePos(pick.pos, p2.pos))) {
+    let newP1: Pick | null = null;
+    if (firstMid && p2 && firstRaw) {
+      newP1 = dist(firstRaw, p1.pos) <= dist(firstRaw, p2.pos) ? p1 : p2;
+    }
+    return { newP1, newP2: pick, forcedType: null };
+  }
+
+  const hit = doc.hitTest(raw, tol);
+  if (hit) {
+    if (hit.type === "rectangle" || hit.type === "image") {
+      const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, raw);
+      if (edge && hit.id !== p1.ref.entityId) {
+        return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
+      }
+    } else if (hit.type === "line") {
+      const line = hit as LineEntity;
+      if (hit.id !== p1.ref.entityId) {
+        const edge = {
+          p1: { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } },
+          p2: { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } },
+          mid: { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) },
+        };
+        return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
+      }
+    } else {
+      const pt = pickNearestEntityPoint(hit, raw, tol);
+      if (pt && !samePos(pt.pos, p1.pos) && (!p2 || !samePos(pt.pos, p2.pos))) {
+        let newP1: Pick | null = null;
+        if (firstMid && p2 && firstRaw) {
+          newP1 = dist(firstRaw, p1.pos) <= dist(firstRaw, p2.pos) ? p1 : p2;
+        }
+        return { newP1, newP2: pt, forcedType: null };
+      }
+    }
+  } else if (p1.ref.entityId !== STOCK_ENTITY_ID) {
+    const edge = pickStockEdge(doc, raw, tol);
+    if (edge) {
+      return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
+    }
+  }
+
+  return null;
+}
+
+function resolveEdgePair(
+  doc: CADDocument,
+  p1: Pick,
+  p2: Pick | null,
+  firstMid: Pick | null,
+  firstRaw: Vec2 | null,
+  edge2: { p1: Pick; p2: Pick; mid: Pick },
+): { newP1: Pick | null; newP2: Pick | null; forcedType: LinearDimType | null } {
+  if (firstMid && p2) {
+    const edge1Ends = getEdgeEnds(doc, firstMid);
+    const edge2Ends = getEdgeEnds(doc, edge2.mid);
+    if (edge1Ends && edge2Ends) {
+      const dir1 = normalize(sub(edge1Ends.b, edge1Ends.a));
+      const dir2 = normalize(sub(edge2Ends.b, edge2Ends.a));
+      const isParallel = Math.abs(cross(dir1, dir2)) < 0.05;
+      if (isParallel) {
+        return { newP1: firstMid, newP2: edge2.mid, forcedType: null };
+      }
+      // Non-parallel: dimension from the nearest clicked endpoint of Edge 1 to Edge 2
+      const d1 = firstRaw ? dist(firstRaw, p1.pos) : 0;
+      const d2 = firstRaw ? dist(firstRaw, p2.pos) : Infinity;
+      const newP1 = d1 <= d2 ? p1 : p2;
+      const newP2 = edge2.mid;
+
+      const dx1 = Math.abs(dir1.x), dy1 = Math.abs(dir1.y);
+      const dx2 = Math.abs(dir2.x), dy2 = Math.abs(dir2.y);
+      let forcedType: LinearDimType | null = null;
+      if (dx1 > dy1 * 1.4 && dy2 > dx2 * 1.4) {
+        forcedType = "horizontal";
+      } else if (dy1 > dx1 * 1.4 && dx2 > dy2 * 1.4) {
+        forcedType = "vertical";
+      }
+      return { newP1, newP2, forcedType };
+    }
+    return { newP1: firstMid, newP2: edge2.mid, forcedType: null };
+  }
+
+  // First pick was a discrete point, second pick is an edge
+  let forcedType: LinearDimType | null = null;
+  const edge2Ends = getEdgeEnds(doc, edge2.mid);
+  if (edge2Ends) {
+    const dir2 = normalize(sub(edge2Ends.b, edge2Ends.a));
+    const dx2 = Math.abs(dir2.x), dy2 = Math.abs(dir2.y);
+    if (dy2 > dx2 * 1.4) forcedType = "horizontal";
+    else if (dx2 > dy2 * 1.4) forcedType = "vertical";
+  }
+  return { newP1: null, newP2: edge2.mid, forcedType };
+}
+

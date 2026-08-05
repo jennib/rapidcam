@@ -187,4 +187,101 @@ describe("continuous stock-edge picking", () => {
     expect(doc.dimensions).toHaveLength(1);
     expect(doc.dimensions[0].points.every((p) => p.entityId === img.id)).toBe(true);
   });
+
+  it("dimensions from the left end of a horizontal line to the left stock edge when clicked near the left end", () => {
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 20, y: 20, width: 200, height: 150 }; // left edge at x=20
+    const line = doc.add(new LineEntity({ x: 70, y: 100 }, { x: 170, y: 100 })); // horizontal line x: 70..170, y=100
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click on the horizontal line near its LEFT end (x=75, y=100)
+    click(tool, ctx, { x: 75, y: 100 });
+    // Click on the stock's left edge (x=20, y=80)
+    move(tool, ctx, { x: 20, y: 80 });
+    click(tool, ctx, { x: 20, y: 80 });
+    // Place dimension above in open space
+    move(tool, ctx, { x: 45, y: 130 });
+    click(tool, ctx, { x: 45, y: 130 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(dim.type).toBe("horizontal");
+    expect(dim.value).toBeCloseTo(50, 3); // |70 - 20|
+    expect(dim.points[0]).toEqual({ entityId: line.id, key: "a" });
+    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+  });
+
+  it("dimensions from a point to a stock edge when starting with a point pick in phase second", () => {
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 20, y: 20, width: 200, height: 150 }; // left edge at x=20
+    const line = doc.add(new LineEntity({ x: 70, y: 100 }, { x: 170, y: 100 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click exactly on the line's left endpoint (x=70, y=100) -> enters phase "second"
+    click(tool, ctx, { x: 70, y: 100 });
+    // Click anywhere on the stock's left edge (x=20, y=60)
+    move(tool, ctx, { x: 20, y: 60 });
+    click(tool, ctx, { x: 20, y: 60 });
+    // Place dimension above in open space
+    move(tool, ctx, { x: 45, y: 130 });
+    click(tool, ctx, { x: 45, y: 130 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(dim.type).toBe("horizontal");
+    expect(dim.value).toBeCloseTo(50, 3); // |70 - 20|
+    expect(dim.points[0]).toEqual({ entityId: line.id, key: "a" });
+    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+  });
+
+  it("dimensions from the right end of a horizontal line to the right stock edge when clicked near the right end", () => {
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 20, y: 20, width: 200, height: 150 }; // right edge at x=220
+    const line = doc.add(new LineEntity({ x: 70, y: 100 }, { x: 170, y: 100 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click on the horizontal line near its RIGHT end (x=165, y=100)
+    click(tool, ctx, { x: 165, y: 100 });
+    // Click on the stock's right edge (x=220, y=90)
+    move(tool, ctx, { x: 220, y: 90 });
+    click(tool, ctx, { x: 220, y: 90 });
+    // Place dimension above
+    move(tool, ctx, { x: 195, y: 130 });
+    click(tool, ctx, { x: 195, y: 130 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(dim.type).toBe("horizontal");
+    expect(dim.value).toBeCloseTo(50, 3); // |220 - 170|
+    expect(dim.points[0]).toEqual({ entityId: line.id, key: "b" });
+    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+  });
+
+  it("dimensions from the top end of a vertical line to the top stock edge", () => {
+    const doc = new CADDocument({ width: 300, height: 250 });
+    doc.stockRect = { x: 20, y: 20, width: 200, height: 150 }; // top edge at y=170
+    const line = doc.add(new LineEntity({ x: 100, y: 50 }, { x: 100, y: 130 })); // top end at y=130
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click near top end of vertical line (x=100, y=125)
+    click(tool, ctx, { x: 100, y: 125 });
+    // Click on stock top edge (x=120, y=170)
+    move(tool, ctx, { x: 120, y: 170 });
+    click(tool, ctx, { x: 120, y: 170 });
+    // Place dimension
+    move(tool, ctx, { x: 140, y: 150 });
+    click(tool, ctx, { x: 140, y: 150 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(dim.type).toBe("vertical");
+    expect(dim.value).toBeCloseTo(40, 3); // |170 - 130|
+    expect(dim.points[0]).toEqual({ entityId: line.id, key: "b" });
+    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+  });
 });
+
