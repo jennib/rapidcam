@@ -245,7 +245,7 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
 // Commit: create the offset entity in the document
 // ---------------------------------------------------------------------------
 
-import { STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
+import { STOCK_ENTITY_ID, stockRefEntity, stockFootprint } from "../model/document";
 import { nextId } from "../model/ids";
 import { edgeEndsOf } from "../model/entities";
 
@@ -294,21 +294,51 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
         const p1 = c.points[0];
         const p2 = c.points[1];
         if (p1.entityId === parent.id && p1.key === key) {
-          targetIds.add(p2.entityId);
+          if (p2.entityId === STOCK_ENTITY_ID) {
+            if (p2.key === "mid_b" || p2.key === "bl" || p2.key === "br" || p2.key === "bottom") {
+              targetIds.add(`${STOCK_ENTITY_ID}#bottom`);
+            } else if (p2.key === "mid_t" || p2.key === "tl" || p2.key === "tr" || p2.key === "top") {
+              targetIds.add(`${STOCK_ENTITY_ID}#top`);
+            } else if (p2.key === "mid_l" || p2.key === "left") {
+              targetIds.add(`${STOCK_ENTITY_ID}#left`);
+            } else if (p2.key === "mid_r" || p2.key === "right") {
+              targetIds.add(`${STOCK_ENTITY_ID}#right`);
+            } else {
+              targetIds.add(p2.entityId);
+            }
+          } else {
+            targetIds.add(p2.entityId);
+          }
         } else if (p2.entityId === parent.id && p2.key === key) {
-          targetIds.add(p1.entityId);
+          if (p1.entityId === STOCK_ENTITY_ID) {
+            if (p1.key === "mid_b" || p1.key === "bl" || p1.key === "br" || p1.key === "bottom") {
+              targetIds.add(`${STOCK_ENTITY_ID}#bottom`);
+            } else if (p1.key === "mid_t" || p1.key === "tl" || p1.key === "tr" || p1.key === "top") {
+              targetIds.add(`${STOCK_ENTITY_ID}#top`);
+            } else if (p1.key === "mid_l" || p1.key === "left") {
+              targetIds.add(`${STOCK_ENTITY_ID}#left`);
+            } else if (p1.key === "mid_r" || p1.key === "right") {
+              targetIds.add(`${STOCK_ENTITY_ID}#right`);
+            } else {
+              targetIds.add(p1.entityId);
+            }
+          } else {
+            targetIds.add(p1.entityId);
+          }
         }
       }
     }
 
-    // Also check stock edges if parentPt touched a stock edge
-    if (ctx.doc.stockRect && !ctx.doc.isRotary) {
-      const r = ctx.doc.stockRect;
+    // Also check stock edges if parentPt touched a stock edge (works whether stockRect is set or fills sheet)
+    if (!ctx.doc.isRotary) {
+      const sx = ctx.doc.stockRect?.x ?? 0;
+      const sy = ctx.doc.stockRect?.y ?? 0;
+      const { width, height } = stockFootprint(ctx.doc);
       const edges = [
-        { key: "mid_b", a: { x: r.x, y: r.y }, b: { x: r.x + r.width, y: r.y } },
-        { key: "mid_r", a: { x: r.x + r.width, y: r.y }, b: { x: r.x + r.width, y: r.y + r.height } },
-        { key: "mid_t", a: { x: r.x + r.width, y: r.y + r.height }, b: { x: r.x, y: r.y + r.height } },
-        { key: "mid_l", a: { x: r.x, y: r.y + r.height }, b: { x: r.x, y: r.y } },
+        { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
+        { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
+        { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
+        { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
       ];
       for (const e of edges) {
         if (distToInfiniteLine(parentPt, e.a, e.b) < 1e-3) {
@@ -320,6 +350,7 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
     for (const target of targetIds) {
       const sep = target.indexOf("#");
       let targetGeom: { a: Vec2; b: Vec2 } | null = null;
+      let effectiveTarget = target;
       if (sep >= 0) {
         const baseId = target.slice(0, sep);
         const suffix = target.slice(sep + 1);
@@ -328,6 +359,31 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
             ? stockRefEntity(ctx.doc)
             : ctx.doc.entities.find((e) => e.id === baseId);
         targetGeom = edgeEndsOf(base, suffix);
+      } else if (target === STOCK_ENTITY_ID) {
+        if (!ctx.doc.isRotary) {
+          const sx = ctx.doc.stockRect?.x ?? 0;
+          const sy = ctx.doc.stockRect?.y ?? 0;
+          const { width, height } = stockFootprint(ctx.doc);
+          const edges = [
+            { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
+            { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
+            { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
+            { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
+          ];
+          let bestEdge = edges[0];
+          let minDist = Infinity;
+          for (const e of edges) {
+            const d = distToInfiniteLine(parentPt, e.a, e.b);
+            if (d < minDist) {
+              minDist = d;
+              bestEdge = e;
+            }
+          }
+          if (minDist < 1e-3) {
+            targetGeom = { a: bestEdge.a, b: bestEdge.b };
+            effectiveTarget = `${STOCK_ENTITY_ID}#${bestEdge.key}`;
+          }
+        }
       } else {
         const e = ctx.doc.entities.find((x) => x.id === target);
         if (e instanceof LineEntity) targetGeom = { a: e.a, b: e.b };
@@ -340,7 +396,7 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
             id: nextId("con"),
             type: "pointOnLine",
             points: [{ entityId: child.id, key }],
-            entities: [target],
+            entities: [effectiveTarget],
           });
         }
       }
