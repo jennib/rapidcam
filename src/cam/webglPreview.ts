@@ -606,12 +606,21 @@ export class WebGLPreview {
   private statusEl: HTMLElement;
   private gl!: WebGL2RenderingContext;
   private program!: WebGLProgram;
-  private vao!: WebGLVertexArrayObject;
+  private vao: WebGLVertexArrayObject | null = null;
+  private vbo: WebGLBuffer | null = null;
+  private ebo: WebGLBuffer | null = null;
   private heightTex!: WebGLTexture;
   private indexCount = 0;
   private boxProgram!: WebGLProgram;
   private boxVAO: WebGLVertexArrayObject | null = null;
+  private boxVBO: WebGLBuffer | null = null;
+  private boxEBO: WebGLBuffer | null = null;
   private boxIndexCount = 0;
+
+  // Cleanup and observer handles
+  private abortController = new AbortController();
+  private resizeObserver: ResizeObserver | null = null;
+  private disposed = false;
 
   // Cylinder (rotary) preview: same grid VAO, wrapped by a dedicated program.
   // The box VAO is reused for the cylinder's end-cap disks in this mode.
@@ -650,7 +659,9 @@ export class WebGLPreview {
     this.resetBtn = document.createElement("button");
     this.resetBtn.className = "webgl-reset-btn";
     this.resetBtn.textContent = "⟳ Reset View";
-    this.resetBtn.addEventListener("click", () => this.resetView());
+    this.resetBtn.addEventListener("click", () => this.resetView(), {
+      signal: this.abortController.signal,
+    });
 
     this.statusEl = document.createElement("div");
     this.statusEl.className = "webgl-status";
@@ -675,11 +686,73 @@ export class WebGLPreview {
     this.heightTex = this.createHeightTexture();
     this.bindOrbitControls();
 
-    new ResizeObserver(() => this.handleResize()).observe(host);
+    this.resizeObserver = new ResizeObserver(() => this.handleResize());
+    this.resizeObserver.observe(host);
     this.handleResize();
   }
 
+  public get isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  /**
+   * Release all GPU resources (programs, shaders, buffers, textures, VAOs),
+   * disconnect observers, remove window/element event listeners, and detach DOM nodes.
+   */
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.abortController.abort();
+
+    this.canvas.remove();
+    this.resetBtn.remove();
+    this.statusEl.remove();
+
+    const gl = this.gl;
+    if (gl) {
+      if (this.vao) {
+        gl.deleteVertexArray(this.vao);
+        this.vao = null;
+      }
+      if (this.vbo) {
+        gl.deleteBuffer(this.vbo);
+        this.vbo = null;
+      }
+      if (this.ebo) {
+        gl.deleteBuffer(this.ebo);
+        this.ebo = null;
+      }
+
+      if (this.boxVAO) {
+        gl.deleteVertexArray(this.boxVAO);
+        this.boxVAO = null;
+      }
+      if (this.boxVBO) {
+        gl.deleteBuffer(this.boxVBO);
+        this.boxVBO = null;
+      }
+      if (this.boxEBO) {
+        gl.deleteBuffer(this.boxEBO);
+        this.boxEBO = null;
+      }
+
+      if (this.heightTex) {
+        gl.deleteTexture(this.heightTex);
+      }
+
+      this.deleteProgram(this.program);
+      this.deleteProgram(this.boxProgram);
+      this.deleteProgram(this.cylProgram);
+
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    }
+  }
+
   render(hm: HeightMap, rotary: RotaryView | null = null, hasToolpaths = false): void {
+    if (this.disposed) return;
     const gl = this.gl;
     if (!gl) return;
 
@@ -750,6 +823,7 @@ export class WebGLPreview {
   // ---------------------------------------------------------------------------
 
   private handleResize(): void {
+    if (this.disposed) return;
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     const dpr = window.devicePixelRatio || 1;
@@ -795,19 +869,22 @@ export class WebGLPreview {
     this.indexCount = indices.length;
 
     if (this.vao) gl.deleteVertexArray(this.vao);
+    if (this.vbo) gl.deleteBuffer(this.vbo);
+    if (this.ebo) gl.deleteBuffer(this.ebo);
+
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
 
-    const vbo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    this.vbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
 
     const aUV = gl.getAttribLocation(this.program, "aUV");
     gl.enableVertexAttribArray(aUV);
     gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
 
-    const ebo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+    this.ebo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ebo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
     gl.bindVertexArray(null);
@@ -876,15 +953,18 @@ export class WebGLPreview {
     ); // right
 
     if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
+    if (this.boxVBO) gl.deleteBuffer(this.boxVBO);
+    if (this.boxEBO) gl.deleteBuffer(this.boxEBO);
+
     this.boxVAO = gl.createVertexArray()!;
     gl.bindVertexArray(this.boxVAO);
 
-    const vbo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    this.boxVBO = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.boxVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
 
-    const ebo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+    this.boxEBO = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boxEBO);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
 
     const stride = 6 * 4;
@@ -933,15 +1013,18 @@ export class WebGLPreview {
     addCap(-half, -1);
 
     if (this.boxVAO) gl.deleteVertexArray(this.boxVAO);
+    if (this.boxVBO) gl.deleteBuffer(this.boxVBO);
+    if (this.boxEBO) gl.deleteBuffer(this.boxEBO);
+
     this.boxVAO = gl.createVertexArray()!;
     gl.bindVertexArray(this.boxVAO);
 
-    const vbo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    this.boxVBO = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.boxVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
 
-    const ebo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+    this.boxEBO = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boxEBO);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
 
     const stride = 6 * 4;
@@ -992,6 +1075,7 @@ export class WebGLPreview {
   }
 
   private draw(): void {
+    if (this.disposed) return;
     const gl = this.gl;
     if (!gl || this.indexCount === 0 || this.stockW === 0) return;
 
@@ -1098,6 +1182,7 @@ export class WebGLPreview {
 
   private bindOrbitControls(): void {
     const c = this.canvas;
+    const signal = this.abortController.signal;
 
     c.addEventListener("mousedown", (e) => {
       if (e.button === 0) {
@@ -1112,7 +1197,7 @@ export class WebGLPreview {
         this.lastMy = e.clientY;
         c.style.cursor = "move";
       }
-    });
+    }, { signal });
 
     window.addEventListener("mousemove", (e) => {
       if (!this.dragging && !this.panning) return;
@@ -1152,7 +1237,7 @@ export class WebGLPreview {
         this.panZ += dy * speed * upZ;
       }
       this.draw();
-    });
+    }, { signal });
 
     window.addEventListener("mouseup", (e) => {
       if (e.button === 0 && this.dragging) {
@@ -1162,7 +1247,7 @@ export class WebGLPreview {
         this.panning = false;
         c.style.cursor = "grab";
       }
-    });
+    }, { signal });
 
     c.style.cursor = "grab";
 
@@ -1217,7 +1302,7 @@ export class WebGLPreview {
         this.zoom = newZoom;
         this.draw();
       },
-      { passive: false },
+      { passive: false, signal },
     );
   }
 
@@ -1232,6 +1317,19 @@ export class WebGLPreview {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
       throw new Error(`WebGL link error: ${gl.getProgramInfoLog(prog)}`);
     return prog;
+  }
+
+  private deleteProgram(prog: WebGLProgram | null | undefined): void {
+    if (!prog || !this.gl) return;
+    const gl = this.gl;
+    const shaders = gl.getAttachedShaders(prog);
+    if (shaders) {
+      for (const sh of shaders) {
+        gl.detachShader(prog, sh);
+        gl.deleteShader(sh);
+      }
+    }
+    gl.deleteProgram(prog);
   }
 
   private compileShader(type: number, src: string): WebGLShader {
