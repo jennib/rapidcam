@@ -95,6 +95,8 @@ export interface HeightMap {
 export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap {
   const { width: stockW, height: stockH } = stockFootprint(doc);
   const stockT = doc.stockThickness;
+  const sx = doc.stockRect && !doc.isRotary ? doc.stockRect.x : 0;
+  const sy = doc.stockRect && !doc.isRotary ? doc.stockRect.y : 0;
 
   // Pick the finest resolution that keeps the grid under the cell budget.
   RES = TARGET_RES;
@@ -102,6 +104,8 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
 
   const gridW = Math.ceil(stockW * RES);
   const gridH = Math.ceil(stockH * RES);
+  const offX = sx * RES;
+  const offY = sy * RES;
   const data = new Float32Array(gridW * gridH).fill(stockT);
 
   const entityMap = machinableEntityMap(doc);
@@ -109,7 +113,17 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   // patterned geometry renders all instances and follows the count.
   const isLaser = doc.isLaser;
   for (const op of ops) {
-    rasterizeOp(expandOpPatternTargets(op, doc), entityMap, data, gridW, gridH, stockT, isLaser);
+    rasterizeOp(
+      expandOpPatternTargets(op, doc),
+      entityMap,
+      data,
+      gridW,
+      gridH,
+      stockT,
+      isLaser,
+      offX,
+      offY,
+    );
   }
 
   return { data, gridW, gridH, stockW, stockH, stockT, laser: isLaser };
@@ -126,18 +140,20 @@ function rasterizeOp(
   gridH: number,
   stockT: number,
   isLaser: boolean,
+  offX: number,
+  offY: number,
 ): void {
   if (op.type === "chamfer") {
-    rasChamfer(op, entityMap, data, gridW, gridH, stockT);
+    rasChamfer(op, entityMap, data, gridW, gridH, stockT, offX, offY);
     return;
   }
 
   if (op.type === "vcarve") {
-    rasVcarve(op, entityMap, data, gridW, gridH, stockT);
+    rasVcarve(op, entityMap, data, gridW, gridH, stockT, offX, offY);
     return;
   }
 
-  const stamp = makeStampFn(op, data, gridW, gridH, stockT, isLaser);
+  const stamp = makeStampFn(op, data, gridW, gridH, stockT, isLaser, offX, offY);
   const stepR = effectiveToolR(op, isLaser);
   const lineSegIds = new Set<string>();
 
@@ -351,10 +367,12 @@ function rasChamfer(
   gridW: number,
   gridH: number,
   stockT: number,
+  offX: number,
+  offY: number,
 ): void {
   if (op.toolType !== "v-bit" || (op.chamferWidth ?? 0) <= 0) return;
   const cop = { ...op, depth: chamferDepth(op) };
-  const stamp = makeStampFn(cop, data, gridW, gridH, stockT);
+  const stamp = makeStampFn(cop, data, gridW, gridH, stockT, false, offX, offY);
   const stepR = effectiveToolR(cop);
   const side = op.chamferSide ?? "on";
   const w = op.chamferWidth ?? 0;
@@ -469,9 +487,11 @@ function rasVcarve(
   gridW: number,
   gridH: number,
   stockT: number,
+  offX: number,
+  offY: number,
 ): void {
   if (op.toolType !== "v-bit") return;
-  const stamp = makeStampFn(op, data, gridW, gridH, stockT);
+  const stamp = makeStampFn(op, data, gridW, gridH, stockT, false, offX, offY);
   const stepR = effectiveToolR(op);
   const params = vcarveParamsForOp(op);
 
@@ -641,6 +661,8 @@ function makeStampFn(
   h: number,
   stockT: number,
   isLaser: boolean = false,
+  offX: number = 0,
+  offY: number = 0,
 ): StampFn {
   if (isLaser) {
     // The beam mark must be at least ~1 cell wide, or a swept vector line
@@ -653,18 +675,18 @@ function makeStampFn(
     // burn floor (matches the image path). A cut goes all the way through, so
     // leave it uncapped.
     const floorH = op.type === "engrave" ? stockT - LASER_BURN_DEPTH_MM : -Infinity;
-    return (cx, cy, d) => stampDisc(data, w, h, cx, cy, dotR, Math.max(d, floorH));
+    return (cx, cy, d) => stampDisc(data, w, h, cx - offX, cy - offY, dotR, Math.max(d, floorH));
   }
   const R = op.diameter / 2;
   const Rcell = R * RES;
   const tt = op.toolType ?? "end-mill";
 
   if (tt === "ball-nose") {
-    return (cx, cy, d) => stampBallNose(data, w, h, cx, cy, R, d);
+    return (cx, cy, d) => stampBallNose(data, w, h, cx - offX, cy - offY, R, d);
   }
   if (tt === "v-bit") {
     const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
-    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, halfTan, d, stockT);
+    return (cx, cy, d) => stampVCone(data, w, h, cx - offX, cy - offY, halfTan, d, stockT);
   }
   if (tt === "drill") {
     // A drill's point is conical, but only out to the bit's own radius — past
@@ -674,10 +696,10 @@ function makeStampFn(
     // reaches ~20mm lateral before ever hitting the R clamp, rendering as a
     // crater several times the bit's actual diameter.
     const tipHalfTan = Math.tan(((op.tipAngle ?? 118) / 2) * (Math.PI / 180));
-    return (cx, cy, d) => stampVCone(data, w, h, cx, cy, tipHalfTan, d, stockT, R);
+    return (cx, cy, d) => stampVCone(data, w, h, cx - offX, cy - offY, tipHalfTan, d, stockT, R);
   }
   // end-mill (and any unrecognised type): flat disc
-  return (cx, cy, d) => stampDisc(data, w, h, cx, cy, Rcell, d);
+  return (cx, cy, d) => stampDisc(data, w, h, cx - offX, cy - offY, Rcell, d);
 }
 
 /** Step radius used for spacing stamps along a path sweep. */
