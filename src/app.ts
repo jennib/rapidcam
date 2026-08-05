@@ -623,7 +623,13 @@ export class App {
         const rotary = doc.isRotary
           ? (() => {
               const s = doc.rotary ?? defaultRotarySettings(doc);
-              return { diameter: s.diameter, wrapAxis: s.wrapAxis };
+              const wrapX = s.wrapAxis === "x";
+              const circ = wrapX ? doc.canvas.width : doc.canvas.height;
+              const diameter =
+                s.diameter > 0 && Math.abs(s.diameter * Math.PI - circ) < 1e-3
+                  ? s.diameter
+                  : circ / Math.PI;
+              return { diameter, wrapAxis: s.wrapAxis };
             })()
           : null;
         this.webglPreview.render(rasterizeStock(ops, doc), rotary, ops.length > 0);

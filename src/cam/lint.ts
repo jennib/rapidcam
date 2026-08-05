@@ -22,7 +22,7 @@
  */
 
 import type { CADDocument } from "../model/document";
-import { resolveOrigin, stockFootprint } from "../model/document";
+import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { hiddenOpEntityIds } from "./machinable";
 import { checkMachinability } from "./machinability";
@@ -241,7 +241,7 @@ function checkRapidThroughStock(moves: Move[], ctx: LintContext): LintFinding | 
  */
 function checkOutOfBounds(moves: Move[], ctx: LintContext): LintFinding | null {
   const { xMin, xMax, yMin, yMax } = ctx.bounds;
-  const engaged = (m: Move) => ctx.machineKind === "laser" || Math.min(m.pz, m.z) < ctx.zTop - EPS;
+  const engaged = (m: Move) => isLaser(ctx.machineKind) || Math.min(m.pz, m.z) < ctx.zTop - EPS;
   let first: Move | null = null,
     count = 0;
   for (const m of moves) {
@@ -578,7 +578,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));
-  if (ctx.machineKind !== "laser") {
+  if (!isLaser(ctx.machineKind)) {
     findings.push(checkRapidThroughStock(moves, ctx));
     findings.push(checkOverDeep(moves, ctx));
     findings.push(checkFastPlunge(moves));

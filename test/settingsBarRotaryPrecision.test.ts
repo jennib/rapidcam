@@ -61,3 +61,30 @@ test("editing Diameter still updates it and re-locks the circumference", () => {
   expect(doc.rotary?.diameter).toBe(60);
   expect(doc.canvas.height).toBeCloseTo(Math.PI * 60, 9);
 });
+
+test("laser-rotary machine kind presents Cylinder controls and hides Stock section", () => {
+  const doc = new CADDocument({ width: 200, height: Math.PI * 50 });
+  doc.machineKind = "laser-rotary";
+  doc.stockThickness = 5;
+  doc.rotary = { axisWord: "A", diameter: 50, wrapAxis: "y" };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  new SettingsBar(host, doc, () => {});
+
+  // Stock section (Fills sheet, etc.) should be hidden for laser-rotary
+  const stockGroup = [...host.querySelectorAll(".settings-section")].find(
+    (g) => g.querySelector(".settings-section-title")?.textContent === "Stock",
+  ) as HTMLElement | undefined;
+  expect(stockGroup?.style.display).toBe("none");
+
+  // Should have Length and Diameter fields
+  const diaInput = fieldInput(host, "Diameter");
+  expect(diaInput.value).toBe("50.00");
+
+  diaInput.value = "75";
+  diaInput.dispatchEvent(new Event("change"));
+
+  expect(doc.rotary?.diameter).toBe(75);
+  expect(doc.canvas.height).toBeCloseTo(Math.PI * 75, 9);
+});
+

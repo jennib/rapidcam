@@ -386,7 +386,7 @@ export class SettingsBar {
 
   /** The active rotary cylinder for this doc, or null when it's not a rotary machine. */
   private rotarySettings(): RotarySettings | null {
-    return this.doc.machineKind === "mill-rotary"
+    return this.doc.isRotary
       ? (this.doc.rotary ?? defaultRotarySettings(this.doc))
       : null;
   }
