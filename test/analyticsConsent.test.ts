@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", fakeLocalStorage());
   // DNT off so init can run.
   vi.stubGlobal("navigator", { doNotTrack: "0" });
+  vi.stubEnv("VITE_POSTHOG_KEY", "phc_test_key");
 });
 
 describe("analytics consent", () => {
@@ -80,6 +81,7 @@ describe("analytics consent", () => {
     localStorage.setItem(CONSENT, "granted"); // analytics only
     await a.initAnalytics();
     expect(initMock).toHaveBeenCalledTimes(1);
+    expect(initMock.mock.calls[0][0]).toBe("phc_test_key");
     expect(initMock.mock.calls[0][1].disable_session_recording).toBe(true);
   });
 
@@ -88,6 +90,8 @@ describe("analytics consent", () => {
     localStorage.setItem(CONSENT, "granted");
     localStorage.setItem(REPLAY, "granted");
     await a.initAnalytics();
+    expect(initMock).toHaveBeenCalledTimes(1);
+    expect(initMock.mock.calls[0][0]).toBe("phc_test_key");
     expect(initMock.mock.calls[0][1].disable_session_recording).toBe(false);
   });
 
@@ -95,6 +99,14 @@ describe("analytics consent", () => {
     vi.stubGlobal("navigator", { doNotTrack: "1" });
     const a = await import("../src/analytics");
     await a.grantConsent(true);
+    expect(initMock).not.toHaveBeenCalled();
+  });
+
+  test("missing VITE_POSTHOG_KEY skips initialization", async () => {
+    vi.stubEnv("VITE_POSTHOG_KEY", "");
+    const a = await import("../src/analytics");
+    localStorage.setItem(CONSENT, "granted");
+    await a.initAnalytics();
     expect(initMock).not.toHaveBeenCalled();
   });
 });

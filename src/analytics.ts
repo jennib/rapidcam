@@ -73,6 +73,9 @@ export async function initAnalytics(): Promise<void> {
   if (doNotTrack()) return;
   if (getConsent() !== "granted") return;
 
+  const key = import.meta.env.VITE_POSTHOG_KEY;
+  if (!key) return;
+
   const { default: ph } = await import("posthog-js");
   // A second caller may have initialised while the dynamic import was in flight.
   if (initialised) return;
@@ -83,7 +86,7 @@ export async function initAnalytics(): Promise<void> {
   // for it — even though they've allowed usage analytics.
   const replay = getReplayConsent() === "granted";
 
-  posthog.init("phc_u9sEREoykrDKErEtysyiAiRTRAEDcfKxE5y6HQcFsWMn", {
+  posthog.init(key, {
     api_host: "https://us.i.posthog.com",
     person_profiles: "identified_only",
     capture_pageview: true,

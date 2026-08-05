@@ -49,6 +49,7 @@ beforeEach(() => {
   phMock.init.mockClear();
   vi.stubGlobal("localStorage", fakeLocalStorage());
   vi.stubGlobal("navigator", { doNotTrack: "0", maxTouchPoints: 0 });
+  vi.stubEnv("VITE_POSTHOG_KEY", "phc_test_key");
 });
 
 describe("error capture consent gating", () => {
