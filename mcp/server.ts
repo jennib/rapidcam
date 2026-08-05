@@ -31,7 +31,7 @@ import { buildErrorReport } from "../src/io/aiCheck";
 const server = new McpServer({ name: "rapidcam", version: "1.0.0" });
 
 const contentArg = {
-  content: z.string().describe("The complete .rcam file as a JSON string (format version 2)"),
+  content: z.string().describe("The complete .rcam file as a JSON string (format version 3)"),
 };
 
 function text(s: string): { content: [{ type: "text"; text: string }] } {
@@ -42,7 +42,7 @@ server.registerTool(
   "get_format_guide",
   {
     description:
-      "The complete .rcam v2 authoring guide (markdown): entity/constraint/dimension vocabulary, CAM operations, machine kinds, and gotchas. Read this before authoring a file.",
+      "The complete .rcam v3 authoring guide (markdown): entity/constraint/dimension vocabulary, CAM operations, machine kinds, and gotchas. Read this before authoring a file.",
   },
   async () => text(readFileSync(join(repoRoot, "docs", "rcam-format-v3.md"), "utf8")),
 );

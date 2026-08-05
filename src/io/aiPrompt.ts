@@ -14,7 +14,7 @@
 import formatGuide from "../../docs/rcam-format-v3.md?raw";
 import { getPostFor, getHasToolChanger } from "../core/prefs";
 import type { CADDocument } from "../model/document";
-import { serializeDoc, stripEmbeddedFonts } from "./fileio";
+import { RCAM_VERSION, serializeDoc, stripEmbeddedFonts } from "./fileio";
 
 export type AiPromptMode = "new" | "modify";
 
@@ -78,7 +78,7 @@ function describeMachineContext(doc: CADDocument): string {
 const OUTPUT_RULES = `## Output rules
 
 1. Reply with exactly ONE fenced JSON code block containing the COMPLETE .rcam file, and nothing else inside the block. A short explanation outside the block is fine.
-2. \`"version": 2\`. All lengths in mm, all angles in radians (CCW), world frame Y-up. Every \`id\` a unique non-empty string.
+2. \`"version": ${RCAM_VERSION}\`. All lengths in mm, all angles in radians (CCW), world frame Y-up. Every \`id\` a unique non-empty string.
 3. Keep the machine context above (canvas, stock, machineKind, postProcessor, rotary/flip) exactly as given unless the task explicitly changes it.
 4. You do NOT need perfect coordinates. Emit rough positions plus constraints and driving dimensions; RapidCAM's parametric solver snaps the geometry exact. For simple parts, plain coordinates with no constraints are also perfectly valid.
 5. Never author the reserved \`"__origin__"\` entity, and never include \`fonts\` or \`images\` arrays — RapidCAM re-attaches those. When modifying a design, keep every existing \`fontId\` / \`imageId\` reference intact.
@@ -103,8 +103,8 @@ export function buildAiPrompt(
 
   parts.push(
     mode === "new"
-      ? "You are authoring a project file for RapidCAM (https://rapidcam.app), a parametric 2D CAD/CAM app for CNC machines. Produce a complete `.rcam` file (plain JSON, format version 2) for the machine and stock described below."
-      : "You are modifying an existing project file for RapidCAM (https://rapidcam.app), a parametric 2D CAD/CAM app for CNC machines. The current design is included below as `.rcam` JSON (format version 2). Apply the requested change and return the COMPLETE updated file — not a diff.",
+      ? `You are authoring a project file for RapidCAM (https://rapidcam.app), a parametric 2D CAD/CAM app for CNC machines. Produce a complete \`.rcam\` file (plain JSON, format version ${RCAM_VERSION}) for the machine and stock described below.`
+      : `You are modifying an existing project file for RapidCAM (https://rapidcam.app), a parametric 2D CAD/CAM app for CNC machines. The current design is included below as \`.rcam\` JSON (format version ${RCAM_VERSION}). Apply the requested change and return the COMPLETE updated file — not a diff.`,
   );
 
   parts.push(`## Machine & job context\n\n${describeMachineContext(doc)}\n\n${describeTools(doc)}`);

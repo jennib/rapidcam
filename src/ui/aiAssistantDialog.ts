@@ -183,7 +183,7 @@ export function showAiAssistantDialog(
   s2.appendChild(s2Title);
 
   const paste = document.createElement("textarea");
-  paste.placeholder = 'Paste the AI\'s reply here (the {"version": 2, …} JSON, fences and all)';
+  paste.placeholder = 'Paste the AI\'s reply here (the {"version": 3, …} JSON, fences and all)';
   paste.style.cssText = `${request.style.cssText}height:96px;font-family:monospace;font-size:12px;`;
   s2.appendChild(paste);
 

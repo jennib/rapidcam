@@ -68,6 +68,8 @@ describe("buildAiPrompt", () => {
     // The guide really is the whole document, not a stub.
     expect(p).toContain("## Constraints");
     expect(p).toContain("rcam-v3.schema.json");
+    expect(p).toContain("format version 3");
+    expect(p).toContain('"version": 3');
   });
 
   it("modify mode embeds the current design JSON and the user request", () => {
