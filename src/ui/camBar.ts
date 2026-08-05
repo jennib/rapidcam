@@ -193,7 +193,7 @@ export class CamBar {
    *  off the render path (see scheduleOpEstimates), never synchronously in renderOps. */
   private opTimeCache = new Map<string, number>();
   private opEstEls = new Map<string, HTMLElement>();
-  private opEstTimer: ReturnType<typeof setTimeout> | null = null;
+  private opEstTimer: number | null = null;
   private exportSelBtn: HTMLButtonElement | null = null;
   /** "Manage Tools" button — hidden in laser mode (tools are a mill concept). */
   private libBtn: HTMLButtonElement | null = null;
@@ -542,8 +542,8 @@ export class CamBar {
       (op) => this.opEstEls.has(op.id) && !this.opTimeCache.has(this.opTimeKey(op)),
     );
     if (pending.length === 0) return;
-    if (this.opEstTimer !== null) clearTimeout(this.opEstTimer);
-    this.opEstTimer = setTimeout(() => this.runOpEstimateChunk(pending), 150);
+    if (this.opEstTimer !== null) window.clearTimeout(this.opEstTimer);
+    this.opEstTimer = window.setTimeout(() => this.runOpEstimateChunk(pending), 150);
   }
 
   /**
@@ -575,7 +575,7 @@ export class CamBar {
       const el = this.opEstEls.get(op.id);
       if (el) el.textContent = `⏱ ~${formatDuration(secs)}`;
     }
-    this.opEstTimer = rest.length > 0 ? setTimeout(() => this.runOpEstimateChunk(rest), 0) : null;
+    this.opEstTimer = rest.length > 0 ? window.setTimeout(() => this.runOpEstimateChunk(rest), 0) : null;
   }
 
   private highlightOp(id: string | null): void {

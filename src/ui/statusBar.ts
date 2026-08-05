@@ -85,7 +85,7 @@ export class StatusBar {
   private solveEl!: HTMLElement;
   private patternEl!: HTMLElement;
   private flashEl!: HTMLElement;
-  private flashTimer: ReturnType<typeof setTimeout> | null = null;
+  private flashTimer: number | null = null;
   private hintEl!: HTMLElement;
   private gridToggle!: HTMLElement;
   private osnapToggle!: HTMLElement;
@@ -172,8 +172,8 @@ export class StatusBar {
   flash(msg: string, tone: "warn" | "info" = "warn"): void {
     this.flashEl.textContent = msg;
     this.flashEl.style.color = tone === "warn" ? "var(--warn, #c8982a)" : "";
-    if (this.flashTimer) clearTimeout(this.flashTimer);
-    this.flashTimer = setTimeout(() => {
+    if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
+    this.flashTimer = window.setTimeout(() => {
       this.flashEl.textContent = "";
       this.flashTimer = null;
     }, 2500);

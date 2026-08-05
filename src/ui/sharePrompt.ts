@@ -132,12 +132,12 @@ export function maybeShowSharePrompt(): void {
   dismissBtn.addEventListener("click", close);
 
   // Auto-dismiss after 12 seconds
-  const autoTimer = setTimeout(close, 12000);
-  banner.addEventListener("mouseenter", () => clearTimeout(autoTimer));
+  const autoTimer: number = window.setTimeout(close, 12000);
+  banner.addEventListener("mouseenter", () => window.clearTimeout(autoTimer));
   banner.addEventListener("mouseleave", () => {
     // Re-arm a shorter timer once the user moves away
-    const t = setTimeout(close, 6000);
-    banner.addEventListener("mouseenter", () => clearTimeout(t), { once: true });
+    const t: number = window.setTimeout(close, 6000);
+    banner.addEventListener("mouseenter", () => window.clearTimeout(t), { once: true });
   });
 
   banner.appendChild(text);

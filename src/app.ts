@@ -187,8 +187,8 @@ export class App {
   private sideToggle: HTMLElement | null = null;
   /** Flat laser-path preview (the laser machine's analogue of the 3D preview). */
   private laserPreviewVisible = false;
-  private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private laserPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+  private previewDebounceTimer: number | null = null;
+  private laserPreviewTimer: number | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -605,16 +605,16 @@ export class App {
     // of scan segments; recomputing synchronously on every doc change (drag,
     // keystroke) would stutter, so coalesce bursts like the 3D preview does.
     if (this.laserPreviewVisible) {
-      if (this.laserPreviewTimer !== null) clearTimeout(this.laserPreviewTimer);
-      this.laserPreviewTimer = setTimeout(() => {
+      if (this.laserPreviewTimer !== null) window.clearTimeout(this.laserPreviewTimer);
+      this.laserPreviewTimer = window.setTimeout(() => {
         this.laserPreviewTimer = null;
         this.computeLaserPreview();
       }, 200);
     }
     if (!this.preview3DVisible || !this.webglPreview) return;
     this.updateSideToggle(); // a face change / op edit may have added or removed a bottom side
-    if (this.previewDebounceTimer !== null) clearTimeout(this.previewDebounceTimer);
-    this.previewDebounceTimer = setTimeout(() => {
+    if (this.previewDebounceTimer !== null) window.clearTimeout(this.previewDebounceTimer);
+    this.previewDebounceTimer = window.setTimeout(() => {
       this.previewDebounceTimer = null;
       if (this.webglPreview && this.preview3DVisible) {
         const { ops, doc } = this.previewInput();
