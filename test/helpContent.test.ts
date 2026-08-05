@@ -5,14 +5,17 @@ import { showHelpDialog } from "../src/ui/helpDialog";
 import { isModalOpen, closeAllModals } from "../src/ui/modal";
 
 describe("Help Content & Dialog", () => {
-  it("contains all 7 expected help topics", () => {
-    expect(HELP_TOPICS.length).toBe(7);
+  it("contains all expected help topics", () => {
+    expect(HELP_TOPICS.length).toBe(10);
     const ids = HELP_TOPICS.map((t) => t.id);
     expect(ids).toContain("getting-started");
     expect(ids).toContain("2d-drafting");
+    expect(ids).toContain("cad-modifications");
     expect(ids).toContain("constraints");
     expect(ids).toContain("cam-toolpaths");
+    expect(ids).toContain("laser-machining");
     expect(ids).toContain("tool-library");
+    expect(ids).toContain("post-processors-gcode");
     expect(ids).toContain("simulation-cnc");
     expect(ids).toContain("shortcuts-reference");
   });

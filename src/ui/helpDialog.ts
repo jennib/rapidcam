@@ -2,7 +2,13 @@
  * Interactive in-app Help Viewer and User Documentation modal.
  */
 
-import { HELP_TOPICS, type HelpTopic } from "../docs/helpContent";
+import {
+  HELP_TOPICS,
+  type HelpTopic,
+  type HelpCallout,
+  type HelpTable,
+  type HelpCodeSnippet,
+} from "../docs/helpContent";
 import { registerModal } from "./modal";
 
 let open = false;
@@ -16,31 +22,31 @@ export function showHelpDialog(initialTopicId?: string): void {
   backdrop.className = "tp-backdrop";
 
   const dialog = document.createElement("div");
-  dialog.className = "tp-dialog";
-  dialog.style.width = "820px";
-  dialog.style.maxWidth = "90vw";
-  dialog.style.height = "640px";
-  dialog.style.maxHeight = "85vh";
-  dialog.style.display = "flex";
-  dialog.style.flexDirection = "column";
+  dialog.className = "tp-dialog help-dialog";
   dialog.addEventListener("click", (e) => e.stopPropagation());
   backdrop.appendChild(dialog);
 
   // Header
   const hdr = document.createElement("div");
-  hdr.className = "tp-dialog-header";
-  hdr.style.display = "flex";
-  hdr.style.justifyContent = "space-between";
-  hdr.style.alignItems = "center";
-  
+  hdr.className = "tp-dialog-header help-header";
+
+  const titleGroup = document.createElement("div");
+  titleGroup.className = "help-header-title-group";
+
   const h3 = document.createElement("h3");
   h3.textContent = "RapidCAM Documentation & User Guide";
-  hdr.appendChild(h3);
+  titleGroup.appendChild(h3);
+
+  const badge = document.createElement("span");
+  badge.className = "help-header-badge";
+  badge.textContent = `${HELP_TOPICS.length} Topics`;
+  titleGroup.appendChild(badge);
+
+  hdr.appendChild(titleGroup);
 
   const closeIcon = document.createElement("button");
-  closeIcon.className = "btn";
-  closeIcon.style.padding = "2px 8px";
-  closeIcon.style.fontSize = "14px";
+  closeIcon.className = "tp-dialog-close";
+  closeIcon.setAttribute("aria-label", "Close");
   closeIcon.textContent = "✕";
   closeIcon.addEventListener("click", close);
   hdr.appendChild(closeIcon);
@@ -49,51 +55,80 @@ export function showHelpDialog(initialTopicId?: string): void {
 
   // Main container (Sidebar + Content Viewport)
   const body = document.createElement("div");
-  body.className = "tp-dialog-body";
-  body.style.cssText = "display:flex;flex:1;overflow:hidden;padding:0;gap:0;";
+  body.className = "tp-dialog-body help-dialog-body";
   dialog.appendChild(body);
 
   // Sidebar
   const sidebar = document.createElement("div");
-  sidebar.style.cssText =
-    "width:250px;border-right:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;background:rgba(0,0,0,0.15);";
-  
+  sidebar.className = "help-sidebar";
+
+  // Search Box
   const searchWrap = document.createElement("div");
-  searchWrap.style.padding = "10px";
+  searchWrap.className = "help-search-container";
+
   const searchInput = document.createElement("input");
   searchInput.type = "text";
-  searchInput.placeholder = "Search documentation…";
-  searchInput.className = "tp-input";
-  searchInput.style.width = "100%";
-  searchInput.style.boxSizing = "border-box";
+  searchInput.placeholder = "🔍 Search topics, G-code, hotkeys...";
+  searchInput.className = "help-search-input";
   searchWrap.appendChild(searchInput);
+
+  // Category Filter Pills
+  const categories = [
+    "All",
+    "Getting Started",
+    "2D Drafting",
+    "Constraints",
+    "CAM & Toolpaths",
+    "Laser Machining",
+    "Tool Library & Speeds",
+    "Post-Processors & G-Code",
+    "Simulation & CNC",
+    "Shortcuts",
+  ];
+  let activeCategory = "All";
+
+  const categoryBar = document.createElement("div");
+  categoryBar.className = "help-category-filter";
+
+  for (const cat of categories) {
+    const pill = document.createElement("button");
+    pill.className = `help-category-pill ${cat === activeCategory ? "active" : ""}`;
+    pill.textContent = cat === "Post-Processors & G-Code" ? "G-Code" : cat;
+    pill.title = cat;
+    pill.addEventListener("click", () => {
+      activeCategory = cat;
+      categoryBar.querySelectorAll(".help-category-pill").forEach((p) => {
+        p.classList.toggle("active", p.textContent === (cat === "Post-Processors & G-Code" ? "G-Code" : cat));
+      });
+      renderSidebar(searchInput.value);
+    });
+    categoryBar.appendChild(pill);
+  }
+  searchWrap.appendChild(categoryBar);
   sidebar.appendChild(searchWrap);
 
   const navList = document.createElement("div");
-  navList.style.cssText = "flex:1;overflow-y:auto;padding:0 6px 10px 6px;";
+  navList.className = "help-nav-list";
   sidebar.appendChild(navList);
   body.appendChild(sidebar);
 
-  // Content Area
+  // Content Viewport
   const contentArea = document.createElement("div");
-  contentArea.style.cssText = "flex:1;overflow-y:auto;padding:20px 24px;line-height:1.6;";
+  contentArea.className = "help-content-viewport";
   body.appendChild(contentArea);
 
   // Footer
   const ftr = document.createElement("div");
-  ftr.className = "tp-dialog-footer";
-  ftr.style.display = "flex";
-  ftr.style.justifyContent = "space-between";
-  ftr.style.alignItems = "center";
+  ftr.className = "tp-dialog-footer help-footer";
 
   const tipText = document.createElement("span");
-  tipText.style.cssText = "font-size:12px;opacity:0.6;";
-  tipText.textContent = "Tip: Press F1 anytime to open this guide, or ? for key bindings.";
+  tipText.className = "help-footer-tip";
+  tipText.innerHTML = `<span>Press <kbd class="help-kbd">F1</kbd> for this Guide · <kbd class="help-kbd">?</kbd> for Shortcuts Overlay</span>`;
   ftr.appendChild(tipText);
 
   const okBtn = document.createElement("button");
   okBtn.className = "btn tp-apply-btn";
-  okBtn.textContent = "Close";
+  okBtn.textContent = "Close Guide";
   okBtn.addEventListener("click", close);
   ftr.appendChild(okBtn);
 
@@ -102,22 +137,42 @@ export function showHelpDialog(initialTopicId?: string): void {
   let activeTopic: HelpTopic =
     HELP_TOPICS.find((t) => t.id === initialTopicId) ?? HELP_TOPICS[0];
 
+  function getFilteredTopics(term: string): HelpTopic[] {
+    const cleanTerm = term.toLowerCase().trim();
+    return HELP_TOPICS.filter((t) => {
+      const matchesCategory =
+        activeCategory === "All" || t.category === activeCategory;
+      if (!matchesCategory) return false;
+      if (!cleanTerm) return true;
+
+      return (
+        t.title.toLowerCase().includes(cleanTerm) ||
+        t.summary.toLowerCase().includes(cleanTerm) ||
+        t.keywords.some((k) => k.toLowerCase().includes(cleanTerm)) ||
+        t.sections.some(
+          (s) =>
+            s.heading.toLowerCase().includes(cleanTerm) ||
+            s.body.toLowerCase().includes(cleanTerm) ||
+            s.tips?.some((tip) => tip.toLowerCase().includes(cleanTerm)) ||
+            s.callout?.text.toLowerCase().includes(cleanTerm) ||
+            s.callout?.title?.toLowerCase().includes(cleanTerm) ||
+            s.table?.headers.some((h) => h.toLowerCase().includes(cleanTerm)) ||
+            s.table?.rows.some((row) =>
+              row.some((cell) => cell.toLowerCase().includes(cleanTerm))
+            )
+        )
+      );
+    });
+  }
+
   function renderSidebar(filter = ""): void {
     navList.innerHTML = "";
-    const term = filter.toLowerCase().trim();
-
-    const filtered = HELP_TOPICS.filter(
-      (t) =>
-        t.title.toLowerCase().includes(term) ||
-        t.summary.toLowerCase().includes(term) ||
-        t.keywords.some((k) => k.toLowerCase().includes(term)) ||
-        t.sections.some((s) => s.heading.toLowerCase().includes(term) || s.body.toLowerCase().includes(term))
-    );
+    const filtered = getFilteredTopics(filter);
 
     if (filtered.length === 0) {
       const empty = document.createElement("div");
-      empty.style.cssText = "padding:12px;font-size:12px;opacity:0.5;text-align:center;";
-      empty.textContent = "No topics found";
+      empty.className = "help-empty-results";
+      empty.innerHTML = `<div style="font-size:20px;margin-bottom:6px;">🔍</div><div>No matching topics found</div><div style="font-size:11px;opacity:0.7;margin-top:4px;">Try searching for "pocket", "laser", "arc", or "G0"</div>`;
       navList.appendChild(empty);
       return;
     }
@@ -125,26 +180,15 @@ export function showHelpDialog(initialTopicId?: string): void {
     for (const topic of filtered) {
       const item = document.createElement("div");
       const isActive = topic.id === activeTopic.id;
-      item.style.cssText = `
-        padding: 8px 10px;
-        margin-bottom: 2px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        background: ${isActive ? "rgba(255,255,255,0.12)" : "transparent"};
-        font-weight: ${isActive ? "600" : "normal"};
-        color: ${isActive ? "var(--accent, #3b82f6)" : "inherit"};
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      `;
+      item.className = `help-nav-item ${isActive ? "active" : ""}`;
 
       const titleSpan = document.createElement("span");
+      titleSpan.className = "help-nav-title";
       titleSpan.textContent = topic.title;
       item.appendChild(titleSpan);
 
       const catSpan = document.createElement("span");
-      catSpan.style.cssText = "font-size:10px;opacity:0.5;";
+      catSpan.className = "help-nav-category";
       catSpan.textContent = topic.category;
       item.appendChild(catSpan);
 
@@ -152,6 +196,7 @@ export function showHelpDialog(initialTopicId?: string): void {
         activeTopic = topic;
         renderSidebar(searchInput.value);
         renderContent();
+        contentArea.scrollTop = 0;
       });
 
       navList.appendChild(item);
@@ -161,39 +206,218 @@ export function showHelpDialog(initialTopicId?: string): void {
   function renderContent(): void {
     contentArea.innerHTML = "";
 
+    const currentIndex = HELP_TOPICS.findIndex((t) => t.id === activeTopic.id);
+
+    // Topic Header Block
+    const topicHeader = document.createElement("div");
+    topicHeader.className = "help-topic-header";
+
+    const metaRow = document.createElement("div");
+    metaRow.className = "help-topic-meta";
+
+    const catBadge = document.createElement("span");
+    catBadge.className = "help-topic-category-badge";
+    catBadge.textContent = activeTopic.category;
+    metaRow.appendChild(catBadge);
+
+    const stepCounter = document.createElement("span");
+    stepCounter.className = "help-topic-counter";
+    stepCounter.textContent = `Topic ${currentIndex + 1} of ${HELP_TOPICS.length}`;
+    metaRow.appendChild(stepCounter);
+
+    topicHeader.appendChild(metaRow);
+
     const title = document.createElement("h2");
-    title.style.cssText = "margin-top:0;margin-bottom:6px;font-size:20px;";
+    title.className = "help-topic-title";
     title.textContent = activeTopic.title;
-    contentArea.appendChild(title);
+    topicHeader.appendChild(title);
 
     const summary = document.createElement("p");
-    summary.style.cssText = "font-size:13px;opacity:0.75;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.1);";
+    summary.className = "help-topic-summary";
     summary.textContent = activeTopic.summary;
-    contentArea.appendChild(summary);
+    topicHeader.appendChild(summary);
 
+    contentArea.appendChild(topicHeader);
+
+    // Section Cards
     for (const sec of activeTopic.sections) {
+      const card = document.createElement("div");
+      card.className = "help-section-card";
+
       const h4 = document.createElement("h4");
-      h4.style.cssText = "margin-top:16px;margin-bottom:6px;font-size:15px;color:var(--text, #eee);";
+      h4.className = "help-section-heading";
       h4.textContent = sec.heading;
-      contentArea.appendChild(h4);
+      card.appendChild(h4);
 
-      const p = document.createElement("p");
-      p.style.cssText = "font-size:13px;margin-bottom:10px;opacity:0.9;";
-      p.textContent = sec.body;
-      contentArea.appendChild(p);
+      if (sec.body) {
+        const p = document.createElement("p");
+        p.className = "help-section-body";
+        p.textContent = sec.body;
+        card.appendChild(p);
+      }
 
+      // Callout Box
+      if (sec.callout) {
+        card.appendChild(createCalloutElement(sec.callout));
+      }
+
+      // Code Snippet Block
+      if (sec.codeSnippet) {
+        card.appendChild(createCodeSnippetElement(sec.codeSnippet));
+      }
+
+      // Structured Table
+      if (sec.table) {
+        card.appendChild(createTableElement(sec.table));
+      }
+
+      // Bullet Tips
       if (sec.tips && sec.tips.length > 0) {
         const ul = document.createElement("ul");
-        ul.style.cssText = "margin:0 0 16px 0;padding-left:20px;font-size:13px;";
+        ul.className = "help-tips-list";
         for (const tip of sec.tips) {
           const li = document.createElement("li");
-          li.style.margin = "4px 0";
-          li.textContent = tip;
+          li.className = "help-tip-item";
+          li.innerHTML = formatTipText(tip);
           ul.appendChild(li);
         }
-        contentArea.appendChild(ul);
+        card.appendChild(ul);
       }
+
+      contentArea.appendChild(card);
     }
+
+    // Navigation Footer (Previous / Next Topic buttons)
+    const navFooter = document.createElement("div");
+    navFooter.className = "help-topic-nav-footer";
+
+    if (currentIndex > 0) {
+      const prevTopic = HELP_TOPICS[currentIndex - 1];
+      const prevBtn = document.createElement("button");
+      prevBtn.className = "help-nav-btn prev";
+      prevBtn.innerHTML = `← Previous: <strong>${prevTopic.title}</strong>`;
+      prevBtn.addEventListener("click", () => {
+        activeTopic = prevTopic;
+        renderSidebar(searchInput.value);
+        renderContent();
+        contentArea.scrollTop = 0;
+      });
+      navFooter.appendChild(prevBtn);
+    } else {
+      const placeholder = document.createElement("div");
+      navFooter.appendChild(placeholder);
+    }
+
+    if (currentIndex < HELP_TOPICS.length - 1) {
+      const nextTopic = HELP_TOPICS[currentIndex + 1];
+      const nextBtn = document.createElement("button");
+      nextBtn.className = "help-nav-btn next";
+      nextBtn.innerHTML = `Next: <strong>${nextTopic.title}</strong> →`;
+      nextBtn.addEventListener("click", () => {
+        activeTopic = nextTopic;
+        renderSidebar(searchInput.value);
+        renderContent();
+        contentArea.scrollTop = 0;
+      });
+      navFooter.appendChild(nextBtn);
+    }
+
+    contentArea.appendChild(navFooter);
+  }
+
+  function createCalloutElement(callout: HelpCallout): HTMLElement {
+    const box = document.createElement("div");
+    box.className = `help-callout help-callout-${callout.type}`;
+
+    const iconMap: Record<string, string> = {
+      tip: "💡",
+      note: "ℹ️",
+      warning: "⚠️",
+      "best-practice": "⭐",
+    };
+
+    const header = document.createElement("div");
+    header.className = "help-callout-header";
+    header.innerHTML = `<span class="help-callout-icon">${iconMap[callout.type] ?? "💡"}</span><strong class="help-callout-title">${callout.title ?? callout.type.toUpperCase()}</strong>`;
+    box.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "help-callout-body";
+    body.innerHTML = formatTipText(callout.text);
+    box.appendChild(body);
+
+    return box;
+  }
+
+  function createCodeSnippetElement(snippet: HelpCodeSnippet): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "help-code-wrap";
+
+    if (snippet.title) {
+      const bar = document.createElement("div");
+      bar.className = "help-code-header";
+      bar.textContent = snippet.title;
+
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "help-code-copy-btn";
+      copyBtn.textContent = "📋 Copy";
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(snippet.code).then(() => {
+          copyBtn.textContent = "✓ Copied!";
+          setTimeout(() => (copyBtn.textContent = "📋 Copy"), 1800);
+        });
+      });
+      bar.appendChild(copyBtn);
+      wrap.appendChild(bar);
+    }
+
+    const pre = document.createElement("pre");
+    pre.className = "help-code-block";
+    const code = document.createElement("code");
+    code.textContent = snippet.code;
+    pre.appendChild(code);
+    wrap.appendChild(pre);
+
+    return wrap;
+  }
+
+  function createTableElement(table: HelpTable): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "help-table-container";
+
+    const tbl = document.createElement("table");
+    tbl.className = "help-data-table";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    for (const h of table.headers) {
+      const th = document.createElement("th");
+      th.textContent = h;
+      trHead.appendChild(th);
+    }
+    thead.appendChild(trHead);
+    tbl.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const row of table.rows) {
+      const tr = document.createElement("tr");
+      for (const cell of row) {
+        const td = document.createElement("td");
+        td.innerHTML = formatTipText(cell);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    container.appendChild(tbl);
+    return container;
+  }
+
+  function formatTipText(text: string): string {
+    // Format glyph badges [glyph] and shortcut keys (key)
+    return text
+      .replace(/\[([^\]]+)\]/g, (_match, p1) => `<span class="help-glyph">${p1}</span>`)
+      .replace(/\(([^)]+)\)/g, (_match, p1) => `<kbd class="help-kbd">${p1}</kbd>`);
   }
 
   searchInput.addEventListener("input", (e) => {
