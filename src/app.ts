@@ -80,6 +80,7 @@ import { openCircularPatternDialog, openLinearPatternDialog } from "./ui/pattern
 import { showMachineSettingsDialog } from "./ui/postSettingsDialog";
 import { PropertiesBar } from "./ui/propertiesBar";
 import { SettingsBar } from "./ui/settingsBar";
+import { showHelpDialog } from "./ui/helpDialog";
 import { showShortcutOverlay } from "./ui/shortcutOverlay";
 import { solveStatusLabel, StatusBar } from "./ui/statusBar";
 import { toast } from "./ui/toast";
@@ -1842,6 +1843,12 @@ export class App {
       const base = this.doc.displayUnit === "in" ? 1.27 : 1; // 0.05 in
       const step = ev.shiftKey ? base * 10 : ev.altKey ? base / 10 : base;
       this.nudgeSelected(dir[0] * step, dir[1] * step, !ev.repeat);
+      ev.preventDefault();
+      return;
+    }
+
+    if (ev.key === "F1") {
+      showHelpDialog();
       ev.preventDefault();
       return;
     }

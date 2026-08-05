@@ -6,6 +6,7 @@
  */
 
 import { registerModal } from "./modal";
+import { showHelpDialog } from "./helpDialog";
 import { TOOL_SHORTCUTS } from "../tools/shortcuts";
 
 const EDITING_KEYS: [string, string][] = [
@@ -74,6 +75,19 @@ export function showShortcutOverlay(): void {
 
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
+  ftr.style.display = "flex";
+  ftr.style.justifyContent = "space-between";
+  ftr.style.alignItems = "center";
+
+  const docsBtn = document.createElement("button");
+  docsBtn.className = "btn";
+  docsBtn.textContent = "Full User Guide (F1)";
+  docsBtn.addEventListener("click", () => {
+    close();
+    showHelpDialog("shortcuts-reference");
+  });
+  ftr.appendChild(docsBtn);
+
   const okBtn = document.createElement("button");
   okBtn.className = "btn tp-apply-btn";
   okBtn.textContent = "Close";

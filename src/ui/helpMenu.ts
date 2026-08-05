@@ -1,5 +1,6 @@
 import { showAboutDialog } from "./aboutDialog";
 import { showFeedbackDialog } from "./feedbackDialog";
+import { showHelpDialog } from "./helpDialog";
 import { showPrivacyDialog } from "./privacyDialog";
 import { showShareDialog } from "./shareDialog";
 
@@ -59,6 +60,11 @@ export class HelpMenu {
 
   private buildItems(): void {
     this.dropdown.innerHTML = "";
+    this.kbdItem("User Documentation & Guide…", "F1", () => {
+      this.close();
+      showHelpDialog();
+    });
+    this.sep();
     this.item("Share RapidCAM…", () => {
       this.close();
       showShareDialog();
@@ -89,6 +95,20 @@ export class HelpMenu {
     const label = document.createElement("span");
     label.textContent = text;
     div.appendChild(label);
+    div.addEventListener("click", onClick);
+    this.dropdown.appendChild(div);
+  }
+
+  private kbdItem(text: string, kbd: string, onClick: () => void): void {
+    const div = document.createElement("div");
+    div.className = "fmenu-item";
+    const label = document.createElement("span");
+    label.textContent = text;
+    div.appendChild(label);
+    const badge = document.createElement("span");
+    badge.className = "fmenu-kbd";
+    badge.textContent = kbd;
+    div.appendChild(badge);
     div.addEventListener("click", onClick);
     this.dropdown.appendChild(div);
   }
