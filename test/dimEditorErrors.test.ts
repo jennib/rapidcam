@@ -139,7 +139,7 @@ describe("dimension editor error reporting", () => {
     // It must still be there after the brief input flash would have ended.
     expect(container.querySelector(".dim-error")).not.toBeNull();
 
-    (box?.querySelector(".dim-error-close") as HTMLButtonElement).click();
+    (box!.querySelector(".dim-error-close") as HTMLButtonElement).click();
     expect(container.querySelector(".dim-error")).toBeNull();
   });
 

@@ -47,5 +47,9 @@
     "@modelcontextprotocol/sdk": {
       "@hono/node-server": "^2.0.5"
     }
+  },
+  "allowScripts": {
+    "core-js@3.50.0": true,
+    "esbuild@0.28.1": true
   }
 }
