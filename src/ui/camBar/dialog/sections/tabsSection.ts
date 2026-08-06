@@ -3,7 +3,7 @@
  */
 import type { CADDocument } from "../../../../model/document";
 import type { OpState } from "../opDialogState";
-import { dSection, dField, numRow } from "../dialogDom";
+import { dSection, dField, paramRow } from "../dialogDom";
 
 export function buildTabsSection(
   doc: CADDocument,
@@ -40,40 +40,53 @@ export function buildTabsSection(
   tabStrategySel.value = state.tabStrategy;
   const tabStrategyRow = dField("Tabs by", tabStrategySel);
 
-  const tabCountRow = numRow(
+  const tabCountRow = paramRow(
     doc,
+    state,
+    "tabCount",
     "Tab count",
     () => state.tabCount,
     (v) => {
       state.tabCount = Math.max(1, Math.round(v));
     },
+    undefined,
+    { isInteger: true, min: 1 },
   );
-  const tabSpacingRow = numRow(
+  const tabSpacingRow = paramRow(
     doc,
+    state,
+    "tabSpacing",
     `Tab spacing (${doc.displayUnit})`,
     () => state.tabSpacing,
     (v) => {
       state.tabSpacing = Math.max(1, v);
     },
     "len",
+    { min: 1 },
   );
-  const tabWidthRow = numRow(
+  const tabWidthRow = paramRow(
     doc,
+    state,
+    "tabWidth",
     `Tab width (${doc.displayUnit})`,
     () => state.tabWidth,
     (v) => {
       state.tabWidth = Math.max(0.1, v);
     },
     "len",
+    { min: 0.1 },
   );
-  const tabHeightRow = numRow(
+  const tabHeightRow = paramRow(
     doc,
+    state,
+    "tabHeight",
     `Tab height (${doc.displayUnit})`,
     () => state.tabHeight,
     (v) => {
       state.tabHeight = Math.max(0.1, v);
     },
     "len",
+    { min: 0.1 },
   );
   tabsSec.appendChild(tabStrategyRow);
   tabsSec.appendChild(tabCountRow.el);

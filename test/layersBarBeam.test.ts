@@ -346,7 +346,7 @@ test("the toolpath dialog names the layer driving the beam, and can fork off it"
   expect(banner.querySelector("span")?.textContent).toContain("Cut");
 
   // The fields show the layer's numbers and are read-only while following.
-  const power = [...document.querySelectorAll<HTMLInputElement>(".tp-dialog input[type=number]")]
+  const power = [...document.querySelectorAll<HTMLInputElement>(".tp-dialog input")]
     .find((i) => i.value === "100");
   expect(power?.disabled).toBe(true);
 

@@ -4,7 +4,12 @@
 import type { CADDocument, LayerDef } from "../../../model/document";
 import { StorageKeys } from "../../../core/storageKeys";
 import { formatLength, formatFeed, toMM } from "../../../core/units";
+import { evalExpr } from "../../../core/expr";
+import { varMap } from "../../../model/variables";
+import { ContextMenu } from "../../contextMenu";
+import { varPickerEntries } from "../../propertiesBar";
 import { opLayerId } from "../../../cam/types";
+import type { OpState } from "./opDialogState";
 
 export function dSection(title: string): HTMLElement {
   const sec = document.createElement("div");
@@ -57,55 +62,191 @@ export function beamLayer(
 
 export const getBeamLayer = beamLayer;
 
-/** Labelled number input that writes through `set` on change. */
-export function numRow(
+const fxMenu = new ContextMenu();
+
+export function isPlainNumber(s: string): boolean {
+  const trimmed = s.trim();
+  if (trimmed === "") return false;
+  return Number.isFinite(parseFloat(trimmed)) && !Number.isNaN(Number(trimmed));
+}
+
+export function attachVarAutocomplete(
   doc: CADDocument,
+  input: HTMLInputElement,
+  container: HTMLElement,
+): void {
+  const names = [...varMap(doc.variables, doc.stockThickness).keys()];
+  if (names.length === 0) return;
+  const dl = document.createElement("datalist");
+  dl.id = `_camv-${Math.random().toString(36).slice(2)}`;
+  for (const name of names) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    dl.appendChild(opt);
+  }
+  container.appendChild(dl);
+  input.setAttribute("list", dl.id);
+}
+
+export interface ParamRowOptions {
+  isInteger?: boolean;
+  min?: number;
+  max?: number;
+  step?: string;
+  placeholder?: string;
+  title?: string;
+  transformValue?: (v: number) => number;
+  onChange?: (v: number) => void;
+  onFork?: () => void;
+}
+
+export interface ParamRowHandle {
+  el: HTMLElement;
+  inp: HTMLInputElement;
+  badge: HTMLSpanElement;
+  setValue: (exprOrVal: string | number) => void;
+  updateBadge: () => void;
+  syncView: () => void;
+}
+
+/**
+ * An interactive CAM dialog property row with parametric expression support,
+ * variable autocomplete, and dynamic ƒx formula indicator.
+ */
+export function paramRow(
+  doc: CADDocument,
+  state: OpState,
+  paramKey: string,
   label: string,
   get: () => number,
   set: (v: number) => void,
   unitConv?: "len" | "feed",
-): { el: HTMLElement; inp: HTMLInputElement } {
+  opts?: ParamRowOptions,
+): ParamRowHandle {
   const inp = document.createElement("input");
-  inp.type = "number";
+  inp.type = "text";
   inp.className = "dim";
-  inp.step = "any";
-  const du = doc.displayUnit;
+  if (opts?.placeholder) inp.placeholder = opts.placeholder;
+  if (opts?.title) inp.title = opts.title;
+
   const toView = (v: number): string =>
     unitConv === "feed" ? feedView(v, doc) : unitConv === "len" ? lenView(v, doc) : String(v);
-  const toModel = (v: number) => (unitConv ? toMM(v, du) : v);
+  const toModel = (v: number) => (unitConv ? toMM(v, doc.displayUnit) : v);
 
-  inp.value = toView(get());
-  inp.addEventListener("change", () => {
-    const v = parseFloat(inp.value);
-    if (Number.isFinite(v)) set(toModel(v));
+  const badge = document.createElement("span");
+  badge.className = "tp-fx-badge";
+  badge.style.cssText =
+    "cursor:pointer;font-style:italic;padding:0 4px;user-select:none;flex:0 0 auto;";
+
+  const updateBadge = () => {
+    const expr = state.paramExprs[paramKey];
+    if (expr !== undefined && expr.trim() !== "") {
+      const vm = varMap(doc.variables, doc.stockThickness);
+      const ev = evalExpr(expr, vm);
+      const broken = ev === null || !Number.isFinite(ev);
+      badge.textContent = broken ? "⚠" : "ƒx";
+      badge.style.color = broken ? "var(--danger,#e05555)" : "var(--accent,#5b9)";
+      badge.style.opacity = "0.95";
+      badge.title = broken
+        ? `Broken formula (unknown variable?): ${expr} — click to unbind`
+        : `Driven by formula: ${expr} (click to unbind)`;
+    } else {
+      badge.textContent = "ƒx";
+      badge.style.color = "var(--text-dim,#8b909c)";
+      badge.style.opacity = "0.45";
+      badge.title = "Click to drive this with a variable or formula (e.g. stock, width/2)";
+    }
+  };
+
+  const syncView = () => {
+    const expr = state.paramExprs[paramKey];
+    if (expr !== undefined) {
+      inp.value = expr;
+    } else {
+      inp.value = toView(get());
+    }
+    updateBadge();
+  };
+
+  const setValue = (exprOrVal: string | number) => {
+    if (typeof exprOrVal === "string" && !isPlainNumber(exprOrVal)) {
+      state.paramExprs[paramKey] = exprOrVal.trim();
+      const vm = varMap(doc.variables, doc.stockThickness);
+      const ev = evalExpr(exprOrVal, vm);
+      if (ev !== null && Number.isFinite(ev)) {
+        let num = ev;
+        if (opts?.transformValue) num = opts.transformValue(num);
+        if (opts?.isInteger) num = Math.round(num);
+        if (opts?.min !== undefined) num = Math.max(opts.min, num);
+        if (opts?.max !== undefined) num = Math.min(opts.max, num);
+        set(num);
+        opts?.onChange?.(num);
+      }
+    } else {
+      delete state.paramExprs[paramKey];
+      let num = typeof exprOrVal === "number" ? exprOrVal : parseFloat(exprOrVal);
+      if (Number.isFinite(num)) {
+        if (typeof exprOrVal === "string") {
+          num = toModel(num);
+        }
+        if (opts?.transformValue) num = opts.transformValue(num);
+        if (opts?.isInteger) num = Math.round(num);
+        if (opts?.min !== undefined) num = Math.max(opts.min, num);
+        if (opts?.max !== undefined) num = Math.min(opts.max, num);
+        set(num);
+        opts?.onChange?.(num);
+      }
+    }
+    syncView();
+  };
+
+  badge.addEventListener("click", () => {
+    const expr = state.paramExprs[paramKey];
+    if (expr !== undefined) {
+      delete state.paramExprs[paramKey];
+      syncView();
+      opts?.onChange?.(get());
+    } else {
+      const rect = badge.getBoundingClientRect();
+      const entries = varPickerEntries(doc.variables, (name) => {
+        setValue(name);
+        inp.focus();
+      });
+      fxMenu.show(rect.left, rect.bottom + 2, entries);
+    }
   });
-  return { el: dField(label, inp), inp };
+
+  const commit = () => {
+    opts?.onFork?.();
+    const raw = inp.value.trim();
+    if (raw === "") {
+      syncView();
+      return;
+    }
+    setValue(raw);
+  };
+
+  inp.addEventListener("change", commit);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      commit();
+      inp.blur();
+    }
+  });
+
+  syncView();
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;align-items:center;gap:4px;flex:1 1 auto;width:0;";
+  wrap.appendChild(inp);
+  wrap.appendChild(badge);
+
+  attachVarAutocomplete(doc, inp, wrap);
+
+  const el = dField(label, wrap);
+  return { el, inp, badge, setValue, updateBadge, syncView };
 }
 
-/** Like numRow, but `set` also receives the input so a ToolDef load can repopulate it. */
-export function syncableInput(
-  doc: CADDocument,
-  label: string,
-  get: () => number,
-  set: (v: number, inp: HTMLInputElement) => void,
-  unitConv?: "len" | "feed",
-): { el: HTMLElement; inp: HTMLInputElement } {
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.className = "dim";
-  inp.step = "any";
-  const du = doc.displayUnit;
-  const toView = (v: number): string =>
-    unitConv === "feed" ? feedView(v, doc) : unitConv === "len" ? lenView(v, doc) : String(v);
-  const toModel = (v: number) => (unitConv ? toMM(v, du) : v);
-
-  inp.value = toView(get());
-  inp.addEventListener("change", () => {
-    const v = parseFloat(inp.value);
-    if (Number.isFinite(v)) set(toModel(v), inp);
-  });
-  return { el: dField(label, inp), inp };
-}
 
 /** Backdrop + draggable dialog frame (header, close, body). */
 export function buildDialogShell(

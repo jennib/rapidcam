@@ -314,6 +314,11 @@ export interface CAMOperation {
    * layer when it has a recipe.
    */
   laserOverride?: boolean;
+  /**
+   * Raw formula expressions (e.g. `"-stock"`, `"toolDia * 0.5"`) driving numeric
+   * CAM fields parametrically. Evaluated against active document variables and stock.
+   */
+  paramExprs?: Record<string, string>;
 }
 
 /**

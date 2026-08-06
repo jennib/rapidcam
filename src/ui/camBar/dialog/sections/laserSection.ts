@@ -21,9 +21,7 @@ import type { OpState, OpDialogEvents } from "../opDialogState";
 import {
   dSection,
   dField,
-  numRow,
-  lenView,
-  feedView,
+  paramRow,
   feedU,
   beamLayer,
 } from "../dialogDom";
@@ -35,39 +33,53 @@ export function buildLaserSection(
 ): { root: HTMLElement; update: () => void } {
   const sec = dSection("Laser");
 
-  const feed = numRow(
+  const feed = paramRow(
     doc,
+    state,
+    "feedrate",
     `Feed (${doc.displayUnit}/min)`,
     () => state.feedrate,
     (v) => {
       state.feedrate = Math.max(1, v);
     },
     "feed",
+    { min: 1 },
   );
-  const power = numRow(
+  const power = paramRow(
     doc,
+    state,
+    "laserPower",
     "Power (%)",
     () => state.laserPower,
     (v) => {
       state.laserPower = Math.min(100, Math.max(0, v));
     },
+    undefined,
+    { min: 0, max: 100 },
   );
-  const passes = numRow(
+  const passes = paramRow(
     doc,
+    state,
+    "laserPasses",
     "Passes",
     () => state.laserPasses,
     (v) => {
       state.laserPasses = Math.max(1, Math.round(v));
     },
+    undefined,
+    { isInteger: true, min: 1 },
   );
-  const kerf = numRow(
+  const kerf = paramRow(
     doc,
+    state,
+    "kerfWidth",
     `Kerf width (${doc.displayUnit})`,
     () => state.kerfWidth,
     (v) => {
       state.kerfWidth = Math.max(0, v);
     },
     "len",
+    { min: 0 },
   );
 
   const layerBanner = document.createElement("div");
@@ -93,6 +105,8 @@ export function buildLaserSection(
     for (const f of beamFields) {
       f.inp.disabled = !!layer;
       f.inp.style.opacity = layer ? "0.55" : "";
+      f.badge.style.pointerEvents = layer ? "none" : "auto";
+      f.badge.style.opacity = layer ? "0.25" : "";
     }
     if (layer) {
       layerNote.textContent = `⚡ Power, speed and passes come from the "${layer.name}" layer.`;
@@ -134,54 +148,70 @@ export function buildLaserSection(
   fillChk.className = "settings-checkbox";
   fillChk.checked = state.laserFill;
   const fillRow = dField("Fill area (engrave solid)", fillChk);
-  const fillSpacing = numRow(
+  const fillSpacing = paramRow(
     doc,
+    state,
+    "laserFillSpacing",
     `Fill spacing (${doc.displayUnit})`,
     () => state.laserFillSpacing,
     (v) => {
       state.laserFillSpacing = Math.max(0.01, v);
     },
     "len",
+    { min: 0.01 },
   );
-  const overscan = numRow(
+  const overscan = paramRow(
     doc,
+    state,
+    "laserOverscan",
     `Overscan (${doc.displayUnit}, 0=off)`,
     () => state.laserOverscan,
     (v) => {
       state.laserOverscan = Math.max(0, v);
     },
     "len",
+    { min: 0 },
   );
   sec.appendChild(fillRow);
   sec.appendChild(fillSpacing.el);
   sec.appendChild(overscan.el);
 
   // Raster engrave
-  const rLine = numRow(
+  const rLine = paramRow(
     doc,
+    state,
+    "rasterLineInterval",
     `Line interval (${doc.displayUnit})`,
     () => state.rasterLineInterval,
     (v) => {
       state.rasterLineInterval = Math.max(0.001, v);
     },
     "len",
+    { min: 0.001 },
   );
-  const rDot = numRow(
+  const rDot = paramRow(
     doc,
+    state,
+    "rasterDotPitch",
     `Dot pitch (${doc.displayUnit}, 0=square)`,
     () => state.rasterDotPitch,
     (v) => {
       state.rasterDotPitch = Math.max(0, v);
     },
     "len",
+    { min: 0 },
   );
-  const rMin = numRow(
+  const rMin = paramRow(
     doc,
+    state,
+    "rasterMinPower",
     "Min power (%)",
     () => state.rasterMinPower,
     (v) => {
       state.rasterMinPower = Math.min(100, Math.max(0, v));
     },
+    undefined,
+    { min: 0, max: 100 },
   );
 
   const rDitherSel = document.createElement("select");
@@ -256,10 +286,10 @@ export function buildLaserSection(
     state.laserPasses = p.laserPasses;
     if (p.kerfWidth !== undefined) state.kerfWidth = p.kerfWidth;
     if (p.airAssist !== undefined) state.airAssist = p.airAssist;
-    feed.inp.value = feedView(p.feedrate, doc);
-    power.inp.value = String(p.laserPower);
-    passes.inp.value = String(p.laserPasses);
-    if (p.kerfWidth !== undefined) kerf.inp.value = lenView(p.kerfWidth, doc);
+    feed.setValue(p.feedrate);
+    power.setValue(p.laserPower);
+    passes.setValue(p.laserPasses);
+    if (p.kerfWidth !== undefined) kerf.setValue(p.kerfWidth);
     if (p.airAssist !== undefined) airChk.checked = p.airAssist;
   };
 
@@ -367,10 +397,17 @@ export function buildLaserSection(
   const update = () => {
     updateLayerBanner();
     const active = beamLayer(doc, [...state.entityIds], state.laserOverride)?.laser;
-    feed.inp.value = feedView(active?.feedrate ?? state.feedrate, doc);
-    power.inp.value = String(active?.laserPower ?? state.laserPower);
-    passes.inp.value = String(active?.laserPasses ?? state.laserPasses);
-    kerf.inp.value = lenView(active?.kerfWidth ?? state.kerfWidth, doc);
+    if (active) {
+      feed.setValue(active.feedrate);
+      power.setValue(active.laserPower);
+      passes.setValue(active.laserPasses);
+      if (active.kerfWidth !== undefined) kerf.setValue(active.kerfWidth);
+    } else {
+      feed.syncView();
+      power.syncView();
+      passes.syncView();
+      kerf.syncView();
+    }
     const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
     const isEngrave = state.combo === "engrave";
     const isRaster = isEngrave && opTargetsImage(state.entityIds);

@@ -728,7 +728,13 @@ export class App {
   }
 
   private runSolve(pins?: PinMap): void {
-    evaluateAll(this.doc.variables, this.doc.dimensions, this.doc.displayUnit, this.doc.stockThickness);
+    evaluateAll(
+      this.doc.variables,
+      this.doc.dimensions,
+      this.doc.displayUnit,
+      this.doc.stockThickness,
+      this.doc.operations,
+    );
     const res = solve(this.doc, pins);
     if (!pins) {
       this.lastSolveResult = res;

@@ -4,7 +4,7 @@
 import type { CADDocument } from "../../../../model/document";
 import type { LeadType } from "../../../../cam/types";
 import type { OpState } from "../opDialogState";
-import { dSection, dField, numRow } from "../dialogDom";
+import { dSection, dField, paramRow } from "../dialogDom";
 
 export function buildLeadSection(
   doc: CADDocument,
@@ -41,14 +41,17 @@ export function buildLeadSection(
     },
   );
   leadSec.appendChild(dField("Lead-in", liSel));
-  const liLenRow = numRow(
+  const liLenRow = paramRow(
     doc,
+    state,
+    "leadInLen",
     `Lead-in length (${doc.displayUnit})`,
     () => state.leadInLen,
     (v) => {
       state.leadInLen = Math.max(0.1, v);
     },
     "len",
+    { min: 0.1 },
   );
   leadSec.appendChild(liLenRow.el);
 
@@ -59,14 +62,17 @@ export function buildLeadSection(
     },
   );
   leadSec.appendChild(dField("Lead-out", loSel));
-  const loLenRow = numRow(
+  const loLenRow = paramRow(
     doc,
+    state,
+    "leadOutLen",
     `Lead-out length (${doc.displayUnit})`,
     () => state.leadOutLen,
     (v) => {
       state.leadOutLen = Math.max(0.1, v);
     },
     "len",
+    { min: 0.1 },
   );
   leadSec.appendChild(loLenRow.el);
 

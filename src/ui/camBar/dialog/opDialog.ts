@@ -4,34 +4,20 @@
  */
 import type { CADDocument } from "../../../model/document";
 import { RasterImageEntity } from "../../../model/entities";
-import {
-  type CAMOperation,
-  type CAMOpType,
-  type ToolType,
-  type ChamferSide,
-  type CoolantMode,
-  type LeadType,
-  DEFAULTS,
-} from "../../../cam/types";
-import { StorageKeys } from "../../../core/storageKeys";
+import type { CAMOperation, CAMOpType } from "../../../cam/types";
 import { registerModal } from "../../modal";
 import {
   type OpCombo,
   AUTO_NAME_RE,
-  comboOf,
-  defaultCombo,
   autoName,
   checkOpSelection,
-  legacyPocketSeeds,
   refsFromSeeds,
-  seedsFromRegions,
 } from "../../camBarHelpers";
 import { collectClosedLoops } from "../../../cam/loops";
 import { regionAtPoint } from "../../../cam/regions";
 import { nextId } from "../../../model/ids";
-import type { Vec2 } from "../../../core/vec2";
-import { type OpState, OpDialogEvents } from "./opDialogState";
-import { dField } from "./dialogDom";
+import { type OpState, OpDialogEvents, createInitialOpState } from "./opDialogState";
+import { dField, buildDialogShell } from "./dialogDom";
 import { buildToolSection } from "./sections/toolSection";
 import { buildCutSection } from "./sections/cutSection";
 import { buildLaserSection } from "./sections/laserSection";
@@ -47,121 +33,6 @@ export interface OpDialogOptions {
   highlightOp?: (op: CAMOperation | null) => void;
 }
 
-export function buildDialogShell(
-  isNew: boolean,
-  onClose: () => void,
-): { backdrop: HTMLElement; dialog: HTMLElement; body: HTMLElement } {
-  const backdrop = document.createElement("div");
-  backdrop.id = "tp-dialog-backdrop";
-  backdrop.className = "tp-backdrop";
-  backdrop.style.pointerEvents = "none";
-  backdrop.style.background = "none";
-
-  const dialog = document.createElement("div");
-  dialog.className = "tp-dialog";
-  dialog.style.pointerEvents = "auto";
-  dialog.addEventListener("click", (e) => e.stopPropagation());
-  backdrop.appendChild(dialog);
-
-  const DIALOG_W = 380;
-  const applyPos = (left: number, top: number) => {
-    const maxLeft = Math.max(0, window.innerWidth - 100);
-    const maxTop = Math.max(0, window.innerHeight - 50);
-    dialog.style.position = "absolute";
-    dialog.style.margin = "0";
-    dialog.style.left = `${Math.max(0, Math.min(left, maxLeft))}px`;
-    dialog.style.top = `${Math.max(0, Math.min(top, maxTop))}px`;
-  };
-
-  let positioned = false;
-  const storedPos = localStorage.getItem(StorageKeys.toolpathDialogPosition);
-  if (storedPos) {
-    try {
-      const { left, top } = JSON.parse(storedPos);
-      const lVal = parseFloat(left);
-      const tVal = parseFloat(top);
-      if (!Number.isNaN(lVal) && !Number.isNaN(tVal)) {
-        applyPos(lVal, tVal);
-        positioned = true;
-      }
-    } catch {
-      // Ignore malformed localStorage data
-    }
-  }
-  if (!positioned) {
-    const rp = document.getElementById("right-panel")?.getBoundingClientRect();
-    const rightEdge = rp ? rp.left : window.innerWidth;
-    applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
-  }
-
-  const onResize = () => {
-    if (!backdrop.isConnected) {
-      window.removeEventListener("resize", onResize);
-      return;
-    }
-    applyPos(parseFloat(dialog.style.left) || 0, parseFloat(dialog.style.top) || 0);
-  };
-  window.addEventListener("resize", onResize);
-
-  const dheader = document.createElement("div");
-  dheader.className = "tp-dialog-header";
-  dheader.style.cursor = "move";
-
-  let isDragging = false,
-    startX = 0,
-    startY = 0,
-    startLeft = 0,
-    startTop = 0;
-  const onMouseMove = (e: MouseEvent) => {
-    if (!isDragging) return;
-    dialog.style.left = `${startLeft + (e.clientX - startX)}px`;
-    dialog.style.top = `${startTop + (e.clientY - startY)}px`;
-  };
-  const onMouseUp = () => {
-    isDragging = false;
-    document.removeEventListener("mousemove", onMouseMove);
-    document.removeEventListener("mouseup", onMouseUp);
-    localStorage.setItem(
-      StorageKeys.toolpathDialogPosition,
-      JSON.stringify({
-        left: dialog.style.left,
-        top: dialog.style.top,
-      }),
-    );
-  };
-  dheader.addEventListener("mousedown", (e) => {
-    if ((e.target as HTMLElement).closest(".tp-dialog-close")) return;
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    const rect = dialog.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-    dialog.style.position = "absolute";
-    dialog.style.margin = "0";
-    dialog.style.left = `${startLeft}px`;
-    dialog.style.top = `${startTop}px`;
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  });
-
-  const dtitle = document.createElement("h3");
-  dtitle.textContent = isNew ? "Add Toolpath" : "Edit Toolpath";
-  dtitle.style.userSelect = "none";
-  dheader.appendChild(dtitle);
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "tp-dialog-close";
-  closeBtn.innerHTML = "&#x2715;";
-  closeBtn.addEventListener("click", () => onClose());
-  dheader.appendChild(closeBtn);
-  dialog.appendChild(dheader);
-
-  const body = document.createElement("div");
-  body.className = "tp-dialog-body";
-  dialog.appendChild(body);
-
-  return { backdrop, dialog, body };
-}
 
 export function openOpDialog(options: OpDialogOptions): void {
   const { doc, existing, pushHistory, renderOps, highlightOp } = options;
@@ -171,85 +42,8 @@ export function openOpDialog(options: OpDialogOptions): void {
   const isNew = existing === null;
   const isLaser = doc.isLaser;
   const preSelectedEnts = doc.entities.filter((e) => e.selected && !e.isConstruction);
-  const preSelected = new Set(preSelectedEnts.map((e) => e.id));
 
-  const initialCombo: OpCombo = defaultCombo(existing, preSelectedEnts, isLaser);
-  const state: OpState = {
-    name: existing?.name ?? autoName(initialCombo, doc),
-    combo: initialCombo,
-    toolId: existing?.toolId,
-    toolType: (existing?.toolType ??
-      (!isLaser &&
-      initialCombo === "engrave" &&
-      preSelectedEnts.some((e) => e instanceof RasterImageEntity)
-        ? "ball-nose"
-        : DEFAULTS.toolType)) as ToolType,
-    toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
-    diameter: existing?.diameter ?? DEFAULTS.diameter,
-    vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
-    tipAngle: existing?.tipAngle ?? DEFAULTS.tipAngle,
-    feedrate: existing?.feedrate ?? DEFAULTS.feedrate,
-    plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,
-    spindleSpeed: existing?.spindleSpeed ?? DEFAULTS.spindleSpeed,
-    safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
-    depth: existing?.depth ?? DEFAULTS.depth,
-    stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
-    peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
-    pocketBoundaryMode: (existing?.regions?.length ? "regions" : "entities") as
-      | "regions"
-      | "entities",
-    finishPass: existing?.finishPass ?? false,
-    finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
-    chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
-    chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
-    sharpenCorners: existing?.sharpenCorners ?? false,
-    vStep: existing?.vStep ?? DEFAULTS.vStep,
-    vHopClearance: existing?.vHopClearance ?? 0,
-    coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
-    entityIds: new Set<string>(existing?.entityIds ?? [...preSelected]),
-    islandIds: new Set<string>(existing?.islandIds ?? []),
-    followPattern: existing?.followPattern ?? true,
-    face: (existing?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
-    regionSeeds: existing?.regions?.length
-      ? seedsFromRegions(doc, existing.regions)
-      : existing && comboOf(existing) === "pocket"
-        ? legacyPocketSeeds(existing, doc)
-        : ([] as Vec2[]),
-    tabsEnabled: existing?.tabs?.enabled ?? false,
-    tabStrategy: (existing?.tabs?.strategy ?? "count") as "count" | "spacing",
-    tabCount: existing?.tabs?.count ?? 4,
-    tabSpacing: existing?.tabs?.spacing ?? 40,
-    tabWidth: existing?.tabs?.width ?? 4,
-    tabHeight: existing?.tabs?.height ?? 2,
-    stepover: existing?.stepover ?? DEFAULTS.stepover,
-    cornerStyle: existing?.cornerStyle ?? "none",
-    cutDirection:
-      existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
-    rampAngle: existing?.rampAngle,
-    pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
-    leadInType: (existing?.leadIn?.type ?? "none") as LeadType,
-    leadInLen: existing?.leadIn?.length ?? 2,
-    leadOutType: (existing?.leadOut?.type ?? "none") as LeadType,
-    leadOutLen: existing?.leadOut?.length ?? 2,
-    laserPower: existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
-    laserPasses: existing?.laserPasses ?? DEFAULTS.laserPasses,
-    kerfWidth: existing?.kerfWidth ?? DEFAULTS.kerfWidth,
-    laserFill: existing?.laserFill ?? false,
-    laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
-    laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
-    airAssist: existing?.airAssist ?? false,
-    laserOverride: existing?.laserOverride ?? false,
-    rasterLineInterval:
-      existing?.rasterLineInterval ??
-      (isLaser
-        ? DEFAULTS.rasterLineInterval
-        : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * 0.1)),
-    rasterDotPitch: existing?.rasterDotPitch ?? 0,
-    rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
-    rasterInvert: existing?.rasterInvert ?? false,
-    rasterDither: existing?.rasterDither ?? "none",
-    reliefGamma: existing?.reliefGamma ?? 1,
-  };
+  const state: OpState = createInitialOpState(existing, doc, preSelectedEnts);
 
   const events = new OpDialogEvents();
   let geomCleanup: () => void = () => {};
@@ -575,6 +369,10 @@ export function openOpDialog(options: OpDialogOptions): void {
       reliefGamma:
         !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1
           ? state.reliefGamma
+          : undefined,
+      paramExprs:
+        Object.keys(state.paramExprs).length > 0
+          ? { ...state.paramExprs }
           : undefined,
     };
 

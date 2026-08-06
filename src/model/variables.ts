@@ -3,6 +3,7 @@ import { parseLength } from "../core/units";
 import { evalExpr, type VarMap } from "../core/expr";
 import { nextId } from "./ids";
 import type { Dimension } from "./dimensions";
+import type { CAMOperation } from "../cam/types";
 
 export interface Variable {
   id: string;
@@ -91,14 +92,341 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit, stoc
 }
 
 /**
- * Evaluate all variable exprs, then evaluate any dimension expressions that
- * reference variables. Call this before every solve. (Entity scalar formulas —
- * circle radius, image width/height/angle, etc. — are ScalarBindings resolved by
- * the solver, not here.)
+ * Safely assign and clamp an evaluated numeric value to a CAM operation property.
  */
-export function evaluateAll(variables: Variable[], dims: Dimension[], displayUnit: Unit, stockThickness?: number): void {
-  // Phase 1: evaluate variables in dependency order (supports variable-to-variable
-  // references, e.g. margin = width * 0.1).
+export function applyOpParam(op: CAMOperation, key: string, v: number): boolean {
+  if (!Number.isFinite(v)) return false;
+  switch (key) {
+    case "depth": {
+      const target = -Math.abs(v);
+      if (op.depth !== target) {
+        op.depth = target;
+        return true;
+      }
+      return false;
+    }
+    case "stepdown": {
+      const target = Math.max(0.01, Math.abs(v));
+      if (op.stepdown !== target) {
+        op.stepdown = target;
+        return true;
+      }
+      return false;
+    }
+    case "stepover": {
+      const target = Math.min(1, Math.max(0.01, v));
+      if (op.stepover !== target) {
+        op.stepover = target;
+        return true;
+      }
+      return false;
+    }
+    case "feedrate": {
+      const target = Math.max(1, v);
+      if (op.feedrate !== target) {
+        op.feedrate = target;
+        return true;
+      }
+      return false;
+    }
+    case "plungeRate": {
+      const target = Math.max(1, v);
+      if (op.plungeRate !== target) {
+        op.plungeRate = target;
+        return true;
+      }
+      return false;
+    }
+    case "spindleSpeed": {
+      const target = Math.round(Math.max(1, v));
+      if (op.spindleSpeed !== target) {
+        op.spindleSpeed = target;
+        return true;
+      }
+      return false;
+    }
+    case "safeZ": {
+      const target = Math.max(0.1, v);
+      if (op.safeZ !== target) {
+        op.safeZ = target;
+        return true;
+      }
+      return false;
+    }
+    case "toolNumber": {
+      const target = Math.max(1, Math.round(v));
+      if (op.toolNumber !== target) {
+        op.toolNumber = target;
+        return true;
+      }
+      return false;
+    }
+    case "peckDepth": {
+      const target = Math.max(0, v);
+      if (op.peckDepth !== target) {
+        op.peckDepth = target;
+        return true;
+      }
+      return false;
+    }
+    case "finishAllowance": {
+      const target = Math.max(0, v);
+      if (op.finishAllowance !== target) {
+        op.finishAllowance = target;
+        return true;
+      }
+      return false;
+    }
+    case "chamferWidth": {
+      const target = Math.max(0, v);
+      if (op.chamferWidth !== target) {
+        op.chamferWidth = target;
+        return true;
+      }
+      return false;
+    }
+    case "vStep": {
+      const target = Math.max(0.01, v);
+      if (op.vStep !== target) {
+        op.vStep = target;
+        return true;
+      }
+      return false;
+    }
+    case "vHopClearance": {
+      const target = Math.max(0, v);
+      if (op.vHopClearance !== target) {
+        op.vHopClearance = target;
+        return true;
+      }
+      return false;
+    }
+    case "rampAngle": {
+      const target = Math.min(45, Math.max(0.5, v));
+      if (op.rampAngle !== target) {
+        op.rampAngle = target;
+        return true;
+      }
+      return false;
+    }
+    case "diameter": {
+      const target = Math.max(0.01, v);
+      if (op.diameter !== target) {
+        op.diameter = target;
+        return true;
+      }
+      return false;
+    }
+    case "vAngle": {
+      const target = Math.min(179, Math.max(1, v));
+      if (op.vAngle !== target) {
+        op.vAngle = target;
+        return true;
+      }
+      return false;
+    }
+    case "tipAngle": {
+      const target = Math.min(179, Math.max(1, v));
+      if (op.tipAngle !== target) {
+        op.tipAngle = target;
+        return true;
+      }
+      return false;
+    }
+    case "tabCount":
+    case "tabs.count": {
+      if (op.tabs) {
+        const target = Math.max(1, Math.round(v));
+        if (op.tabs.count !== target) {
+          op.tabs.count = target;
+          return true;
+        }
+      }
+      return false;
+    }
+    case "tabSpacing":
+    case "tabs.spacing": {
+      if (op.tabs) {
+        const target = Math.max(1, v);
+        if (op.tabs.spacing !== target) {
+          op.tabs.spacing = target;
+          return true;
+        }
+      }
+      return false;
+    }
+    case "tabWidth":
+    case "tabs.width": {
+      if (op.tabs) {
+        const target = Math.max(0.1, v);
+        if (op.tabs.width !== target) {
+          op.tabs.width = target;
+          return true;
+        }
+      }
+      return false;
+    }
+    case "tabHeight":
+    case "tabs.height": {
+      if (op.tabs) {
+        const target = Math.max(0.1, v);
+        if (op.tabs.height !== target) {
+          op.tabs.height = target;
+          return true;
+        }
+      }
+      return false;
+    }
+    case "laserPower": {
+      const target = Math.min(100, Math.max(0, v));
+      if (op.laserPower !== target) {
+        op.laserPower = target;
+        return true;
+      }
+      return false;
+    }
+    case "laserPasses": {
+      const target = Math.max(1, Math.round(v));
+      if (op.laserPasses !== target) {
+        op.laserPasses = target;
+        return true;
+      }
+      return false;
+    }
+    case "kerfWidth": {
+      const target = Math.max(0, v);
+      if (op.kerfWidth !== target) {
+        op.kerfWidth = target;
+        return true;
+      }
+      return false;
+    }
+    case "laserFillSpacing": {
+      const target = Math.max(0.001, v);
+      if (op.laserFillSpacing !== target) {
+        op.laserFillSpacing = target;
+        return true;
+      }
+      return false;
+    }
+    case "laserOverscan": {
+      const target = Math.max(0, v);
+      if (op.laserOverscan !== target) {
+        op.laserOverscan = target;
+        return true;
+      }
+      return false;
+    }
+    case "rasterLineInterval": {
+      const target = Math.max(0.001, v);
+      if (op.rasterLineInterval !== target) {
+        op.rasterLineInterval = target;
+        return true;
+      }
+      return false;
+    }
+    case "rasterDotPitch": {
+      const target = Math.max(0, v);
+      if (op.rasterDotPitch !== target) {
+        op.rasterDotPitch = target;
+        return true;
+      }
+      return false;
+    }
+    case "rasterMinPower": {
+      const target = Math.min(100, Math.max(0, v));
+      if (op.rasterMinPower !== target) {
+        op.rasterMinPower = target;
+        return true;
+      }
+      return false;
+    }
+    case "reliefGamma": {
+      const target = Math.max(0.01, v);
+      if (op.reliefGamma !== target) {
+        op.reliefGamma = target;
+        return true;
+      }
+      return false;
+    }
+    case "leadInLen":
+    case "leadIn.length": {
+      if (op.leadIn) {
+        const target = Math.max(0.1, v);
+        if (op.leadIn.length !== target) {
+          op.leadIn.length = target;
+          return true;
+        }
+      }
+      return false;
+    }
+    case "leadOutLen":
+    case "leadOut.length": {
+      if (op.leadOut) {
+        const target = Math.max(0.1, v);
+        if (op.leadOut.length !== target) {
+          op.leadOut.length = target;
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Re-evaluate all CAM operations' `paramExprs` against current variables and stock.
+ */
+export function evaluateOperations(
+  ops: CAMOperation[],
+  variablesOrDoc: Variable[] | { variables: Variable[]; stockThickness?: number },
+  stockThickness?: number,
+): boolean {
+  const vars = Array.isArray(variablesOrDoc) ? variablesOrDoc : variablesOrDoc.variables;
+  const stock = Array.isArray(variablesOrDoc)
+    ? stockThickness
+    : (variablesOrDoc.stockThickness ?? stockThickness);
+  const vm = varMap(vars, stock);
+  let changed = false;
+  for (const op of ops) {
+    if (!op.paramExprs) continue;
+    for (const [key, expr] of Object.entries(op.paramExprs)) {
+      if (!expr || expr.trim() === "") continue;
+      const v = evalExpr(expr, vm);
+      if (v !== null && Number.isFinite(v)) {
+        if (applyOpParam(op, key, v)) changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+/**
+ * Evaluate all variable exprs, dimension expressions, and CAM operation expressions
+ * that reference variables. Call this before every solve or when variables change.
+ */
+export function evaluateAll(
+  variables: Variable[],
+  dims: Dimension[],
+  displayUnitOrDoc: Unit | { displayUnit: Unit; stockThickness?: number } = "mm",
+  stockThicknessOrOps?: number | CAMOperation[],
+  ops?: CAMOperation[],
+): boolean {
+  const displayUnit =
+    typeof displayUnitOrDoc === "string" ? displayUnitOrDoc : displayUnitOrDoc.displayUnit;
+  const stockThickness =
+    typeof displayUnitOrDoc === "object"
+      ? displayUnitOrDoc.stockThickness
+      : typeof stockThicknessOrOps === "number"
+        ? stockThicknessOrOps
+        : undefined;
+  const resolvedOps =
+    Array.isArray(stockThicknessOrOps) ? stockThicknessOrOps : ops;
+
+  let changed = false;
+
+  // Phase 1: evaluate variables in dependency order
   evaluateVariables(variables, displayUnit, stockThickness);
 
   // Phase 2: update dimension values from their expressions
@@ -106,8 +434,20 @@ export function evaluateAll(variables: Variable[], dims: Dimension[], displayUni
   for (const d of dims) {
     if (!d.expr) continue;
     const v = evalExpr(d.expr, vm);
-    if (v !== null && v > 0) d.value = v;
+    if (v !== null && v > 0 && d.value !== v) {
+      d.value = v;
+      changed = true;
+    }
   }
+
+  // Phase 3: update CAM operation values from their parametric expressions
+  if (resolvedOps && resolvedOps.length > 0) {
+    if (evaluateOperations(resolvedOps, variables, stockThickness)) {
+      changed = true;
+    }
+  }
+
+  return changed;
 }
 
 export function isValidName(name: string): boolean {

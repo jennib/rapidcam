@@ -83,6 +83,7 @@ export interface OpState {
   rasterInvert: boolean;
   rasterDither: DitherMode;
   reliefGamma: number;
+  paramExprs: Record<string, string>;
 }
 
 export function autoOpName(combo: OpCombo, doc: CADDocument): string {
@@ -192,6 +193,7 @@ export function createInitialOpState(
     rasterInvert: existing?.rasterInvert ?? false,
     rasterDither: existing?.rasterDither ?? "none",
     reliefGamma: existing?.reliefGamma ?? 1,
+    paramExprs: existing?.paramExprs ? { ...existing.paramExprs } : {},
   };
 }
 

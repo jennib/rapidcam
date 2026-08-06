@@ -9,10 +9,10 @@ import {
   type ChamferSide,
   type CoolantMode,
 } from "../../../../cam/types";
-import { toMM, formatLength } from "../../../../core/units";
+import { formatLength } from "../../../../core/units";
 import { getMachineHasCoolant } from "../../../../core/prefs";
 import type { OpState, OpDialogEvents } from "../opDialogState";
-import { dSection, dField, lenU, lenView } from "../dialogDom";
+import { dSection, dField, lenU, paramRow } from "../dialogDom";
 
 export interface CutSectionController {
   root: HTMLElement;
@@ -29,33 +29,35 @@ export function buildCutSection(
   const isLaser = doc.isLaser;
   const cutSec = dSection("Cut");
 
-  const depthRow = document.createElement("div");
-  depthRow.className = "tp-depth-row";
-  const depthInp = document.createElement("input");
-  depthInp.type = "number";
-  depthInp.className = "dim";
-  depthInp.step = "any";
-  depthInp.value = lenView(state.depth, doc);
-  depthInp.addEventListener("change", () => {
-    const v = parseFloat(depthInp.value);
-    if (Number.isFinite(v)) {
-      state.depth = toMM(v, du);
+  const depthRow = paramRow(
+    doc,
+    state,
+    "depth",
+    `Depth (${du})`,
+    () => state.depth,
+    (v) => {
+      state.depth = -Math.abs(v);
       events.emitUpdateVBitHint();
       updateReliefEstimate();
-    }
-  });
+    },
+    "len",
+    {
+      transformValue: (v) => -Math.abs(v),
+      onChange: () => {
+        events.emitUpdateVBitHint();
+        updateReliefEstimate();
+      },
+    },
+  );
   const throughBtn = document.createElement("button");
   throughBtn.className = "cbtn";
   throughBtn.textContent = "⊥ stock";
   throughBtn.title = `Set to stock thickness (${lenU(doc.stockThickness, doc)})`;
   throughBtn.addEventListener("click", () => {
-    state.depth = -doc.stockThickness;
-    depthInp.value = lenView(state.depth, doc);
-    updateReliefEstimate();
+    depthRow.setValue("-stock");
   });
-  depthRow.appendChild(depthInp);
-  depthRow.appendChild(throughBtn);
-  cutSec.appendChild(dField(`Depth (${du})`, depthRow));
+  depthRow.el.querySelector(".tp-fx-badge")?.after(throughBtn);
+  cutSec.appendChild(depthRow.el);
 
   // V-bit effective width hint
   const vbitHint = document.createElement("div");
@@ -74,107 +76,124 @@ export function buildCutSection(
     vbitHint.style.display = "block";
   };
 
-  const stepInp = document.createElement("input");
-  stepInp.type = "number";
-  stepInp.className = "dim";
-  stepInp.step = "any";
-  stepInp.value = lenView(state.stepdown, doc);
-  stepInp.addEventListener("change", () => {
-    const v = parseFloat(stepInp.value);
-    if (Number.isFinite(v)) state.stepdown = toMM(v, du);
-    updateReliefEstimate();
-  });
-  const stepRow = dField(`Stepdown (${du})`, stepInp);
-  cutSec.appendChild(stepRow);
+  const stepRow = paramRow(
+    doc,
+    state,
+    "stepdown",
+    `Stepdown (${du})`,
+    () => state.stepdown,
+    (v) => {
+      state.stepdown = Math.max(0.01, v);
+      updateReliefEstimate();
+    },
+    "len",
+    {
+      min: 0.01,
+      onChange: () => updateReliefEstimate(),
+    },
+  );
+  cutSec.appendChild(stepRow.el);
 
   // Peck depth — drill ops only
-  const peckInp = document.createElement("input");
-  peckInp.type = "number";
-  peckInp.className = "dim";
-  peckInp.step = "any";
-  peckInp.min = "0";
-  peckInp.value = lenView(state.peckDepth, doc);
-  peckInp.addEventListener("change", () => {
-    const v = parseFloat(peckInp.value);
-    state.peckDepth = Number.isFinite(v) && v > 0 ? toMM(v, du) : 0;
-  });
-  const peckRow = dField(`Peck depth (${du}, 0=off)`, peckInp);
-  cutSec.appendChild(peckRow);
+  const peckRow = paramRow(
+    doc,
+    state,
+    "peckDepth",
+    `Peck depth (${du}, 0=off)`,
+    () => state.peckDepth,
+    (v) => {
+      state.peckDepth = Math.max(0, v);
+    },
+    "len",
+    { min: 0 },
+  );
+  cutSec.appendChild(peckRow.el);
 
-  const stepoverInp = document.createElement("input");
-  stepoverInp.type = "number";
-  stepoverInp.className = "dim";
-  stepoverInp.step = "any";
-  stepoverInp.min = "0.01";
-  stepoverInp.max = "1";
-  stepoverInp.value = String(state.stepover);
-  stepoverInp.addEventListener("change", () => {
-    const v = parseFloat(stepoverInp.value);
-    if (Number.isFinite(v)) state.stepover = Math.min(1, Math.max(0.01, v));
-  });
-  const stepoverRow = dField("Stepover (0–1)", stepoverInp);
-  cutSec.appendChild(stepoverRow);
+  const stepoverRow = paramRow(
+    doc,
+    state,
+    "stepover",
+    "Stepover (0–1)",
+    () => state.stepover,
+    (v) => {
+      state.stepover = Math.min(1, Math.max(0.01, v));
+    },
+    undefined,
+    { min: 0.01, max: 1 },
+  );
+  cutSec.appendChild(stepoverRow.el);
 
   // V-carve pitch
-  const vStepInp = document.createElement("input");
-  vStepInp.type = "number";
-  vStepInp.className = "dim";
-  vStepInp.step = "any";
-  vStepInp.min = "0.01";
-  vStepInp.value = lenView(state.vStep, doc);
-  vStepInp.addEventListener("change", () => {
-    const v = parseFloat(vStepInp.value);
-    if (Number.isFinite(v) && v > 0) state.vStep = toMM(v, du);
-  });
-  const vStepRow = dField(`V-carve pitch (${du})`, vStepInp);
-  cutSec.appendChild(vStepRow);
+  const vStepRow = paramRow(
+    doc,
+    state,
+    "vStep",
+    `V-carve pitch (${du})`,
+    () => state.vStep,
+    (v) => {
+      state.vStep = Math.max(0.01, v);
+    },
+    "len",
+    { min: 0.01 },
+  );
+  cutSec.appendChild(vStepRow.el);
 
   // V-carve hop clearance
-  const vHopInp = document.createElement("input");
-  vHopInp.type = "number";
-  vHopInp.className = "dim";
-  vHopInp.step = "any";
-  vHopInp.min = "0";
-  vHopInp.value = lenView(state.vHopClearance, doc);
-  vHopInp.title =
-    "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.";
-  vHopInp.addEventListener("change", () => {
-    const v = parseFloat(vHopInp.value);
-    if (Number.isFinite(v) && v >= 0) state.vHopClearance = toMM(v, du);
-  });
-  const vHopRow = dField(`V-carve hop clearance (${du}, 0 = safe Z)`, vHopInp);
-  cutSec.appendChild(vHopRow);
+  const vHopRow = paramRow(
+    doc,
+    state,
+    "vHopClearance",
+    `V-carve hop clearance (${du}, 0 = safe Z)`,
+    () => state.vHopClearance,
+    (v) => {
+      state.vHopClearance = Math.max(0, v);
+    },
+    "len",
+    {
+      min: 0,
+      title:
+        "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.",
+    },
+  );
+  cutSec.appendChild(vHopRow.el);
 
   // Relief engrave
-  const reliefLineInp = document.createElement("input");
-  reliefLineInp.type = "number";
-  reliefLineInp.className = "dim";
-  reliefLineInp.step = "any";
-  reliefLineInp.min = "0.01";
-  reliefLineInp.value = lenView(state.rasterLineInterval, doc);
-  reliefLineInp.title =
-    "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.";
-  reliefLineInp.addEventListener("change", () => {
-    const v = parseFloat(reliefLineInp.value);
-    if (Number.isFinite(v) && v > 0) state.rasterLineInterval = toMM(v, du);
-    updateReliefEstimate();
-  });
-  const reliefLineRow = dField(`Relief stepover (${du})`, reliefLineInp);
-  cutSec.appendChild(reliefLineRow);
+  const reliefLineRow = paramRow(
+    doc,
+    state,
+    "rasterLineInterval",
+    `Relief stepover (${du})`,
+    () => state.rasterLineInterval,
+    (v) => {
+      state.rasterLineInterval = Math.max(0.01, v);
+      updateReliefEstimate();
+    },
+    "len",
+    {
+      min: 0.01,
+      title:
+        "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.",
+      onChange: () => updateReliefEstimate(),
+    },
+  );
+  cutSec.appendChild(reliefLineRow.el);
 
-  const reliefDotInp = document.createElement("input");
-  reliefDotInp.type = "number";
-  reliefDotInp.className = "dim";
-  reliefDotInp.step = "any";
-  reliefDotInp.min = "0";
-  reliefDotInp.value = lenView(state.rasterDotPitch, doc);
-  reliefDotInp.title = "Horizontal dot pitch. 0 = square dots (use the stepover).";
-  reliefDotInp.addEventListener("change", () => {
-    const v = parseFloat(reliefDotInp.value);
-    if (Number.isFinite(v) && v >= 0) state.rasterDotPitch = toMM(v, du);
-  });
-  const reliefDotRow = dField(`Relief dot pitch (${du}, 0 = square)`, reliefDotInp);
-  cutSec.appendChild(reliefDotRow);
+  const reliefDotRow = paramRow(
+    doc,
+    state,
+    "rasterDotPitch",
+    `Relief dot pitch (${du}, 0 = square)`,
+    () => state.rasterDotPitch,
+    (v) => {
+      state.rasterDotPitch = Math.max(0, v);
+    },
+    "len",
+    {
+      min: 0,
+      title: "Horizontal dot pitch. 0 = square dots (use the stepover).",
+    },
+  );
+  cutSec.appendChild(reliefDotRow.el);
 
   const reliefInvChk = document.createElement("input");
   reliefInvChk.type = "checkbox";
@@ -261,22 +280,23 @@ export function buildCutSection(
   const finishRow = dField("Finishing pass", finishChk);
   cutSec.appendChild(finishRow);
 
-  const finishAllowInp = document.createElement("input");
-  finishAllowInp.type = "number";
-  finishAllowInp.className = "dim";
-  finishAllowInp.step = "any";
-  finishAllowInp.min = "0";
-  finishAllowInp.value = lenView(state.finishAllowance, doc);
-  finishAllowInp.addEventListener("change", () => {
-    const v = parseFloat(finishAllowInp.value);
-    state.finishAllowance = Number.isFinite(v) && v >= 0 ? toMM(v, du) : 0;
-  });
-  const finishAllowRow = dField(`Finish allowance (${du})`, finishAllowInp);
-  cutSec.appendChild(finishAllowRow);
+  const finishAllowRow = paramRow(
+    doc,
+    state,
+    "finishAllowance",
+    `Finish allowance (${du})`,
+    () => state.finishAllowance,
+    (v) => {
+      state.finishAllowance = Math.max(0, v);
+    },
+    "len",
+    { min: 0 },
+  );
+  cutSec.appendChild(finishAllowRow.el);
 
   finishChk.addEventListener("change", () => {
     state.finishPass = finishChk.checked;
-    finishAllowRow.style.display = finishChk.checked ? "" : "none";
+    finishAllowRow.el.style.display = finishChk.checked ? "" : "none";
   });
 
   const cornerSelect = document.createElement("select");
@@ -316,31 +336,24 @@ export function buildCutSection(
   const dirRow = dField("Cut direction", dirSelect);
   cutSec.appendChild(dirRow);
 
-  const rampInp = document.createElement("input");
-  rampInp.type = "number";
-  rampInp.className = "dim";
-  rampInp.step = "any";
-  rampInp.min = "0.5";
-  rampInp.max = "45";
-  rampInp.value = state.rampAngle !== undefined ? String(state.rampAngle) : "";
-  rampInp.placeholder = "auto";
-  rampInp.addEventListener("change", () => {
-    const v = parseFloat(rampInp.value);
-    state.rampAngle =
-      rampInp.value.trim() === "" || !Number.isFinite(v)
-        ? undefined
-        : Math.max(0.5, Math.min(45, v));
-    if (state.rampAngle !== undefined) rampInp.value = String(state.rampAngle);
-  });
-  const rampRow = dField("Plunge ramp angle (°)", rampInp);
-  cutSec.appendChild(rampRow);
+  const rampRow = paramRow(
+    doc,
+    state,
+    "rampAngle",
+    "Plunge ramp angle (°)",
+    () => state.rampAngle ?? 0,
+    (v) => {
+      state.rampAngle = v > 0 ? Math.max(0.5, Math.min(45, v)) : undefined;
+    },
+    undefined,
+    {
+      min: 0.5,
+      max: 45,
+      placeholder: "auto",
+    },
+  );
+  cutSec.appendChild(rampRow.el);
 
-  const chamWidthInp = document.createElement("input");
-  chamWidthInp.type = "number";
-  chamWidthInp.className = "dim";
-  chamWidthInp.step = "any";
-  chamWidthInp.min = "0";
-  chamWidthInp.value = lenView(state.chamferWidth, doc);
   const chamHint = document.createElement("div");
   chamHint.className = "cam-vbit-hint";
   const updateChamHint = () => {
@@ -348,13 +361,23 @@ export function buildCutSection(
     const depth = half > 1e-6 ? state.chamferWidth / half : 0;
     chamHint.textContent = `→ depth ${formatLength(depth, du)} ${du} · face ${(90 - (state.vAngle ?? 60) / 2).toFixed(0)}° from top`;
   };
-  chamWidthInp.addEventListener("input", () => {
-    const v = parseFloat(chamWidthInp.value);
-    if (Number.isFinite(v) && v >= 0) state.chamferWidth = toMM(v, du);
-    updateChamHint();
-  });
-  const chamWidthRow = dField(`Chamfer width (${du})`, chamWidthInp);
-  cutSec.appendChild(chamWidthRow);
+  const chamWidthRow = paramRow(
+    doc,
+    state,
+    "chamferWidth",
+    `Chamfer width (${du})`,
+    () => state.chamferWidth,
+    (v) => {
+      state.chamferWidth = Math.max(0, v);
+      updateChamHint();
+    },
+    "len",
+    {
+      min: 0,
+      onChange: () => updateChamHint(),
+    },
+  );
+  cutSec.appendChild(chamWidthRow.el);
   cutSec.appendChild(chamHint);
 
   const chamSideSelect = document.createElement("select");
@@ -394,7 +417,7 @@ export function buildCutSection(
 
   const updateChamferVisibility = () => {
     const show = state.combo === "chamfer";
-    chamWidthRow.style.display = show ? "" : "none";
+    chamWidthRow.el.style.display = show ? "" : "none";
     chamHint.style.display = show ? "" : "none";
     chamSideRow.style.display = show ? "" : "none";
     sharpenRow.style.display = show ? "" : "none";
@@ -432,7 +455,7 @@ export function buildCutSection(
   const updateReliefVisibility = (): void => {
     const isFinish = state.combo === "engrave" && opTargetsImage(state.entityIds);
     const isRough = state.combo === "relief-rough";
-    for (const r of [reliefLineRow, reliefDotRow]) r.style.display = isFinish ? "" : "none";
+    for (const r of [reliefLineRow.el, reliefDotRow.el]) r.style.display = isFinish ? "" : "none";
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
       r.style.display = isFinish || isRough ? "" : "none";
     if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") {
@@ -447,25 +470,25 @@ export function buildCutSection(
       return;
     }
     cutSec.style.display = "";
-    stepRow.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
-    peckRow.style.display = state.combo === "drill" ? "" : "none";
-    stepoverRow.style.display =
+    stepRow.el.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
+    peckRow.el.style.display = state.combo === "drill" ? "" : "none";
+    stepoverRow.el.style.display =
       state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket" ? "" : "none";
-    vStepRow.style.display = state.combo === "vcarve" ? "" : "none";
-    vHopRow.style.display = state.combo === "vcarve" ? "" : "none";
+    vStepRow.el.style.display = state.combo === "vcarve" ? "" : "none";
+    vHopRow.el.style.display = state.combo === "vcarve" ? "" : "none";
 
     const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
     finishRow.style.display = showFinish ? "" : "none";
-    finishAllowRow.style.display =
+    finishAllowRow.el.style.display =
       (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
     cornerRow.style.display =
       state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
     dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
 
     const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
-    rampRow.style.display = showRamp ? "" : "none";
-    rampInp.placeholder = "auto";
+    rampRow.el.style.display = showRamp ? "" : "none";
+    rampRow.inp.placeholder = "auto";
 
     updateChamferVisibility();
     updateReliefVisibility();

@@ -1129,6 +1129,12 @@ export class CADDocument {
         f.paramExprs[key] = f.paramExprs[key].replace(re, newName);
       }
     }
+    for (const op of this.operations) {
+      if (!op.paramExprs) continue;
+      for (const key of Object.keys(op.paramExprs)) {
+        op.paramExprs[key] = op.paramExprs[key].replace(re, newName);
+      }
+    }
   }
   private geo(): Geo {
     const m = new Map(this.entities.map((e) => [e.id, e]));
@@ -1480,7 +1486,11 @@ export class CADDocument {
       patterns: this.patterns.map(clonePatternDef),
       layers: this.layers.map(cloneLayer),
       activeLayerId: this.activeLayerId,
-      operations: this.operations.map((op) => ({ ...op, entityIds: [...op.entityIds] })),
+      operations: this.operations.map((op) => ({
+        ...op,
+        entityIds: [...op.entityIds],
+        ...(op.paramExprs ? { paramExprs: { ...op.paramExprs } } : {}),
+      })),
       tools: this.tools.map((t) => ({ ...t })),
     };
   }
@@ -1655,6 +1665,7 @@ export class CADDocument {
           toolType: op.toolType ?? "end-mill",
           stepover: op.stepover ?? 0.4,
           entityIds: [...op.entityIds],
+          ...(op.paramExprs ? { paramExprs: { ...op.paramExprs } } : {}),
         }))
       : [];
     this.tools = s.tools ? s.tools.map((t) => ({ ...t })) : [];

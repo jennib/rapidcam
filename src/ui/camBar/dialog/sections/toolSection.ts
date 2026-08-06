@@ -13,11 +13,8 @@ import type { OpState, OpDialogEvents } from "../opDialogState";
 import {
   dSection,
   dField,
-  numRow,
-  syncableInput,
+  paramRow,
   lenU,
-  lenView,
-  feedView,
 } from "../dialogDom";
 
 export function buildToolSection(
@@ -155,105 +152,113 @@ export function buildToolSection(
   toolTypeSelect.value = state.toolType;
   toolContent.appendChild(dField("Tool Type", toolTypeSelect));
 
-  const toolNumRow = numRow(
+  const fork = () => {
+    state.toolId = undefined;
+  };
+
+  const toolNumRow = paramRow(
     doc,
+    state,
+    "toolNumber",
     "Tool # (T)",
     () => state.toolNumber,
     (v) => {
       state.toolNumber = Math.max(1, Math.round(v));
     },
+    undefined,
+    { isInteger: true, min: 1, onFork: fork },
   );
-  const diamRow = syncableInput(
+  const diamRow = paramRow(
     doc,
+    state,
+    "diameter",
     `Diameter (${doc.displayUnit})`,
     () => state.diameter,
-    (v, i) => {
-      fork();
-      state.diameter = v;
-      i.value = lenView(v, doc);
+    (v) => {
+      state.diameter = Math.max(0.001, v);
       events.emitUpdateVBitHint();
     },
     "len",
+    { min: 0.001, onFork: fork, onChange: () => events.emitUpdateVBitHint() },
   );
-  const spindleRow = syncableInput(
+  const vAngleRow = paramRow(
     doc,
+    state,
+    "vAngle",
+    "V Angle (°)",
+    () => state.vAngle,
+    (v) => {
+      state.vAngle = Math.max(1, Math.min(179, v));
+      events.emitUpdateVBitHint();
+    },
+    undefined,
+    { min: 1, max: 179, onFork: fork, onChange: () => events.emitUpdateVBitHint() },
+  );
+  const tipAngleRow = paramRow(
+    doc,
+    state,
+    "tipAngle",
+    "Tip Angle (°)",
+    () => state.tipAngle,
+    (v) => {
+      state.tipAngle = Math.max(1, Math.min(179, v));
+    },
+    undefined,
+    { min: 1, max: 179, onFork: fork },
+  );
+  const spindleRow = paramRow(
+    doc,
+    state,
+    "spindleSpeed",
     "Spindle (rpm)",
     () => state.spindleSpeed,
-    (v, i) => {
-      fork();
+    (v) => {
       state.spindleSpeed = Math.round(v);
-      i.value = String(Math.round(v));
     },
+    undefined,
+    { isInteger: true, min: 0, onFork: fork },
   );
-  const feedRow = syncableInput(
+  const feedRow = paramRow(
     doc,
+    state,
+    "feedrate",
     `Feed (${doc.displayUnit}/min)`,
     () => state.feedrate,
-    (v, i) => {
-      fork();
+    (v) => {
       state.feedrate = Math.max(1, v);
-      i.value = feedView(state.feedrate, doc);
     },
     "feed",
+    { min: 1, onFork: fork },
   );
-  const plungeRow = syncableInput(
+  const plungeRow = paramRow(
     doc,
+    state,
+    "plungeRate",
     `Plunge (${doc.displayUnit}/min)`,
     () => state.plungeRate,
-    (v, i) => {
-      fork();
+    (v) => {
       state.plungeRate = Math.max(1, v);
-      i.value = feedView(state.plungeRate, doc);
     },
     "feed",
+    { min: 1, onFork: fork },
   );
-  const safeZRow = syncableInput(
+  const safeZRow = paramRow(
     doc,
+    state,
+    "safeZ",
     `Safe Z (${doc.displayUnit})`,
     () => state.safeZ,
-    (v, i) => {
-      fork();
+    (v) => {
       state.safeZ = Math.max(0.1, v);
-      i.value = lenView(state.safeZ, doc);
     },
     "len",
+    { min: 0.1, onFork: fork },
   );
-
-  const vAngleInp = document.createElement("input");
-  vAngleInp.type = "number";
-  vAngleInp.className = "dim";
-  vAngleInp.step = "any";
-  vAngleInp.min = "1";
-  vAngleInp.max = "179";
-  vAngleInp.value = String(state.vAngle);
-  vAngleInp.addEventListener("change", () => {
-    const v = parseFloat(vAngleInp.value);
-    if (Number.isFinite(v)) {
-      fork();
-      state.vAngle = v;
-      events.emitUpdateVBitHint();
-    }
-  });
-  const vAngleRow = dField("V Angle (°)", vAngleInp);
-
-  const tipAngleInp = document.createElement("input");
-  tipAngleInp.type = "number";
-  tipAngleInp.className = "dim";
-  tipAngleInp.step = "any";
-  tipAngleInp.value = String(state.tipAngle);
-  tipAngleInp.addEventListener("change", () => {
-    const v = parseFloat(tipAngleInp.value);
-    if (Number.isFinite(v)) {
-      fork();
-      state.tipAngle = v;
-    }
-  });
-  const tipAngleRow = dField("Tip Angle (°)", tipAngleInp);
 
   toolContent.appendChild(toolNumRow.el);
   toolContent.appendChild(diamRow.el);
-  toolContent.appendChild(vAngleRow);
-  toolContent.appendChild(tipAngleRow);
+  toolContent.appendChild(vAngleRow.el);
+  toolContent.appendChild(tipAngleRow.el);
   toolContent.appendChild(spindleRow.el);
   toolContent.appendChild(feedRow.el);
   toolContent.appendChild(plungeRow.el);
@@ -262,12 +267,8 @@ export function buildToolSection(
 
   const updateToolTypeVisibility = () => {
     const tt = state.toolType;
-    vAngleRow.style.display = tt === "v-bit" ? "" : "none";
-    tipAngleRow.style.display = tt === "drill" ? "" : "none";
-  };
-
-  const fork = () => {
-    state.toolId = undefined;
+    vAngleRow.el.style.display = tt === "v-bit" ? "" : "none";
+    tipAngleRow.el.style.display = tt === "drill" ? "" : "none";
   };
 
   const applyToolDef = (t: ToolDef) => {
@@ -284,13 +285,13 @@ export function buildToolSection(
     state.spindleSpeed = t.spindleSpeed;
     state.safeZ = t.safeZ;
     toolTypeSelect.value = t.toolType;
-    diamRow.inp.value = lenView(t.diameter, doc);
-    vAngleInp.value = String(state.vAngle);
-    tipAngleInp.value = String(state.tipAngle);
-    spindleRow.inp.value = String(t.spindleSpeed);
-    feedRow.inp.value = feedView(t.feedrate, doc);
-    plungeRow.inp.value = feedView(t.plungeRate, doc);
-    safeZRow.inp.value = lenView(t.safeZ, doc);
+    diamRow.setValue(t.diameter);
+    vAngleRow.setValue(state.vAngle);
+    tipAngleRow.setValue(state.tipAngle);
+    spindleRow.setValue(t.spindleSpeed);
+    feedRow.setValue(t.feedrate);
+    plungeRow.setValue(t.plungeRate);
+    safeZRow.setValue(t.safeZ);
     updateToolTypeVisibility();
     events.emitUpdateVBitHint();
   };
