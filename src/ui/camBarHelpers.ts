@@ -42,6 +42,30 @@ export function comboOf(op: CAMOperation): OpCombo {
   return op.type as OpCombo;
 }
 
+export function autoName(combo: OpCombo, doc: CADDocument): string {
+  const prefix =
+    combo === "profile-outside"
+      ? "Profile (outside)"
+      : combo === "profile-inside"
+        ? "Profile (inside)"
+        : combo === "pocket"
+          ? "Pocket"
+          : combo === "chamfer"
+            ? "Chamfer"
+            : combo === "vcarve"
+              ? "V-Carve"
+              : combo === "engrave"
+                ? "Engrave"
+                : combo === "relief-rough"
+                  ? "Relief Roughing"
+                  : combo === "score"
+                    ? "Score / Fold"
+                    : "Drill";
+  const n = doc.operations.filter((o) => comboOf(o) === combo).length + 1;
+  return `${prefix} ${n}`;
+}
+
+
 /**
  * The op-type a freshly opened toolpath dialog should start on:
  * - editing an existing op → its own type;

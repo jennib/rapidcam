@@ -1,0 +1,313 @@
+/**
+ * Tool section: library load/save, tool type, diameter, feeds/speeds, conditional V-bit/drill fields.
+ */
+import type { CADDocument } from "../../../../model/document";
+import {
+  type ToolDef,
+  type ToolType,
+  TOOL_TYPE_LABELS,
+  DEFAULTS,
+} from "../../../../cam/types";
+import { loadLibrary, addTool } from "../../../../cam/toolLibrary";
+import type { OpState, OpDialogEvents } from "../opDialogState";
+import {
+  dSection,
+  dField,
+  numRow,
+  syncableInput,
+  lenU,
+  lenView,
+  feedView,
+} from "../dialogDom";
+
+export function buildToolSection(
+  doc: CADDocument,
+  state: OpState,
+  events: OpDialogEvents,
+  isNew: boolean,
+): HTMLElement {
+  const toolSec = dSection("Tool");
+  const toolSectionTitle = toolSec.querySelector(".tp-dialog-section-title") as HTMLElement;
+  const toolArrow = document.createElement("span");
+  toolArrow.style.cssText = "float:right;margin-left:6px;font-style:normal;";
+  toolSectionTitle.style.cursor = "pointer";
+  toolSectionTitle.appendChild(toolArrow);
+
+  const toolContent = document.createElement("div");
+  toolContent.style.cssText = "display:flex;flex-direction:column;gap:7px;";
+
+  let toolExpanded = isNew;
+  const applyToolCollapse = () => {
+    toolContent.style.display = toolExpanded ? "" : "none";
+    toolArrow.textContent = toolExpanded ? "▲" : "▼";
+  };
+  toolSectionTitle.addEventListener("click", () => {
+    toolExpanded = !toolExpanded;
+    applyToolCollapse();
+  });
+  applyToolCollapse();
+
+  // --- library row ---
+  const libRow = document.createElement("div");
+  libRow.style.cssText = "display:flex;gap:6px;margin-bottom:8px;";
+  const loadLibBtn = document.createElement("button");
+  loadLibBtn.className = "btn";
+  loadLibBtn.style.flex = "1";
+  loadLibBtn.textContent = "Load from Library";
+  const saveLibBtn = document.createElement("button");
+  saveLibBtn.className = "btn";
+  saveLibBtn.style.flex = "1";
+  saveLibBtn.textContent = "Save to Library";
+  libRow.appendChild(loadLibBtn);
+  libRow.appendChild(saveLibBtn);
+  toolContent.appendChild(libRow);
+
+  const libPicker = document.createElement("div");
+  libPicker.style.cssText =
+    "display:none;margin-bottom:8px;max-height:140px;overflow-y:auto;" +
+    "background:var(--panel);border:1px solid var(--border);border-radius:4px;";
+  toolContent.appendChild(libPicker);
+
+  const refreshPicker = () => {
+    libPicker.innerHTML = "";
+    const tools = loadLibrary();
+    if (tools.length === 0) {
+      const mt = document.createElement("div");
+      mt.style.cssText = "padding:8px;font-size:11px;color:var(--text-dim)";
+      mt.textContent = "Library is empty";
+      libPicker.appendChild(mt);
+      return;
+    }
+    for (const t of tools) {
+      const row = document.createElement("div");
+      row.style.cssText =
+        "display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;" +
+        "border-bottom:1px solid var(--border);font-size:11px;";
+      row.addEventListener("mouseover", () => {
+        row.style.background = "var(--panel-2)";
+      });
+      row.addEventListener("mouseout", () => {
+        row.style.background = "";
+      });
+      const nameSpan = document.createElement("span");
+      nameSpan.style.flex = "1";
+      nameSpan.textContent = t.name;
+      const detailSpan = document.createElement("span");
+      detailSpan.style.color = "var(--text-dim)";
+      detailSpan.textContent = `⌀${lenU(t.diameter, doc)}`;
+      row.appendChild(nameSpan);
+      row.appendChild(detailSpan);
+      row.addEventListener("click", () => {
+        applyToolDef(t);
+        libPicker.style.display = "none";
+        loadLibBtn.textContent = "Load from Library";
+      });
+      libPicker.appendChild(row);
+    }
+  };
+
+  let pickerOpen = false;
+  loadLibBtn.addEventListener("click", () => {
+    pickerOpen = !pickerOpen;
+    if (pickerOpen) {
+      refreshPicker();
+      libPicker.style.display = "block";
+      loadLibBtn.textContent = "▲ Close Library";
+    } else {
+      libPicker.style.display = "none";
+      loadLibBtn.textContent = "Load from Library";
+    }
+  });
+
+  saveLibBtn.addEventListener("click", () => {
+    const name = window.prompt(
+      "Save tool as:",
+      state.toolType === "v-bit"
+        ? `${state.vAngle}° V-Bit ⌀${lenU(state.diameter, doc)}`
+        : `⌀${lenU(state.diameter, doc)} ${TOOL_TYPE_LABELS[state.toolType]}`,
+    );
+    if (!name) return;
+    const def: ToolDef = {
+      id: `tool-${Date.now()}`,
+      name,
+      toolType: state.toolType,
+      diameter: state.diameter,
+      vAngle: state.vAngle,
+      tipAngle: state.tipAngle,
+      feedrate: state.feedrate,
+      plungeRate: state.plungeRate,
+      spindleSpeed: state.spindleSpeed,
+      safeZ: state.safeZ,
+    };
+    addTool(def);
+    if (pickerOpen) refreshPicker();
+  });
+
+  // --- tool type ---
+  const toolTypeSelect = document.createElement("select");
+  toolTypeSelect.className = "unit";
+  for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    toolTypeSelect.appendChild(o);
+  }
+  toolTypeSelect.value = state.toolType;
+  toolContent.appendChild(dField("Tool Type", toolTypeSelect));
+
+  const toolNumRow = numRow(
+    doc,
+    "Tool # (T)",
+    () => state.toolNumber,
+    (v) => {
+      state.toolNumber = Math.max(1, Math.round(v));
+    },
+  );
+  const diamRow = syncableInput(
+    doc,
+    `Diameter (${doc.displayUnit})`,
+    () => state.diameter,
+    (v, i) => {
+      fork();
+      state.diameter = v;
+      i.value = lenView(v, doc);
+      events.emitUpdateVBitHint();
+    },
+    "len",
+  );
+  const spindleRow = syncableInput(
+    doc,
+    "Spindle (rpm)",
+    () => state.spindleSpeed,
+    (v, i) => {
+      fork();
+      state.spindleSpeed = Math.round(v);
+      i.value = String(Math.round(v));
+    },
+  );
+  const feedRow = syncableInput(
+    doc,
+    `Feed (${doc.displayUnit}/min)`,
+    () => state.feedrate,
+    (v, i) => {
+      fork();
+      state.feedrate = Math.max(1, v);
+      i.value = feedView(state.feedrate, doc);
+    },
+    "feed",
+  );
+  const plungeRow = syncableInput(
+    doc,
+    `Plunge (${doc.displayUnit}/min)`,
+    () => state.plungeRate,
+    (v, i) => {
+      fork();
+      state.plungeRate = Math.max(1, v);
+      i.value = feedView(state.plungeRate, doc);
+    },
+    "feed",
+  );
+  const safeZRow = syncableInput(
+    doc,
+    `Safe Z (${doc.displayUnit})`,
+    () => state.safeZ,
+    (v, i) => {
+      fork();
+      state.safeZ = Math.max(0.1, v);
+      i.value = lenView(state.safeZ, doc);
+    },
+    "len",
+  );
+
+  const vAngleInp = document.createElement("input");
+  vAngleInp.type = "number";
+  vAngleInp.className = "dim";
+  vAngleInp.step = "any";
+  vAngleInp.min = "1";
+  vAngleInp.max = "179";
+  vAngleInp.value = String(state.vAngle);
+  vAngleInp.addEventListener("change", () => {
+    const v = parseFloat(vAngleInp.value);
+    if (Number.isFinite(v)) {
+      fork();
+      state.vAngle = v;
+      events.emitUpdateVBitHint();
+    }
+  });
+  const vAngleRow = dField("V Angle (°)", vAngleInp);
+
+  const tipAngleInp = document.createElement("input");
+  tipAngleInp.type = "number";
+  tipAngleInp.className = "dim";
+  tipAngleInp.step = "any";
+  tipAngleInp.value = String(state.tipAngle);
+  tipAngleInp.addEventListener("change", () => {
+    const v = parseFloat(tipAngleInp.value);
+    if (Number.isFinite(v)) {
+      fork();
+      state.tipAngle = v;
+    }
+  });
+  const tipAngleRow = dField("Tip Angle (°)", tipAngleInp);
+
+  toolContent.appendChild(toolNumRow.el);
+  toolContent.appendChild(diamRow.el);
+  toolContent.appendChild(vAngleRow);
+  toolContent.appendChild(tipAngleRow);
+  toolContent.appendChild(spindleRow.el);
+  toolContent.appendChild(feedRow.el);
+  toolContent.appendChild(plungeRow.el);
+  toolContent.appendChild(safeZRow.el);
+  toolSec.appendChild(toolContent);
+
+  const updateToolTypeVisibility = () => {
+    const tt = state.toolType;
+    vAngleRow.style.display = tt === "v-bit" ? "" : "none";
+    tipAngleRow.style.display = tt === "drill" ? "" : "none";
+  };
+
+  const fork = () => {
+    state.toolId = undefined;
+  };
+
+  const applyToolDef = (t: ToolDef) => {
+    state.toolId = t.id;
+    const existingIdx = doc.tools.findIndex((x) => x.id === t.id);
+    if (existingIdx >= 0) doc.tools[existingIdx] = { ...t };
+    else doc.tools.push({ ...t });
+    state.toolType = t.toolType;
+    state.diameter = t.diameter;
+    state.vAngle = t.vAngle ?? DEFAULTS.vAngle;
+    state.tipAngle = t.tipAngle ?? DEFAULTS.tipAngle;
+    state.feedrate = t.feedrate;
+    state.plungeRate = t.plungeRate;
+    state.spindleSpeed = t.spindleSpeed;
+    state.safeZ = t.safeZ;
+    toolTypeSelect.value = t.toolType;
+    diamRow.inp.value = lenView(t.diameter, doc);
+    vAngleInp.value = String(state.vAngle);
+    tipAngleInp.value = String(state.tipAngle);
+    spindleRow.inp.value = String(t.spindleSpeed);
+    feedRow.inp.value = feedView(t.feedrate, doc);
+    plungeRow.inp.value = feedView(t.plungeRate, doc);
+    safeZRow.inp.value = lenView(t.safeZ, doc);
+    updateToolTypeVisibility();
+    events.emitUpdateVBitHint();
+  };
+
+  updateToolTypeVisibility();
+  toolTypeSelect.addEventListener("change", () => {
+    fork();
+    state.toolType = toolTypeSelect.value as ToolType;
+    updateToolTypeVisibility();
+    events.emitUpdateVBitHint();
+  });
+
+  events.onSetToolType((t: ToolType) => {
+    if (toolTypeSelect.value === t) return;
+    toolTypeSelect.value = t;
+    toolTypeSelect.dispatchEvent(new Event("change"));
+  });
+
+  return toolSec;
+}

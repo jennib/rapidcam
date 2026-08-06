@@ -481,7 +481,7 @@ export function chamferSharpSequence(ccw: Vec2[], width: number): ChamferPathPt[
  * The operations selected for a combined export, in **document order** (so the
  * single file runs them top-to-bottom regardless of the order they were ticked).
  */
-export function selectedOpsInOrder(operations: CAMOperation[], ids: Set<string>): CAMOperation[] {
+export function selectedOpsInOrder(operations: CAMOperation[], ids: ReadonlySet<string> | Set<string>): CAMOperation[] {
   return operations.filter((op) => ids.has(op.id));
 }
 
