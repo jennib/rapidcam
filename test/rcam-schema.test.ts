@@ -1,5 +1,5 @@
 /**
- * Drift guard for the published v2 .rcam format.
+ * Drift guard for the published v3 .rcam format.
  *
  * Validates every bundled example project against public/schema/rcam-v3.schema.json.
  * If the format changes, either the schema or the examples must be updated to
@@ -41,7 +41,7 @@ const validate = ajv.compile(schema);
 
 const exampleFiles = readdirSync(examplesDir).filter((f) => f.endsWith(".rcam"));
 
-describe("rcam v2 schema", () => {
+describe("rcam v3 schema", () => {
   it("finds the bundled examples", () => {
     expect(exampleFiles.length).toBeGreaterThan(0);
   });
@@ -60,14 +60,14 @@ describe("rcam v2 schema", () => {
   });
 
   for (const file of exampleFiles) {
-    it(`validates ${file} against the v2 schema`, () => {
+    it(`validates ${file} against the v3 schema`, () => {
       const data = JSON.parse(readFileSync(join(examplesDir, file), "utf8"));
       const ok = validate(data);
       if (!ok) {
         const msg = (validate.errors ?? [])
           .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
           .join("\n");
-        throw new Error(`${file} does not match rcam-v2 schema:\n${msg}`);
+        throw new Error(`${file} does not match rcam-v3 schema:\n${msg}`);
       }
       expect(ok).toBe(true);
     });
@@ -189,7 +189,7 @@ describe("rcam v2 schema", () => {
  * When you add a new optional field to CAMOperation, set it on the relevant op
  * below so it stays covered.
  */
-describe("rcam v2 schema — serialized real document", () => {
+describe("rcam v3 schema — serialized real document", () => {
   it("validates a serializeDoc() output covering every op type and optional field", () => {
     const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink");
     const ok = validate(data);
@@ -197,7 +197,7 @@ describe("rcam v2 schema — serialized real document", () => {
       const msg = (validate.errors ?? [])
         .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
         .join("\n");
-      throw new Error(`serialized kitchen-sink doc does not match rcam-v2 schema:\n${msg}`);
+      throw new Error(`serialized kitchen-sink doc does not match rcam-v3 schema:\n${msg}`);
     }
     expect(ok).toBe(true);
   });
@@ -222,7 +222,7 @@ describe("rcam v2 schema — serialized real document", () => {
       const msg = (validate.errors ?? [])
         .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
         .join("\n");
-      throw new Error(`serialized all-entities doc does not match rcam-v2 schema:\n${msg}`);
+      throw new Error(`serialized all-entities doc does not match rcam-v3 schema:\n${msg}`);
     }
     expect(ok).toBe(true);
   });
@@ -234,7 +234,7 @@ describe("rcam v2 schema — serialized real document", () => {
       const msg = (validate.errors ?? [])
         .map((e) => `  ${e.instancePath || "<root>"} ${e.message}`)
         .join("\n");
-      throw new Error(`serialized parametric doc does not match rcam-v2 schema:\n${msg}`);
+      throw new Error(`serialized parametric doc does not match rcam-v3 schema:\n${msg}`);
     }
     expect(ok).toBe(true);
   });

@@ -23,9 +23,22 @@ your output against the schema, and prefer the patterns shown in
 [`examples/`](../examples/). The bundled examples are golden files and are tested
 against this schema on every commit.
 
-## What changed from version 1
+## What changed across versions
 
-Version 2 treats a `.rcam` file as a **design**, not an editor session:
+### Version 3 (current)
+
+Version 3 dropped machine and controller configuration from the file:
+
+- **No controller / machine settings in the drawing.** `postProcessor`,
+  `hasToolChanger`, and the machine-configuration half of the `rotary` block
+  (`axisWord`, `arcTolerance`) were removed from the file. A `.rcam` is a
+  drawing / design, so machine settings now live in the operator's local machine
+  profile and are applied when G-code is generated.
+- Declares `"version": 3`.
+
+### Version 2
+
+Version 2 treated a `.rcam` file as a **design**, not an editor session:
 
 - **No selection / UI state.** The top-level `isConstructionMode`,
   `selectedPoints`, `selectedConstraintId`, `selectedDimensionId` fields and the
@@ -35,7 +48,7 @@ Version 2 treats a `.rcam` file as a **design**, not an editor session:
   bytes of any non-bundled font a text entity uses, so glyph outlines — and
   therefore toolpaths — reproduce on any machine.
 
-Version-1 files still open: RapidCAM upgrades them on load (dropping the UI state).
+Version-1 and version-2 files still open: RapidCAM upgrades them on load (chaining migrations v1 → v2 → v3).
 The set of entity types, constraint types, dimension types, and point-key
 vocabularies is unchanged.
 
