@@ -7,36 +7,28 @@
 import type { CADDocument } from "../model/document";
 import type { StitchPreview, FlipPreview } from "../view/overlay";
 import type { CAMOperation } from "../cam/types";
-import { collectClosedLoops } from "../cam/loops";
-import { resolveRegion } from "../cam/regions";
-import { generateMaterialTest } from "../cam/materialTest";
-import { buildJobFromLayers } from "../cam/laserJob";
 import { openToolLibraryDialog } from "./toolLibraryDialog";
 import { openLaserPresetsDialog } from "./laserPresetsDialog";
-import { openFlipDialog } from "./flipDialog";
-import { openStitchDialog } from "./stitchDialog";
-import { openMaterialTestDialog } from "./materialTestDialog";
-import { confirmDialog } from "./modal";
-import { toast } from "./toast";
-import { nextId } from "../model/ids";
-import type { Vec2 } from "../core/vec2";
-import { timeStamp } from "../cam/exportName";
-import { generateGCode } from "../cam/gcode";
 import { CamExportService } from "./camBar/camExportService";
 import { OpEstimateManager } from "./camBar/opEstimateManager";
+import { CamHighlighter } from "./camBar/camHighlighter";
+import { CamSelectionManager } from "./camBar/camSelectionManager";
+import {
+  type CamWorkflowContext,
+  toolpathsFromLayersWorkflow,
+  runMaterialTestWorkflow,
+  openFlipWorkflow,
+  openStitchWorkflow,
+} from "./camBar/camWorkflows";
 import { openOpDialog } from "./camBar/dialog/opDialog";
-import { buildOpItem, TP_PALETTE } from "./camBar/opItemBuilder";
+import { buildOpItem } from "./camBar/opItemBuilder";
 
 export class CamBar {
   private content!: HTMLElement;
   private opsList!: HTMLElement;
   private isCollapsed = false;
-  private highlightedOpId: string | null = null;
   private dragState = { srcIndex: null as number | null };
-  /** Transient selection of toolpaths for combined export. */
-  private selectedOpIds = new Set<string>();
 
-  private exportSelBtn: HTMLButtonElement | null = null;
   private libBtn: HTMLButtonElement | null = null;
   private testBtn: HTMLButtonElement | null = null;
   private presetBtn: HTMLButtonElement | null = null;
@@ -46,6 +38,8 @@ export class CamBar {
 
   private exportService: CamExportService;
   private estimateManager: OpEstimateManager;
+  private highlighter: CamHighlighter;
+  private selectionManager: CamSelectionManager;
 
   constructor(
     private host: HTMLElement,
@@ -63,9 +57,19 @@ export class CamBar {
       this.doc,
       () => this.exportService.gcodeOpts(),
     );
+    this.highlighter = new CamHighlighter(this.doc);
+    this.selectionManager = new CamSelectionManager();
 
     this.build();
     doc.onChange(() => this.renderOps());
+  }
+
+  private get workflowContext(): CamWorkflowContext {
+    return {
+      doc: this.doc,
+      pushHistory: this.pushHistory,
+      renderOps: () => this.renderOps(),
+    };
   }
 
   private build(): void {
@@ -114,7 +118,7 @@ export class CamBar {
     testBtn.style.flex = "1";
     testBtn.textContent = "Material Test";
     testBtn.title = "Generate a power×speed test grid to dial in laser settings";
-    testBtn.addEventListener("click", () => this.runMaterialTest());
+    testBtn.addEventListener("click", () => runMaterialTestWorkflow(this.workflowContext));
     btnRow.appendChild(testBtn);
     this.testBtn = testBtn;
 
@@ -135,7 +139,7 @@ export class CamBar {
     fromLayersBtn.textContent = "Toolpaths from Layers";
     fromLayersBtn.title =
       "Create one toolpath per layer, using the job type and beam settings set on each layer";
-    fromLayersBtn.addEventListener("click", () => void this.toolpathsFromLayers());
+    fromLayersBtn.addEventListener("click", () => void toolpathsFromLayersWorkflow(this.workflowContext));
     this.content.appendChild(fromLayersBtn);
     this.fromLayersBtn = fromLayersBtn;
 
@@ -157,13 +161,9 @@ export class CamBar {
     sendBtn.addEventListener("click", () => void this.exportService.sendToMachine());
     this.content.appendChild(sendBtn);
 
-    const exportSelBtn = document.createElement("button");
-    exportSelBtn.className = "cam-add-btn cam-export-sel-btn";
-    exportSelBtn.style.cssText = "width:100%;margin-top:6px;display:none;";
-    exportSelBtn.addEventListener("click", () => void this.exportService.exportSelected(this.selectedOpIds));
-    this.exportSelBtn = exportSelBtn;
-    this.content.appendChild(exportSelBtn);
-    this.updateExportSelBtn();
+    this.selectionManager.createButton(this.content, (selectedIds) => {
+      void this.exportService.exportSelected(selectedIds);
+    });
 
     if (this.onStitchPreview) {
       const stitchBtn = document.createElement("button");
@@ -171,7 +171,14 @@ export class CamBar {
       stitchBtn.style.cssText = "width:100%;margin-top:6px;";
       stitchBtn.textContent = "Tile for small machine…";
       stitchBtn.title = "Split a design larger than the machine bed into per-tile G-code";
-      stitchBtn.addEventListener("click", () => this.openStitch());
+      stitchBtn.addEventListener("click", () => {
+        openStitchWorkflow(
+          this.doc,
+          this.exportService.gcodeOpts(),
+          this.exportService.projectName(),
+          this.onStitchPreview,
+        );
+      });
       this.content.appendChild(stitchBtn);
       this.stitchBtn = stitchBtn;
     }
@@ -182,7 +189,9 @@ export class CamBar {
       flipBtn.style.cssText = "width:100%;margin-top:6px;";
       flipBtn.textContent = "Two-sided (flip)…";
       flipBtn.title = "Set up double-sided machining with registration pins";
-      flipBtn.addEventListener("click", () => this.openFlip());
+      flipBtn.addEventListener("click", () => {
+        openFlipWorkflow(this.workflowContext, this.onFlipPreview);
+      });
       this.content.appendChild(flipBtn);
       this.flipBtn = flipBtn;
     }
@@ -196,44 +205,6 @@ export class CamBar {
     if (this.flipBtn) this.flipBtn.style.display = millOnly ? "" : "none";
   }
 
-  private openFlip(): void {
-    if (this.doc.machineKind !== "mill") {
-      toast("Two-sided machining is for flat (non-rotary) milling jobs.");
-      return;
-    }
-    openFlipDialog({
-      doc: this.doc,
-      pushHistory: this.pushHistory,
-      onPreview: (p) => this.onFlipPreview?.(p),
-      onDone: () => this.renderOps(),
-    });
-  }
-
-  private openStitch(): void {
-    if (this.doc.operations.length === 0) {
-      toast("No toolpaths to tile — add some first.");
-      return;
-    }
-    if (this.doc.machineKind !== "mill") {
-      toast("Stitch tiling is for flat (non-rotary) milling jobs.");
-      return;
-    }
-    const gcode = generateGCode(this.doc.operations, this.doc, this.exportService.gcodeOpts());
-    openStitchDialog({
-      gcode,
-      doc: this.doc,
-      baseName: `${this.exportService.projectName()}_tiles_${timeStamp()}`,
-      onPreview: (p) => this.onStitchPreview?.(p),
-    });
-  }
-
-  private updateExportSelBtn(): void {
-    if (!this.exportSelBtn) return;
-    const n = this.selectedOpIds.size;
-    this.exportSelBtn.style.display = n > 0 ? "" : "none";
-    this.exportSelBtn.textContent = `Export ${n} selected to one file`;
-  }
-
   private renderOps(): void {
     const laser = this.doc.isLaser;
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
@@ -243,7 +214,7 @@ export class CamBar {
     this.updateModeButtons();
 
     const live = new Set(this.doc.operations.map((o) => o.id));
-    for (const id of [...this.selectedOpIds]) if (!live.has(id)) this.selectedOpIds.delete(id);
+    this.selectionManager.syncWithLiveOps(live);
 
     this.opsList.innerHTML = "";
     this.estimateManager.clearElements();
@@ -256,27 +227,27 @@ export class CamBar {
         <div>No toolpaths yet — select a shape, then “+ Add Toolpath”.</div>
       `;
       this.opsList.appendChild(empty);
-      this.updateExportSelBtn();
       return;
     }
 
     const opItemCtx = {
       doc: this.doc,
       opsList: this.opsList,
-      selectedOpIds: this.selectedOpIds,
-      highlightedOpId: this.highlightedOpId,
+      selectedOpIds: this.selectionManager.selectedOpIds,
+      highlightedOpId: this.highlighter.currentId,
       dragState: this.dragState,
       estimateManager: this.estimateManager,
-      onHighlightOp: (id: string | null) => this.highlightOp(id),
+      onHighlightOp: (id: string | null) => {
+        this.highlighter.highlightOp(id);
+        this.renderOps();
+      },
       onToggleSelectOp: (id: string, selected: boolean) => {
-        if (selected) this.selectedOpIds.add(id);
-        else this.selectedOpIds.delete(id);
-        this.updateExportSelBtn();
+        this.selectionManager.toggle(id, selected);
       },
       onEditOp: (op: CAMOperation) => this.openDialog(op),
       onDeleteOp: (op: CAMOperation) => {
         this.pushHistory?.();
-        if (this.highlightedOpId === op.id) this.highlightOp(null);
+        if (this.highlighter.currentId === op.id) this.highlighter.highlightOp(null);
         this.doc.operations = this.doc.operations.filter((o) => o.id !== op.id);
         this.doc.emitChange();
         this.renderOps();
@@ -299,36 +270,10 @@ export class CamBar {
     for (let i = 0; i < this.doc.operations.length; i++) {
       const op = this.doc.operations[i];
       const item = buildOpItem(op, i, opItemCtx);
-      if (op.id === this.highlightedOpId) item.classList.add("tp-op-active");
+      if (op.id === this.highlighter.currentId) item.classList.add("tp-op-active");
       this.opsList.appendChild(item);
     }
-    this.updateExportSelBtn();
     this.estimateManager.scheduleOpEstimates();
-  }
-
-  private highlightOp(id: string | null): void {
-    this.highlightedOpId = id;
-    const opIndex = id ? this.doc.operations.findIndex((o) => o.id === id) : -1;
-    const op = opIndex >= 0 ? this.doc.operations[opIndex] : null;
-    this.doc.toolpathHighlightColor = op ? TP_PALETTE[opIndex % TP_PALETTE.length] : null;
-    if (op?.regions?.length) {
-      const loops = collectClosedLoops(this.doc.entities);
-      const highlight = new Set<string>();
-      const fills: Vec2[][][] = [];
-      for (const ref of op.regions) {
-        const region = resolveRegion(ref, loops);
-        if (!region) continue;
-        for (const lid of region.loopIds) highlight.add(lid);
-        fills.push([region.outer, ...region.holes]);
-      }
-      this.doc.toolpathHighlightIds = highlight;
-      this.doc.regionPickFills = fills;
-    } else {
-      this.doc.toolpathHighlightIds = op ? new Set(op.entityIds) : null;
-      this.doc.regionPickFills = null;
-    }
-    this.doc.emitChange();
-    this.renderOps();
   }
 
   private openDialog(existing: CAMOperation | null): void {
@@ -337,69 +282,10 @@ export class CamBar {
       existing,
       pushHistory: this.pushHistory,
       renderOps: () => this.renderOps(),
-      highlightOp: (op) => this.highlightOp(op?.id ?? null),
-    });
-  }
-
-  private async toolpathsFromLayers(): Promise<void> {
-    const { operations, skipped } = buildJobFromLayers(this.doc);
-
-    if (operations.length === 0) {
-      const why = skipped.length
-        ? skipped.map((s: { layer: string; why: string }) => `“${s.layer}” — ${s.why}`).join("; ")
-        : "no layer has a job type yet";
-      toast(`Nothing to build: ${why}. Set one with ⚡ in the Layers panel.`, 4200);
-      return;
-    }
-
-    if (this.doc.operations.length > 0) {
-      const ok = await confirmDialog({
-        title: "Rebuild toolpaths from layers?",
-        message:
-          `This replaces the ${this.doc.operations.length} existing toolpath` +
-          `${this.doc.operations.length > 1 ? "s" : ""} with ${operations.length} built from ` +
-          `your layers (${operations.map((o: CAMOperation) => o.name).join(", ")}).\n\n` +
-          "Any settings you changed on the existing toolpaths will be lost. Undo restores them.",
-        confirmLabel: "Rebuild",
-        danger: true,
-      });
-      if (!ok) return;
-    }
-
-    this.pushHistory?.();
-    this.doc.operations = operations;
-    this.doc.emitChange();
-    this.renderOps();
-
-    const note = skipped.length
-      ? ` (skipped ${skipped.map((s: { layer: string; why: string }) => `“${s.layer}”: ${s.why}`).join("; ")})`
-      : "";
-    toast(
-      `Built ${operations.length} toolpath${operations.length > 1 ? "s" : ""} from layers${note}.`,
-      skipped.length ? 4200 : 2600,
-    );
-  }
-
-  private runMaterialTest(): void {
-    openMaterialTestDialog((cfg) => {
-      const ts = Math.max(2, Math.min(cfg.cellSize * 0.4, 6));
-      const origin = { x: ts * 3.2 + 5, y: ts + cfg.cellSize * 0.15 + 5 };
-      const { entities, operations } = generateMaterialTest({ ...cfg, origin });
-      if (entities.length === 0) return;
-
-      this.pushHistory?.();
-      for (const e of entities) {
-        e.layerId = this.doc.activeLayerId;
-        this.doc.entities.push(e);
-      }
-      this.doc.groups.push({
-        id: nextId("group"),
-        name: "Material Test",
-        entityIds: entities.map((e) => e.id),
-      });
-      for (const op of operations) this.doc.operations.push(op);
-      this.doc.emitChange();
-      this.renderOps();
+      highlightOp: (op) => {
+        this.highlighter.highlightOp(op?.id ?? null);
+        this.renderOps();
+      },
     });
   }
 
