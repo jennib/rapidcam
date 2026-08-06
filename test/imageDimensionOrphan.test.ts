@@ -61,8 +61,8 @@ function dimensionBottomEdge(tool: DimensionTool, ctx: ToolContext): void {
   // midpoint (70,20) is one click away from both corners (mirrors a rectangle's
   // "click an edge directly" shortcut).
   click(tool, ctx, { x: 70, y: 20 });
-  move(tool, ctx, { x: 70, y: 5 });
-  click(tool, ctx, { x: 70, y: 5 }); // open space below the image -> commits
+  move(tool, ctx, { x: 70, y: 10 });
+  click(tool, ctx, { x: 70, y: 10 }); // open space below the image -> commits
 }
 
 describe("Dimension tool on an image (orphan regression)", () => {

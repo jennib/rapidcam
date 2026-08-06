@@ -172,20 +172,58 @@ describe("continuous stock-edge picking", () => {
     expect(stockY).toBeCloseTo(90, 3);
   });
 
-  it("an open-space placement click near the stock edge still commits — it is not reinterpreted as a re-pick", () => {
+  it("an open-space placement click commits — it is not reinterpreted as a re-pick", () => {
     const doc = new CADDocument({ width: 200, height: 200 }); // no stockRect: stock fills the canvas
     const img = doc.add(new RasterImageEntity("img1", { x: 20, y: 20 }, 100, 60));
     const ctx = makeCtx(doc);
     const tool = new DimensionTool();
 
-    // Click the image's bottom edge, then place BELOW it — 5mm above the
-    // canvas edge (y=0), which is also the (undrawn, legacy) stock's own edge.
+    // Click the image's bottom edge, then place in open space BELOW it (10mm above canvas edge y=0).
     click(tool, ctx, { x: 70, y: 20 });
-    move(tool, ctx, { x: 70, y: 5 });
-    click(tool, ctx, { x: 70, y: 5 });
+    move(tool, ctx, { x: 70, y: 10 });
+    click(tool, ctx, { x: 70, y: 10 });
 
     expect(doc.dimensions).toHaveLength(1);
     expect(doc.dimensions[0].points.every((p) => p.entityId === img.id)).toBe(true);
+  });
+
+  it("dimensions from a stock edge to a line when stock fills the sheet (no stockRect)", () => {
+    const doc = new CADDocument({ width: 300, height: 250 }); // stock fills sheet: left edge at x=0
+    const line = doc.add(new LineEntity({ x: 100, y: 70 }, { x: 100, y: 170 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    // Click anywhere on the sheet/stock's left edge (x=0, y=90)
+    click(tool, ctx, { x: 0, y: 90 });
+    move(tool, ctx, { x: 100, y: 140 });
+    click(tool, ctx, { x: 100, y: 140 });
+    move(tool, ctx, { x: 50, y: 220 });
+    click(tool, ctx, { x: 50, y: 220 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(line.id);
+    expect(dim.value).toBeCloseTo(100, 3); // |100 - 0|
+  });
+
+  it("dimensions from a line to a stock edge when stock fills the sheet (no stockRect)", () => {
+    const doc = new CADDocument({ width: 300, height: 250 }); // stock fills sheet: left edge at x=0
+    const line = doc.add(new LineEntity({ x: 100, y: 70 }, { x: 100, y: 170 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+
+    click(tool, ctx, { x: 100, y: 100 });
+    move(tool, ctx, { x: 0, y: 90 });
+    click(tool, ctx, { x: 0, y: 90 });
+    move(tool, ctx, { x: 50, y: 220 });
+    click(tool, ctx, { x: 50, y: 220 });
+
+    expect(doc.dimensions).toHaveLength(1);
+    const dim = doc.dimensions[0];
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(line.id);
+    expect(dim.value).toBeCloseTo(100, 3); // |100 - 0|
   });
 
   it("dimensions from the left end of a horizontal line to the left stock edge when clicked near the left end", () => {

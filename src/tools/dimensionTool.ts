@@ -266,44 +266,48 @@ export class DimensionTool implements Tool {
         break;
       }
       case "placeLinear": {
-        const resolved = resolveSecondPick(
-          ctx.doc,
-          this.p1!,
-          this.p2,
-          this.firstMid,
-          this.firstRaw,
-          e.worldRaw,
-          tol,
-        );
-        if (resolved) {
-          const { newP1, newP2, forcedType } = resolved;
-          this.forcedLinearType = forcedType;
-          if (
-            newP1?.ref.key.startsWith("mid") &&
-            newP2?.ref.key.startsWith("mid") &&
-            newP1.ref.entityId !== STOCK_ENTITY_ID &&
-            newP2.ref.entityId !== STOCK_ENTITY_ID
-          ) {
-            const edge1 = getEdgeEnds(ctx.doc, newP1);
-            const edge2 = getEdgeEnds(ctx.doc, newP2);
-            if (edge1 && edge2) {
-              const dir1 = normalize(sub(edge1.b, edge1.a));
-              const dir2 = normalize(sub(edge2.b, edge2.a));
-              if (Math.abs(cross(dir1, dir2)) > 0.05) {
-                this.line1Id = newP1.ref.entityId;
-                this.line2Id = newP2.ref.entityId;
-                this.phase = "placeAngle";
-                this.hoverP1 = null;
-                this.hoverP2 = null;
-                break;
+        if (this.firstMid) {
+          const resolved = resolveSecondPick(
+            ctx.doc,
+            this.p1!,
+            this.p2,
+            this.firstMid,
+            this.firstRaw,
+            e.worldRaw,
+            tol,
+          );
+          if (resolved) {
+            const { newP1, newP2, forcedType } = resolved;
+            this.forcedLinearType = forcedType;
+            if (
+              newP1?.ref.key.startsWith("mid") &&
+              newP2?.ref.key.startsWith("mid") &&
+              newP1.ref.entityId !== STOCK_ENTITY_ID &&
+              newP2.ref.entityId !== STOCK_ENTITY_ID
+            ) {
+              const edge1 = getEdgeEnds(ctx.doc, newP1);
+              const edge2 = getEdgeEnds(ctx.doc, newP2);
+              if (edge1 && edge2) {
+                const dir1 = normalize(sub(edge1.b, edge1.a));
+                const dir2 = normalize(sub(edge2.b, edge2.a));
+                if (Math.abs(cross(dir1, dir2)) > 0.05) {
+                  this.line1Id = newP1.ref.entityId;
+                  this.line2Id = newP2.ref.entityId;
+                  this.phase = "placeAngle";
+                  this.hoverP1 = null;
+                  this.hoverP2 = null;
+                  this.firstMid = null;
+                  break;
+                }
               }
             }
+            if (newP1) this.p1 = newP1;
+            if (newP2) this.p2 = newP2;
+            this.firstMid = null;
+            this.hoverP1 = null;
+            this.hoverP2 = null;
+            break;
           }
-          if (newP1) this.p1 = newP1;
-          if (newP2) this.p2 = newP2;
-          this.hoverP1 = null;
-          this.hoverP2 = null;
-          break;
         }
         this.commitLinear(ctx);
         break;
@@ -340,19 +344,21 @@ export class DimensionTool implements Tool {
     if (this.phase === "placeLinear") {
       this.hoverP1 = null;
       this.hoverP2 = null;
-      const tol = ctx.view.toWorldLen(POINT_PICK_PX);
-      const resolved = resolveSecondPick(
-        ctx.doc,
-        this.p1!,
-        this.p2,
-        this.firstMid,
-        this.firstRaw,
-        e.worldRaw,
-        tol,
-      );
-      if (resolved) {
-        this.hoverP1 = resolved.newP1;
-        this.hoverP2 = resolved.newP2;
+      if (this.firstMid) {
+        const tol = ctx.view.toWorldLen(POINT_PICK_PX);
+        const resolved = resolveSecondPick(
+          ctx.doc,
+          this.p1!,
+          this.p2,
+          this.firstMid,
+          this.firstRaw,
+          e.worldRaw,
+          tol,
+        );
+        if (resolved) {
+          this.hoverP1 = resolved.newP1;
+          this.hoverP2 = resolved.newP2;
+        }
       }
     }
 
@@ -824,23 +830,12 @@ function pickRectOrImageEdge(
  * Without this, only the stock's 8 exact corner/midpoint points (each an
  * ~8px hotspot) were clickable — the rest of every edge was dead space, unlike
  * every other edge in the app.
- *
- * Requires an explicit `doc.stockRect` — the legacy null case ("stock fills
- * the whole canvas") draws no distinct stock rectangle at all (see
- * renderer.ts's drawWorkArea), so its "edge" is visually indistinguishable
- * from the plain work-area boundary. Offering a full-length click target
- * along a line the user can't even see is how a placement click ended up
- * silently hijacked (see the guard in onPointerDown's "placeLinear" case).
- * The 8 discrete corner/midpoint hotspots (pickPoint, in document.ts) stay
- * available in the legacy case too — their tiny footprint doesn't carry the
- * same risk.
  */
 function pickStockEdge(
   doc: CADDocument,
   p: Vec2,
   tol: number,
 ): { p1: Pick; p2: Pick; mid: Pick } | null {
-  if (!doc.stockRect) return null;
   const bl = stockRefPoint(doc, "bl");
   const br = stockRefPoint(doc, "br");
   const tr = stockRefPoint(doc, "tr");
