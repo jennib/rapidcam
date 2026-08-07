@@ -61,6 +61,7 @@ export class CamBar {
     this.selectionManager = new CamSelectionManager();
 
     this.build();
+    // Re-render the ops list whenever the document is replaced (file open, undo/redo).
     doc.onChange(() => this.renderOps());
   }
 
@@ -122,6 +123,9 @@ export class CamBar {
     btnRow.appendChild(testBtn);
     this.testBtn = testBtn;
 
+    // Housekeeping for the recipes saved out of the toolpath dialog. Sits beside
+    // Material Test because that is where the numbers come from: run the grid,
+    // save the cell that worked, manage them here.
     const presetBtn = document.createElement("button");
     presetBtn.className = "cam-add-btn cam-presets-btn";
     presetBtn.style.flex = "1";
@@ -133,6 +137,9 @@ export class CamBar {
 
     this.content.appendChild(btnRow);
 
+    // Build the whole job from the layer list — the colour-driven workflow's
+    // payoff. Its own full-width row rather than a fifth button in btnRow,
+    // which is already tight at four.
     const fromLayersBtn = document.createElement("button");
     fromLayersBtn.className = "cam-add-btn cam-from-layers-btn";
     fromLayersBtn.style.cssText = "width:100%;margin-top:6px;";
@@ -165,6 +172,7 @@ export class CamBar {
       void this.exportService.exportSelected(selectedIds);
     });
 
+    // Tile a design too big for the machine bed into per-tile files (Stitch).
     if (this.onStitchPreview) {
       const stitchBtn = document.createElement("button");
       stitchBtn.className = "cam-add-btn";
@@ -183,6 +191,8 @@ export class CamBar {
       this.stitchBtn = stitchBtn;
     }
 
+    // Double-sided (flip) machining: assign ops a face, bore registration pins,
+    // export a top + mirrored bottom program.
     if (this.onFlipPreview) {
       const flipBtn = document.createElement("button");
       flipBtn.className = "cam-add-btn";
@@ -196,23 +206,38 @@ export class CamBar {
       this.flipBtn = flipBtn;
     }
 
+    // Last, not first: renderOps() also decides which machine-kind-specific
+    // buttons are shown, so running it before they exist left every one of them
+    // at its default visibility until the first document change happened to
+    // correct it — "Manage Tools" visible on a laser, "Material Test" on a mill.
     this.renderOps();
   }
 
   private updateModeButtons(): void {
+    // Both handlers below require a flat MILL, but this only hid them for a
+    // rotary — so on a laser document "Tile" and "Two-sided" were visible,
+    // enabled, and refused with a toast every time they were clicked. Match the
+    // gate the handlers actually apply: a button that cannot work should not be
+    // offered.
     const millOnly = this.doc.machineKind === "mill";
     if (this.stitchBtn) this.stitchBtn.style.display = millOnly ? "" : "none";
     if (this.flipBtn) this.flipBtn.style.display = millOnly ? "" : "none";
   }
 
+  // --- list rendering --------------------------------------------------------
   private renderOps(): void {
+    // Tools (end mills / V-bits) are a milling concept — hide "Manage Tools" for
+    // a laser and show "Material Test" instead. Re-evaluated here so it follows a
+    // machine-type change.
     const laser = this.doc.isLaser;
     if (this.libBtn) this.libBtn.style.display = laser ? "none" : "";
     if (this.testBtn) this.testBtn.style.display = laser ? "" : "none";
     if (this.presetBtn) this.presetBtn.style.display = laser ? "" : "none";
     if (this.fromLayersBtn) this.fromLayersBtn.style.display = laser ? "" : "none";
+    // Tile/Two-sided are flat-mill-only — hidden for a rotary job.
     this.updateModeButtons();
 
+    // Drop selections for ops that no longer exist (deleted).
     const live = new Set(this.doc.operations.map((o) => o.id));
     this.selectionManager.syncWithLiveOps(live);
 
@@ -222,6 +247,8 @@ export class CamBar {
     if (this.doc.operations.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-state cam-ops-empty";
+      // No "+ Add Toolpath" button here — the persistent one just below the list
+      // is always present, so an empty state used to show TWO identical buttons.
       empty.innerHTML = `
         <div class="empty-icon">⬚</div>
         <div>No toolpaths yet — select a shape, then “+ Add Toolpath”.</div>
@@ -276,6 +303,7 @@ export class CamBar {
     this.estimateManager.scheduleOpEstimates();
   }
 
+  // --- dialog ----------------------------------------------------------------
   private openDialog(existing: CAMOperation | null): void {
     openOpDialog({
       doc: this.doc,

@@ -69,6 +69,7 @@ export interface OpState {
   leadInLen: number;
   leadOutType: LeadType;
   leadOutLen: number;
+  // laser (machineKind === "laser")
   laserPower: number;
   laserPasses: number;
   kerfWidth: number;
@@ -77,6 +78,7 @@ export interface OpState {
   laserOverscan: number;
   airAssist: boolean;
   laserOverride: boolean;
+  // raster engrave (engrave op targeting an image entity)
   rasterLineInterval: number;
   rasterDotPitch: number;
   rasterMinPower: number;
@@ -116,12 +118,17 @@ export function createInitialOpState(
 ): OpState {
   const isLaser = doc.isLaser;
   const preSelected = new Set(preSelectedEnts.map((e) => e.id));
+  // initialCombo picks the starting op type (and defaults an image selection to
+  // Engrave so it isn't stripped as invalid-for-profile — see defaultCombo).
   const initialCombo: OpCombo = defaultCombo(existing, preSelectedEnts, isLaser);
 
   return {
     name: existing?.name ?? autoOpName(initialCombo, doc),
     combo: initialCombo,
     toolId: existing?.toolId,
+    // A mill relief (engrave targeting an image) needs a depth-shaping bit, so a
+    // new one defaults to a ball-nose rather than the flat end mill (which carves
+    // nothing). Done here at state init so the tool selector reflects it on open.
     toolType: (existing?.toolType ??
       (!isLaser &&
       initialCombo === "engrave" &&
@@ -167,6 +174,9 @@ export function createInitialOpState(
     tabHeight: existing?.tabs?.height ?? 2,
     stepover: existing?.stepover ?? DEFAULTS.stepover,
     cornerStyle: (existing?.cornerStyle ?? "none") as CornerStyle,
+    // New profiles default to climb (best on rigid CNC); an existing profile
+    // without the field defaults to whatever its raw winding already cuts, so
+    // re-applying an old op doesn't silently flip its direction.
     cutDirection:
       existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
     rampAngle: existing?.rampAngle,
@@ -175,6 +185,8 @@ export function createInitialOpState(
     leadInLen: existing?.leadIn?.length ?? 2,
     leadOutType: (existing?.leadOut?.type ?? "none") as LeadType,
     leadOutLen: existing?.leadOut?.length ?? 2,
+    // A score/fold marks the surface, not through it — seed a low default power
+    // for a new one (a full-power score would burn through the fold line).
     laserPower: existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
     laserPasses: existing?.laserPasses ?? DEFAULTS.laserPasses,
     kerfWidth: existing?.kerfWidth ?? DEFAULTS.kerfWidth,
@@ -183,6 +195,9 @@ export function createInitialOpState(
     laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
     airAssist: existing?.airAssist ?? false,
     laserOverride: existing?.laserOverride ?? false,
+    // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
+    // scales with the bit — ~10% of the cutter diameter is a good scallop/speed
+    // balance (a fixed fine value is a needlessly long cut with a wide bit).
     rasterLineInterval:
       existing?.rasterLineInterval ??
       (isLaser

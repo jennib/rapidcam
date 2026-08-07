@@ -78,6 +78,16 @@ export function buildLaserSection(
     "len",
   );
 
+  // --- layer recipe banner -------------------------------------------------
+  // When this op's geometry all sits on a layer carrying a beam recipe, the
+  // layer's numbers are what the machine runs — so the fields show them and
+  // are read-only, rather than displaying values that quietly don't apply.
+  //
+  // Breaking the link is a button, not a side effect of typing. The mill's
+  // tool library forks silently on edit, but there the user picked the tool
+  // explicitly; here the link comes from which layer the geometry is on, so a
+  // silent fork would leave someone wondering months later why re-tuning the
+  // layer skipped this one operation.
   const layerBanner = document.createElement("div");
   layerBanner.className = "tp-field tp-beam-layer";
   layerBanner.style.cssText =
@@ -94,10 +104,15 @@ export function buildLaserSection(
 
   const updateLayerBanner = (): void => {
     const layer = beamLayer(doc, [...state.entityIds], state.laserOverride);
+    // A layer whose recipe is being ignored because this op forked — worth
+    // naming, so "follow it again" is an obvious offer rather than a mystery.
     const forkedFrom = state.laserOverride
       ? beamLayer(doc, [...state.entityIds], false)
       : null;
     layerBanner.style.display = layer || forkedFrom ? "" : "none";
+    // Show the numbers that will actually run. While an op follows its layer
+    // the fields are the layer's (and read-only); once it forks they are the
+    // op's own again.
     for (const f of beamFields) {
       f.inp.disabled = !!layer;
       f.inp.style.opacity = layer ? "0.55" : "";
@@ -120,6 +135,9 @@ export function buildLaserSection(
 
   layerBtn.addEventListener("click", () => {
     if (!state.laserOverride) {
+      // Fork starting from what the layer was actually cutting at, so "custom"
+      // begins at the numbers on screen instead of jumping back to whatever
+      // the op held before it started following.
       const layer = beamLayer(doc, [...state.entityIds], false);
       if (layer?.laser) {
         state.feedrate = layer.laser.feedrate;
@@ -205,6 +223,8 @@ export function buildLaserSection(
     undefined,
   );
 
+  // Dithering — reproduce tone as a 1-bit dot pattern instead of per-dot power
+  // modulation (more predictable on diode lasers where power→burn is non-linear).
   const rDitherSel = document.createElement("select");
   rDitherSel.className = "dim";
   for (const mode of ["none", ...DITHER_MODES] as DitherMode[]) {
@@ -221,6 +241,11 @@ export function buildLaserSection(
     "Bayer pattern. Off = greyscale power modulation.";
   const rDitherRow = dField("Dithering", rDitherSel);
 
+  // Live pattern swatch — the difference between dither methods is the dot TEXTURE,
+  // which is invisible in the main preview (a ~0.1mm dot is sub-pixel and every
+  // method reproduces the same tone). This magnifies a tonal ramp to 1 pixel per
+  // dot so the characteristic grain of the selected method is obvious, and updates
+  // as the dropdown changes. "Off" shows the smooth greyscale ramp for contrast.
   const SW = 232;
   const SH = 40;
   const rDitherSwatch = document.createElement("canvas");
@@ -259,6 +284,7 @@ export function buildLaserSection(
   sec.appendChild(rDitherSwatchRow);
   sec.appendChild(rInvRow);
 
+  // Air assist — emits the post's air command (M8/M9 by default) around this op.
   const airChk = document.createElement("input");
   airChk.type = "checkbox";
   airChk.className = "settings-checkbox";
@@ -268,6 +294,12 @@ export function buildLaserSection(
   });
   sec.appendChild(dField("Air assist (M8/M9)", airChk));
 
+  // --- material presets ----------------------------------------------------
+  // Recipes are per-machine and per-material, so the picker only offers ones
+  // saved for THIS job kind: a cut recipe dropped onto a score op would be
+  // roughly five times the power it wants. Inserted above the fields it fills
+  // in, and the inputs are repopulated on apply (the same repopulate-on-load
+  // contract `applyToolDef` uses for the tool library).
   const presetKind = (): LaserPresetKind =>
     state.combo === "engrave" ? "engrave" : state.combo === "score" ? "score" : "cut";
 
@@ -316,6 +348,7 @@ export function buildLaserSection(
       const mt = document.createElement("div");
       mt.className = "tp-preset-empty";
       mt.style.cssText = "padding:8px;font-size:11px;color:var(--text-dim);line-height:1.5;";
+      // No starter numbers on purpose — see cam/laserPresets.ts.
       mt.textContent =
         `No ${presetKind()} presets saved yet. Dial in power and speed (the ` +
         `Material Test button generates a grid), then "Save as preset…".`;
@@ -369,6 +402,9 @@ export function buildLaserSection(
       feedrate: state.feedrate,
       laserPower: state.laserPower,
       laserPasses: state.laserPasses,
+      // Kerf compensation is cut-only — the dialog hides that row for engrave
+      // and score, so recording it for those would bake in a stale number the
+      // user never saw, and restore it silently on apply.
       ...(kind === "cut" ? { kerfWidth: state.kerfWidth } : {}),
       airAssist: state.airAssist,
     });
@@ -402,14 +438,21 @@ export function buildLaserSection(
     const isCut = state.combo === "profile-outside" || state.combo === "profile-inside";
     const isEngrave = state.combo === "engrave";
     const isRaster = isEngrave && opTargetsImage(state.entityIds);
+    // The op type decides which recipes are eligible, so a picker left open
+    // across a type change is showing the wrong kind — and a cut recipe
+    // clicked onto an engrave op would set roughly five times its power.
     if (pickerOpen) refreshPresets();
     kerf.el.style.display = isCut ? "" : "none";
+    // Vector fill applies to closed shapes, not images — hide it for a raster.
     fillRow.style.display = isEngrave && !isRaster ? "" : "none";
     fillSpacing.el.style.display = isEngrave && !isRaster && state.laserFill ? "" : "none";
+    // Overscan serves both vector fill and raster rows.
     overscan.el.style.display =
       isRaster || (isEngrave && !isRaster && state.laserFill) ? "" : "none";
     for (const r of [rLine.el, rDot.el, rDitherRow, rDitherSwatchRow, rInvRow])
       r.style.display = isRaster ? "" : "none";
+    // Min power tunes the greyscale power ramp; it's meaningless once dithering
+    // fires every dot at full power, so hide it then.
     rMin.el.style.display = isRaster && state.rasterDither === "none" ? "" : "none";
   };
 

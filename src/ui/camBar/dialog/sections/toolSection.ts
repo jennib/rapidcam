@@ -152,6 +152,7 @@ export function buildToolSection(
   toolTypeSelect.value = state.toolType;
   toolContent.appendChild(dField("Tool Type", toolTypeSelect));
 
+  // Manual edits to any tool-defining field fork the op off its library tool.
   const fork = () => {
     state.toolId = undefined;
   };
@@ -273,6 +274,8 @@ export function buildToolSection(
 
   const applyToolDef = (t: ToolDef) => {
     state.toolId = t.id;
+    // Embed (upsert) the tool in the document so the file is self-contained
+    // and a single tool can drive multiple operations.
     const existingIdx = doc.tools.findIndex((x) => x.id === t.id);
     if (existingIdx >= 0) doc.tools[existingIdx] = { ...t };
     else doc.tools.push({ ...t });

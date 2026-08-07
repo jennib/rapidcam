@@ -41,7 +41,14 @@ export interface OpItemContext extends OpItemCallbacks {
 }
 
 /**
- * Warn when relief roughing goes deeper than the shallowest matching finish engrave op.
+ * Warn when relief roughing goes deeper than the shallowest matching finish
+ * engrave op.
+ *
+ * The *final* surface is set by the relief FINISH op (an Engrave on the same
+ * image). If roughing removes material deeper than the finish op ever cuts, it
+ * gouges the part — there is nothing left for the finish pass to clean up.
+ * Returns a warning in that case (null when safe, or when there is no finish op
+ * to compare against yet).
  */
 export function reliefRoughGougeWarning(op: CAMOperation, doc: CADDocument): string | null {
   if (op.type !== "relief-rough") return null;
@@ -131,6 +138,9 @@ export function buildOpItem(
   const opColor = TP_PALETTE[index % TP_PALETTE.length];
   item.style.setProperty("--tp-color", opColor);
 
+  // Two-row card: identity on top (checkbox · handle · swatch · badge · name),
+  // tool/params summary + actions below. A single row truncated the name to
+  // "Pr…" and wrapped the summary one word per line at the default width.
   const topRow = document.createElement("div");
   topRow.className = "tp-op-top";
   const botRow = document.createElement("div");
@@ -179,6 +189,7 @@ export function buildOpItem(
                   : "DRL";
   topRow.appendChild(badge);
 
+  // Double-sided: mark bottom-face ops so they're distinguishable in the list.
   if (doc.flip && opFace(op) === "bottom") {
     const face = document.createElement("span");
     face.className = "tp-badge";
@@ -207,6 +218,12 @@ export function buildOpItem(
           ? "Ball Nose"
           : "End Mill";
 
+  // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
+  // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
+  // All lengths/feeds shown in the document's unit and rounded (raw internal
+  // mm otherwise leaked as "-19.0499999…mm").
+  // Summarise the numbers the machine will actually run: when the op's layer
+  // carries a beam recipe, those are the layer's, not the op's own fields.
   const beam = doc.isLaser
     ? resolveOpLaser(op, doc.layers, doc.entities)
     : op;
@@ -227,6 +244,9 @@ export function buildOpItem(
   if (beamLayer)
     item.title = `Power, speed and passes come from the "${beamLayer.name}" layer. Edit them there to change every toolpath on it, or open this toolpath to give it its own.`;
 
+  // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
+  // chamfer) left in a laser document won't produce a toolpath — flag it here
+  // rather than letting it surface only as a "; NOTE:" buried in the G-code.
   if (
     doc.isLaser &&
     op.type !== "profile" &&
@@ -292,6 +312,8 @@ export function buildOpItem(
     info.appendChild(warn);
     item.classList.add("tp-op-empty");
   } else if (patternN <= 0 || op.followPattern === false) {
+    // Non-pattern (or pattern opted-out): the pattern line above already states
+    // the cut count for pattern ops.
     const n = nRegions || nEntities;
     const bind = document.createElement("div");
     bind.className = "tp-op-params";
@@ -335,6 +357,7 @@ export function buildOpItem(
     `</svg>`;
   delBtn.addEventListener("click", () => onDeleteOp(op));
 
+  // Actions live at the right of the summary row.
   const actions = document.createElement("div");
   actions.className = "tp-op-actions";
   actions.appendChild(dlBtn);

@@ -255,7 +255,10 @@ export function buildDialogShell(
   dialog.addEventListener("click", (e) => e.stopPropagation());
   backdrop.appendChild(dialog);
 
-  const DIALOG_W = 380;
+  // Position: restore the last dragged position; otherwise default to the right
+  // side of the screen (just left of the right-hand panel). Once the user drags
+  // it, that position is remembered (localStorage) and wins on the next open.
+  const DIALOG_W = 380; // matches .tp-dialog width in style.css
   const applyPos = (left: number, top: number) => {
     const maxLeft = Math.max(0, window.innerWidth - 100);
     const maxTop = Math.max(0, window.innerHeight - 50);
@@ -286,6 +289,9 @@ export function buildDialogShell(
     applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
   }
 
+  // Re-clamp on window resize so the dialog can't strand off-screen when the
+  // viewport shrinks. Self-removes on the first resize after any close path
+  // (the backdrop is gone), so it needs no explicit teardown hook.
   const onResize = () => {
     if (!backdrop.isConnected) {
       window.removeEventListener("resize", onResize);

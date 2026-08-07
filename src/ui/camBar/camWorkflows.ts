@@ -65,6 +65,7 @@ export async function toolpathsFromLayersWorkflow(ctx: CamWorkflowContext): Prom
 export function runMaterialTestWorkflow(ctx: CamWorkflowContext): void {
   const { doc, pushHistory, renderOps } = ctx;
   openMaterialTestDialog((cfg) => {
+    // Place the grid so it (and its left/bottom labels) sit in positive space.
     const ts = Math.max(2, Math.min(cfg.cellSize * 0.4, 6));
     const origin = { x: ts * 3.2 + 5, y: ts + cfg.cellSize * 0.15 + 5 };
     const { entities, operations } = generateMaterialTest({ ...cfg, origin });

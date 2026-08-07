@@ -133,8 +133,14 @@ export class CamExportService {
     } else {
       gcode = generateGCode(this.doc.operations, this.doc, this.gcodeOpts());
     }
+    // The export preview is the confirm-before-you-cut screen: a backplot, the
+    // run-time estimate, the job summary, and the pre-flight findings in one place,
+    // with Export / Cancel. It replaces the plain pre-flight confirm on this path.
     const name = this.exportName(isRotary ? "all-rotary" : "all");
     const foot = stockFootprint(this.doc);
+    // Rounded (not the raw values): a rotary job's wrapped dimension is
+    // Math.PI * diameter, an irrational number that otherwise printed its full
+    // float precision straight into the confirm-before-you-cut screen.
     const fw = formatLength(foot.width, "mm");
     const fh = formatLength(foot.height, "mm");
     const stockLabel = this.doc.isLaser
@@ -174,6 +180,8 @@ export class CamExportService {
   public async exportSingleOp(op: CAMOperation, index: number): Promise<void> {
     const code = generateGCode([op], this.doc, this.gcodeOpts());
     if (!(await this.preflight(code))) return;
+    // Prefix with the toolpath's 1-based list position so two same-named ops
+    // (e.g. several "Pocket"s) get distinct, order-matching filenames.
     const file = this.download(code, this.exportName(`op${index + 1}-${op.name}`));
     toast(`Exported "${op.name}" → ${file}`);
   }
@@ -210,6 +218,8 @@ export class CamExportService {
       });
       if (!proceed) return;
     }
+    // Side A may bore the registration pins past the stock bottom by design —
+    // allow that depth rather than failing pre-flight on it.
     if (
       !(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))
     )
@@ -250,6 +260,8 @@ export class CamExportService {
   private async doSendToMachine(app: "gSender" | "ncSender"): Promise<void> {
     if (!(await this.confirmMissingFonts())) return;
     const isRotary = this.doc.isRotary;
+    // A two-sided job can't run as one program — send side A now, side B after
+    // the operator flips the stock. (Not for a rotary job.)
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
       await this.sendFlip(app);
       return;
@@ -265,6 +277,7 @@ export class CamExportService {
     if (!(await this.preflight(gcode))) return;
 
     toast(`Sending to ${app}…`);
+    // One name for both the send and any fallback download below.
     const jobName = this.exportName(isRotary ? "all-rotary" : "all");
 
     let res: { ok: boolean; hint?: string; error?: string; port?: string };
@@ -291,6 +304,7 @@ export class CamExportService {
       return;
     }
 
+    // Couldn't send — surface why, and offer the file so they're not stuck.
     const download = await confirmDialog({
       title: `Couldn't send to ${app}`,
       message: `${res.error}\n\nDownload the G-code file instead?`,
@@ -315,6 +329,8 @@ export class CamExportService {
       });
       if (!proceed) return;
     }
+    // Side A may bore the registration pins past the stock bottom by design —
+    // allow that depth rather than failing pre-flight on it.
     if (
       !(await this.preflight(sideA, hasPins ? { extraDepthBelowBottom: flip.pinDepth } : undefined))
     )
@@ -346,6 +362,7 @@ export class CamExportService {
       return;
     }
 
+    // Side A is loaded — the operator runs it, then flips before side B.
     const goB = await confirmDialog({
       title: "Side A loaded",
       message:

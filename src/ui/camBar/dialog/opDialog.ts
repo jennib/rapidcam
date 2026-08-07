@@ -40,6 +40,9 @@ export function openOpDialog(options: OpDialogOptions): void {
   highlightOp?.(null);
 
   const isNew = existing === null;
+  // A laser document has no spindle/Z: the dialog hides the tool + cut/Z
+  // sections and shows a laser section (power/passes/feed) instead, and the
+  // op-type list narrows to the two that map to a beam (cut + engrave).
   const isLaser = doc.isLaser;
   const preSelectedEnts = doc.entities.filter((e) => e.selected && !e.isConstruction);
 
@@ -61,6 +64,7 @@ export function openOpDialog(options: OpDialogOptions): void {
     document.getElementById("tp-dialog-backdrop")?.remove();
   };
 
+  // --- backdrop + draggable dialog shell ---
   const { backdrop, dialog, body } = buildDialogShell(isNew, closeDialog);
   unregisterModal = registerModal(backdrop, closeDialog);
 
@@ -77,6 +81,8 @@ export function openOpDialog(options: OpDialogOptions): void {
   // Type
   const typeSelect = document.createElement("select");
   typeSelect.className = "unit";
+  // Nine selects in this dialog share `.unit`, so positional selectors are the
+  // only handle e2e had on this one. Named so it survives layout changes.
   typeSelect.dataset.testid = "op-type-select";
   const combos: [OpCombo, string][] = isLaser
     ? [
@@ -104,7 +110,9 @@ export function openOpDialog(options: OpDialogOptions): void {
   typeSelect.value = state.combo;
   body.appendChild(dField("Type", typeSelect));
 
-  // Tool Section
+  // Tool section (collapsible — starts collapsed when editing an existing op).
+  // Hidden for a laser (no spindle/Z/tool-library concept); the laser section
+  // below carries the feed instead.
   const toolSec = buildToolSection(doc, state, events, isNew);
   if (isLaser) toolSec.style.display = "none";
   body.appendChild(toolSec);
@@ -180,6 +188,8 @@ export function openOpDialog(options: OpDialogOptions): void {
 
   typeSelect.addEventListener("change", () => {
     state.combo = typeSelect.value as OpCombo;
+    // If the name is still an untouched auto-generated default, rename it
+    // to match the newly chosen type.
     if (AUTO_NAME_RE.test(state.name.trim())) {
       state.name = autoName(state.combo, doc);
       nameInput.value = state.name;
@@ -231,6 +241,8 @@ export function openOpDialog(options: OpDialogOptions): void {
       }
       ids = [...hl];
     } else {
+      // Keep only the selection valid for this op type; a specific message when
+      // none are (e.g. an image selected for a Cut → "can only be engraved").
       const check = checkOpSelection(doc.entities, state.entityIds, state.combo);
       if (check.error) {
         alert(check.error);
@@ -273,9 +285,12 @@ export function openOpDialog(options: OpDialogOptions): void {
 
     const isProfile = type === "profile";
     const reliefRough = type === "relief-rough";
+    // Image engrave: laser raster OR mill relief — both carry the same raster
+    // resolution fields (rasterLineInterval/DotPitch/Invert).
     const imageEngrave = type === "engrave" && opTargetsImage(state.entityIds);
     const raster = isLaser && imageEngrave;
     const rasterFields = imageEngrave;
+    // Invert / tone curve apply to both the mill relief FINISH and its roughing.
     const reliefImageFields = imageEngrave || reliefRough;
 
     const op: CAMOperation = {
@@ -285,6 +300,7 @@ export function openOpDialog(options: OpDialogOptions): void {
       side,
       entityIds: ids,
       followPattern: state.followPattern ? undefined : false,
+      // Double-sided: persist "bottom" only; "top" is the default, so omit it.
       face: doc.flip && state.face === "bottom" ? "bottom" : undefined,
       toolId: state.toolId,
       toolType: state.toolType,
@@ -302,17 +318,21 @@ export function openOpDialog(options: OpDialogOptions): void {
       peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
       finishPass:
         (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+      // Dog-bone corner relief applies to female corners (inside pocket, or concave corners on outside profile).
       cornerStyle:
         (state.combo.startsWith("profile") || state.combo === "pocket") &&
         (state.cornerStyle === "dogbone" || state.cornerStyle === "tbone")
           ? state.cornerStyle
           : undefined,
+      // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
       rampAngle:
         (state.combo === "pocket" || state.combo === "relief-rough") &&
         state.rampAngle !== undefined
           ? state.rampAngle
           : undefined,
+      // Cut direction — mill profile contours only (a laser cut has no climb/conventional).
       cutDirection: type === "profile" && !isLaser ? state.cutDirection : undefined,
+      // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
       finishAllowance:
         ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough
           ? state.finishAllowance
@@ -353,6 +373,7 @@ export function openOpDialog(options: OpDialogOptions): void {
         isLaser && type === "engrave" && !raster && state.laserFill
           ? state.laserFillSpacing
           : undefined,
+      // Overscan serves both vector fill and raster rows.
       laserOverscan:
         isLaser && type === "engrave" && (raster || state.laserFill) && state.laserOverscan > 0
           ? state.laserOverscan
@@ -364,8 +385,10 @@ export function openOpDialog(options: OpDialogOptions): void {
         raster && state.rasterDither === "none" && state.rasterMinPower > 0
           ? state.rasterMinPower
           : undefined,
+      // Dithering is laser-only (a mill relief carves graded depth, not 1-bit dots).
       rasterDither: raster && state.rasterDither !== "none" ? state.rasterDither : undefined,
       rasterInvert: reliefImageFields && state.rasterInvert ? true : undefined,
+      // Tone curve is a mill-relief control (a laser raster uses min/max power instead).
       reliefGamma:
         !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1
           ? state.reliefGamma
@@ -392,5 +415,6 @@ export function openOpDialog(options: OpDialogOptions): void {
   dialog.appendChild(footer);
 
   document.body.appendChild(backdrop);
+  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
   nameInput.select();
 }

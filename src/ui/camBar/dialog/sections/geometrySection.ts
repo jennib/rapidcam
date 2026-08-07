@@ -46,6 +46,7 @@ export function buildGeometrySection(
   let pickModeActive = false;
   let unsubPickMode: (() => void) | null = null;
 
+  // geometry section
   const geoSec = dSection("Geometry");
 
   const modeSelect = document.createElement("select");
@@ -158,6 +159,7 @@ export function buildGeometrySection(
   geoBar.appendChild(clearBtn);
   geoSec.appendChild(geoBar);
 
+  // Pick mode hint — visible only while pick mode is active
   const pickHint = document.createElement("div");
   pickHint.style.cssText =
     "display:none;font-size:11px;color:var(--accent);margin-bottom:6px;padding:4px 6px;" +
@@ -188,9 +190,13 @@ export function buildGeometrySection(
       (state.combo === "pocket" || state.combo === "vcarve") &&
       state.pocketBoundaryMode === "regions"
     ) {
+      // Flood-fill region pick: hover previews the enclosed face under the
+      // cursor (any face of the planar arrangement, including those formed
+      // by overlapping shapes); click toggles it.
       pickHint.textContent = "Click an enclosed area to add it; click again to remove";
       doc.regionPickHandler = (world) => {
         const loops = collectClosedLoops(doc.entities);
+        // If the click lands inside an already-picked region, remove that seed.
         const hit = state.regionSeeds.findIndex((seed) => {
           const r = regionAtPoint(seed, loops);
           return (
@@ -241,6 +247,8 @@ export function buildGeometrySection(
   const entityList = document.createElement("div");
   geoSec.appendChild(entityList);
 
+  // Pocket geometry: list of picked flood-fill regions (seed points whose
+  // enclosed faces are recomputed from live geometry).
   const renderRegionList = () => {
     const loops = collectClosedLoops(doc.entities);
     const items = state.regionSeeds.map((seed) => ({ seed, region: regionAtPoint(seed, loops) }));
@@ -297,6 +305,7 @@ export function buildGeometrySection(
         desc.style.opacity = "0.45";
       }
 
+      // Hovering the row previews the region on the canvas.
       row.addEventListener("mouseenter", () => {
         doc.regionPickHoverFill = it.region ? [it.region.outer, ...it.region.holes] : null;
         doc.emitChange();
@@ -337,6 +346,10 @@ export function buildGeometrySection(
     doc.emitChange();
     entityList.innerHTML = "";
 
+    // Show only entities valid for the current op type. The selection sets are
+    // NOT pruned here — keeping invalid-for-this-combo entities means flipping
+    // the op type (e.g. Cut↔Engrave) doesn't permanently lose them, and Apply
+    // filters to the valid subset (see checkOpSelection).
     const ents = doc.entities.filter((e) => !e.isConstruction && isValidFor(e, state.combo));
     if (ents.length === 0) {
       const mt = document.createElement("div");
@@ -346,9 +359,11 @@ export function buildGeometrySection(
       return;
     }
 
+    // Build entity → group reverse map
     const entityGroupMap = new Map<string, GroupDef>();
     for (const g of doc.groups) for (const eid of g.entityIds) entityGroupMap.set(eid, g);
 
+    // Group entities by layer
     const byLayer = new Map<string, Entity[]>();
     for (const e of ents) {
       const arr = byLayer.get(e.layerId) ?? [];
@@ -489,6 +504,7 @@ export function buildGeometrySection(
           }
         }
 
+        // Layer header (with toggle button on boundary section only)
         const lh = document.createElement("div");
         lh.style.cssText =
           "display:flex;justify-content:space-between;align-items:center;" +
@@ -520,6 +536,7 @@ export function buildGeometrySection(
         }
         container.appendChild(lh);
 
+        // Groups
         for (const { group, ents: gEnts } of groupsInLayer.values()) {
           const validEnts = gEnts.filter((e) => isValidFor(e, state.combo));
           const available = validEnts.filter((e) => !otherSet.has(e.id));
@@ -572,6 +589,7 @@ export function buildGeometrySection(
           for (const e of gEnts) container.appendChild(makeEntityRow(e, section, true));
         }
 
+        // Ungrouped: group line entities into closed chains, render each chain as one item
         const ungroupedLines = ungroupedEnts.filter(
           (e): e is LineEntity => e instanceof LineEntity,
         );

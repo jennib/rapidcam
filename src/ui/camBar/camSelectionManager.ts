@@ -28,6 +28,8 @@ export class CamSelectionManager {
     container: HTMLElement,
     onExport: (selectedIds: Set<string>) => void,
   ): HTMLButtonElement {
+    // Export a chosen subset of toolpaths into a single file (e.g. all the ops
+    // that share a tool). Appears only when ≥1 toolpath is checked.
     const exportSelBtn = document.createElement("button");
     exportSelBtn.className = "cam-add-btn cam-export-sel-btn";
     exportSelBtn.style.cssText = "width:100%;margin-top:6px;display:none;";

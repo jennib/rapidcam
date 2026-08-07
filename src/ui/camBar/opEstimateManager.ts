@@ -73,6 +73,8 @@ export class OpEstimateManager {
         }
         this.opTimeCache.set(key, secs);
       }
+      // The element may have been replaced by a newer render — update only if it's
+      // still the live one for this op.
       const el = this.opEstEls.get(op.id);
       if (el) el.textContent = `⏱ ~${formatDuration(secs)}`;
     }

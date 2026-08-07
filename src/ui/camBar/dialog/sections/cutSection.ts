@@ -27,6 +27,7 @@ export function buildCutSection(
 ): CutSectionController {
   const du = doc.displayUnit;
   const isLaser = doc.isLaser;
+  // cut section
   const cutSec = dSection("Cut");
 
   const depthRow = paramRow(
@@ -133,7 +134,10 @@ export function buildCutSection(
   );
   cutSec.appendChild(vStepRow.el);
 
-  // V-carve hop clearance
+  // V-carve hop clearance — height (mm above the surface) for rapid hops between
+  // contours. 0 = retract to safe Z (safe default); a positive value trades that
+  // for speed, and is only safe if no clamp/fixture stands above the stock within
+  // the carve. Off unless the user opts in.
   const vHopRow = paramRow(
     doc,
     state,
@@ -151,7 +155,9 @@ export function buildCutSection(
   );
   cutSec.appendChild(vHopRow.el);
 
-  // Relief engrave
+  // Relief engrave (a mill Engrave op targeting an image) — carve the image as
+  // depth-modulated 2.5-D. Depth (max) + Stepdown above drive the cut; these set
+  // the raster resolution. Needs a ball-nose/V-bit (forced below).
   const reliefLineRow = paramRow(
     doc,
     state,
@@ -212,6 +218,8 @@ export function buildCutSection(
   const reliefGammaRow = dField("Tone curve (gamma, 1 = linear)", reliefGammaInp);
   cutSec.appendChild(reliefGammaRow);
 
+  // Live cut-time estimate — a relief is a long job (often tens of minutes to
+  // hours); surface it so a multi-MB, hour-long program isn't a surprise.
   const reliefEstRow = document.createElement("div");
   reliefEstRow.className = "props-row";
   const reliefEstSpan = document.createElement("span");
@@ -229,6 +237,9 @@ export function buildCutSection(
     }
     const maxDepth = Math.abs(state.depth);
     const stepdown = state.stepdown > 0 ? state.stepdown : maxDepth;
+    // Roughing rasters at the tool's stepover (fraction × diameter) over the
+    // depth minus the finish allowance; the finish pass rasters at its line
+    // interval over the full depth.
     const rough = state.combo === "relief-rough";
     const li = rough
       ? Math.max(0.05, state.stepover * state.diameter)
@@ -265,6 +276,8 @@ export function buildCutSection(
   const strategyRow = dField("Clearing", strategySelect);
   cutSec.appendChild(strategyRow);
 
+  // Finishing pass — profile + pocket only. Leaves an allowance during
+  // roughing and removes it in a final full-depth wall lap.
   const finishChk = document.createElement("input");
   finishChk.type = "checkbox";
   finishChk.className = "settings-checkbox";
@@ -290,6 +303,9 @@ export function buildCutSection(
     finishAllowRow.el.style.display = finishChk.checked ? "" : "none";
   });
 
+  // Corner overcut — female (inside profile / pocket) cuts only. A dog-bone
+  // relieves each inside corner so a mating square part seats despite the
+  // tool's corner radius. Visibility is toggled in the combo handler below.
   const cornerSelect = document.createElement("select");
   cornerSelect.className = "unit";
   for (const [v, l] of [
@@ -309,6 +325,8 @@ export function buildCutSection(
   const cornerRow = dField("Corner overcut", cornerSelect);
   cutSec.appendChild(cornerRow);
 
+  // Cut direction — profile contours (mill). Climb vs conventional relative to
+  // the M3 spindle; visibility is set in the combo handler below.
   const dirSelect = document.createElement("select");
   dirSelect.className = "unit";
   for (const [v, l] of [
@@ -327,6 +345,9 @@ export function buildCutSection(
   const dirRow = dField("Cut direction", dirSelect);
   cutSec.appendChild(dirRow);
 
+  // Plunge ramp angle — pocket and relief-rough ramp into the cut instead of
+  // plunging straight. Empty = the per-context default (shown as placeholder);
+  // visibility + placeholder are set in the combo handler below.
   const rampRow = paramRow(
     doc,
     state,
@@ -411,6 +432,8 @@ export function buildCutSection(
     sharpenRow.style.display = show ? "" : "none";
   };
 
+  // Coolant — per operation, shown only when the machine has coolant (a
+  // machine-wide capability). Off/Mist (M7)/Flood (M8).
   if (getMachineHasCoolant()) {
     const coolantSelect = document.createElement("select");
     coolantSelect.className = "unit";
@@ -440,10 +463,13 @@ export function buildCutSection(
     return false;
   };
 
+  // Relief rows visible only for a mill Engrave op targeting an image; that op
+  // also needs a depth-shaping bit, so force a ball-nose if it's a flat end mill.
   const updateReliefVisibility = (): void => {
     const isFinish = state.combo === "engrave" && opTargetsImage(state.entityIds);
     const isRough = state.combo === "relief-rough";
     for (const r of [reliefLineRow.el, reliefDotRow.el]) r.style.display = isFinish ? "" : "none";
+    // Image controls shared by finish + roughing (invert / tone curve / estimate).
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
       r.style.display = isFinish || isRough ? "" : "none";
     if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") {
@@ -470,10 +496,13 @@ export function buildCutSection(
     finishRow.style.display = showFinish ? "" : "none";
     finishAllowRow.el.style.display =
       (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+    // Corner overcut is a female-feature relief — inside profiles and pockets only.
     cornerRow.style.display =
       state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
+    // Cut direction — mill profile contours only (a laser beam has no climb/conventional).
     dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
 
+    // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
     const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
     rampRow.el.style.display = showRamp ? "" : "none";
     rampRow.inp.placeholder = "auto";
@@ -481,9 +510,13 @@ export function buildCutSection(
     updateChamferVisibility();
     updateReliefVisibility();
 
+    // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
     if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit") {
       events.emitSetToolType("v-bit");
     }
+    // Roughing wants a flat tool — reset a depth-shaping bit (often inherited
+    // from the image → Engrave default) to an end mill when switching to it.
+    // The finish needs the depth-shaping bit; roughing does not.
     if (
       state.combo === "relief-rough" &&
       (state.toolType === "ball-nose" || state.toolType === "v-bit")
