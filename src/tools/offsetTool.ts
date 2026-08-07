@@ -245,7 +245,12 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
 // Commit: create the offset entity in the document
 // ---------------------------------------------------------------------------
 
-import { STOCK_ENTITY_ID, stockRefEntity, stockFootprint } from "../model/document";
+import {
+  type CADDocument,
+  STOCK_ENTITY_ID,
+  stockRefEntity,
+  stockFootprint,
+} from "../model/document";
 import { nextId } from "../model/ids";
 import { edgeEndsOf } from "../model/entities";
 
@@ -258,6 +263,62 @@ function distToInfiniteLine(p: Vec2, a: Vec2, b: Vec2): number {
 }
 
 import { lineRefEntityId, SEGMENT_SEP } from "../model/constraints";
+
+/**
+ * The stock's four edges as world segments, keyed the way `edgeEndsOf` resolves
+ * them. Works whether the stock is an explicit `stockRect` or fills the sheet.
+ *
+ * One definition: this geometry was written out four times in
+ * inheritOffsetConstraints (twice as a key mapping, twice as a segment table),
+ * which is the same drift hazard the CAM clamp tables had.
+ */
+function stockEdges(doc: CADDocument): { key: string; a: Vec2; b: Vec2 }[] {
+  const sx = doc.stockRect?.x ?? 0;
+  const sy = doc.stockRect?.y ?? 0;
+  const { width, height } = stockFootprint(doc);
+  return [
+    { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
+    { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
+    { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
+    { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
+  ];
+}
+
+/**
+ * Qualify a bare stock point-key ("mid_b", "bl", "top", ...) into the edge ref a
+ * `pointOnLine` can actually resolve. A CORNER touches two edges, so this picks
+ * the horizontal one — arbitrary, but it has to choose, and bottom/top is the
+ * convention the offset inheritance shipped with.
+ *
+ * Mostly belt-and-braces: for a flat job the `stockEdges` sweep below finds the
+ * same edge geometrically, because a point named by a stock key is by definition
+ * sitting on that edge. It earns its keep on a ROTARY document, where that sweep
+ * is skipped entirely. Worth knowing before "simplifying" it away — and worth
+ * knowing that the offset test named for this path actually passes through the
+ * geometric sweep (stubbing this function out does not fail it).
+ */
+function stockEdgeRefForKey(key: string): string | null {
+  switch (key) {
+    case "mid_b":
+    case "bl":
+    case "br":
+    case "bottom":
+      return STOCK_ENTITY_ID + "#bottom";
+    case "mid_t":
+    case "tl":
+    case "tr":
+    case "top":
+      return STOCK_ENTITY_ID + "#top";
+    case "mid_l":
+    case "left":
+      return STOCK_ENTITY_ID + "#left";
+    case "mid_r":
+    case "right":
+      return STOCK_ENTITY_ID + "#right";
+    default:
+      return null;
+  }
+}
 
 function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContext): void {
   if (parent.type !== "line" || child.type !== "line") return;
@@ -294,53 +355,20 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
         const p1 = c.points[0];
         const p2 = c.points[1];
         if (p1.entityId === parent.id && p1.key === key) {
-          if (p2.entityId === STOCK_ENTITY_ID) {
-            if (p2.key === "mid_b" || p2.key === "bl" || p2.key === "br" || p2.key === "bottom") {
-              targetIds.add(`${STOCK_ENTITY_ID}#bottom`);
-            } else if (p2.key === "mid_t" || p2.key === "tl" || p2.key === "tr" || p2.key === "top") {
-              targetIds.add(`${STOCK_ENTITY_ID}#top`);
-            } else if (p2.key === "mid_l" || p2.key === "left") {
-              targetIds.add(`${STOCK_ENTITY_ID}#left`);
-            } else if (p2.key === "mid_r" || p2.key === "right") {
-              targetIds.add(`${STOCK_ENTITY_ID}#right`);
-            } else {
-              targetIds.add(p2.entityId);
-            }
-          } else {
-            targetIds.add(p2.entityId);
-          }
+          targetIds.add(
+            (p2.entityId === STOCK_ENTITY_ID ? stockEdgeRefForKey(p2.key) : null) ?? p2.entityId,
+          );
         } else if (p2.entityId === parent.id && p2.key === key) {
-          if (p1.entityId === STOCK_ENTITY_ID) {
-            if (p1.key === "mid_b" || p1.key === "bl" || p1.key === "br" || p1.key === "bottom") {
-              targetIds.add(`${STOCK_ENTITY_ID}#bottom`);
-            } else if (p1.key === "mid_t" || p1.key === "tl" || p1.key === "tr" || p1.key === "top") {
-              targetIds.add(`${STOCK_ENTITY_ID}#top`);
-            } else if (p1.key === "mid_l" || p1.key === "left") {
-              targetIds.add(`${STOCK_ENTITY_ID}#left`);
-            } else if (p1.key === "mid_r" || p1.key === "right") {
-              targetIds.add(`${STOCK_ENTITY_ID}#right`);
-            } else {
-              targetIds.add(p1.entityId);
-            }
-          } else {
-            targetIds.add(p1.entityId);
-          }
+          targetIds.add(
+            (p1.entityId === STOCK_ENTITY_ID ? stockEdgeRefForKey(p1.key) : null) ?? p1.entityId,
+          );
         }
       }
     }
 
     // Also check stock edges if parentPt touched a stock edge (works whether stockRect is set or fills sheet)
     if (!ctx.doc.isRotary) {
-      const sx = ctx.doc.stockRect?.x ?? 0;
-      const sy = ctx.doc.stockRect?.y ?? 0;
-      const { width, height } = stockFootprint(ctx.doc);
-      const edges = [
-        { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
-        { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
-        { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
-        { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
-      ];
-      for (const e of edges) {
+      for (const e of stockEdges(ctx.doc)) {
         if (distToInfiniteLine(parentPt, e.a, e.b) < 1e-3) {
           targetIds.add(`${STOCK_ENTITY_ID}${SEGMENT_SEP}${e.key}`);
         }
@@ -361,15 +389,7 @@ function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContex
         targetGeom = edgeEndsOf(base, suffix);
       } else if (target === STOCK_ENTITY_ID) {
         if (!ctx.doc.isRotary) {
-          const sx = ctx.doc.stockRect?.x ?? 0;
-          const sy = ctx.doc.stockRect?.y ?? 0;
-          const { width, height } = stockFootprint(ctx.doc);
-          const edges = [
-            { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
-            { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
-            { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
-            { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
-          ];
+          const edges = stockEdges(ctx.doc);
           let bestEdge = edges[0];
           let minDist = Infinity;
           for (const e of edges) {
