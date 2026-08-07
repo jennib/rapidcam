@@ -75,7 +75,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Zoom: Roll the (Mouse Scroll Wheel), or pinch on multi-touch trackpads. RapidCAM zooms directly toward your cursor position.",
           "Select Objects: Left-click on any line, arc, or shape. Hold (Shift) while clicking or dragging a marquee box to multi-select.",
           "Deselect / Cancel Action: Press (Escape) or click on empty canvas space.",
-          "Fit View: Press (F) or double-click the Middle Mouse Button to auto-center and frame all geometry on screen.",
+          "Fit View: View menu → Fit View, or right-click the canvas → Fit View, to auto-center and frame all geometry. (There is no single-key shortcut — F is the Fillet tool.)",
         ],
       },
       {
@@ -84,7 +84,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         tips: [
           "Top Menu Bar: Access project management (File), editing operations (Edit), viewport toggles (View), vector generator wizards (Insert), and documentation (Help).",
           "Tool Palette (Left Rail): Quick access to CAD drawing primitives (Line, Rect, Circle, Arc, Polyline, Bezier, Polygon, Slot, Text, Dimension, Measure, Fillet, Trim, Extend, Offset, Mirror, Rotate, Scale).",
-          "Design Tree (Left Sidebar - Toggle with Ctrl+B): Hierarchical tree displaying all geometric entities, layers, parametric variables (#var), and active constraints.",
+          "Design Tree (Left Sidebar - Toggle with Ctrl+B): Hierarchical tree displaying all geometric entities, layers, and active constraints.",
           "Properties Panel (Right Sidebar): Real-time parameter inspector for selected entities, driving dimensions, constraint overrides, and layer styling.",
           "CAM Operations Bar (Bottom Dock): Configure stock dimensions, create toolpath operations (Profile, Pocket, V-Carve, Drill, Laser), manage the Tool Library, run 3D Simulation, and export G-Code.",
         ],
@@ -190,7 +190,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "constraints",
     title: "Geometric Constraints & Parametric Engine",
     category: "Constraints",
-    summary: "Lock design intent using 2D geometric rules, driving dimensions, parametric variables (#var), and real-time solver feedback.",
+    summary: "Lock design intent using 2D geometric rules, driving dimensions, parametric variables, and real-time solver feedback.",
     keywords: [
       "constraint",
       "parametric",
@@ -244,16 +244,19 @@ export const HELP_TOPICS: HelpTopic[] = [
         },
       },
       {
-        heading: "Parametric Variables (#var) & Mathematical Formulas",
-        body: "Define named variables in the Variables Panel (Ctrl+B) to drive entire parametric models from a few master values. Use variables in any dimension input field by prefixing with `#`:",
+        heading: "Parametric Variables & Formulas",
+        body: "Define named variables in the Variables panel (right sidebar, Draw tab) with \"+ Add variable\", then drive an entire model from a few master values. Refer to a variable by its bare name — there is no prefix or sigil. Names must be valid identifiers: letters, digits and underscores, not starting with a digit.",
         codeSnippet: {
-          title: "Example Parametric Variables & Dimension Expressions",
-          code: "#plate_width = 240\n#plate_height = 120\n#material_thickness = 12.7\n#hole_dia = 6.35\n#hole_margin = #material_thickness * 1.5\n#pocket_depth = #material_thickness - 3.0",
+          title: "Example Parametric Variables & Formulas",
+          code: "plate_width = 240\nplate_height = 120\nmaterial_thickness = 12.7mm\nhole_dia = 1/4in\nhole_margin = material_thickness * 1.5\npocket_depth = material_thickness - 3",
         },
         tips: [
-          "Supported math operators: Addition (+), Subtraction (-), Multiplication (*), Division (/), Modulo (%), Exponentiation (^).",
-          "Grouping & Functions: Parentheses ( ), Math.sqrt(), Math.sin(), Math.cos(), Math.min(), Math.max(), Math.round().",
-          "Global propagation: Updating a variable instantly triggers the constraint solver and recalculates all CAM toolpaths automatically.",
+          "Supported operators: + - * / and ^ (exponentiation), with parentheses for grouping. There are no functions (no sqrt/sin/min) and no modulo.",
+          "A value can be a plain number, a length with units (50mm, 3.5in, 1/2in, 3 1/4in), or a formula referencing other variables. Variables may reference each other in any order — the solver resolves them in dependency order.",
+          "`stock` is always available and resolves to the project's stock thickness, so a design can track the material it's cut from.",
+          "Inside a FORMULA a bare number is millimetres, regardless of the project's display unit — the same rule dimension and CAM formulas use. A bare number entered on its own is read in the display unit, so write `12.7mm` or `0.5in` when you mean a specific length.",
+          "Any numeric field with an ƒx badge can be driven by a formula too — click the badge to pick a variable, or type an expression straight into the field.",
+          "Global propagation: updating a variable re-solves the sketch, regenerates parametric features, and re-evaluates CAM operation formulas.",
         ],
       },
       {
@@ -534,7 +537,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "shortcuts-reference",
     title: "Keyboard Shortcuts & Power-User Reference",
     category: "Shortcuts",
-    summary: "Complete reference for single-key drawing tools, constraint shortcuts, document editing, and viewport controls.",
+    summary: "Complete reference for single-key drawing tools, document editing, and viewport controls.",
     keywords: ["shortcuts", "hotkeys", "keyboard", "cheatsheet", "f1", "ctrl", "single key"],
     sections: [
       {
@@ -566,17 +569,21 @@ export const HELP_TOPICS: HelpTopic[] = [
         },
       },
       {
-        heading: "Geometric Constraint Shortcuts",
-        body: "Apply parametric constraints to selected entities with one keystroke:",
+        heading: "Geometric Constraints",
+        body: "Constraints are applied from the CONSTRAINTS toolbar above the canvas — select the geometry, then click the glyph. There are no single-key constraint shortcuts: every letter is already a drawing tool, so pressing one would switch tools instead.",
         table: {
-          headers: ["Key", "Constraint", "Glyph", "Entity Selection"],
+          headers: ["Glyph", "Constraint", "Entity Selection"],
           rows: [
-            ["C", "Coincident", "[+]", "Select 2 points or point + circle center."],
-            ["H", "Horizontal", "[H]", "Select 1 line or 2 points."],
-            ["V", "Vertical", "[V]", "Select 1 line or 2 points."],
-            ["P", "Parallel", "[∥]", "Select 2 lines."],
-            ["K", "Perpendicular", "[⟂]", "Select 2 lines."],
-            ["E", "Equal Length / Radius", "[=]", "Select 2 lines or 2 circles/arcs."],
+            ["+", "Coincident", "Select 2 points or a point + circle centre."],
+            ["H", "Horizontal", "Select 1 line or 2 points."],
+            ["V", "Vertical", "Select 1 line or 2 points."],
+            ["∥", "Parallel", "Select 2 lines."],
+            ["⟂", "Perpendicular", "Select 2 lines."],
+            ["=", "Equal Length / Radius", "Select 2 lines or 2 circles/arcs."],
+            ["◎", "Concentric", "Select 2 circles/arcs."],
+            ["T", "Tangent", "Select a line + circle/arc, or 2 circles/arcs."],
+            ["↔", "Symmetric", "Select 2 points + a line to mirror about."],
+            ["⚓", "Fixed", "Select geometry to lock it in place."],
           ],
         },
       },
