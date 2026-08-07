@@ -28,8 +28,8 @@ import {
 import {
   type CADDocument,
   STOCK_ENTITY_ID,
+  stockEdgeSegments,
   stockRefEntity,
-  stockRefPoint,
 } from "../model/document";
 import {
   ArcEntity,
@@ -854,17 +854,18 @@ function pickStockEdge(
   p: Vec2,
   tol: number,
 ): { p1: Pick; p2: Pick; mid: Pick } | null {
-  const bl = stockRefPoint(doc, "bl");
-  const br = stockRefPoint(doc, "br");
-  const tr = stockRefPoint(doc, "tr");
-  const tl = stockRefPoint(doc, "tl");
-  if (!bl || !br || !tr || !tl) return null; // rotary: no flat stock to dimension from
-  const edges: [string, Vec2, string, Vec2, string, Vec2][] = [
-    ["bl", bl, "br", br, "mid_b", mid(bl, br)],
-    ["br", br, "tr", tr, "mid_r", mid(br, tr)],
-    ["tr", tr, "tl", tl, "mid_t", mid(tr, tl)],
-    ["tl", tl, "bl", bl, "mid_l", mid(tl, bl)],
-  ];
+  // Edge order and key names come from STOCK_EDGES so this cannot drift out of
+  // step with the offset tool's copy or with RECT_EDGE_CORNERS.
+  const segs = stockEdgeSegments(doc);
+  if (!segs) return null; // rotary: no flat stock to dimension from
+  const edges: [string, Vec2, string, Vec2, string, Vec2][] = segs.map((s) => [
+    s.edge.corners[0],
+    s.a,
+    s.edge.corners[1],
+    s.b,
+    s.edge.mid,
+    mid(s.a, s.b),
+  ]);
   let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
   let bestD = tol;
   for (const edge of edges) {

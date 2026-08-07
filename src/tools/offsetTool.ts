@@ -248,8 +248,9 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
 import {
   type CADDocument,
   STOCK_ENTITY_ID,
+  STOCK_EDGES,
+  stockEdgeSegments,
   stockRefEntity,
-  stockFootprint,
 } from "../model/document";
 import { nextId } from "../model/ids";
 import { edgeEndsOf } from "../model/entities";
@@ -273,15 +274,7 @@ import { lineRefEntityId, SEGMENT_SEP } from "../model/constraints";
  * which is the same drift hazard the CAM clamp tables had.
  */
 function stockEdges(doc: CADDocument): { key: string; a: Vec2; b: Vec2 }[] {
-  const sx = doc.stockRect?.x ?? 0;
-  const sy = doc.stockRect?.y ?? 0;
-  const { width, height } = stockFootprint(doc);
-  return [
-    { key: "bottom", a: { x: sx, y: sy }, b: { x: sx + width, y: sy } },
-    { key: "right", a: { x: sx + width, y: sy }, b: { x: sx + width, y: sy + height } },
-    { key: "top", a: { x: sx + width, y: sy + height }, b: { x: sx, y: sy + height } },
-    { key: "left", a: { x: sx, y: sy + height }, b: { x: sx, y: sy } },
-  ];
+  return (stockEdgeSegments(doc) ?? []).map((s) => ({ key: s.edge.name, a: s.a, b: s.b }));
 }
 
 /**
@@ -298,26 +291,14 @@ function stockEdges(doc: CADDocument): { key: string; a: Vec2; b: Vec2 }[] {
  * geometric sweep (stubbing this function out does not fail it).
  */
 function stockEdgeRefForKey(key: string): string | null {
-  switch (key) {
-    case "mid_b":
-    case "bl":
-    case "br":
-    case "bottom":
-      return STOCK_ENTITY_ID + "#bottom";
-    case "mid_t":
-    case "tl":
-    case "tr":
-    case "top":
-      return STOCK_ENTITY_ID + "#top";
-    case "mid_l":
-    case "left":
-      return STOCK_ENTITY_ID + "#left";
-    case "mid_r":
-    case "right":
-      return STOCK_ENTITY_ID + "#right";
-    default:
-      return null;
+  for (const e of STOCK_EDGES) {
+    if (key === e.mid || key === e.name) return `${STOCK_ENTITY_ID}#${e.name}`;
+    // A CORNER touches two edges; the first match in canonical winding order
+    // wins, which makes bl/br resolve to "bottom" and tl/tr to "top" — the
+    // convention the offset inheritance shipped with.
+    if (e.corners.includes(key as never)) return `${STOCK_ENTITY_ID}#${e.name}`;
   }
+  return null;
 }
 
 function inheritOffsetConstraints(parent: Entity, child: Entity, ctx: ToolContext): void {

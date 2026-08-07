@@ -290,6 +290,48 @@ const STOCK_POINT_KEYS = ["bl", "br", "tr", "tl", "mid_b", "mid_r", "mid_t", "mi
 export type StockPointKey = (typeof STOCK_POINT_KEYS)[number];
 
 /**
+ * The stock's four edges, in the canonical winding bl -> br -> tr -> tl.
+ *
+ * ONE statement of that order. It was previously restated in
+ * `dimensionTool.pickStockEdge` (as mid_b/mid_r/mid_t/mid_l) and in
+ * `offsetTool` (as bottom/right/top/left), and it also has to agree with
+ * `RECT_EDGE_CORNERS` in entities.ts — three copies of a fact that, if one were
+ * reordered, would silently attach constraints and dimensions to the WRONG edge.
+ *
+ * Both spellings are kept because both are already written into saved files:
+ * `mid` is what a dimension anchors to, `name` is what an offset-inherited
+ * `pointOnLine` references. `edgeEndsOf` resolves either.
+ */
+export const STOCK_EDGES = [
+  { corners: ["bl", "br"], mid: "mid_b", name: "bottom" },
+  { corners: ["br", "tr"], mid: "mid_r", name: "right" },
+  { corners: ["tr", "tl"], mid: "mid_t", name: "top" },
+  { corners: ["tl", "bl"], mid: "mid_l", name: "left" },
+] as const;
+
+export interface StockEdgeSeg {
+  edge: (typeof STOCK_EDGES)[number];
+  a: Vec2;
+  b: Vec2;
+}
+
+/**
+ * The stock's four edges as world segments, or null when there is no flat stock
+ * (a rotary document's canvas is the unrolled cylinder, not a rectangle).
+ * Resolves through {@link stockRefPoint}, so "stock fills the sheet" works too.
+ */
+export function stockEdgeSegments(doc: CADDocument): StockEdgeSeg[] | null {
+  const out: StockEdgeSeg[] = [];
+  for (const edge of STOCK_EDGES) {
+    const a = stockRefPoint(doc, edge.corners[0]);
+    const b = stockRefPoint(doc, edge.corners[1]);
+    if (!a || !b) return null;
+    out.push({ edge, a, b });
+  }
+  return out;
+}
+
+/**
  * The stock rectangle's corner/edge-midpoint in world mm, or null when there's no
  * flat stock to dimension from (a rotary document's canvas is the unrolled
  * cylinder surface, not a rectangle) or `key` isn't one of the 8 recognised
