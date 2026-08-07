@@ -637,6 +637,35 @@ Three optional cut-control fields apply across operation types:
 > only and must be tuned for the actual material, tool, and machine. Always verify
 > `depth`, the chosen `origin`, and tool changes before cutting.
 
+### Parametric operation fields
+
+Optional. `paramExprs` drives numeric operation fields from formulas instead of
+fixed numbers, keyed by field name. Expressions are evaluated against
+[variables](#variables) and `stock` before every solve, then clamped to the
+field's valid range — so an operation can track the material rather than being
+re-typed when it changes.
+
+```jsonc
+{ "id": "op1", "name": "Profile outline", "type": "profile",
+  // …required fields as above…
+  "depth": -12, "feedrate": 900,
+  "paramExprs": { "depth": "-stock", "feedrate": "baseFeed * 1.2" } }
+```
+
+- The sibling numeric field (`depth`, `feedrate`, …) holds the **last resolved
+  value**, and is the cache/fallback for fields with no expression or whose
+  expression fails to evaluate. Always emit it — a file is valid and loadable
+  without ever evaluating an expression.
+- Bare numbers inside an expression are **millimetres**, matching variable and
+  dimension formulas — `"0.5"` alone in an inch-unit document is 0.5 in, but
+  `"0.5 * 2"` is 1 mm.
+- Nested fields accept either the flat or dotted key: `"tabCount"` or
+  `"tabs.count"`, `"leadInLen"` or `"leadIn.length"`. An expression for a nested
+  field is ignored while its parent object (`tabs`, `leadIn`, `leadOut`) is
+  absent, and applies once it exists.
+- Renaming a variable in the app rewrites references inside `paramExprs`, as it
+  does for dimension and feature expressions.
+
 ### Laser operations
 
 When the document's `machineKind` is `"laser"`, the same operations are posted

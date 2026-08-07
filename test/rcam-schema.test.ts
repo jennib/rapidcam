@@ -384,6 +384,9 @@ function kitchenSinkDoc(): CADDocument {
       tabs: { enabled: true, count: 4, width: 5, height: 1 },
       leadIn: { type: "arc", length: 4 },
       leadOut: { type: "linear", length: 4 },
+      // Parametric CAM fields: raw expressions driving numeric op params,
+      // re-evaluated against variables/stock on every solve.
+      paramExprs: { depth: "-stock", feedrate: "1000 * 1.2" },
     },
     {
       // engrave
@@ -544,6 +547,22 @@ function parametricDoc(): CADDocument {
     { id: "b3", entityId: img.id, scalarKey: "h", expr: "plateW/2" },
     { id: "b4", entityId: img.id, scalarKey: "angle", expr: "margin", scale: Math.PI / 180 },
   );
+
+  // A re-editable generator feature carrying BOTH optional maps: `paramExprs`
+  // (expression per param) and `keyIds` (stable key → entity id). No bundled
+  // example has a `features` array, so this is the only schema coverage the
+  // feature object gets — the fields llms.txt tells external authors to emit.
+  const featLine = doc.add(new LineEntity({ x: 0, y: 80 }, { x: 60, y: 80 }));
+  doc.groups.push({ id: "grp-feat", name: "Box joint", entityIds: [featLine.id] });
+  doc.features.push({
+    id: "feat1",
+    generatorId: "box-joint",
+    params: { width: 120, fingers: 5 },
+    paramExprs: { width: "plateW" },
+    keyIds: { "front-wall": featLine.id },
+    groupId: "grp-feat",
+    offset: { x: 5, y: 5 },
+  });
   return doc;
 }
 

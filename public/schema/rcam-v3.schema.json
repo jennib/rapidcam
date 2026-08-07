@@ -227,6 +227,16 @@
           "required": ["x", "y"],
           "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
           "description": "Translation applied to the generator's origin-based output to place it in the work area; re-applied on regenerate."
+        },
+        "paramExprs": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional expression per generator param, evaluated against document `variables` and `stock` (the stock thickness). `params` holds the last resolved values as cache/fallback: a param with no entry here, or whose expression fails to evaluate, keeps its cached numeric. The feature regenerates when a variable it references changes."
+        },
+        "keyIds": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Stable generator key → entity id, for entities the generator named (e.g. \"front-wall\"). Regeneration pairs keyed entities by key rather than by emit position, so constraints, dimensions, and CAM references survive output reordering and partial deletes."
         }
       }
     },
@@ -771,7 +781,12 @@
         "rasterMinPower": { "type": "number", "minimum": 0, "maximum": 100, "description": "Laser raster engrave only: beam power (%) for the lightest engraved dot (laserPower is the power for a fully black dot). Default 0." },
         "rasterInvert": { "type": "boolean", "description": "Image-engrave / relief-rough only: engrave/carve the light areas instead of the dark (negative). Default false. Should match between a relief roughing op and its finish op." },
         "rasterDither": { "enum": ["none", "floyd-steinberg", "atkinson", "jarvis", "ordered"], "description": "Laser raster engrave only: reproduce tone as a 1-bit dot pattern instead of per-dot power modulation. Every fired dot burns at laserPower and tone comes from dot density; rasterMinPower is then unused. floyd-steinberg/atkinson/jarvis are error-diffusion kernels (FS = classic, Jarvis = smoother/wider, Atkinson = higher contrast); ordered = 8x8 Bayer pattern. Omitted or 'none' = greyscale power (default)." },
-        "reliefGamma": { "type": "number", "exclusiveMinimum": 0, "description": "Mill relief only (engrave-on-image or relief-rough): tone curve on carved depth — depth proportional to darkness^gamma. 1 = linear (default). >1 lifts the mid-tones (flatter, shallower background), <1 deepens them. Black/white endpoints are fixed. Should match between a relief roughing op and its finish op." }
+        "reliefGamma": { "type": "number", "exclusiveMinimum": 0, "description": "Mill relief only (engrave-on-image or relief-rough): tone curve on carved depth — depth proportional to darkness^gamma. 1 = linear (default). >1 lifts the mid-tones (flatter, shallower background), <1 deepens them. Black/white endpoints are fixed. Should match between a relief roughing op and its finish op." },
+        "paramExprs": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional expression per numeric op field, keyed by field name (e.g. {\"depth\": \"-stock\", \"feedrate\": \"baseFeed * 1.2\"}). Evaluated against document `variables` and `stock` (the stock thickness) before every solve, then clamped to the field's valid range; bare numbers in an expression are internal mm, matching dimension and feature formulas. The sibling numeric field holds the last resolved value as cache/fallback for fields with no expression, or whose expression fails to evaluate. Keys for nested fields use either the flat or dotted form (\"tabCount\"/\"tabs.count\", \"leadInLen\"/\"leadIn.length\"); a nested expression is skipped while its parent object is absent."
+        }
       }
     },
     "tool": {

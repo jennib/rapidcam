@@ -44,6 +44,22 @@ integration guide, inlined as one plain-text document.
   to entity ids; keyed entities keep their ids by key rather than by emit
   position, so references survive output reordering and partial deletes.
 
+## Parametric CAM operations
+
+- `operations[]` may carry `paramExprs` too — an expression per **numeric op
+  field**, keyed by field name: `{"depth": "-stock", "feedrate": "baseFeed*1.2"}`.
+  Evaluated against `variables` and `stock` before every solve, then clamped to
+  the field's valid range.
+- Always also emit the plain numeric field (`depth`, `feedrate`, ...): it is the
+  last resolved value and the fallback when a field has no expression or its
+  expression fails. A file never needs an expression evaluated to load.
+- Bare numbers in an expression are **millimetres** (as in variable, dimension,
+  and feature formulas) regardless of `displayUnit`.
+- Nested fields take either key spelling: `"tabCount"`/`"tabs.count"`,
+  `"leadInLen"`/`"leadIn.length"`. Ignored while `tabs`/`leadIn`/`leadOut` is absent.
+- `"depth": "-stock"` is the common case — a profile that always cuts through
+  whatever the stock currently is.
+
 ## Laser jobs from layers
 
 - A **layer** may carry a `laser` recipe — `{kind?, feedrate, laserPower,
