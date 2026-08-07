@@ -109,6 +109,29 @@ describe("Help content stays true to the app", () => {
     expect(allText).not.toMatch(/Modulo \(%\)/i);
   });
 
+  it("has no 'Key' column anywhere that names keys the app does not bind", () => {
+    // The first guard only looked at headers[0], and MISSED a second fabricated
+    // table whose Key column sat third ("Constraint | Glyph | Key | ..."),
+    // listing C/H/V/P/K/E for constraints. Found by opening the app and reading
+    // the page. Check EVERY column called Key, wherever it sits.
+    for (const t of tables) {
+      const col = t.headers.findIndex((h) => /^key$/i.test(h));
+      if (col < 0) continue;
+      for (const row of t.rows) {
+        const cell = (row[col] ?? "").trim();
+        if (!/^[A-Za-z]$/.test(cell)) continue; // "—", "Ctrl+S" etc. handled elsewhere
+        if (cell.toLowerCase() === "x") continue; // construction toggle, not a tool
+        const bound = TOOL_SHORTCUTS[cell.toLowerCase()];
+        const label = row.filter((_, n) => n !== col).join(" ").toLowerCase();
+        expect(bound, `table claims "${cell}" for "${label.slice(0, 40)}", but nothing is bound to it`).toBeTruthy();
+        expect(
+          label.includes(bound) || bound.includes(label.split(/[ /]/)[0]),
+          `table claims "${cell}" for "${label.slice(0, 40)}", but it activates "${bound}"`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("does not present a table of single-key constraint shortcuts", () => {
     // Every letter is already a drawing tool; app.ts dispatches single keys
     // through TOOL_SHORTCUTS only, so "press P for Parallel" would just switch
