@@ -42,6 +42,15 @@ export class SettingsBar {
     private host: HTMLElement,
     private doc: CADDocument,
     private pushHistory: () => void,
+    /**
+     * Stock thickness is the global `stock` that variables, dimensions,
+     * generator features, and CAM `paramExprs` are all allowed to reference, so
+     * changing it has to re-drive them exactly as editing a variable does — an
+     * `emitChange()` alone only repaints, leaving a `depth: "-stock"` operation
+     * (and a box joint sized to the material) showing the OLD thickness until
+     * some unrelated edit happened to trigger a solve.
+     */
+    private onStockChanged: () => void = () => {},
   ) {
     this.build();
     this.host.classList.add("collapsed");
@@ -201,6 +210,7 @@ export class SettingsBar {
       if (v !== null && v > 0) {
         this.pushHistory();
         this.doc.stockThickness = v;
+        this.onStockChanged();
         this.doc.emitChange();
       }
     });
