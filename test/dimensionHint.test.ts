@@ -7,9 +7,21 @@ describe("dimensionHint (phase-aware Dimension tool guidance)", () => {
   });
 
   it("tells the user to click in OPEN SPACE while placing", () => {
-    for (const phase of ["placeLinear", "placeCircle", "placeAngle"] as Phase[]) {
+    // Circle and angle placement still need open space: a click on geometry
+    // there is still consumed as a pick.
+    for (const phase of ["placeCircle", "placeAngle"] as Phase[]) {
       expect(dimensionHint(phase)).toMatch(/open space/i);
     }
+  });
+
+  it("does NOT send the user hunting for open space on a linear placement", () => {
+    // A bare click places a linear dimension ANYWHERE — re-targeting onto a
+    // second edge takes Shift — so "find open space" would be wrong advice, and
+    // the Shift gesture is otherwise undiscoverable.
+    const hint = dimensionHint("placeLinear") ?? "";
+    expect(hint).not.toMatch(/open space/i);
+    expect(hint).toMatch(/place/i);
+    expect(hint).toMatch(/shift/i);
   });
 
   it("guides the intermediate picks", () => {

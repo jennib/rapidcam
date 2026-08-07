@@ -61,8 +61,11 @@ function dimensionBottomEdge(tool: DimensionTool, ctx: ToolContext): void {
   // midpoint (70,20) is one click away from both corners (mirrors a rectangle's
   // "click an edge directly" shortcut).
   click(tool, ctx, { x: 70, y: 20 });
-  move(tool, ctx, { x: 70, y: 10 });
-  click(tool, ctx, { x: 70, y: 10 }); // open space below the image -> commits
+  // y=5 sits INSIDE the stock edge's 8-unit pick band (stock fills the sheet,
+  // so its bottom edge is y=0). A bare click there must still commit — during
+  // "placeLinear" only a Shift-click re-targets onto another edge.
+  move(tool, ctx, { x: 70, y: 5 });
+  click(tool, ctx, { x: 70, y: 5 }); // open space below the image -> commits
 }
 
 describe("Dimension tool on an image (orphan regression)", () => {

@@ -6,20 +6,25 @@
  * and midpoint. Reported: "can I dimension a vertical line to the left edge of
  * the stock" — clicking mid-edge (not a hotspot) previously did nothing at all.
  *
- * A first attempt at this fix offered the same continuous pick while RE-SELECTING
- * the second point during "placeLinear" — which also governs the FINAL placement
- * click. Since the stock usually fills or nearly fills the canvas, an ordinary
- * "click open space to place the dimension" click routinely lands within
- * tolerance of ITS edge too, silently swallowing the click instead of committing
- * (caught via imageDimensionOrphan.test.ts going from 1 dimension to 0). That
- * regressed the "pick a real entity FIRST, then the stock edge SECOND" gesture
- * entirely (reported: starting from a line, clicking the stock edge just kept
- * defining the line's own length). The actual fix: pickStockEdge only matches
- * when `doc.stockRect` is explicitly set — the legacy "stock fills the canvas"
- * case draws no distinct stock rectangle at all (see renderer.ts), so there is
- * no visible line for a click near the canvas edge to have meant, and it's
- * exactly that case the regression test exercises. With a real, visibly-drawn
- * stock rect there's an actual edge to redirect onto.
+ * Two gestures used to share one click during "placeLinear" — re-targeting onto
+ * a second edge, and the FINAL placement click — disambiguated only by proximity
+ * to some other edge. That is not separable by position: the pick tolerance is
+ * 8px/scale (~35mm of world at fit zoom), and once `pickStockEdge` stopped
+ * requiring an explicit `doc.stockRect`, the stock's edges ARE the sheet boundary
+ * in the default fills-the-sheet case. So an ordinary "click just outside the
+ * part to place it" click landed in that band and was swallowed as a re-pick —
+ * the dimension then measured the part-to-stock gap instead of what was asked
+ * for (caught via imageDimensionOrphan.test.ts going 1 dimension -> 0).
+ *
+ * Gating on `doc.stockRect` was tried and rejected: it killed the reported
+ * gesture outright (starting from a line, clicking the stock edge just kept
+ * defining the line's own length) precisely when stock fills the sheet.
+ *
+ * So the two gestures are now separated by INPUT, not position: a bare click
+ * always places, and Shift-click re-targets onto another edge. Placing is the
+ * overwhelmingly common action, so it keeps the bare click; the hover preview
+ * only shows a re-target while Shift is held, so the preview always matches what
+ * a click would do.
  */
 import { describe, expect, it } from "vitest";
 import type { Vec2 } from "../src/core/vec2";
@@ -59,14 +64,14 @@ function makeCtx(doc: CADDocument): ToolContext {
   };
 }
 
-function event(pos: Vec2): ToolPointerEvent {
+function event(pos: Vec2, shiftKey = false): ToolPointerEvent {
   return {
     world: pos,
     worldRaw: pos,
     screen: pos,
     snap: null,
     button: 0,
-    shiftKey: false,
+    shiftKey,
     ctrlKey: false,
     altKey: false,
   };
@@ -76,6 +81,16 @@ function click(tool: DimensionTool, ctx: ToolContext, pos: Vec2): void {
 }
 function move(tool: DimensionTool, ctx: ToolContext, pos: Vec2): void {
   tool.onPointerMove(event(pos), ctx);
+}
+/**
+ * Re-target the dimension onto a SECOND edge. During "placeLinear" a bare click
+ * always places the dimension, so redirecting onto another edge takes Shift —
+ * otherwise "click just outside the part to place it" lands in the stock edge's
+ * ~35mm-at-fit-zoom pick band and silently measures the gap instead.
+ */
+function shiftClick(tool: DimensionTool, ctx: ToolContext, pos: Vec2): void {
+  tool.onPointerMove(event(pos, true), ctx);
+  tool.onPointerDown(event(pos, true), ctx);
 }
 
 describe("continuous stock-edge picking", () => {
@@ -95,8 +110,7 @@ describe("continuous stock-edge picking", () => {
     // The measured distance is identical either way (the edge is vertical, so
     // every point on it shares the same x) — this just keeps the assertion
     // below matching what a normal "click the line" gesture actually produces.
-    move(tool, ctx, { x: 150, y: 140 });
-    click(tool, ctx, { x: 150, y: 140 });
+    shiftClick(tool, ctx, { x: 150, y: 140 });
     move(tool, ctx, { x: 100, y: 260 }); // place well above -> horizontal type
     click(tool, ctx, { x: 100, y: 260 });
 
@@ -126,8 +140,8 @@ describe("continuous stock-edge picking", () => {
     // straight to "placeLinear"), not an exact-point pick (which would instead
     // land in "second" phase — a different, discrete-points-only code path).
     click(tool, ctx, { x: 150, y: 100 }); // the line's body -> starts as "measure my own length"
-    move(tool, ctx, { x: 50, y: 90 }); // the stock's left edge, off any hotspot
-    click(tool, ctx, { x: 50, y: 90 });
+    // Re-target onto the stock's left edge, off any hotspot.
+    shiftClick(tool, ctx, { x: 50, y: 90 });
     move(tool, ctx, { x: 100, y: 260 }); // place well above the midpoint -> horizontal type
     click(tool, ctx, { x: 100, y: 260 });
 
@@ -154,8 +168,7 @@ describe("continuous stock-edge picking", () => {
 
     // Click both sides LOW (y=90) — nowhere near either midpoint (125 / 120).
     click(tool, ctx, { x: 150, y: 90 });
-    move(tool, ctx, { x: 50, y: 90 });
-    click(tool, ctx, { x: 50, y: 90 });
+    shiftClick(tool, ctx, { x: 50, y: 90 });
     move(tool, ctx, { x: 100, y: 90 });
     click(tool, ctx, { x: 100, y: 90 });
 
@@ -178,10 +191,12 @@ describe("continuous stock-edge picking", () => {
     const ctx = makeCtx(doc);
     const tool = new DimensionTool();
 
-    // Click the image's bottom edge, then place in open space BELOW it (10mm above canvas edge y=0).
+    // Click the image's bottom edge, then place in open space BELOW it — at
+    // y=5, INSIDE the stock edge's 8-unit pick band, which is exactly where a
+    // bare click used to be swallowed as a re-pick.
     click(tool, ctx, { x: 70, y: 20 });
-    move(tool, ctx, { x: 70, y: 10 });
-    click(tool, ctx, { x: 70, y: 10 });
+    move(tool, ctx, { x: 70, y: 5 });
+    click(tool, ctx, { x: 70, y: 5 });
 
     expect(doc.dimensions).toHaveLength(1);
     expect(doc.dimensions[0].points.every((p) => p.entityId === img.id)).toBe(true);
@@ -195,8 +210,7 @@ describe("continuous stock-edge picking", () => {
 
     // Click anywhere on the sheet/stock's left edge (x=0, y=90)
     click(tool, ctx, { x: 0, y: 90 });
-    move(tool, ctx, { x: 100, y: 140 });
-    click(tool, ctx, { x: 100, y: 140 });
+    shiftClick(tool, ctx, { x: 100, y: 140 });
     move(tool, ctx, { x: 50, y: 220 });
     click(tool, ctx, { x: 50, y: 220 });
 
@@ -214,8 +228,7 @@ describe("continuous stock-edge picking", () => {
     const tool = new DimensionTool();
 
     click(tool, ctx, { x: 100, y: 100 });
-    move(tool, ctx, { x: 0, y: 90 });
-    click(tool, ctx, { x: 0, y: 90 });
+    shiftClick(tool, ctx, { x: 0, y: 90 });
     move(tool, ctx, { x: 50, y: 220 });
     click(tool, ctx, { x: 50, y: 220 });
 

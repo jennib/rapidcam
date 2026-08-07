@@ -75,16 +75,20 @@ const POINT_PICK_PX = 8;
 
 /**
  * Phase-aware status-bar hint. The tool's static TOOL_HINTS entry only covers
- * the start; once the user has picked their points the guidance must change —
- * above all it has to say the dimension is placed by clicking in OPEN SPACE.
- * (Clicking near geometry re-picks the point instead of placing, which reads as
- * "nothing happened" — audit #4.) `null` means "restore the tool default".
+ * the start; once the user has picked their points the guidance must change, or
+ * a click that gets consumed as a pick reads as "nothing happened" (audit #4).
+ *
+ * Circle and angle placement still require OPEN SPACE. Linear placement no
+ * longer does — a bare click places it anywhere, and re-targeting onto a second
+ * edge takes Shift — so its hint advertises the Shift gesture instead, which is
+ * otherwise undiscoverable. `null` means "restore the tool default".
  */
 export function dimensionHint(phase: Phase): string | null {
   switch (phase) {
     case "second":
       return "Click the second point or edge — or, from a line, open space for its angle from horizontal";
     case "placeLinear":
+      return "Click to place the dimension — Shift-click another edge to measure to that instead";
     case "placeCircle":
     case "placeAngle":
       return "Move to position, then click in open space to place the dimension";
@@ -266,7 +270,19 @@ export class DimensionTool implements Tool {
         break;
       }
       case "placeLinear": {
-        if (this.firstMid) {
+        // Re-targeting onto a SECOND edge takes Shift; a plain click always
+        // places the dimension.
+        //
+        // These two gestures used to share one click, disambiguated only by
+        // proximity to some other edge — and since `pickStockEdge` stopped
+        // requiring an explicit `doc.stockRect`, the stock's edges are the sheet
+        // boundary in the default fills-the-sheet case. The pick tolerance is
+        // 8px/scale, i.e. ~35mm of world at fit zoom, so an ordinary "click just
+        // outside the part to place it" click landed inside that band and
+        // silently measured the part-to-stock gap instead of committing what the
+        // user had asked for. Placing is the overwhelmingly common action, so it
+        // gets the bare click.
+        if (this.firstMid && e.shiftKey) {
           const resolved = resolveSecondPick(
             ctx.doc,
             this.p1!,
@@ -344,7 +360,9 @@ export class DimensionTool implements Tool {
     if (this.phase === "placeLinear") {
       this.hoverP1 = null;
       this.hoverP2 = null;
-      if (this.firstMid) {
+      // Preview the re-target only while Shift is down, so what the preview
+      // shows is always what a click would produce.
+      if (this.firstMid && e.shiftKey) {
         const tol = ctx.view.toWorldLen(POINT_PICK_PX);
         const resolved = resolveSecondPick(
           ctx.doc,
