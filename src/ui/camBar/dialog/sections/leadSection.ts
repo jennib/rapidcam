@@ -48,10 +48,9 @@ export function buildLeadSection(
     `Lead-in length (${doc.displayUnit})`,
     () => state.leadInLen,
     (v) => {
-      state.leadInLen = Math.max(0.1, v);
+      state.leadInLen = v;
     },
     "len",
-    { min: 0.1 },
   );
   leadSec.appendChild(liLenRow.el);
 
@@ -69,10 +68,9 @@ export function buildLeadSection(
     `Lead-out length (${doc.displayUnit})`,
     () => state.leadOutLen,
     (v) => {
-      state.leadOutLen = Math.max(0.1, v);
+      state.leadOutLen = v;
     },
     "len",
-    { min: 0.1 },
   );
   leadSec.appendChild(loLenRow.el);
 

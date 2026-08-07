@@ -92,287 +92,151 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit, stoc
 }
 
 /**
- * Safely assign and clamp an evaluated numeric value to a CAM operation property.
+ * Valid range for every expression-drivable CAM operation field, plus where the
+ * value lives on the operation.
+ *
+ * This is the SINGLE source of truth for CAM field bounds. The dialog rows clamp
+ * through `clampOpParam` when a value is committed, and `applyOpParam` clamps
+ * through the same table on every solve — so a hand-typed value and an
+ * expression-driven one can never settle on different numbers. Keeping two
+ * tables in sync by hand had already drifted on five fields.
+ */
+interface OpParamSpec {
+  clamp: (v: number) => number;
+  read: (op: CAMOperation) => number | undefined;
+  write: (op: CAMOperation, v: number) => void;
+  /** Nested fields only: whether the parent object (tabs/leadIn/leadOut) exists. */
+  present?: (op: CAMOperation) => boolean;
+}
+
+const atLeast =
+  (min: number) =>
+  (v: number): number =>
+    Math.max(min, v);
+const within =
+  (min: number, max: number) =>
+  (v: number): number =>
+    Math.min(max, Math.max(min, v));
+const intAtLeast =
+  (min: number) =>
+  (v: number): number =>
+    Math.max(min, Math.round(v));
+
+/** Spec for a plain numeric field directly on the operation. */
+function flat(key: keyof CAMOperation, clamp: (v: number) => number): OpParamSpec {
+  return {
+    clamp,
+    read: (op) => op[key] as number | undefined,
+    write: (op, v) => {
+      (op as unknown as Record<string, number>)[key] = v;
+    },
+  };
+}
+
+/**
+ * Spec for a field inside `tabs`/`leadIn`/`leadOut`. An expression targeting one
+ * is inert while its parent is absent, and starts applying once the parent
+ * exists — it never brings the parent into being.
+ */
+function inside(
+  parent: "tabs" | "leadIn" | "leadOut",
+  key: string,
+  clamp: (v: number) => number,
+): OpParamSpec {
+  const obj = (op: CAMOperation) => op[parent] as Record<string, number> | undefined;
+  return {
+    clamp,
+    present: (op) => obj(op) !== undefined,
+    read: (op) => obj(op)?.[key],
+    write: (op, v) => {
+      const o = obj(op);
+      if (o) o[key] = v;
+    },
+  };
+}
+
+const OP_PARAMS: Record<string, OpParamSpec> = {
+  // Cut geometry. `depth` is always below the surface and `stepdown` always a
+  // magnitude, so "-stock" and "stock" drive them identically.
+  depth: flat("depth", (v) => -Math.abs(v)),
+  stepdown: flat("stepdown", (v) => Math.max(0.01, Math.abs(v))),
+  stepover: flat("stepover", within(0.01, 1)),
+  peckDepth: flat("peckDepth", atLeast(0)),
+  finishAllowance: flat("finishAllowance", atLeast(0)),
+  chamferWidth: flat("chamferWidth", atLeast(0)),
+  rampAngle: flat("rampAngle", within(0.5, 45)),
+  vStep: flat("vStep", atLeast(0.01)),
+  vHopClearance: flat("vHopClearance", atLeast(0)),
+  reliefGamma: flat("reliefGamma", atLeast(0.01)),
+
+  // Tool + feeds. spindleSpeed floors at 0, not 1: a laser or a manually-driven
+  // router legitimately posts S0, and the schema's minimum is 0.
+  toolNumber: flat("toolNumber", intAtLeast(1)),
+  diameter: flat("diameter", atLeast(0.001)),
+  vAngle: flat("vAngle", within(1, 179)),
+  tipAngle: flat("tipAngle", within(1, 179)),
+  feedrate: flat("feedrate", atLeast(1)),
+  plungeRate: flat("plungeRate", atLeast(1)),
+  spindleSpeed: flat("spindleSpeed", intAtLeast(0)),
+  safeZ: flat("safeZ", atLeast(0.1)),
+
+  // Laser / raster.
+  laserPower: flat("laserPower", within(0, 100)),
+  laserPasses: flat("laserPasses", intAtLeast(1)),
+  kerfWidth: flat("kerfWidth", atLeast(0)),
+  laserFillSpacing: flat("laserFillSpacing", atLeast(0.001)),
+  laserOverscan: flat("laserOverscan", atLeast(0)),
+  rasterLineInterval: flat("rasterLineInterval", atLeast(0.001)),
+  rasterDotPitch: flat("rasterDotPitch", atLeast(0)),
+  rasterMinPower: flat("rasterMinPower", within(0, 100)),
+
+  // Nested. Both the flat and dotted spelling are accepted, as documented in
+  // the format guide — hand- and AI-authored files use either.
+  tabCount: inside("tabs", "count", intAtLeast(1)),
+  "tabs.count": inside("tabs", "count", intAtLeast(1)),
+  tabSpacing: inside("tabs", "spacing", atLeast(1)),
+  "tabs.spacing": inside("tabs", "spacing", atLeast(1)),
+  tabWidth: inside("tabs", "width", atLeast(0.1)),
+  "tabs.width": inside("tabs", "width", atLeast(0.1)),
+  tabHeight: inside("tabs", "height", atLeast(0.1)),
+  "tabs.height": inside("tabs", "height", atLeast(0.1)),
+  leadInLen: inside("leadIn", "length", atLeast(0.1)),
+  "leadIn.length": inside("leadIn", "length", atLeast(0.1)),
+  leadOutLen: inside("leadOut", "length", atLeast(0.1)),
+  "leadOut.length": inside("leadOut", "length", atLeast(0.1)),
+};
+
+/**
+ * Every field name `clampOpParam`/`applyOpParam` understands. A CAM dialog row
+ * whose key is missing here is inert — it can neither be typed into nor driven
+ * by a formula — so `test/cam-parametric.test.ts` asserts the dialog's keys are
+ * a subset of these.
+ */
+export const OP_PARAM_KEYS: readonly string[] = Object.keys(OP_PARAMS);
+
+/**
+ * Clamp a raw number to the valid range for a CAM operation field. Returns null
+ * for a non-finite value or a field that cannot be expression-driven, so callers
+ * can tell "no opinion" from a legitimately clamped 0.
+ */
+export function clampOpParam(key: string, v: number): number | null {
+  const spec = OP_PARAMS[key];
+  if (!spec || !Number.isFinite(v)) return null;
+  return spec.clamp(v);
+}
+
+/**
+ * Clamp an evaluated number and assign it to a CAM operation field. Returns
+ * whether the operation actually changed, so a solve can skip redundant work.
  */
 export function applyOpParam(op: CAMOperation, key: string, v: number): boolean {
-  if (!Number.isFinite(v)) return false;
-  switch (key) {
-    case "depth": {
-      const target = -Math.abs(v);
-      if (op.depth !== target) {
-        op.depth = target;
-        return true;
-      }
-      return false;
-    }
-    case "stepdown": {
-      const target = Math.max(0.01, Math.abs(v));
-      if (op.stepdown !== target) {
-        op.stepdown = target;
-        return true;
-      }
-      return false;
-    }
-    case "stepover": {
-      const target = Math.min(1, Math.max(0.01, v));
-      if (op.stepover !== target) {
-        op.stepover = target;
-        return true;
-      }
-      return false;
-    }
-    case "feedrate": {
-      const target = Math.max(1, v);
-      if (op.feedrate !== target) {
-        op.feedrate = target;
-        return true;
-      }
-      return false;
-    }
-    case "plungeRate": {
-      const target = Math.max(1, v);
-      if (op.plungeRate !== target) {
-        op.plungeRate = target;
-        return true;
-      }
-      return false;
-    }
-    case "spindleSpeed": {
-      const target = Math.round(Math.max(1, v));
-      if (op.spindleSpeed !== target) {
-        op.spindleSpeed = target;
-        return true;
-      }
-      return false;
-    }
-    case "safeZ": {
-      const target = Math.max(0.1, v);
-      if (op.safeZ !== target) {
-        op.safeZ = target;
-        return true;
-      }
-      return false;
-    }
-    case "toolNumber": {
-      const target = Math.max(1, Math.round(v));
-      if (op.toolNumber !== target) {
-        op.toolNumber = target;
-        return true;
-      }
-      return false;
-    }
-    case "peckDepth": {
-      const target = Math.max(0, v);
-      if (op.peckDepth !== target) {
-        op.peckDepth = target;
-        return true;
-      }
-      return false;
-    }
-    case "finishAllowance": {
-      const target = Math.max(0, v);
-      if (op.finishAllowance !== target) {
-        op.finishAllowance = target;
-        return true;
-      }
-      return false;
-    }
-    case "chamferWidth": {
-      const target = Math.max(0, v);
-      if (op.chamferWidth !== target) {
-        op.chamferWidth = target;
-        return true;
-      }
-      return false;
-    }
-    case "vStep": {
-      const target = Math.max(0.01, v);
-      if (op.vStep !== target) {
-        op.vStep = target;
-        return true;
-      }
-      return false;
-    }
-    case "vHopClearance": {
-      const target = Math.max(0, v);
-      if (op.vHopClearance !== target) {
-        op.vHopClearance = target;
-        return true;
-      }
-      return false;
-    }
-    case "rampAngle": {
-      const target = Math.min(45, Math.max(0.5, v));
-      if (op.rampAngle !== target) {
-        op.rampAngle = target;
-        return true;
-      }
-      return false;
-    }
-    case "diameter": {
-      const target = Math.max(0.01, v);
-      if (op.diameter !== target) {
-        op.diameter = target;
-        return true;
-      }
-      return false;
-    }
-    case "vAngle": {
-      const target = Math.min(179, Math.max(1, v));
-      if (op.vAngle !== target) {
-        op.vAngle = target;
-        return true;
-      }
-      return false;
-    }
-    case "tipAngle": {
-      const target = Math.min(179, Math.max(1, v));
-      if (op.tipAngle !== target) {
-        op.tipAngle = target;
-        return true;
-      }
-      return false;
-    }
-    case "tabCount":
-    case "tabs.count": {
-      if (op.tabs) {
-        const target = Math.max(1, Math.round(v));
-        if (op.tabs.count !== target) {
-          op.tabs.count = target;
-          return true;
-        }
-      }
-      return false;
-    }
-    case "tabSpacing":
-    case "tabs.spacing": {
-      if (op.tabs) {
-        const target = Math.max(1, v);
-        if (op.tabs.spacing !== target) {
-          op.tabs.spacing = target;
-          return true;
-        }
-      }
-      return false;
-    }
-    case "tabWidth":
-    case "tabs.width": {
-      if (op.tabs) {
-        const target = Math.max(0.1, v);
-        if (op.tabs.width !== target) {
-          op.tabs.width = target;
-          return true;
-        }
-      }
-      return false;
-    }
-    case "tabHeight":
-    case "tabs.height": {
-      if (op.tabs) {
-        const target = Math.max(0.1, v);
-        if (op.tabs.height !== target) {
-          op.tabs.height = target;
-          return true;
-        }
-      }
-      return false;
-    }
-    case "laserPower": {
-      const target = Math.min(100, Math.max(0, v));
-      if (op.laserPower !== target) {
-        op.laserPower = target;
-        return true;
-      }
-      return false;
-    }
-    case "laserPasses": {
-      const target = Math.max(1, Math.round(v));
-      if (op.laserPasses !== target) {
-        op.laserPasses = target;
-        return true;
-      }
-      return false;
-    }
-    case "kerfWidth": {
-      const target = Math.max(0, v);
-      if (op.kerfWidth !== target) {
-        op.kerfWidth = target;
-        return true;
-      }
-      return false;
-    }
-    case "laserFillSpacing": {
-      const target = Math.max(0.001, v);
-      if (op.laserFillSpacing !== target) {
-        op.laserFillSpacing = target;
-        return true;
-      }
-      return false;
-    }
-    case "laserOverscan": {
-      const target = Math.max(0, v);
-      if (op.laserOverscan !== target) {
-        op.laserOverscan = target;
-        return true;
-      }
-      return false;
-    }
-    case "rasterLineInterval": {
-      const target = Math.max(0.001, v);
-      if (op.rasterLineInterval !== target) {
-        op.rasterLineInterval = target;
-        return true;
-      }
-      return false;
-    }
-    case "rasterDotPitch": {
-      const target = Math.max(0, v);
-      if (op.rasterDotPitch !== target) {
-        op.rasterDotPitch = target;
-        return true;
-      }
-      return false;
-    }
-    case "rasterMinPower": {
-      const target = Math.min(100, Math.max(0, v));
-      if (op.rasterMinPower !== target) {
-        op.rasterMinPower = target;
-        return true;
-      }
-      return false;
-    }
-    case "reliefGamma": {
-      const target = Math.max(0.01, v);
-      if (op.reliefGamma !== target) {
-        op.reliefGamma = target;
-        return true;
-      }
-      return false;
-    }
-    case "leadInLen":
-    case "leadIn.length": {
-      if (op.leadIn) {
-        const target = Math.max(0.1, v);
-        if (op.leadIn.length !== target) {
-          op.leadIn.length = target;
-          return true;
-        }
-      }
-      return false;
-    }
-    case "leadOutLen":
-    case "leadOut.length": {
-      if (op.leadOut) {
-        const target = Math.max(0.1, v);
-        if (op.leadOut.length !== target) {
-          op.leadOut.length = target;
-          return true;
-        }
-      }
-      return false;
-    }
-  }
-  return false;
+  const spec = OP_PARAMS[key];
+  if (!spec || !Number.isFinite(v)) return false;
+  if (spec.present && !spec.present(op)) return false;
+  const target = spec.clamp(v);
+  if (spec.read(op) === target) return false;
+  spec.write(op, target);
+  return true;
 }
 
 /**
@@ -380,14 +244,10 @@ export function applyOpParam(op: CAMOperation, key: string, v: number): boolean 
  */
 export function evaluateOperations(
   ops: CAMOperation[],
-  variablesOrDoc: Variable[] | { variables: Variable[]; stockThickness?: number },
+  variables: Variable[],
   stockThickness?: number,
 ): boolean {
-  const vars = Array.isArray(variablesOrDoc) ? variablesOrDoc : variablesOrDoc.variables;
-  const stock = Array.isArray(variablesOrDoc)
-    ? stockThickness
-    : (variablesOrDoc.stockThickness ?? stockThickness);
-  const vm = varMap(vars, stock);
+  const vm = varMap(variables, stockThickness);
   let changed = false;
   for (const op of ops) {
     if (!op.paramExprs) continue;
@@ -409,21 +269,10 @@ export function evaluateOperations(
 export function evaluateAll(
   variables: Variable[],
   dims: Dimension[],
-  displayUnitOrDoc: Unit | { displayUnit: Unit; stockThickness?: number } = "mm",
-  stockThicknessOrOps?: number | CAMOperation[],
+  displayUnit: Unit,
+  stockThickness?: number,
   ops?: CAMOperation[],
 ): boolean {
-  const displayUnit =
-    typeof displayUnitOrDoc === "string" ? displayUnitOrDoc : displayUnitOrDoc.displayUnit;
-  const stockThickness =
-    typeof displayUnitOrDoc === "object"
-      ? displayUnitOrDoc.stockThickness
-      : typeof stockThicknessOrOps === "number"
-        ? stockThicknessOrOps
-        : undefined;
-  const resolvedOps =
-    Array.isArray(stockThicknessOrOps) ? stockThicknessOrOps : ops;
-
   let changed = false;
 
   // Phase 1: evaluate variables in dependency order
@@ -441,10 +290,8 @@ export function evaluateAll(
   }
 
   // Phase 3: update CAM operation values from their parametric expressions
-  if (resolvedOps && resolvedOps.length > 0) {
-    if (evaluateOperations(resolvedOps, variables, stockThickness)) {
-      changed = true;
-    }
+  if (ops && ops.length > 0 && evaluateOperations(ops, variables, stockThickness)) {
+    changed = true;
   }
 
   return changed;

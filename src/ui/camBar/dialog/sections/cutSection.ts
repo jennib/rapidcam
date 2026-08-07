@@ -36,13 +36,12 @@ export function buildCutSection(
     `Depth (${du})`,
     () => state.depth,
     (v) => {
-      state.depth = -Math.abs(v);
+      state.depth = v;
       events.emitUpdateVBitHint();
       updateReliefEstimate();
     },
     "len",
     {
-      transformValue: (v) => -Math.abs(v),
       onChange: () => {
         events.emitUpdateVBitHint();
         updateReliefEstimate();
@@ -83,12 +82,11 @@ export function buildCutSection(
     `Stepdown (${du})`,
     () => state.stepdown,
     (v) => {
-      state.stepdown = Math.max(0.01, v);
+      state.stepdown = v;
       updateReliefEstimate();
     },
     "len",
     {
-      min: 0.01,
       onChange: () => updateReliefEstimate(),
     },
   );
@@ -102,10 +100,9 @@ export function buildCutSection(
     `Peck depth (${du}, 0=off)`,
     () => state.peckDepth,
     (v) => {
-      state.peckDepth = Math.max(0, v);
+      state.peckDepth = v;
     },
     "len",
-    { min: 0 },
   );
   cutSec.appendChild(peckRow.el);
 
@@ -116,10 +113,9 @@ export function buildCutSection(
     "Stepover (0–1)",
     () => state.stepover,
     (v) => {
-      state.stepover = Math.min(1, Math.max(0.01, v));
+      state.stepover = v;
     },
     undefined,
-    { min: 0.01, max: 1 },
   );
   cutSec.appendChild(stepoverRow.el);
 
@@ -131,10 +127,9 @@ export function buildCutSection(
     `V-carve pitch (${du})`,
     () => state.vStep,
     (v) => {
-      state.vStep = Math.max(0.01, v);
+      state.vStep = v;
     },
     "len",
-    { min: 0.01 },
   );
   cutSec.appendChild(vStepRow.el);
 
@@ -146,11 +141,10 @@ export function buildCutSection(
     `V-carve hop clearance (${du}, 0 = safe Z)`,
     () => state.vHopClearance,
     (v) => {
-      state.vHopClearance = Math.max(0, v);
+      state.vHopClearance = v;
     },
     "len",
     {
-      min: 0,
       title:
         "0 = retract to safe Z between contours (safe). A positive height hops at that clearance instead — faster, but only safe if nothing (e.g. a hold-down clamp) stands above the stock within the carve.",
     },
@@ -165,12 +159,11 @@ export function buildCutSection(
     `Relief stepover (${du})`,
     () => state.rasterLineInterval,
     (v) => {
-      state.rasterLineInterval = Math.max(0.01, v);
+      state.rasterLineInterval = v;
       updateReliefEstimate();
     },
     "len",
     {
-      min: 0.01,
       title:
         "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.",
       onChange: () => updateReliefEstimate(),
@@ -185,11 +178,10 @@ export function buildCutSection(
     `Relief dot pitch (${du}, 0 = square)`,
     () => state.rasterDotPitch,
     (v) => {
-      state.rasterDotPitch = Math.max(0, v);
+      state.rasterDotPitch = v;
     },
     "len",
     {
-      min: 0,
       title: "Horizontal dot pitch. 0 = square dots (use the stepover).",
     },
   );
@@ -287,10 +279,9 @@ export function buildCutSection(
     `Finish allowance (${du})`,
     () => state.finishAllowance,
     (v) => {
-      state.finishAllowance = Math.max(0, v);
+      state.finishAllowance = v;
     },
     "len",
-    { min: 0 },
   );
   cutSec.appendChild(finishAllowRow.el);
 
@@ -347,8 +338,6 @@ export function buildCutSection(
     },
     undefined,
     {
-      min: 0.5,
-      max: 45,
       placeholder: "auto",
     },
   );
@@ -368,12 +357,11 @@ export function buildCutSection(
     `Chamfer width (${du})`,
     () => state.chamferWidth,
     (v) => {
-      state.chamferWidth = Math.max(0, v);
+      state.chamferWidth = v;
       updateChamHint();
     },
     "len",
     {
-      min: 0,
       onChange: () => updateChamHint(),
     },
   );

@@ -163,10 +163,10 @@ export function buildToolSection(
     "Tool # (T)",
     () => state.toolNumber,
     (v) => {
-      state.toolNumber = Math.max(1, Math.round(v));
+      state.toolNumber = v;
     },
     undefined,
-    { isInteger: true, min: 1, onFork: fork },
+    { onFork: fork },
   );
   const diamRow = paramRow(
     doc,
@@ -175,11 +175,11 @@ export function buildToolSection(
     `Diameter (${doc.displayUnit})`,
     () => state.diameter,
     (v) => {
-      state.diameter = Math.max(0.001, v);
+      state.diameter = v;
       events.emitUpdateVBitHint();
     },
     "len",
-    { min: 0.001, onFork: fork, onChange: () => events.emitUpdateVBitHint() },
+    { onFork: fork, onChange: () => events.emitUpdateVBitHint() },
   );
   const vAngleRow = paramRow(
     doc,
@@ -188,11 +188,11 @@ export function buildToolSection(
     "V Angle (°)",
     () => state.vAngle,
     (v) => {
-      state.vAngle = Math.max(1, Math.min(179, v));
+      state.vAngle = v;
       events.emitUpdateVBitHint();
     },
     undefined,
-    { min: 1, max: 179, onFork: fork, onChange: () => events.emitUpdateVBitHint() },
+    { onFork: fork, onChange: () => events.emitUpdateVBitHint() },
   );
   const tipAngleRow = paramRow(
     doc,
@@ -201,10 +201,10 @@ export function buildToolSection(
     "Tip Angle (°)",
     () => state.tipAngle,
     (v) => {
-      state.tipAngle = Math.max(1, Math.min(179, v));
+      state.tipAngle = v;
     },
     undefined,
-    { min: 1, max: 179, onFork: fork },
+    { onFork: fork },
   );
   const spindleRow = paramRow(
     doc,
@@ -213,10 +213,10 @@ export function buildToolSection(
     "Spindle (rpm)",
     () => state.spindleSpeed,
     (v) => {
-      state.spindleSpeed = Math.round(v);
+      state.spindleSpeed = v;
     },
     undefined,
-    { isInteger: true, min: 0, onFork: fork },
+    { onFork: fork },
   );
   const feedRow = paramRow(
     doc,
@@ -225,10 +225,10 @@ export function buildToolSection(
     `Feed (${doc.displayUnit}/min)`,
     () => state.feedrate,
     (v) => {
-      state.feedrate = Math.max(1, v);
+      state.feedrate = v;
     },
     "feed",
-    { min: 1, onFork: fork },
+    { onFork: fork },
   );
   const plungeRow = paramRow(
     doc,
@@ -237,10 +237,10 @@ export function buildToolSection(
     `Plunge (${doc.displayUnit}/min)`,
     () => state.plungeRate,
     (v) => {
-      state.plungeRate = Math.max(1, v);
+      state.plungeRate = v;
     },
     "feed",
-    { min: 1, onFork: fork },
+    { onFork: fork },
   );
   const safeZRow = paramRow(
     doc,
@@ -249,10 +249,10 @@ export function buildToolSection(
     `Safe Z (${doc.displayUnit})`,
     () => state.safeZ,
     (v) => {
-      state.safeZ = Math.max(0.1, v);
+      state.safeZ = v;
     },
     "len",
-    { min: 0.1, onFork: fork },
+    { onFork: fork },
   );
 
   toolContent.appendChild(toolNumRow.el);

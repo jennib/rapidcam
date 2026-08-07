@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { CamBar } from "../src/ui/camBar";
 import { CADDocument } from "../src/model/document";
 import { RectEntity } from "../src/model/entities";
+import { applyOpParam, makeVariable } from "../src/model/variables";
+import type { CAMOperation } from "../src/cam/types";
 
 /**
  * DOM-level cover for the Add-Toolpath dialog, which until now was guarded only
@@ -272,5 +274,61 @@ describe("Add-Toolpath dialog: laser documents", () => {
       expect.arrayContaining(["pocket", "drill", "vcarve", "chamfer", "relief-rough"]),
     );
     expect(values).not.toContain("score");
+  });
+});
+
+describe("Add-Toolpath dialog: shared clamping", () => {
+  /**
+   * A field's bounds live in ONE table (`OP_PARAMS` in model/variables.ts). The
+   * row clamps through it on commit and `applyOpParam` clamps through it on
+   * every solve. Before they were unified, a row and its expression could
+   * settle on different numbers for the same field — e.g. the relief stepover
+   * floored at 0.01 in the dialog and 0.001 on solve.
+   */
+  test("a typed value is clamped to the field's bounds", () => {
+    const dialog = openDialog(millDoc());
+    selectType(dialog, "pocket");
+    const stepover = row(dialog, "Stepover").querySelector("input") as HTMLInputElement;
+
+    stepover.value = "5"; // above the 0..1 range
+    stepover.dispatchEvent(new Event("change"));
+    expect(stepover.value).toBe("1");
+
+    stepover.value = "-3";
+    stepover.dispatchEvent(new Event("change"));
+    expect(stepover.value).toBe("0.01");
+  });
+
+  test("a formula and a typed number land on the same clamped value", () => {
+    const doc = millDoc();
+    doc.addVariable(makeVariable("wide", "5", "mm")); // resolves above the max
+    const dialog = openDialog(doc);
+    selectType(dialog, "pocket");
+    const stepover = row(dialog, "Stepover").querySelector("input") as HTMLInputElement;
+
+    // Drive it with an expression: the row shows the formula...
+    stepover.value = "wide";
+    stepover.dispatchEvent(new Event("change"));
+    expect(stepover.value).toBe("wide");
+
+    // ...and the operation it builds carries the SAME clamped number a typed
+    // "5" produced above, not the raw 5.
+    const op = { stepover: 0 } as unknown as CAMOperation;
+    expect(applyOpParam(op, "stepover", 5)).toBe(true);
+    expect(op.stepover).toBe(1);
+  });
+
+  test("depth always resolves below the surface, typed or driven", () => {
+    const dialog = openDialog(millDoc());
+    const depth = row(dialog, "Depth").querySelector("input") as HTMLInputElement;
+
+    depth.value = "8"; // a user typing a positive depth means "8 deep"
+    depth.dispatchEvent(new Event("change"));
+    // A length field renders through lenView, so compare the number, not the text.
+    expect(parseFloat(depth.value)).toBe(-8);
+
+    const op = { depth: 0 } as unknown as CAMOperation;
+    applyOpParam(op, "depth", 8);
+    expect(op.depth).toBe(-8);
   });
 });

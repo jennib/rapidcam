@@ -47,10 +47,9 @@ export function buildTabsSection(
     "Tab count",
     () => state.tabCount,
     (v) => {
-      state.tabCount = Math.max(1, Math.round(v));
+      state.tabCount = v;
     },
     undefined,
-    { isInteger: true, min: 1 },
   );
   const tabSpacingRow = paramRow(
     doc,
@@ -59,10 +58,9 @@ export function buildTabsSection(
     `Tab spacing (${doc.displayUnit})`,
     () => state.tabSpacing,
     (v) => {
-      state.tabSpacing = Math.max(1, v);
+      state.tabSpacing = v;
     },
     "len",
-    { min: 1 },
   );
   const tabWidthRow = paramRow(
     doc,
@@ -71,10 +69,9 @@ export function buildTabsSection(
     `Tab width (${doc.displayUnit})`,
     () => state.tabWidth,
     (v) => {
-      state.tabWidth = Math.max(0.1, v);
+      state.tabWidth = v;
     },
     "len",
-    { min: 0.1 },
   );
   const tabHeightRow = paramRow(
     doc,
@@ -83,10 +80,9 @@ export function buildTabsSection(
     `Tab height (${doc.displayUnit})`,
     () => state.tabHeight,
     (v) => {
-      state.tabHeight = Math.max(0.1, v);
+      state.tabHeight = v;
     },
     "len",
-    { min: 0.1 },
   );
   tabsSec.appendChild(tabStrategyRow);
   tabsSec.appendChild(tabCountRow.el);

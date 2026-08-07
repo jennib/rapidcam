@@ -1,9 +1,62 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { makeVariable, evaluateAll, evaluateOperations } from "../src/model/variables";
+import {
+  makeVariable,
+  evaluateAll,
+  evaluateOperations,
+  clampOpParam,
+  OP_PARAM_KEYS,
+} from "../src/model/variables";
 import { CircleEntity } from "../src/model/entities";
 import { serializeDoc, parseRcam, applyFile } from "../src/io/fileio";
 import type { CAMOperation } from "../src/cam/types";
+
+/**
+ * Drift guard for the shared CAM param table.
+ *
+ * `paramRow` clamps every committed value through `clampOpParam`, which returns
+ * null for a key it doesn't know — so a dialog row whose key is missing from
+ * OP_PARAMS is silently INERT: typing in it does nothing. That's invisible to a
+ * typecheck (the key is a plain string), so scan the section sources and assert
+ * every row is backed by the table.
+ */
+test("every CAM dialog paramRow key is backed by the shared param table", () => {
+  const sectionsDir = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "src",
+    "ui",
+    "camBar",
+    "dialog",
+    "sections",
+  );
+  const keys = new Set<string>();
+  for (const f of readdirSync(sectionsDir).filter((n) => n.endsWith(".ts"))) {
+    const src = readFileSync(join(sectionsDir, f), "utf8");
+    for (const m of src.matchAll(/paramRow\(\s*doc,\s*state,\s*"([^"]+)"/g)) keys.add(m[1]);
+  }
+  // Sanity: the scan found rows at all (a regex that matches nothing would make
+  // the subset assertion below vacuously pass).
+  expect(keys.size).toBeGreaterThan(20);
+
+  const missing = [...keys].filter((k) => !OP_PARAM_KEYS.includes(k));
+  expect(missing, `paramRow keys with no OP_PARAMS entry (they would be inert)`).toEqual([]);
+});
+
+test("clampOpParam is the single source of truth for field bounds", () => {
+  expect(clampOpParam("depth", 5)).toBe(-5); // always below the surface
+  expect(clampOpParam("stepover", 3)).toBe(1);
+  expect(clampOpParam("laserPower", -20)).toBe(0);
+  expect(clampOpParam("toolNumber", 2.6)).toBe(3);
+  // S0 is legitimate on a laser / manually-driven router, and the schema's
+  // minimum is 0 — this floored at 1 while the dialog allowed 0.
+  expect(clampOpParam("spindleSpeed", 0)).toBe(0);
+  expect(clampOpParam("nonExistentField", 5)).toBeNull();
+  expect(clampOpParam("depth", Number.NaN)).toBeNull();
+});
 
 test("evaluateOperations resolves expressions and applies clamping/transformations", () => {
   const doc = new CADDocument({ width: 100, height: 100 });
@@ -40,7 +93,13 @@ test("evaluateOperations resolves expressions and applies clamping/transformatio
 
   doc.operations.push(op);
 
-  const changed = evaluateAll(doc.variables, [], doc, doc.operations);
+  const changed = evaluateAll(
+    doc.variables,
+    [],
+    doc.displayUnit,
+    doc.stockThickness,
+    doc.operations,
+  );
   expect(changed).toBe(true);
 
   expect(op.depth).toBe(-12); // -stock thickness (12)
@@ -74,7 +133,7 @@ test("depth is always strictly negative even if expression evaluates positive", 
     },
   };
 
-  const changed = evaluateOperations([op], doc);
+  const changed = evaluateOperations([op], doc.variables, doc.stockThickness);
   expect(changed).toBe(true);
   expect(op.depth).toBe(-8);
 });
@@ -104,7 +163,7 @@ test("evaluateOperations returns false when values do not change", () => {
     },
   };
 
-  const changed1 = evaluateOperations([op], doc);
+  const changed1 = evaluateOperations([op], doc.variables, doc.stockThickness);
   expect(changed1).toBe(false); // was already 1000
 });
 

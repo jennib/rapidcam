@@ -40,10 +40,9 @@ export function buildLaserSection(
     `Feed (${doc.displayUnit}/min)`,
     () => state.feedrate,
     (v) => {
-      state.feedrate = Math.max(1, v);
+      state.feedrate = v;
     },
     "feed",
-    { min: 1 },
   );
   const power = paramRow(
     doc,
@@ -52,10 +51,9 @@ export function buildLaserSection(
     "Power (%)",
     () => state.laserPower,
     (v) => {
-      state.laserPower = Math.min(100, Math.max(0, v));
+      state.laserPower = v;
     },
     undefined,
-    { min: 0, max: 100 },
   );
   const passes = paramRow(
     doc,
@@ -64,10 +62,9 @@ export function buildLaserSection(
     "Passes",
     () => state.laserPasses,
     (v) => {
-      state.laserPasses = Math.max(1, Math.round(v));
+      state.laserPasses = v;
     },
     undefined,
-    { isInteger: true, min: 1 },
   );
   const kerf = paramRow(
     doc,
@@ -76,10 +73,9 @@ export function buildLaserSection(
     `Kerf width (${doc.displayUnit})`,
     () => state.kerfWidth,
     (v) => {
-      state.kerfWidth = Math.max(0, v);
+      state.kerfWidth = v;
     },
     "len",
-    { min: 0 },
   );
 
   const layerBanner = document.createElement("div");
@@ -155,10 +151,9 @@ export function buildLaserSection(
     `Fill spacing (${doc.displayUnit})`,
     () => state.laserFillSpacing,
     (v) => {
-      state.laserFillSpacing = Math.max(0.01, v);
+      state.laserFillSpacing = v;
     },
     "len",
-    { min: 0.01 },
   );
   const overscan = paramRow(
     doc,
@@ -167,10 +162,9 @@ export function buildLaserSection(
     `Overscan (${doc.displayUnit}, 0=off)`,
     () => state.laserOverscan,
     (v) => {
-      state.laserOverscan = Math.max(0, v);
+      state.laserOverscan = v;
     },
     "len",
-    { min: 0 },
   );
   sec.appendChild(fillRow);
   sec.appendChild(fillSpacing.el);
@@ -184,10 +178,9 @@ export function buildLaserSection(
     `Line interval (${doc.displayUnit})`,
     () => state.rasterLineInterval,
     (v) => {
-      state.rasterLineInterval = Math.max(0.001, v);
+      state.rasterLineInterval = v;
     },
     "len",
-    { min: 0.001 },
   );
   const rDot = paramRow(
     doc,
@@ -196,10 +189,9 @@ export function buildLaserSection(
     `Dot pitch (${doc.displayUnit}, 0=square)`,
     () => state.rasterDotPitch,
     (v) => {
-      state.rasterDotPitch = Math.max(0, v);
+      state.rasterDotPitch = v;
     },
     "len",
-    { min: 0 },
   );
   const rMin = paramRow(
     doc,
@@ -208,10 +200,9 @@ export function buildLaserSection(
     "Min power (%)",
     () => state.rasterMinPower,
     (v) => {
-      state.rasterMinPower = Math.min(100, Math.max(0, v));
+      state.rasterMinPower = v;
     },
     undefined,
-    { min: 0, max: 100 },
   );
 
   const rDitherSel = document.createElement("select");

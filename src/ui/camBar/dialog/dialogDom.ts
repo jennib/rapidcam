@@ -5,7 +5,7 @@ import type { CADDocument, LayerDef } from "../../../model/document";
 import { StorageKeys } from "../../../core/storageKeys";
 import { formatLength, formatFeed, toMM } from "../../../core/units";
 import { evalExpr } from "../../../core/expr";
-import { varMap } from "../../../model/variables";
+import { clampOpParam, varMap } from "../../../model/variables";
 import { ContextMenu } from "../../contextMenu";
 import { varPickerEntries } from "../../propertiesBar";
 import { opLayerId } from "../../../cam/types";
@@ -89,13 +89,8 @@ export function attachVarAutocomplete(
 }
 
 export interface ParamRowOptions {
-  isInteger?: boolean;
-  min?: number;
-  max?: number;
-  step?: string;
   placeholder?: string;
   title?: string;
-  transformValue?: (v: number) => number;
   onChange?: (v: number) => void;
   onFork?: () => void;
 }
@@ -168,34 +163,29 @@ export function paramRow(
     updateBadge();
   };
 
+  /**
+   * Clamp through the shared CAM param table, so a value typed here lands on the
+   * exact number `applyOpParam` would produce for the same field on the next
+   * solve — a row and its expression can never disagree.
+   */
+  const commitNumber = (raw: number) => {
+    const num = clampOpParam(paramKey, raw);
+    if (num === null) return;
+    set(num);
+    opts?.onChange?.(num);
+  };
+
   const setValue = (exprOrVal: string | number) => {
     if (typeof exprOrVal === "string" && !isPlainNumber(exprOrVal)) {
       state.paramExprs[paramKey] = exprOrVal.trim();
-      const vm = varMap(doc.variables, doc.stockThickness);
-      const ev = evalExpr(exprOrVal, vm);
-      if (ev !== null && Number.isFinite(ev)) {
-        let num = ev;
-        if (opts?.transformValue) num = opts.transformValue(num);
-        if (opts?.isInteger) num = Math.round(num);
-        if (opts?.min !== undefined) num = Math.max(opts.min, num);
-        if (opts?.max !== undefined) num = Math.min(opts.max, num);
-        set(num);
-        opts?.onChange?.(num);
-      }
+      const ev = evalExpr(exprOrVal, varMap(doc.variables, doc.stockThickness));
+      // Bare numbers inside a formula are already internal mm (as in variable
+      // and dimension formulas), so no display-unit conversion here.
+      if (ev !== null) commitNumber(ev);
     } else {
       delete state.paramExprs[paramKey];
-      let num = typeof exprOrVal === "number" ? exprOrVal : parseFloat(exprOrVal);
-      if (Number.isFinite(num)) {
-        if (typeof exprOrVal === "string") {
-          num = toModel(num);
-        }
-        if (opts?.transformValue) num = opts.transformValue(num);
-        if (opts?.isInteger) num = Math.round(num);
-        if (opts?.min !== undefined) num = Math.max(opts.min, num);
-        if (opts?.max !== undefined) num = Math.min(opts.max, num);
-        set(num);
-        opts?.onChange?.(num);
-      }
+      const raw = typeof exprOrVal === "number" ? exprOrVal : toModel(parseFloat(exprOrVal));
+      commitNumber(raw);
     }
     syncView();
   };
