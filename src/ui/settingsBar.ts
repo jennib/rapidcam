@@ -1,6 +1,7 @@
 import { type Unit, parseLength, formatLength } from "../core/units";
 import type { CADDocument, OriginX, OriginY, OriginZ, RotarySettings } from "../model/document";
 import { deriveSheet } from "../model/document";
+import { pinVariableUnits } from "../model/variables";
 import { getBed } from "../core/prefs";
 import { defaultRotarySettings } from "../cam/klein";
 
@@ -296,7 +297,13 @@ export class SettingsBar {
     this.revisionInput.addEventListener("change", commitMeta);
     this.notesInput.addEventListener("change", commitMeta);
     this.unitSelect.addEventListener("change", () => {
-      this.doc.displayUnit = this.unitSelect.value as Unit;
+      const next = this.unitSelect.value as Unit;
+      if (next === this.doc.displayUnit) return;
+      // Rewriting variable exprs is a document edit, so it has to be undoable
+      // along with the switch that caused it.
+      this.pushHistory();
+      pinVariableUnits(this.doc.variables, this.doc.displayUnit);
+      this.doc.displayUnit = next;
       this.doc.emitChange();
     });
   }

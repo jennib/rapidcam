@@ -24,6 +24,34 @@ export function makeVariable(name: string, expr: string, displayUnit: Unit): Var
   };
 }
 
+/**
+ * Pin every bare-number variable to the unit it was authored in, before the
+ * project's display unit changes underneath it.
+ *
+ * A variable stores its RAW input (`expr`) and re-parses it on every solve via
+ * `parseLength(expr, displayUnit)`. That makes a bare `"10"` mean "10 of
+ * whatever the project currently displays" — so flipping a mm project to inches
+ * silently rewrote `10` to 254mm on the next solve, dragging every dimension and
+ * binding driven from it. The corruption was invisible at the moment of the
+ * switch, because nothing re-evaluates until something else triggers a solve.
+ *
+ * Appending the authored unit makes the expr self-describing and the value
+ * exact — no round-trip through a converted decimal — and it is a form the user
+ * can already type ("50mm", "3.5in"). Exprs that already carry a unit, and
+ * formulas (which `parseLength` rejects, so they resolve as mm via `evalExpr`
+ * like every other formula in the app), are left alone.
+ */
+export function pinVariableUnits(variables: Variable[], authoredUnit: Unit): void {
+  for (const v of variables) {
+    const asMM = parseLength(v.expr, "mm");
+    const asIn = parseLength(v.expr, "in");
+    // null → a formula, not a plain length. Equal → already unit-qualified (or
+    // zero), so the display unit never affected it.
+    if (asMM === null || asIn === null || asMM === asIn) continue;
+    v.expr = `${v.expr.trim()}${authoredUnit}`;
+  }
+}
+
 /** Build a name→value map suitable for evalExpr(). */
 export function varMap(variables: Variable[], stockThickness?: number): Map<string, number> {
   const m = new Map<string, number>();
