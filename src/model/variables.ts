@@ -128,6 +128,11 @@ export function evaluateVariables(variables: Variable[], displayUnit: Unit, stoc
  * through the same table on every solve — so a hand-typed value and an
  * expression-driven one can never settle on different numbers. Keeping two
  * tables in sync by hand had already drifted on five fields.
+ *
+ * Where those two disagreed, the TIGHTER bound wins: a bound exists to catch a
+ * slipped decimal, and no looser value here enabled a real cut. The exception is
+ * a bound that rejects something legitimate (`spindleSpeed`, see below) — then
+ * the looser one is the correct one.
  */
 interface OpParamSpec {
   clamp: (v: number) => number;
@@ -197,10 +202,20 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   vHopClearance: flat("vHopClearance", atLeast(0)),
   reliefGamma: flat("reliefGamma", atLeast(0.01)),
 
-  // Tool + feeds. spindleSpeed floors at 0, not 1: a laser or a manually-driven
-  // router legitimately posts S0, and the schema's minimum is 0.
+  // Tool + feeds.
+  //
+  // Cutting rates floor at 1 because F0 faults or stalls the controller, and
+  // safeZ floors above 0 because a negative "safe" height turns every retract
+  // into a rapid INTO the stock. (That rationale was written on the old
+  // camBar's feed/safeZ rows and lost when it was split into modules; it is the
+  // reason these two numbers are what they are, so it lives with them now.)
+  //
+  // spindleSpeed has no floor above 0 — the pre-refactor dialog never clamped it
+  // (`Math.round(v)`), a laser or manually-driven router legitimately posts S0,
+  // and the schema's minimum is 0. It is the one bound where the looser value is
+  // the correct one.
   toolNumber: flat("toolNumber", intAtLeast(1)),
-  diameter: flat("diameter", atLeast(0.001)),
+  diameter: flat("diameter", atLeast(0.01)),
   vAngle: flat("vAngle", within(1, 179)),
   tipAngle: flat("tipAngle", within(1, 179)),
   feedrate: flat("feedrate", atLeast(1)),
@@ -208,13 +223,17 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   spindleSpeed: flat("spindleSpeed", intAtLeast(0)),
   safeZ: flat("safeZ", atLeast(0.1)),
 
-  // Laser / raster.
+  // Laser / raster. The pitch floors are 0.01mm = 10µm, already finer than any
+  // real beam spot (~50–200µm) or ball-nose stepover, so they cost nothing
+  // physical while still catching a slipped decimal: `rasterLineInterval` is
+  // shared by laser raster AND mill relief, and at 0.001 a 100mm-wide relief
+  // would silently become a 100,000-pass job.
   laserPower: flat("laserPower", within(0, 100)),
   laserPasses: flat("laserPasses", intAtLeast(1)),
   kerfWidth: flat("kerfWidth", atLeast(0)),
-  laserFillSpacing: flat("laserFillSpacing", atLeast(0.001)),
+  laserFillSpacing: flat("laserFillSpacing", atLeast(0.01)),
   laserOverscan: flat("laserOverscan", atLeast(0)),
-  rasterLineInterval: flat("rasterLineInterval", atLeast(0.001)),
+  rasterLineInterval: flat("rasterLineInterval", atLeast(0.01)),
   rasterDotPitch: flat("rasterDotPitch", atLeast(0)),
   rasterMinPower: flat("rasterMinPower", within(0, 100)),
 
