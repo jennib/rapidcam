@@ -22,7 +22,7 @@
  * wrong. Mill-only.
  */
 
-import { CADDocument, type FlipSettings, stockFootprint } from "../model/document";
+import { CADDocument, type FlipSettings, stockBox } from "../model/document";
 import { CircleEntity, TextEntity } from "../model/entities";
 import { applyFlipH, applyFlipV } from "../core/transform";
 import { generateGCode, type GCodeOptions } from "./gcode";
@@ -44,18 +44,12 @@ export interface Box {
 /**
  * The blank's rectangle in work coordinates.
  *
- * Every flip calculation belongs to the MATERIAL, not the sheet: you turn a
- * physical workpiece over about its own centreline, and a registration pin is
- * bored through the blank. Passing `doc.canvas` here used to look correct only
- * because New Project centred the blank on its sheet, which made the two
- * centrelines the same point — so a hole 20mm from the blank's left edge came
- * back 20mm from its right edge by coincidence. Offset the blank and the same
- * code puts it 80mm off the material entirely.
+ * Re-exported from the model, where it now lives: it is a plain fact about the
+ * document, and workholding needs the same one. Flip keeps naming it because
+ * every flip calculation belongs to the MATERIAL, not the sheet — see the
+ * definition for the coincidence that hid this for months.
  */
-export function stockBox(doc: CADDocument): Box {
-  const { width, height } = stockFootprint(doc);
-  return { x: doc.stockRect?.x ?? 0, y: doc.stockRect?.y ?? 0, width, height };
-}
+export { stockBox };
 
 /** The face an op cuts, defaulting undefined → "top". */
 export function opFace(op: CAMOperation): "top" | "bottom" {

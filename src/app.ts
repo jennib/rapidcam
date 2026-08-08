@@ -398,7 +398,7 @@ export class App {
     });
     new LayersBar(dom.layersbar, this.doc, this.project.pushHistory);
     new SettingsBar(dom.settingsbar, this.doc, this.project.pushHistory, () =>
-      this.onVariablesChanged(),
+      this.solver.onStockChanged(),
     );
     new PropertiesBar(
       dom.propertiesbar,

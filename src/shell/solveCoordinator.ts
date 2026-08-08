@@ -17,7 +17,7 @@
  */
 
 import { track } from "../analytics";
-import { regenerateStaleFeatures } from "../generators/index";
+import { regenerateStaleFeatures, regenerateStockPlacedFeatures } from "../generators/index";
 import type { CADDocument } from "../model/document";
 import { regenerateAllStalePatterns, regenerateStalePatterns } from "../model/patternEngine";
 import { computeSourceSnapshot } from "../model/patterns";
@@ -175,6 +175,33 @@ export class SolveCoordinator {
       this.autoRegenerating = false;
     }
     this.doc.emitChange();
+  }
+
+  /**
+   * The stock changed — its thickness, or the blank's size/position.
+   *
+   * Everything `onVariablesChanged` does (the stock is a value dimensions, CAM
+   * depths and generator expressions all reference), PLUS a rebuild of every
+   * feature that placed itself against the blank. That second half cannot be
+   * folded into the staleness check: where the blank sits is not one of a
+   * feature's params, so `isFeatureStale` is blind to it by construction.
+   *
+   * Without this a clamp keeps the position the blank had when it was inserted —
+   * still drawn, still flagged as workholding, still fed to the collision check,
+   * and describing a setup that no longer exists.
+   */
+  onStockChanged(): void {
+    if (this.autoRegenerating) {
+      this.onVariablesChanged();
+      return;
+    }
+    this.autoRegenerating = true;
+    try {
+      if (regenerateStockPlacedFeatures(this.doc)) this.run();
+    } finally {
+      this.autoRegenerating = false;
+    }
+    this.onVariablesChanged();
   }
 
   /** Rebuild every stale pattern from its current source, as one undo step. */

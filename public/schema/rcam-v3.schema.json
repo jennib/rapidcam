@@ -298,6 +298,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -316,6 +317,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -334,6 +336,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -369,6 +372,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -389,6 +393,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -409,6 +414,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -431,6 +437,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },
@@ -457,6 +464,7 @@
         "name": { "type": "string" },
         "visible": { "type": "boolean" },
         "locked": { "type": "boolean" },
+        "fixtureHeight": { "type": "number", "exclusiveMinimum": 0, "description": "Workholding only: this clamp's own height above the stock top, mm, overriding its fixture layer's height so clamps of different heights can share a layer. Omitted = inherit the layer's." },
         "layerId": { "type": "string" }
       }
     },

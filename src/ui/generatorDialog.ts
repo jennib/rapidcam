@@ -22,6 +22,7 @@ import {
   type Generator,
   regenerateFeature,
   runGenerator,
+  stockDatum,
 } from "../generators/index";
 import { sketchPreviews } from "../generators/preview";
 import { type ParamSpec, Sketch, type TextFlattener } from "../generators/sketch";
@@ -34,6 +35,13 @@ import { toast } from "./toast";
 interface BackdropEl extends HTMLElement {
   close: () => void;
 }
+
+/**
+ * The editor for one parameter: a free-text field (a number or an expression)
+ * for a measurement, a dropdown for a `choices` parameter. Both answer `.value`
+ * as a string and both fire "input", so the read/re-probe paths treat them alike.
+ */
+type ParamInput = HTMLInputElement | HTMLSelectElement;
 
 /** Host-side advisory warnings for the current parameter values. Conventions:
  *  a generator param named "thickness" is the joint/material thickness; one
@@ -105,7 +113,11 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
   const initial: Record<string, number> = editing ? { ...editing.params } : {};
 
   // Probe run: discover the parameter specs without committing anything.
-  const probe = new Sketch({ params: initial, flatten: opts.flatten ?? (() => []) });
+  const probe = new Sketch({
+    params: initial,
+    flatten: opts.flatten ?? (() => []),
+    stock: stockDatum(doc),
+  });
   gen.build(probe);
   const specs: ParamSpec[] = probe.params;
 
@@ -122,7 +134,7 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
   const dialog = makeDialog(backdrop, editing ? `Edit ${gen.name}` : gen.name);
   const body = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
-  const inputs = new Map<string, HTMLInputElement>();
+  const inputs = new Map<string, ParamInput>();
   for (const spec of specs) {
     // Editing always seeds from the stored feature (unchanged). A fresh insert
     // seeds "thickness" from the stock actually in the machine rather than the
@@ -193,17 +205,29 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
 
   // Debounced re-probe while typing: refreshes the notes and the live canvas
   // ghost against the values as currently entered. The ghost sits where a
-  // commit would place the part: the stored offset when editing, the work-area
-  // centring for a fresh insert. (reprobeTimer is declared beside the close
-  // funnel above, which cancels it.)
+  // commit would place the part: nowhere at all for a stock-placed generator
+  // (it drew itself on the blank already), the stored offset when editing, the
+  // work-area centring for a fresh insert. Getting this wrong is worse than no
+  // preview — a clamp ghost drawn at the work-area centre would show it holding
+  // the middle of the part. (reprobeTimer is declared beside the close funnel
+  // above, which cancels it.)
   const reprobe = (): void => {
     const params = currentParams();
-    const p = new Sketch({ params, flatten: opts.flatten ?? (() => []) });
+    const p = new Sketch({
+      params,
+      flatten: opts.flatten ?? (() => []),
+      stock: stockDatum(doc),
+    });
     gen.build(p);
     renderNotes(p.notes);
     renderWarnings(dialogWarnings(specs, params, doc));
     if (opts.onPreview) {
-      const offset = editing ? (editing.offset ?? { x: 0, y: 0 }) : centreOffset(doc, p.entities);
+      const offset =
+        gen.placement === "stock"
+          ? { x: 0, y: 0 }
+          : editing
+            ? (editing.offset ?? { x: 0, y: 0 })
+            : centreOffset(doc, p.entities);
       opts.onPreview(sketchPreviews(p, offset));
     }
   };
@@ -286,8 +310,8 @@ function isPlainNumber(s: string): boolean {
   return Number.isFinite(parseFloat(s.trim())) && Number.isNaN(Number(s.trim())) === false;
 }
 
-/** Flash an input's outline red for ~800ms (mirrors dimEditor.ts's flash idiom). */
-function flashInvalid(input: HTMLInputElement): void {
+/** Flash a field's outline red for ~800ms (mirrors dimEditor.ts's flash idiom). */
+function flashInvalid(input: ParamInput): void {
   input.style.outline = "2px solid #e05555";
   input.style.outlineOffset = "-1px";
   setTimeout(() => {
@@ -346,17 +370,38 @@ function rangeHint(spec: ParamSpec): string | null {
   return null;
 }
 
-function addField(body: HTMLElement, spec: ParamSpec, seed: string): HTMLInputElement {
+function addField(body: HTMLElement, spec: ParamSpec, seed: string): ParamInput {
   const g = document.createElement("div");
   g.className = "tp-field";
   const l = document.createElement("label");
   l.textContent = spec.label ?? spec.name;
+  g.appendChild(l);
+
+  // A choice parameter is a dropdown of named values. It takes no expression and
+  // has no range, so the free-text field and its "1–4" hint would both be lies.
+  if (spec.choices) {
+    const sel = document.createElement("select");
+    sel.className = "unit";
+    for (const c of spec.choices) {
+      const o = document.createElement("option");
+      o.value = String(c.value);
+      o.textContent = c.label;
+      sel.appendChild(o);
+    }
+    // A seed that isn't one of the choices (a hand-edited file, a renamed
+    // option) would leave the select on its first entry while the stored value
+    // said otherwise; fall back to the declared value so field and feature agree.
+    sel.value = spec.choices.some((c) => String(c.value) === seed) ? seed : String(spec.value);
+    g.appendChild(sel);
+    body.appendChild(g);
+    return sel;
+  }
+
   const inp = document.createElement("input");
   inp.type = "text";
   inp.className = "dim";
   inp.value = seed;
   inp.style.width = "90px";
-  g.appendChild(l);
   g.appendChild(inp);
   const hint = rangeHint(spec);
   if (hint) {

@@ -53,6 +53,16 @@ export interface ParamSpec {
   int?: boolean;
   /** UI step hint for a numeric input; purely presentational, not enforced here. */
   step?: number;
+  /**
+   * The parameter is a CHOICE from this fixed set, not a measurement — render it
+   * as a dropdown, and reject anything not on the list.
+   *
+   * The value stays a plain number so nothing else has to change: it persists,
+   * clamps and round-trips exactly like every other param. Only the editor
+   * differs, because "which edge of the blank" is a question with four answers
+   * and a spinner reading `2` is not one of them.
+   */
+  choices?: { value: number; label: string }[];
 }
 
 /**
@@ -146,7 +156,41 @@ export interface LayerHint {
   name: string;
   /** CSS hex colour for the layer if it has to be created. */
   color?: string;
+  /**
+   * Create the layer as workholding (`LayerDef.fixture`) — its closed shapes are
+   * clamps, not geometry to cut. The layer's own `fixtureHeight` is deliberately
+   * left unset: the height is stamped per ENTITY instead (see
+   * {@link Sketch.layer}), so two clamp features of different heights can share
+   * one "Workholding" layer without overwriting each other's number.
+   */
+  fixture?: boolean;
 }
+
+/**
+ * The blank, as read-only data a generator may place itself against: position and
+ * size in document mm, plus thickness.
+ *
+ * This is the one thing a generator knows about the document, and it is passed as
+ * PLAIN DATA precisely so the Sketch stays pure — no CADDocument reference, still
+ * Worker-safe, still trivially unit-testable. It exists for workholding: a clamp
+ * is meaningless in the abstract, because "on the left edge of the blank" is the
+ * whole specification.
+ */
+export interface StockDatum {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  thickness: number;
+}
+
+/**
+ * What {@link Sketch.stock} reports when a host builds a Sketch without passing
+ * the real blank — bare probes in tests, mostly. Every production caller passes
+ * the document's actual stock (see generators/index.ts `stockDatum`); this only
+ * keeps a stock-independent generator constructible with `new Sketch()`.
+ */
+export const NO_STOCK: StockDatum = { x: 0, y: 0, width: 0, height: 0, thickness: 0 };
 
 /**
  * A CAM operation the generator recommends for some of its output — the piece
@@ -200,23 +244,45 @@ export class Sketch {
   /** Stable key per entity, parallel to {@link entities} (undefined = unkeyed; see {@link key}). */
   readonly entityKeys: (string | undefined)[] = [];
 
+  /**
+   * The blank this run is being placed against — see {@link StockDatum}. Read it
+   * to position geometry relative to the material (a clamp on its left edge)
+   * rather than in the abstract; {@link NO_STOCK} when the host passed none.
+   */
+  readonly stock: StockDatum;
+
   private readonly overrides: Map<string, number>;
   private readonly flatten?: TextFlattener;
   private curLayer?: LayerHint;
+  private curFixtureHeight?: number;
   private pendingKey?: string;
 
-  constructor(opts: { params?: Record<string, number>; flatten?: TextFlattener } = {}) {
+  constructor(
+    opts: { params?: Record<string, number>; flatten?: TextFlattener; stock?: StockDatum } = {},
+  ) {
     this.overrides = new Map(Object.entries(opts.params ?? {}));
     this.flatten = opts.flatten;
+    this.stock = opts.stock ?? NO_STOCK;
   }
 
   /**
    * Route subsequently-emitted geometry onto a named layer (created on commit if
    * it doesn't exist), e.g. to separate pocket geometry from profile cuts. Call
    * with no name to return to the default (active) layer.
+   *
+   * `opts.fixture` makes it a workholding layer, and `opts.fixtureHeight` stamps
+   * that clamp height (mm above the stock top) on every entity emitted while the
+   * layer is active. The height goes on the ENTITIES rather than the layer so a
+   * second clamp feature sharing the layer keeps its own height — see
+   * {@link LayerHint.fixture}.
    */
-  layer(name?: string, color?: string): void {
-    this.curLayer = name ? { name, color } : undefined;
+  layer(
+    name?: string,
+    color?: string,
+    opts: { fixture?: boolean; fixtureHeight?: number } = {},
+  ): void {
+    this.curLayer = name ? { name, color, ...(opts.fixture ? { fixture: true } : {}) } : undefined;
+    this.curFixtureHeight = name ? opts.fixtureHeight : undefined;
   }
 
   /**
@@ -235,12 +301,23 @@ export class Sketch {
   param(
     name: string,
     def: number,
-    opts: { min?: number; max?: number; label?: string; int?: boolean; step?: number } = {},
+    opts: {
+      min?: number;
+      max?: number;
+      label?: string;
+      int?: boolean;
+      step?: number;
+      choices?: { value: number; label: string }[];
+    } = {},
   ): number {
     let value = this.overrides.has(name) ? this.overrides.get(name)! : def;
     if (opts.int) value = Math.round(value);
     if (opts.min !== undefined) value = Math.max(opts.min, value);
     if (opts.max !== undefined) value = Math.min(opts.max, value);
+    // A choice parameter has no "nearest valid value" — the numbers are labels,
+    // not a scale, so an unrecognised one falls back to the default rather than
+    // being clamped into a neighbour that means something entirely different.
+    if (opts.choices && !opts.choices.some((c) => c.value === value)) value = def;
     this.params.push({
       name,
       value,
@@ -250,6 +327,7 @@ export class Sketch {
       label: opts.label,
       int: opts.int,
       step: opts.step,
+      ...(opts.choices ? { choices: opts.choices } : {}),
     });
     return value;
   }
@@ -346,6 +424,7 @@ export class Sketch {
   }
 
   private push<T extends Entity>(e: T): Handle {
+    if (this.curFixtureHeight !== undefined) e.fixtureHeight = this.curFixtureHeight;
     this.entities.push(e);
     this.entityLayers.push(this.curLayer);
     this.entityKeys.push(this.pendingKey);
