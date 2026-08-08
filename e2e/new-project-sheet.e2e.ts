@@ -44,10 +44,9 @@ test("New Project: typed size is the STOCK, sheet is derived", async ({ page }) 
   await page.locator(".welcome-backdrop .welcome-card", { hasText: "New Project" }).click();
   await create(page, "300", "200");
   const s1 = await state(page);
-  // Stock is exactly what was typed; the sheet grew to leave room for clamps.
-  // The blank sits AT the origin so drawing coords and blank coords agree — the
-  // margin is therefore all above and to the right, not split around it.
-  expect(s1.stockRect).toEqual({ x: 0, y: 0, width: 300, height: 200 });
+  // Stock is exactly what was typed; the sheet grew to leave room for clamps,
+  // and the blank is centred in it so that room is on every side.
+  expect(s1.stockRect).toEqual({ x: 50, y: 50, width: 300, height: 200 });
   expect(s1.canvas).toEqual({ width: 400, height: 300 });
 });
 
@@ -59,10 +58,7 @@ test("New Project with a bed: the sheet IS the bed", async ({ page }) => {
   await page.locator(".welcome-backdrop .welcome-card", { hasText: "New Project" }).click();
   await create(page, "300", "200");
   const s2 = await state(page);
-  // The sheet IS the bed, and the blank sits at its origin — the same rule as
-  // the no-bed case, so "where is my material" has one answer on both paths.
-  // NB this is the bed's near-left corner, not its middle; a blank that really
-  // sits mid-table has to be placed by hand (or dragged) to say so.
+  // The sheet IS the bed, and the blank is centred on it.
   expect(s2.canvas).toEqual({ width: 800, height: 400 });
-  expect(s2.stockRect).toEqual({ x: 0, y: 0, width: 300, height: 200 });
+  expect(s2.stockRect).toEqual({ x: 250, y: 100, width: 300, height: 200 });
 });
