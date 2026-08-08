@@ -136,15 +136,24 @@ export function applyRotate(
       // to its own orientation. The raster/relief generators sweep in the image's
       // local frame and lift each point through this angle, so the engrave follows.
       rotPt(e.position);
-      e.angle += angle;
+      e.angle = normalizeAngle(e.angle + angle);
     } else if (e instanceof TextEntity) {
       // Rigid-rotate like an image: spin the baseline anchor, add to orientation.
       rotPt(e.position);
-      e.angle += angle;
+      e.angle = normalizeAngle(e.angle + angle);
     } else if (e instanceof ArcEntity) {
       rotPt(e.center);
-      e.startAngle += angle;
-      e.endAngle += angle;
+      // Normalised, as the flip paths below already do. A bare `+=` accumulated
+      // forever: twenty 60-degree rotations left an arc storing 20.9 radians —
+      // 3.3 turns — and the properties panel then reported a start angle of
+      // 1200 degrees for an arc sitting at 120.
+      //
+      // Safe for the span, which is what every consumer actually reads: the span
+      // is `(end - start) mod 2pi`, and shifting either angle by a whole number
+      // of turns leaves that untouched, so start and end can be normalised
+      // independently without changing the arc.
+      e.startAngle = normalizeAngle(e.startAngle + angle);
+      e.endAngle = normalizeAngle(e.endAngle + angle);
     } else if (e instanceof RectEntity) {
       const rem = Math.abs(angle % (Math.PI / 2));
       if (rem < 1e-6 || Math.abs(rem - Math.PI / 2) < 1e-6) {

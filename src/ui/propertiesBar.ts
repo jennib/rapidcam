@@ -403,7 +403,7 @@ export class PropertiesBar {
       "Angle",
       entity.id,
       "angle",
-      (entity.angle * 180) / Math.PI,
+      entity.angle,
       "°",
       (v) => entity.setScalar("angle", (v * Math.PI) / 180),
       1,
@@ -1130,7 +1130,7 @@ export class PropertiesBar {
       "Angle",
       entity.id,
       "angle",
-      (entity.angle * 180) / Math.PI,
+      entity.angle,
       "°",
       (v) => entity.setScalar("angle", (v * Math.PI) / 180),
       1,
@@ -1172,7 +1172,9 @@ export class PropertiesBar {
       "Start",
       entity.id,
       "sa",
-      toDeg(entity.startAngle),
+      // The STORED value: bindingRow divides by `scale` to display it. Passing
+      // degrees here as well converted twice and showed the angle 57.3x too big.
+      entity.startAngle,
       "°",
       (v) => {
         entity.startAngle = v * DEG;
@@ -1185,7 +1187,7 @@ export class PropertiesBar {
       "End",
       entity.id,
       "ea",
-      toDeg(entity.endAngle),
+      entity.endAngle,
       "°",
       (v) => {
         entity.endAngle = v * DEG;
