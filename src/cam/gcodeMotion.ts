@@ -43,15 +43,22 @@ export interface GMoveEvent {
  * The generator attaches comments to two REAL moves: `G0 X.. Y.. ; park for tool
  * change` (gcode.ts) and `; return to end position`. Both are pass-through here,
  * so a tiled job leaves them at their original coordinates while every move
- * around them shifts — on the second tile onward the park is a physically
- * different spot than the operator picked.
+ * around them shifts.
  *
- * Translating them is NOT obviously the fix. The park is authored in work
- * coordinates, but a park outside the tile being cut would translate to a
- * negative coordinate, i.e. off the machine — worse than leaving it. The real
- * answer is a product decision about what a park means once a job is split
- * (per-tile park? machine coordinates via G53?), not a parser change, so the
- * behaviour stays as it is until that decision is made.
+ * That looks like a bug and is not. **Decided: leave it**, on measurement rather
+ * than argument. Tiling a 600mm job into two 300mm tiles, the park emits
+ * `G0 X10 Y10` in BOTH tiles — reachable and in-tile, i.e. a consistent 10mm
+ * from each tile's own corner. Translating it, the obvious-looking "fix", emits
+ * `G0 X-290 Y10` on the second tile: negative, off the machine. The current
+ * behaviour is the safe one.
+ *
+ * So do NOT "fix" this by translating commented moves. The only better answer is
+ * an opt-in machine-coordinate park (`G53 G0 X.. Y..`) — a park is a fact about
+ * the machine, not the design, so that form is immune to tiling, work offsets
+ * and re-zeroing alike. It needs a new user-facing setting, and only tiled
+ * multi-tool jobs benefit, so it waits until someone asks.
+ *
+ * The behaviour is pinned by the "keeps commented moves verbatim" test.
  */
 
 export interface GRawEvent {
