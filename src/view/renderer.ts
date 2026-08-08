@@ -20,7 +20,7 @@ import {
   type TextEntity,
   type RasterImageEntity,
 } from "../model/entities";
-import { getFont } from "../core/fontManager";
+import { getFont, textPath } from "../core/fontManager";
 import { getImageCanvas } from "../core/imageManager";
 import {
   constraintAnchors,
@@ -579,8 +579,8 @@ export class Renderer {
         ctx.translate(sp.x, sp.y);
         ctx.rotate(-te.angle);
         // opentype path is Y-down; canvas is also Y-down (after worldToScreen) ✓
-        const otPath = font.getPath(te.text, 0, 0, sizePx);
-        const pathData = otPath.toPathData(2);
+        const otPath = textPath(font, te.text, sizePx);
+        const pathData = otPath?.toPathData(2);
         if (pathData) {
           const p2d = new Path2D(pathData);
           ctx.stroke(p2d);

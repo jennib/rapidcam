@@ -33,6 +33,7 @@ import { type Variable, varMap } from "../model/variables";
 import type { PreviewShape } from "../view/overlay";
 import { ContextMenu, type ContextMenuEntry } from "./contextMenu";
 import { openGeneratorDialog } from "./generatorDialog";
+import { openWebFontDialog } from "./webFontDialog";
 
 /**
  * Menu entries for the ƒx variable picker: a clickable row per variable (drives
@@ -1104,7 +1105,26 @@ export class PropertiesBar {
       if (f.id === entity.fontId) opt.selected = true;
       fontSel.appendChild(opt);
     }
+    // Last entry, not a font: somewhere to get one from without closing the
+    // panel and re-opening the text dialog just to reach its font controls.
+    const ADD_WEB = " add-web-font";
+    const addOpt = document.createElement("option");
+    addOpt.value = ADD_WEB;
+    addOpt.textContent = "Add a font from the web…";
+    fontSel.appendChild(addOpt);
+
     fontSel.addEventListener("change", () => {
+      if (fontSel.value === ADD_WEB) {
+        // Put the selection back before opening: if the dialog is dismissed, the
+        // entity must keep the font it had rather than the menu item.
+        fontSel.value = entity.fontId;
+        openWebFontDialog((fontId) => {
+          this.applyEdit(() => {
+            entity.fontId = fontId;
+          });
+        });
+        return;
+      }
       this.applyEdit(() => {
         entity.fontId = fontSel.value;
       });

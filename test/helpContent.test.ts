@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { HELP_TOPICS } from "../src/docs/helpContent";
+import { BUNDLED } from "../src/core/fontManager";
 import { TOOL_SHORTCUTS } from "../src/tools/shortcuts";
 import { showHelpDialog } from "../src/ui/helpDialog";
 import { isModalOpen, closeAllModals } from "../src/ui/modal";
@@ -129,6 +133,54 @@ describe("Help content stays true to the app", () => {
           `table claims "${cell}" for "${label.slice(0, 40)}", but it activates "${bound}"`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("does not claim the app talks to a machine over USB", () => {
+    // A whole section described a "Direct WebSerial USB Machine Sender" with jog
+    // controls, a DRO, probing, feed-rate overrides and an E-Stop warning. None
+    // of it existed: `navigator.serial` appeared nowhere but that page. What the
+    // app really does is hand the program to gSender/ncSender over HTTP, or open
+    // it in GEditor — a shop reading the old text would have gone looking for a
+    // Connect button that was never there.
+    //
+    // Tied to the source of truth rather than to the word: if someone builds a
+    // WebSerial sender, `navigator.serial` will appear in src/ and this guard
+    // steps aside on its own.
+    const srcDir = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+    const usesWebSerial = readdirSync(srcDir, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts") && !f.includes("helpContent"))
+      .some((f) => {
+        const p = join(srcDir, f);
+        return statSync(p).isFile() && readFileSync(p, "utf8").includes("navigator.serial");
+      });
+    if (usesWebSerial) return;
+    expect(allText, "help describes a serial/USB machine connection the app has not got").not.toMatch(
+      /WebSerial|navigator\.serial|\bDRO\b|jog controls?/i,
+    );
+  });
+
+  it("does not promise fonts the app does not ship", () => {
+    // The help described "built-in single-stroke Hershey fonts", twice, plus a
+    // best-practice tip telling people to use them. The word appeared nowhere
+    // else in the repo: BUNDLED is Roboto Regular and Bold, both outline fonts,
+    // and no single-stroke engine exists. Someone following that advice went
+    // looking for a font list that has never been there.
+    //
+    // The CLAIM, not the word: text naming Hershey to say it is NOT included
+    // would be fine — what must not reappear is the app being said to have one.
+    expect(allText).not.toMatch(/(includes?|built[- ]in|ships? with)[^".]{0,40}Hershey/i);
+    expect(allText).not.toMatch(/Hershey[^".]{0,40}(included|built[- ]in|bundled)/i);
+    // Anything named as a bundled font has to actually be bundled.
+    const bundled = BUNDLED.map((b) => b.name.toLowerCase());
+    // The whole sentence, not just what follows the phrase — the font is named
+    // before it ("Roboto Regular and Bold ship with the app").
+    for (const m of allText.matchAll(/[^.!?"]*ships? with the app[^.!?"]*/gi)) {
+      const claim = m[0].toLowerCase();
+      expect(
+        bundled.some((n) => claim.includes(n.split(" ")[0])),
+        `help says something ships with the app that isn't in BUNDLED: "${m[0].slice(0, 80)}"`,
+      ).toBe(true);
     }
   });
 
