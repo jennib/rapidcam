@@ -444,8 +444,21 @@ function segHitsPoly(
  * ERROR: the toolpath crosses a fixture/clamp footprint at a height that would hit
  * it. A clamp's top is `zTop + height` above the stock; a move whose lowest Z sits
  * below that (a cut, or a rapid at a safe-Z shorter than the clamp) and whose path
- * enters the footprint is a collision. This tests the tool's *path* only — the
- * holder/collet is intentionally not modelled.
+ * enters the footprint is a collision.
+ *
+ * The tool is modelled as a zero-width point at the TIP, and nothing above the tip
+ * exists — no shank, no collet, no spindle nose. That under-reports in two
+ * directions, and both are ordinary setups rather than exotic ones:
+ *
+ *  - LATERALLY, a holder is far wider than the cutter, so a pass close beside a
+ *    clamp can strike it while the tip's path misses the footprint entirely.
+ *  - VERTICALLY, a clamp standing taller than the tool's stickout is at collet
+ *    height while the tip is still down in the cut.
+ *
+ * Modelling either needs a tool stickout and holder diameter the tool library
+ * does not carry, so the check stays tip-only — but the MESSAGE has to say so.
+ * A bare "clearing them needs Z ≥ 12mm" reads as a guarantee, and this is the
+ * one check whose whole job is stopping an expensive collision.
  */
 function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
   const fixtures = ctx.fixtures;
@@ -496,7 +509,8 @@ function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
       ? "A cutting move cannot be lifted clear — it has to cut there. Move the clamp off the toolpath, or cut that region in a second setup."
       : unknownHeight
         ? "One of these clamps has no height set, so there is no way to know what would clear it. Set a height on the fixture layer."
-        : `Clearing them needs Z ≥ ${r(needZ)}mm. Raise safe Z to at least that, or move the clamp off the travel path.`;
+        : `Clearing them needs Z ≥ ${r(needZ)}mm. Raise safe Z to at least that, or move the clamp off the travel path. ` +
+          `That figure is for the tool TIP — the holder is not modelled, so a wide collet, or a clamp taller than the tool's stickout, can still touch.`;
 
   return {
     code: "fixture-collision",

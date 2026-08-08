@@ -150,6 +150,29 @@ describe("fixture diagnostic tells you what to do about it", () => {
     expect(f?.message).toMatch(/Z ≥ 12(\.0+)?mm/);
   });
 
+  test("the clearance figure says it is the tool TIP, not a guarantee", () => {
+    // A bare "needs Z ≥ 12mm" reads as clearance for the whole spindle. It is
+    // the tip only: no shank, no collet, no holder diameter. This is the one
+    // check whose entire job is preventing a collision, so the limit of what it
+    // modelled has to travel with the number.
+    const g = ["G21", "G90", "G0 Z2", "G0 X0 Y50", "G0 X100 Y50", "M30"].join("\n");
+    const f = lintGCode(g, ctxWith(12)).find((x) => x.code === "fixture-collision");
+    expect(f?.message).toMatch(/Z ≥ 12(\.0+)?mm/); // positive control: still names the figure
+    expect(f?.message).toMatch(/tip/i);
+    expect(f?.message).toMatch(/holder is not modelled/i);
+    expect(f?.message).toMatch(/stickout/i);
+  });
+
+  test("the caveat rides with the FIGURE, not with every fixture finding", () => {
+    // A cutting move offers no height, so there is no false guarantee to
+    // qualify — appending the holder caveat there would be noise on advice that
+    // already says "move the clamp".
+    const g = ["G21", "G90", "G0 X0 Y50", "G1 Z-5 F100", "G1 X100 Y50 F500", "M30"].join("\n");
+    const f = lintGCode(g, ctxWith(12)).find((x) => x.code === "fixture-collision");
+    expect(f?.message).toMatch(/cannot be lifted clear/i); // positive control
+    expect(f?.message).not.toMatch(/holder is not modelled/i);
+  });
+
   test("a CUTTING move says lifting cannot help, and offers no height", () => {
     // Raising Z would simply stop it cutting the part — a clearance figure here
     // would be actively misleading.
