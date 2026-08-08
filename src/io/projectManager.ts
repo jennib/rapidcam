@@ -26,9 +26,11 @@ import { TextEntity, RasterImageEntity } from "../model/entities";
 import { decodeImageFile, adjustGrey, registerGrey } from "../core/imageManager";
 import { openImageAdjustDialog } from "../ui/imageAdjustDialog";
 import { isFontResolvable } from "../core/fontManager";
+import { isImageResolvable } from "../core/imageManager";
 import { openNewProjectDialog } from "../ui/newProjectDialog";
 import { buildDesignLink } from "./shareLink";
 import { saveDraft, loadDraftData, clearDraft as dropDraft, getDraftMeta } from "./draftStore";
+import { loadRecentPayload } from "./recentsStore";
 import { copyToClipboard } from "../ui/clipboard";
 import { toast } from "../ui/toast";
 import { confirmDialog } from "../ui/modal";
@@ -320,7 +322,12 @@ export class ProjectManager {
   async fileOpenRecent(entry: RecentEntry): Promise<void> {
     if (!(await this.confirmDiscard(`open "${entry.name}"`))) return;
     track("project_opened_recent");
-    this.loadDocument(entry.data, entry.name);
+    // `entry.data` is the localStorage copy, stripped of embedded fonts and
+    // images to fit the quota — opening THAT is what silently dropped an
+    // engrave image. Prefer the faithful IndexedDB payload; fall back to the
+    // stripped copy for entries written before that store existed.
+    const data = (await loadRecentPayload(entry.name)) ?? entry.data;
+    this.loadDocument(data, entry.name);
   }
 
   /**
@@ -354,6 +361,7 @@ export class ProjectManager {
     this.markDirty();
     this.updateTitle();
     this.warnMissingFonts();
+    this.warnMissingImages();
     return true;
   }
 
@@ -383,6 +391,7 @@ export class ProjectManager {
     this.isDocumentLoading = false;
     this.markClean();
     this.warnMissingFonts();
+    this.warnMissingImages();
   }
 
   /**
@@ -401,6 +410,31 @@ export class ProjectManager {
       `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
         `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
         `omitted from G-code until the font is re-added.`,
+    );
+  }
+
+  /**
+   * The image equivalent of {@link warnMissingFonts}: an image entity whose
+   * pixels no resolver holds draws as an empty dashed rect and engraves nothing.
+   *
+   * This existed as an unused helper (`isImageResolvable`) for a long time while
+   * nothing called it, which is how reopening an image design from Recents lost
+   * its picture in silence. A toast rather than the font path's `alert()` — this
+   * fires on a load, where a blocking dialog is exactly the interruption we've
+   * been removing elsewhere — but a long one, because the next save bakes the
+   * loss into the file.
+   */
+  private warnMissingImages(): void {
+    const missing = this.doc.entities.filter(
+      (e): e is RasterImageEntity =>
+        e instanceof RasterImageEntity && !isImageResolvable(e.imageId),
+    );
+    if (missing.length === 0) return;
+    toast(
+      `${missing.length} image${missing.length > 1 ? "s" : ""} could not be loaded — ` +
+        `shown as a dashed outline, and ${missing.length > 1 ? "they" : "it"} will engrave ` +
+        `nothing. Re-import the picture before saving, or the file will keep the placeholder.`,
+      10000,
     );
   }
 
@@ -702,6 +736,7 @@ export class ProjectManager {
       this.isDocumentLoading = false;
       this.markClean();
       this.warnMissingFonts();
+      this.warnMissingImages();
     } catch (e) {
       console.error("Failed to restore draft:", e);
       this.isDocumentLoading = false;

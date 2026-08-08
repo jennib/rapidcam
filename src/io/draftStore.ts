@@ -28,10 +28,8 @@
 
 import { StorageKeys } from "../core/storageKeys";
 import { trySetItem, stripEmbeddedFonts, type RcamFile } from "./fileio";
+import { openDb, idbPut, idbGet, idbDelete, STORE_DRAFTS as STORE } from "./idb";
 
-const DB_NAME = "rapidcam";
-const DB_VERSION = 1;
-const STORE = "drafts";
 /** Single-draft store: one row, always under this key. */
 const DRAFT_KEY = "current";
 /** localStorage pointer key — reused from the pre-IndexedDB design so existing
@@ -47,61 +45,6 @@ export interface DraftMeta {
 /** The full persisted draft: metadata plus the structured `.rcam` document. */
 interface DraftRecord extends DraftMeta {
   data: RcamFile;
-}
-
-/** Resolves to the open DB, or null when IndexedDB is unavailable/blocked. */
-function openDb(): Promise<IDBDatabase | null> {
-  return new Promise((resolve) => {
-    if (typeof indexedDB === "undefined") {
-      resolve(null);
-      return;
-    }
-    let req: IDBOpenDBRequest;
-    try {
-      req = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch {
-      resolve(null);
-      return;
-    }
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    // Blocked (e.g. private mode) or errored — degrade to the localStorage path.
-    req.onerror = () => resolve(null);
-    req.onblocked = () => resolve(null);
-  });
-}
-
-function idbPut(db: IDBDatabase, value: DraftRecord): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(value, DRAFT_KEY);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
-}
-
-function idbGet(db: IDBDatabase): Promise<DraftRecord | null> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).get(DRAFT_KEY);
-    req.onsuccess = () => resolve((req.result as DraftRecord | undefined) ?? null);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbDelete(db: IDBDatabase): Promise<void> {
-  return new Promise((resolve) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(DRAFT_KEY);
-    // Best-effort: a failed delete is not worth surfacing.
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-    tx.onabort = () => resolve();
-  });
 }
 
 function writePointer(meta: DraftMeta): void {
@@ -148,7 +91,7 @@ export async function saveDraft(name: string, data: RcamFile): Promise<void> {
   const db = await openDb();
   if (db) {
     try {
-      await idbPut(db, { ...meta, data });
+      await idbPut(db, STORE, DRAFT_KEY, { ...meta, data } satisfies DraftRecord);
       writePointer(meta);
       return;
     } catch {
@@ -171,7 +114,7 @@ export async function loadDraftData(): Promise<RcamFile | null> {
   const db = await openDb();
   if (db) {
     try {
-      const rec = await idbGet(db);
+      const rec = await idbGet<DraftRecord>(db, STORE, DRAFT_KEY);
       if (rec?.data) return rec.data;
     } catch {
       /* fall through to the legacy pointer */
@@ -204,6 +147,6 @@ export function clearDraft(): void {
   }
   void openDb().then((db) => {
     if (!db) return;
-    void idbDelete(db).finally(() => db.close());
+    void idbDelete(db, STORE, DRAFT_KEY).finally(() => db.close());
   });
 }

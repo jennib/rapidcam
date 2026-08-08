@@ -8,6 +8,7 @@ import {
   type EmbeddedImage,
 } from "../core/imageManager";
 import { StorageKeys } from "../core/storageKeys";
+import { saveRecentPayload, pruneRecentPayloads } from "./recentsStore";
 import { reconcileLoadedPatterns } from "../model/patternEngine";
 import { reconcileLoadedFeatures } from "../generators";
 import { DEFAULTS } from "../cam/types";
@@ -205,6 +206,17 @@ export function pushRecent(entry: RecentEntry): void {
   // entries until it does — never throw out of a save/open.
   while (list.length > 0 && !trySetItem(RECENTS_KEY, JSON.stringify(list))) {
     list.pop();
+  }
+  // The localStorage copy above is stripped of fonts and images to fit the quota,
+  // which is fine for rendering the list but lossy for reopening. Keep the
+  // faithful document in IndexedDB, and prune payloads for entries that just
+  // aged (or were evicted) out. Fire-and-forget: `pushRecent` stays synchronous
+  // for its callers, and a failed cache write must never fail a save.
+  const names = list.map((r) => r.name);
+  if (names.includes(entry.name)) {
+    void saveRecentPayload(entry.name, entry.data).then(() => pruneRecentPayloads(names));
+  } else {
+    void pruneRecentPayloads(names);
   }
 }
 
