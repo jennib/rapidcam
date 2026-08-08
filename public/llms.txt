@@ -78,7 +78,12 @@ integration guide, inlined as one plain-text document.
   describe a laser job: the user presses **Toolpaths from Layers** and gets one
   operation per layer, in layer order, named after the layer.
 - Hidden layers (`"visible": false`) and workholding layers (`"fixture": true`)
-  are never cut.
+  are never cut when a job is built FROM LAYERS. An operation that names
+  workholding geometry explicitly still cuts it — pre-flight warns
+  (`machined-fixture`) rather than dropping the cut silently.
+- A clamp's height above the stock top comes from the layer's `fixtureHeight`,
+  or from the shape's own `fixtureHeight` when clamps of different heights share
+  a layer. Unset at both levels means full-height: it blocks every pass.
 - Kerf direction is automatic unless you set `side`: a contour enclosed by
   another on the same layer is treated as a hole and compensated inward while
   the outline goes outward, so both finish at the drawn size.

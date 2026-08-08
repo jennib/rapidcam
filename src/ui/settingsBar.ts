@@ -50,6 +50,12 @@ export class SettingsBar {
      * `emitChange()` alone only repaints, leaving a `depth: "-stock"` operation
      * (and a box joint sized to the material) showing the OLD thickness until
      * some unrelated edit happened to trigger a solve.
+     *
+     * The blank's SIZE AND POSITION run through here for the same reason. That
+     * was missed when positioned stock shipped: `commitStockRect` repainted and
+     * nothing else, so resizing the material left everything derived from it
+     * stale — most visibly a workholding clamp, which is placed against a stock
+     * edge and would go on describing the edge's old position.
      */
     private onStockChanged: () => void = () => {},
   ) {
@@ -443,6 +449,7 @@ export class SettingsBar {
       };
     }
     this.autoSheet();
+    this.onStockChanged();
     this.doc.emitChange();
   }
 

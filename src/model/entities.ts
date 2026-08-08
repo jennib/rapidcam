@@ -158,9 +158,36 @@ export abstract class Entity {
   name?: string;
   visible = true;
   locked = false;
+  /**
+   * Workholding only: how far THIS clamp stands above the stock top (mm).
+   * Meaningful just for a closed shape on a layer flagged `fixture`; ignored
+   * everywhere else. Absent = inherit the layer's `fixtureHeight`, which is
+   * where the height used to live exclusively — a single number for every
+   * clamp on the layer, so two clamps of different heights were unrepresentable.
+   * Resolution order is entity → layer → +Infinity (see cam/fixtures.ts).
+   */
+  fixtureHeight?: number;
 
   constructor(id?: EntityId) {
     this.id = id ?? nextId("ent");
+  }
+
+  /**
+   * Copy the geometry-independent fields onto a fresh entity, for `duplicate()`.
+   *
+   * Exists because all eight subclasses used to hand-copy the same two fields,
+   * which is how a ninth field reaches seven shapes and silently misses the
+   * eighth (the same reason `EntitySnapshotCommon` was factored out).
+   *
+   * `name`, `visible` and `locked` are deliberately NOT copied — that is the
+   * long-standing behaviour of every `duplicate()`, preserved here rather than
+   * quietly changed. It is arguably wrong for `visible`/`locked` (a copy of a
+   * hidden entity comes back visible), but that is its own decision.
+   */
+  protected copyCommonTo(e: Entity): void {
+    e.isConstruction = this.isConstruction;
+    e.layerId = this.layerId;
+    if (this.fixtureHeight !== undefined) e.fixtureHeight = this.fixtureHeight;
   }
 
   /** Axis-aligned bounding box in world mm. */
@@ -247,8 +274,7 @@ export class LineEntity extends Entity {
   }
   override duplicate(): LineEntity {
     const e = new LineEntity(this.a, this.b);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
   get length(): number {
@@ -334,8 +360,7 @@ export class CircleEntity extends Entity {
   }
   override duplicate(): CircleEntity {
     const e = new CircleEntity(this.center, this.radius);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
   override dofPoints(): DofPoint[] {
@@ -432,8 +457,7 @@ export class RectEntity extends Entity {
   }
   override duplicate(): RectEntity {
     const e = new RectEntity(this.p0, this.p1);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
   override dofPoints(): DofPoint[] {
@@ -640,8 +664,7 @@ export class PolylineEntity extends Entity {
   }
   override duplicate(): PolylineEntity {
     const e = new PolylineEntity(this.points, this.closed, undefined, this.vertexIds);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     if (this.polygon) e.polygon = { ...this.polygon, center: { ...this.polygon.center } };
     return e;
   }
@@ -803,8 +826,7 @@ export class ArcEntity extends Entity {
 
   override duplicate(): ArcEntity {
     const e = new ArcEntity(this.center, this.radius, this.startAngle, this.endAngle);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
 
@@ -919,8 +941,7 @@ export class BezierEntity extends Entity {
 
   override duplicate(): BezierEntity {
     const e = new BezierEntity(this.p0, this.p1, this.p2, this.p3);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
 
@@ -1123,8 +1144,7 @@ export class TextEntity extends Entity {
 
   override duplicate(): TextEntity {
     const e = new TextEntity(this.text, this.fontId, this.sizeMM, this.position, this.angle);
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     return e;
   }
 
@@ -1342,8 +1362,7 @@ export class RasterImageEntity extends Entity {
       this.flipX,
       this.flipY,
     );
-    e.isConstruction = this.isConstruction;
-    e.layerId = this.layerId;
+    this.copyCommonTo(e);
     e.aspectLocked = this.aspectLocked;
     e.constraintResize = this.constraintResize;
     e.constraintRotate = this.constraintRotate;

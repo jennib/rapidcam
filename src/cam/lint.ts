@@ -25,7 +25,7 @@ import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { lexWords } from "./gcodeWords";
-import { hiddenOpEntityIds } from "./machinable";
+import { hiddenOpEntityIds, isMachinable } from "./machinable";
 import { checkMachinability } from "./machinability";
 
 export type LintSeverity = "error" | "warning";
@@ -612,6 +612,51 @@ function checkHiddenGeometry(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: an operation is bound to workholding geometry — it will machine a
+ * clamp.
+ *
+ * Unlike hidden geometry, this is NOT excluded from the program: operations are
+ * explicit, and cutting a sacrificial fixture is a real (if rare) thing to want,
+ * so silently dropping the cut would be its own kind of wrong. But nothing else
+ * in the app would tell you either, and the documented promise elsewhere is that
+ * workholding is not cut — building a job FROM LAYERS does skip fixture layers
+ * (see laserJob.ts), so an explicit op is the one path that gets through.
+ *
+ * A warning rather than an error for the same reason: the tool really will go
+ * there, and the operator is the one who knows whether that was the intent.
+ */
+function checkMachinedFixture(doc: CADDocument): LintFinding | null {
+  const fixtureLayers = new Set(doc.layers.filter((l) => l.fixture).map((l) => l.id));
+  if (fixtureLayers.size === 0) return null;
+
+  const byId = new Map(doc.entities.map((e) => [e.id, e]));
+  const affected = new Map<string, string[]>();
+  for (const op of doc.operations) {
+    const onFixture = op.entityIds.filter((id) => {
+      const e = byId.get(id);
+      // A hidden one is already excluded from output and reported by
+      // checkHiddenGeometry; warning about it twice would just be noise.
+      return !!e && !e.isConstruction && isMachinable(doc, e) && fixtureLayers.has(e.layerId);
+    });
+    if (onFixture.length > 0) affected.set(op.name, onFixture);
+  }
+  if (affected.size === 0) return null;
+
+  const ids = [...new Set([...affected.values()].flat())];
+  const names = [...affected.keys()].map((n) => `"${n}"`).join(", ");
+  return {
+    code: "machined-fixture",
+    severity: "warning",
+    message:
+      `Toolpath${affected.size > 1 ? "s" : ""} ${names} will cut ${ids.length} ` +
+      `workholding shape${ids.length > 1 ? "s" : ""} — the tool is being sent into a clamp. ` +
+      `Remove ${ids.length > 1 ? "them" : "it"} from the toolpath, or move ${ids.length > 1 ? "them" : "it"} ` +
+      `off the workholding layer if ${ids.length > 1 ? "they are" : "it is"} really part of the job.`,
+    entityIds: ids,
+  };
+}
+
+/**
  * Lint a generated G-code program against its document-derived context. Returns
  * findings ordered errors-first; an empty array means the program passed.
  */
@@ -627,6 +672,8 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));
+  // Machine-agnostic too: a laser will happily burn a clamp.
+  if (ctx.doc) findings.push(checkMachinedFixture(ctx.doc));
   if (!isLaser(ctx.machineKind)) {
     findings.push(checkRapidThroughStock(moves, ctx));
     findings.push(checkOverDeep(moves, ctx));

@@ -477,11 +477,26 @@ function allEntityTypesDoc(): CADDocument {
       airAssist: true,
     },
   });
+  // A workholding layer carrying its own default height, plus a clamp that
+  // OVERRIDES it — the per-entity `fixtureHeight` only appears in the serialized
+  // output when something sets it, so the schema guard is blind to it otherwise.
+  doc.layers.push({
+    id: "layer-clamps",
+    name: "Workholding",
+    color: "#e0a555",
+    visible: true,
+    locked: false,
+    fixture: true,
+    fixtureHeight: 20,
+  });
   const line = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 20, y: 0 }));
   line.isConstruction = true;
   line.layerId = "layer-1";
   doc.add(new CircleEntity({ x: 40, y: 40 }, 6));
   doc.add(new RectEntity({ x: 60, y: 60 }, { x: 90, y: 85 }));
+  const clamp = doc.add(new RectEntity({ x: 0, y: 200 }, { x: 60, y: 240 }));
+  clamp.layerId = "layer-clamps";
+  clamp.fixtureHeight = 12;
   doc.add(new ArcEntity({ x: 120, y: 120 }, 10, 0, Math.PI / 2));
   doc.add(
     new BezierEntity({ x: 0, y: 100 }, { x: 10, y: 130 }, { x: 30, y: 130 }, { x: 40, y: 100 }),

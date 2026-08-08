@@ -12,24 +12,47 @@
  * Worker-safe. See sketch.ts.
  */
 
-import type { CADDocument, FeatureInstance, GroupDef, LayerDef } from "../model/document";
+import { type CADDocument, type FeatureInstance, type GroupDef, type LayerDef, stockBox } from "../model/document";
 import type { Bounds, Entity } from "../model/entities";
 import type { CAMOperation } from "../cam/types";
 import { nextId } from "../model/ids";
 import { evalExpr } from "../core/expr";
 import { varMap } from "../model/variables";
 import { buildSuggestedOps } from "./suggestOps";
-import { type Handle, type Pt, Sketch, type TextFlattener } from "./sketch";
+import {
+  type Handle,
+  type LayerHint,
+  type Pt,
+  Sketch,
+  type StockDatum,
+  type TextFlattener,
+} from "./sketch";
 import { panel } from "./panel";
 import { boxJoint } from "./boxJoint";
 import { gear } from "./gear";
 import { box } from "./box";
+import { clamp } from "./clamp";
 
 export interface Generator {
   /** Stable id (kebab-case), also the group name prefix. */
   id: string;
   /** Human-readable label for the generator picker. */
   name: string;
+  /**
+   * Where the run lands.
+   *
+   * `"centre"` (the default, and what every part generator wants) draws around
+   * the origin and lets the runner centre the result on the work area, nudged
+   * clear of existing features.
+   *
+   * `"stock"` means the generator has already placed itself in absolute document
+   * coordinates by reading {@link Sketch.stock}, so the runner must not move it —
+   * a clamp on the blank's left edge is *at* the blank's left edge, and centring
+   * it would put it in the middle of the part. Such a feature is also rebuilt
+   * whenever the blank changes (see {@link regenerateStockPlacedFeatures}), which
+   * is what makes workholding follow a resized stock.
+   */
+  placement?: "centre" | "stock";
   /**
    * Draw the feature into `s`; return the handles that form its output.
    *
@@ -49,7 +72,13 @@ export const GENERATORS: Record<string, Generator> = {
   [boxJoint.id]: boxJoint,
   [gear.id]: gear,
   [box.id]: box,
+  [clamp.id]: clamp,
 };
+
+/** True when `gen` places itself against the blank rather than being centred. */
+function stockPlaced(gen: Generator): boolean {
+  return gen.placement === "stock";
+}
 
 /**
  * The feature (if any) whose group holds one of `entityIds` — i.e. the generated
@@ -173,19 +202,42 @@ export function nudgeOffset(doc: CADDocument, bounds: Bounds, start: Pt): Pt {
   return start;
 }
 
-/** Id of the doc layer named `name` (reused across runs), creating it if absent. */
-function ensureLayer(doc: CADDocument, name: string, color?: string): string {
-  const existing = doc.layers.find((l) => l.name === name);
+/**
+ * Id of the doc layer matching `hint` (reused across runs), creating it if absent.
+ *
+ * Matching is on name AND kind, not name alone: promoting an existing ordinary
+ * layer called "Workholding" to a fixture layer would silently reclassify
+ * everything already on it as a clamp — geometry that then stops being cut and
+ * starts blocking toolpaths. A name collision across kinds gets its own layer
+ * instead, which is visible in the layers panel rather than silent.
+ */
+function ensureLayer(doc: CADDocument, hint: LayerHint): string {
+  const wantFixture = hint.fixture === true;
+  const existing = doc.layers.find((l) => l.name === hint.name && l.fixture === true === wantFixture);
   if (existing) return existing.id;
+  const name = doc.layers.some((l) => l.name === hint.name)
+    ? `${hint.name} (${wantFixture ? "workholding" : "geometry"})`
+    : hint.name;
   const layer: LayerDef = {
     id: nextId("layer"),
     name,
-    color: color ?? "#10b981",
+    color: hint.color ?? "#10b981",
     visible: true,
     locked: false,
+    // Deliberately no `fixtureHeight`: the height lives on each clamp entity so
+    // features sharing this layer keep their own (see Sketch.layer).
+    ...(wantFixture ? { fixture: true } : {}),
   };
   doc.layers.push(layer);
   return layer.id;
+}
+
+/**
+ * The blank as a generator sees it — plain data, so the Sketch stays pure.
+ * Every production Sketch is built with this; see {@link Sketch.stock}.
+ */
+export function stockDatum(doc: CADDocument): StockDatum {
+  return { ...stockBox(doc), thickness: doc.stockThickness };
 }
 
 /**
@@ -197,7 +249,7 @@ function ensureLayer(doc: CADDocument, name: string, color?: string): string {
 function prepareEntities(doc: CADDocument, sketch: Sketch, offset: Pt): void {
   sketch.entities.forEach((e, i) => {
     const hint = sketch.entityLayers[i];
-    if (hint) e.layerId = ensureLayer(doc, hint.name, hint.color);
+    if (hint) e.layerId = ensureLayer(doc, hint);
     e.translate(offset);
   });
 }
@@ -295,16 +347,25 @@ export function runGenerator(
     createOps?: boolean;
   } = {},
 ): GeneratorResult {
-  const sketch = new Sketch({ params, flatten: opts.flatten });
+  const sketch = new Sketch({ params, flatten: opts.flatten, stock: stockDatum(doc) });
   const handles = gen.build(sketch);
 
   // Generators draw around the origin; place the part in the middle of the work
   // area so it lands where the user is looking, not jammed at the WCS corner.
   // Repeated inserts used to stack dead-centre on top of each other — nudge
   // off any existing feature's footprint so they land visibly apart instead.
-  const start = centreOffset(doc, sketch.entities);
-  const bounds = boundsOf(sketch.entities) ?? { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
-  const offset = nudgeOffset(doc, bounds, start);
+  //
+  // A stock-placed generator has already put itself where it belongs by reading
+  // the blank, so it gets no offset at all: centring a clamp would move it off
+  // the edge it grips, and nudging it "clear of existing features" would shove
+  // it off deliberately — overlapping the part is what workholding DOES.
+  const offset = stockPlaced(gen)
+    ? { x: 0, y: 0 }
+    : nudgeOffset(
+        doc,
+        boundsOf(sketch.entities) ?? { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } },
+        centreOffset(doc, sketch.entities),
+      );
   prepareEntities(doc, sketch, offset);
   for (const e of sketch.entities) doc.add(e);
   upsertVariables(doc, sketch);
@@ -364,10 +425,12 @@ export function regenerateFeature(
   if (!group) return null;
 
   const merged = { ...feature.params, ...newParams };
-  const sketch = new Sketch({ params: merged, flatten: opts.flatten });
+  const sketch = new Sketch({ params: merged, flatten: opts.flatten, stock: stockDatum(doc) });
   const handles = gen.build(sketch);
-  // Re-apply the feature's stored placement so it rebuilds where it sits.
-  const offset = feature.offset ?? { x: 0, y: 0 };
+  // Re-apply the feature's stored placement so it rebuilds where it sits — but a
+  // stock-placed feature re-derives its position from the CURRENT blank on every
+  // rebuild, which is exactly how a clamp follows a resized stock.
+  const offset = stockPlaced(gen) ? { x: 0, y: 0 } : (feature.offset ?? { x: 0, y: 0 });
   prepareEntities(doc, sketch, offset);
 
   const byId = new Map(doc.entities.map((e) => [e.id, e] as const));
@@ -449,7 +512,11 @@ export function isFeatureStale(doc: CADDocument, f: FeatureInstance): boolean {
   if (!f.paramExprs || Object.keys(f.paramExprs).length === 0) return false;
   const gen = GENERATORS[f.generatorId];
   if (!gen) return false;
-  const probe = new Sketch({ params: resolveFeatureParams(doc, f), flatten: () => [] });
+  const probe = new Sketch({
+    params: resolveFeatureParams(doc, f),
+    flatten: () => [],
+    stock: stockDatum(doc),
+  });
   gen.build(probe);
   const fresh = effectiveParams(probe);
   for (const k of Object.keys(fresh)) {
@@ -471,6 +538,35 @@ export function regenerateStaleFeatures(
   let changed = false;
   for (const f of [...doc.features]) {
     if (!isFeatureStale(doc, f)) continue;
+    regenerateFeature(doc, f.id, resolveFeatureParams(doc, f), opts);
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Rebuild every feature that placed itself against the blank. Returns whether
+ * anything rebuilt; the caller owns the history transaction and re-solves.
+ *
+ * Unconditional for those features rather than staleness-checked, because the
+ * thing that changed — where the blank is — is not one of their PARAMS, so
+ * {@link isFeatureStale} cannot see it. Rebuilding is cheap (there are only ever
+ * a handful of clamps), idempotent, and preserves entity ids through
+ * `regenerateFeature`, so attached ops, constraints and dimensions survive.
+ *
+ * This is what makes a clamp stay on the edge it grips when the stock is resized
+ * or moved. Without it a clamp would keep the position the blank had when it was
+ * inserted, quietly describing workholding that is no longer there — and the
+ * pre-flight collision check would be reasoning about the wrong geometry.
+ */
+export function regenerateStockPlacedFeatures(
+  doc: CADDocument,
+  opts: { flatten?: TextFlattener } = {},
+): boolean {
+  let changed = false;
+  for (const f of [...doc.features]) {
+    const gen = GENERATORS[f.generatorId];
+    if (!gen || !stockPlaced(gen)) continue;
     regenerateFeature(doc, f.id, resolveFeatureParams(doc, f), opts);
     changed = true;
   }

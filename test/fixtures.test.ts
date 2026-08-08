@@ -5,7 +5,7 @@
  */
 import { describe, test, expect } from "vitest";
 import { CADDocument } from "../src/model/document";
-import { RectEntity, CircleEntity } from "../src/model/entities";
+import { RectEntity, CircleEntity, LineEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
 import { fixturePolygons } from "../src/cam/fixtures";
 import { buildLintContext, lintGCode } from "../src/cam/lint";
@@ -170,5 +170,151 @@ describe("fixture diagnostic tells you what to do about it", () => {
     expect(f?.message).toMatch(/no height set/i);
     expect(f?.message).not.toMatch(/Z ≥/);
     expect(f?.message).not.toMatch(/Infinity/);
+  });
+});
+
+describe("machining a clamp is warned about, not silently allowed or dropped", () => {
+  test("an op bound to workholding geometry raises machined-fixture", () => {
+    const doc = new CADDocument({ width: 200, height: 150 });
+    withClamp(doc, [90, 10, 110, 30], 20);
+    const clampEnt = doc.entities.find((e) => e.layerId === "clamps")!;
+    doc.operations = [profileOp([clampEnt.id])];
+    const g = generateGCode(doc.operations, doc);
+    const f = lintGCode(g, buildLintContext(doc)).find((x) => x.code === "machined-fixture");
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe("warning");
+    expect(f!.entityIds).toEqual([clampEnt.id]);
+  });
+
+  test("the clamp is still cut — this warns, it does not drop the toolpath", () => {
+    // The decision was informed consent, not prohibition: an op naming a clamp
+    // really does cut it. A test that only checked for the warning would pass
+    // just as well if the cut had silently vanished.
+    const doc = new CADDocument({ width: 200, height: 150 });
+    withClamp(doc, [90, 10, 110, 30], 20);
+    const clampEnt = doc.entities.find((e) => e.layerId === "clamps")!;
+    doc.operations = [profileOp([clampEnt.id])];
+    expect(generateGCode(doc.operations, doc)).toMatch(/G1/);
+  });
+
+  test("cutting ordinary geometry beside a fixture layer says nothing", () => {
+    const doc = new CADDocument({ width: 200, height: 150 });
+    const part = doc.add(new RectEntity({ x: 20, y: 40 }, { x: 80, y: 100 }));
+    withClamp(doc, [150, 10, 170, 30], 20);
+    doc.operations = [profileOp([part.id])];
+    const g = generateGCode(doc.operations, doc);
+    expect(lintGCode(g, buildLintContext(doc)).some((x) => x.code === "machined-fixture")).toBe(
+      false,
+    );
+  });
+});
+
+describe("per-clamp height (entity → layer → full-height)", () => {
+  /** Two clamps on ONE fixture layer whose layer default is `layerHeight`. */
+  function twoClamps(layerHeight?: number): CADDocument {
+    const doc = new CADDocument({ width: 200, height: 150 });
+    doc.layers.push({
+      id: "clamps",
+      name: "Clamps",
+      color: "#e05a5a",
+      visible: true,
+      locked: false,
+      fixture: true,
+      ...(layerHeight ? { fixtureHeight: layerHeight } : {}),
+    });
+    const a = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 30, y: 30 }));
+    a.layerId = "clamps";
+    const b = doc.add(new RectEntity({ x: 60, y: 10 }, { x: 80, y: 30 }));
+    b.layerId = "clamps";
+    return doc;
+  }
+
+  test("two clamps of different heights coexist on one layer", () => {
+    // The whole point of the per-entity height: this was unrepresentable when
+    // the height lived only on the layer.
+    const doc = twoClamps(20);
+    const [a, b] = doc.entities.filter((e) => e.layerId === "clamps");
+    a.fixtureHeight = 8;
+    b.fixtureHeight = 35;
+    const heights = fixturePolygons(doc)
+      .map((f) => f.height)
+      .sort((x, y) => x - y);
+    expect(heights).toEqual([8, 35]);
+  });
+
+  test("a clamp with no height of its own inherits the layer's", () => {
+    const doc = twoClamps(20);
+    const [a] = doc.entities.filter((e) => e.layerId === "clamps");
+    a.fixtureHeight = 8;
+    const heights = fixturePolygons(doc)
+      .map((f) => f.height)
+      .sort((x, y) => x - y);
+    expect(heights).toEqual([8, 20]);
+  });
+
+  test("unset at both levels is still full-height, not zero", () => {
+    // A zero would read as "harmless", which is the dangerous direction to guess.
+    const doc = twoClamps(undefined);
+    for (const f of fixturePolygons(doc)) expect(f.height).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("existing documents are unaffected: the layer height still drives every clamp", () => {
+    // Positive control for the negative assertion above — proves the layer path
+    // is live, not that fixturePolygons returned nothing.
+    const doc = twoClamps(20);
+    const fx = fixturePolygons(doc);
+    expect(fx).toHaveLength(2);
+    for (const f of fx) expect(f.height).toBe(20);
+  });
+
+  test("a footprint built from disagreeing entities takes the TALLEST", () => {
+    // Four lines forming one loop, each able to carry its own height. Reporting
+    // the shortest would under-report the obstacle — the unsafe direction.
+    const doc = new CADDocument({ width: 200, height: 150 });
+    doc.layers.push({
+      id: "clamps",
+      name: "Clamps",
+      color: "#e05a5a",
+      visible: true,
+      locked: false,
+      fixture: true,
+    });
+    const pts: [number, number][] = [
+      [10, 10],
+      [40, 10],
+      [40, 40],
+      [10, 40],
+    ];
+    pts.forEach(([x, y], i) => {
+      const [nx, ny] = pts[(i + 1) % pts.length];
+      const seg = doc.add(new LineEntity({ x, y }, { x: nx, y: ny }));
+      seg.layerId = "clamps";
+      seg.fixtureHeight = i === 2 ? 25 : 10;
+    });
+    const fx = fixturePolygons(doc);
+    expect(fx).toHaveLength(1);
+    expect(fx[0].height).toBe(25);
+  });
+
+  test("duplicating a clamp keeps its height", () => {
+    // duplicate() hand-copied its common fields in all eight entity classes; a
+    // height that survived seven of them and not the eighth is exactly the bug
+    // copyCommonTo exists to prevent.
+    const doc = twoClamps(20);
+    const [a] = doc.entities.filter((e) => e.layerId === "clamps");
+    a.fixtureHeight = 8;
+    expect(a.duplicate().fixtureHeight).toBe(8);
+  });
+
+  test("a clamp height survives a save/restore round-trip", () => {
+    const doc = twoClamps(20);
+    const [a] = doc.entities.filter((e) => e.layerId === "clamps");
+    a.fixtureHeight = 8;
+    const restored = new CADDocument({ width: 200, height: 150 });
+    restored.restore(doc.snapshot());
+    const heights = fixturePolygons(restored)
+      .map((f) => f.height)
+      .sort((x, y) => x - y);
+    expect(heights).toEqual([8, 20]);
   });
 });

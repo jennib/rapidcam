@@ -275,6 +275,13 @@ Each entity is an object tagged by `type`. Common optional fields:
   rotated, nudged or deleted. It stays selectable, dimensionable and snappable
   (the SolidWorks sense of "lock"), and it is still cut. Locking a whole *layer*
   is the blunter tool: that takes its geometry out of reach entirely.
+- `fixtureHeight` — workholding only: how far *this* clamp stands above the stock
+  top, in mm. It applies to a closed shape on a layer with `"fixture": true` and
+  is ignored anywhere else. Omit it to inherit the layer's `fixtureHeight`, which
+  is how every file written before this behaves; set it when clamps of different
+  heights share one fixture layer. Resolution is entity → layer → full-height
+  (an unknown height blocks any pass, because you cannot clear what you can't
+  measure). Where a footprint is several entities that disagree, the tallest wins.
 
 The **point keys** below are the addresses constraints and dimensions use to refer
 to a specific point on an entity (via a `{ "entityId", "key" }` pair). Getting

@@ -4,7 +4,7 @@ import { confirmDialog } from "./modal";
 import { DEFAULTS, getAssociatedOperations, type LaserJobKind } from "../cam/types";
 import { JOB_KIND_LABELS } from "../cam/laserJob";
 import { loadPresets } from "../cam/laserPresets";
-import { fromMM, toMM } from "../core/units";
+import { formatLength, fromMM, parseLength, toMM } from "../core/units";
 import { STATE_ICONS } from "./stateIcons";
 
 export class LayersBar {
@@ -182,20 +182,27 @@ export class LayersBar {
       };
       row.appendChild(fixBtn);
 
-      // Clamp height (mm above the stock top) — shown only for a fixture layer.
+      // Default clamp height above the stock top — shown only for a fixture
+      // layer. In the project's display unit, not raw mm: this field wrote and
+      // read `fixtureHeight` (which is always mm) directly, so in an inch
+      // project typing 0.5 for half an inch stored half a MILLIMETRE — a clamp
+      // reported as 50× shorter than it is, in the one place that exists to stop
+      // the tool hitting it.
       if (layer.fixture) {
+        const unit = this.doc.displayUnit;
         const htInp = document.createElement("input");
-        htInp.type = "number";
-        htInp.min = "0";
-        htInp.step = "1";
-        htInp.value = String(layer.fixtureHeight ?? 20);
+        htInp.type = "text";
+        htInp.value = layer.fixtureHeight ? formatLength(layer.fixtureHeight, unit) : "";
+        htInp.placeholder = "unset";
         htInp.className = "dim";
         htInp.style.width = "42px";
-        htInp.title = "Clamp height above the stock top (mm) — rapids must clear this";
+        htInp.title =
+          `Default clamp height above the stock top (${unit}) — rapids must clear this. ` +
+          `Blank = unknown, which blocks every pass. A clamp can override it in the properties panel.`;
         htInp.onchange = () => {
           this.pushHistory();
-          const v = parseFloat(htInp.value);
-          layer.fixtureHeight = Number.isFinite(v) && v > 0 ? v : undefined;
+          const v = parseLength(htInp.value, unit);
+          layer.fixtureHeight = v !== null && v > 0 ? v : undefined;
           this.doc.emitChange();
         };
         row.appendChild(htInp);

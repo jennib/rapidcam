@@ -221,6 +221,23 @@ export function stockFootprint(doc: CADDocument): { width: number; height: numbe
   return { width: doc.canvas.width, height: doc.canvas.height };
 }
 
+/**
+ * The blank's rectangle in work coordinates — {@link stockFootprint} plus where
+ * it actually sits.
+ *
+ * Anything PHYSICAL measures from here, never from `doc.canvas`: you turn a
+ * workpiece over about its own centreline, a registration pin is bored through
+ * the blank, and a clamp grips a material edge. Passing `doc.canvas` used to
+ * look correct only because New Project centres the blank on its sheet, which
+ * makes the two centrelines the same point — so a hole 20mm from the blank's
+ * left edge came back 20mm from its right edge by coincidence. Offset the blank
+ * and the same code puts it 80mm off the material entirely.
+ */
+export function stockBox(doc: CADDocument): StockRect {
+  const { width, height } = stockFootprint(doc);
+  return { x: doc.stockRect?.x ?? 0, y: doc.stockRect?.y ?? 0, width, height };
+}
+
 /** Room left around the stock when the sheet is generated for you, mm per side. */
 export const SHEET_MARGIN = 50;
 
@@ -551,6 +568,11 @@ interface EntitySnapshotCommon {
   visible?: boolean;
   /** Omitted when unlocked (the default); only a locked entity writes `true`. */
   locked?: boolean;
+  /**
+   * Workholding only: this clamp's own height above the stock top (mm).
+   * Omitted = inherit the fixture layer's `fixtureHeight` (see Entity).
+   */
+  fixtureHeight?: number;
 }
 
 type EntitySnapshot = EntitySnapshotCommon &
@@ -611,6 +633,7 @@ function entityCommon(e: Entity): EntitySnapshotCommon {
     ...(e.name ? { name: e.name } : {}),
     ...(e.visible ? {} : { visible: false }),
     ...(e.locked ? { locked: true } : {}),
+    ...(e.fixtureHeight !== undefined ? { fixtureHeight: e.fixtureHeight } : {}),
   };
 }
 
@@ -1632,6 +1655,14 @@ export class CADDocument {
         // schema-validate (see the image branch above).
         e.visible = es.visible !== false;
         e.locked = es.locked === true;
+        // Only a positive, finite number is a height; anything else means
+        // "inherit the layer", which is what every pre-per-clamp file says.
+        e.fixtureHeight =
+          typeof es.fixtureHeight === "number" &&
+          es.fixtureHeight > 0 &&
+          Number.isFinite(es.fixtureHeight)
+            ? es.fixtureHeight
+            : undefined;
       }
       return e!;
     });
