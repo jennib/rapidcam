@@ -25,6 +25,7 @@ import {
 import { laserPostOptions } from "../cam/laserposts";
 import { defaultRotarySettings, circumference, ARC_TOL_DEFAULT } from "../cam/klein";
 import { registerModal } from "./modal";
+import { createGcodeBlockEditor, type BlockContext } from "./gcodeBlockEditor";
 
 const MILL_POST_OPTIONS: [string, string][] = [
   ["linuxcnc", "LinuxCNC"],
@@ -53,8 +54,13 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
   let unregister: () => void = () => {};
   const close = () => {
     unregister();
+    // Cancel the block editors' pending re-render: a timer that fires after the
+    // dialog is gone is the bug shape that resurrected the generator dialog's
+    // ghost preview. Assigned below, once the editors exist.
+    disposeBlocks();
     backdrop.remove();
   };
+  let disposeBlocks: () => void = () => {};
 
   const container = document.createElement("div");
   container.className = "about-dialog post-settings-dialog";
@@ -265,8 +271,41 @@ export function showMachineSettingsDialog(opts: MachineSettingsOptions): void {
     "Custom G-code injected into every program — start: after the G21/G90/G17 " +
     "setup; end: after the spindle stop, before M30.";
 
-  const startArea = textareaField("Program start G-code", current.start, "e.g. G54 ; work offset");
-  const endArea = textareaField("Program end G-code", current.end, "e.g. G0 X0 Y0 ; park");
+  // The block editors resolve their catalogue and explanations against the
+  // controller and machine type selected ABOVE, both of which can change while
+  // this dialog is open — hence blockContext() + refreshBlocks() wired into the
+  // same handlers that swap the post list.
+  const blockContext = (): BlockContext => ({
+    postId: ppSelect.value,
+    machine: isLaser(kindSelect.value as MachineKind) ? "laser" : "mill",
+    coolantEnabled: coolantCheck.checked,
+  });
+  const startArea = createGcodeBlockEditor({
+    label: "Program start G-code",
+    slot: "start",
+    value: current.start,
+    placeholder: "e.g. G54 ; work offset",
+    ctx: blockContext(),
+  });
+  const endArea = createGcodeBlockEditor({
+    label: "Program end G-code",
+    slot: "end",
+    value: current.end,
+    placeholder: "e.g. G0 X0 Y0 ; park",
+    ctx: blockContext(),
+  });
+  const refreshBlocks = (): void => {
+    const c = blockContext();
+    startArea.refresh(c);
+    endArea.refresh(c);
+  };
+  ppSelect.addEventListener("change", refreshBlocks);
+  kindSelect.addEventListener("change", refreshBlocks);
+  coolantCheck.addEventListener("change", refreshBlocks);
+  disposeBlocks = () => {
+    startArea.dispose();
+    endArea.dispose();
+  };
 
 
   const buttons = document.createElement("div");
@@ -395,29 +434,6 @@ function checkRow(label: string, check: HTMLInputElement): HTMLElement {
 }
 
 
-function textareaField(
-  label: string,
-  value: string,
-  placeholder: string,
-): {
-  field: HTMLElement;
-  value: string;
-} {
-  const field = document.createElement("div");
-  field.className = "post-settings-field";
-  const lab = document.createElement("label");
-  lab.textContent = label;
-  const ta = document.createElement("textarea");
-  ta.className = "post-settings-textarea";
-  ta.spellcheck = false;
-  ta.rows = 4;
-  ta.value = value;
-  ta.placeholder = placeholder;
-  field.append(lab, ta);
-  return {
-    field,
-    get value() {
-      return ta.value;
-    },
-  };
-}
+// `textareaField` lived here until the custom-G-code fields grew a picker and an
+// explanation pane; both are now built by ui/gcodeBlockEditor, which owns the
+// textarea itself. No other field in this dialog is a textarea.

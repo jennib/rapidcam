@@ -282,3 +282,98 @@ test("fast plunge: a G94 plunge after a G93 block is compared normally again", (
   ].join("\n");
   expect(codes(g)).toContain("fast-plunge");
 });
+
+// --- word tokenisation -------------------------------------------------------
+// The generator always writes spaces between words, so these cases only ever
+// arise from hand-typed text — which the custom program start/end blocks
+// (Machine Settings) inject verbatim into every program. A parser that reads
+// them as one opaque token silently drops the coordinates, and the move then
+// slips past every geometric check below.
+
+test("run-together words: an off-stock cut is caught without spaces", () => {
+  const g = ["G0Z5", "G0X120Y10", "G1Z-3F300"].join("\n"); // X120 > xMax 100
+  expect(codes(g)).toContain("out-of-bounds");
+});
+
+test("run-together words: a partially spaced line is caught too", () => {
+  const g = ["G0 Z5", "G0 X120Y10", "G1 Z-3 F300"].join("\n");
+  expect(codes(g)).toContain("out-of-bounds");
+});
+
+test("run-together words: an over-deep cut is caught without spaces", () => {
+  const g = ["G0 Z5", "G0 X10 Y10", "G1Z-15F300"].join("\n"); // zBottom −10
+  expect(codes(g)).toContain("over-deep");
+});
+
+test("run-together words: a legitimate tight-packed program still lints clean", () => {
+  // Positive control — the fix must not make every compact program noisy.
+  const g = ["G0Z5", "G0X10Y10", "G1Z-3F300", "G1X50Y40F600", "G0Z5"].join("\n");
+  expect(codes(g)).toEqual([]);
+});
+
+test("parenthetical comments are not read as motion", () => {
+  // `(...)` is the other standard comment syntax. Scanning words without
+  // stripping it would read this as a cut at X120, off the stock.
+  const g = ["G0 Z5", "(rapid to X120 Y10 next time)", "G0 X10 Y10", "G1 Z-3 F300"].join("\n");
+  expect(codes(g)).toEqual([]);
+});
+
+test("a space between a letter and its number is still one word", () => {
+  const g = ["G0 Z5", "G0 X 120 Y 10", "G1 Z-3 F300"].join("\n");
+  expect(codes(g)).toContain("out-of-bounds");
+});
+
+// --- G53 machine coordinates -------------------------------------------------
+// G53 makes ONE line's coordinates raw machine position. Nothing in the program
+// records where the work origin sits on the table, so those numbers cannot be
+// compared against the stock envelope — doing so reported confident errors on
+// the machine-coordinate retract and park blocks that the Machine Settings
+// catalogue recommends, which is how a safety tool teaches people to ignore it.
+
+test("G53: a machine-coordinate retract is not an out-of-bounds cut", () => {
+  const g = ["G53 G0 Z-5", "G0 Z5", "G0 X10 Y10", "G1 Z-3 F300"].join("\n");
+  expect(codes(g)).toEqual([]);
+});
+
+test("G53: a machine-coordinate park is neither out-of-bounds nor a rapid through stock", () => {
+  const g = ["G0 Z5", "G0 X10 Y10", "G1 Z-3 F300", "G0 Z5", "G53 G0 Z-5", "G53 G0 X0 Y0"].join(
+    "\n",
+  );
+  expect(codes(g)).toEqual([]);
+});
+
+test("G53 is non-modal: the very next line is judged in work coordinates again", () => {
+  // Positive control — the exemption must not leak past its own line, or a real
+  // off-stock cut after a G53 park would go unreported.
+  const g = ["G53 G0 Z-5", "G0 X120 Y10", "G1 Z-3 F300"].join("\n"); // X120 > xMax 100
+  expect(codes(g)).toContain("out-of-bounds");
+});
+
+test("G53 does not suppress an over-deep cut on a following line", () => {
+  const g = ["G53 G0 Z-5", "G0 X10 Y10", "G1 Z-15 F300"].join("\n"); // zBottom −10
+  expect(codes(g)).toContain("over-deep");
+});
+
+// A stock that does NOT straddle the work origin — the shape that exposed the
+// position-leak below. The default CTX starts at X0 Y0, where an untracked
+// position is coincidentally inside the envelope and hides the bug.
+const OFFSET_CTX: LintContext = {
+  bounds: { xMin: 20, xMax: 120, yMin: 20, yMax: 100 },
+  zTop: 0,
+  zBottom: -10,
+  machineKind: "mill",
+};
+
+test("G53: machine coordinates do not leak into the next move's position", () => {
+  // `G0 Z5` is innocent, but inherited a "before" Z of −5 from the G53 line and
+  // so read as engaged in material at X0 Y0 — outside this stock.
+  const g = ["G53 G0 Z-5", "G0 Z5", "G0 X30 Y30", "G1 Z-3 F300"].join("\n");
+  expect(codes(g, OFFSET_CTX)).toEqual([]);
+});
+
+test("G53: a real off-stock cut after a machine-frame move is still caught", () => {
+  // Positive control for the leak fix — suppressing the leak must not suppress
+  // the check itself.
+  const g = ["G53 G0 Z-5", "G0 Z5", "G0 X200 Y30", "G1 Z-3 F300"].join("\n");
+  expect(codes(g, OFFSET_CTX)).toContain("out-of-bounds");
+});

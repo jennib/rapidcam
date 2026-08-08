@@ -24,6 +24,7 @@
 import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
+import { lexWords } from "./gcodeWords";
 import { hiddenOpEntityIds } from "./machinable";
 import { checkMachinability } from "./machinability";
 
@@ -92,6 +93,18 @@ interface Move {
    *  1/minutes-for-the-whole-move under G93, not mm/min, so it is NOT comparable
    *  across moves of different lengths the way a G94 feed rate is. */
   invTime: boolean;
+  /**
+   * G53 was on this line, so its coordinates are raw MACHINE position rather than
+   * work position. Nothing in the program records where the work origin sits on
+   * the table (the same limit {@link checkBedTravel} documents), so these
+   * coordinates cannot be compared against the stock envelope, the stock top, or
+   * the fixtures — all of which are expressed in work/emitted coordinates. Every
+   * work-frame check therefore skips these moves.
+   *
+   * Unlike G93/G94 this is NOT modal: G53 applies to its own line only, so the
+   * flag is per-line and never carried forward.
+   */
+  machineFrame: boolean;
 }
 
 /**
@@ -116,28 +129,37 @@ function parseMoves(gcode: string, zTop: number): Move[] {
 
   for (const raw of gcode.split(/\r?\n/)) {
     lineNo++;
-    const code = raw.split(";")[0].trim(); // strip any trailing comment
-    if (!code) continue;
-    const tokens = code.split(/\s+/);
+    // Scan words rather than whitespace-separated tokens. Splitting on spaces
+    // read `G0X10Y20` — legal on GRBL, and typed by hand into the custom program
+    // start/end blocks — as ONE token whose coordinates were then dropped
+    // entirely, so that move was invisible to every check below. See cam/gcodeWords.
+    const words = lexWords(raw);
+    if (words.length === 0) continue;
 
     let hasX = false,
       hasY = false,
       hasZ = false,
       sawCoord = false;
+    // Per-line, never carried forward: G53 is non-modal.
+    let machineFrame = false;
+    // Work-frame position before this line, so a G53 line can be recorded without
+    // its machine coordinates leaking into the position later lines are judged
+    // against. See the restore below.
+    const wasX = x,
+      wasY = y,
+      wasZ = z;
     let nextMotion: 0 | 1 | 2 | 3 | null = motion;
 
-    for (const t of tokens) {
-      const letter = t[0]?.toUpperCase();
-      const val = parseFloat(t.slice(1));
-      if (letter === "G" && !Number.isNaN(val)) {
+    for (const { letter, value: val } of words) {
+      if (letter === "G") {
         const g = Math.round(val);
         if (g === 0 || g === 1 || g === 2 || g === 3) nextMotion = g;
+        else if (g === 53) machineFrame = true;
         else if (g === 93) invTime = true;
         else if (g === 94) invTime = false;
         // Other non-motion G-words (G17/G20/G21/G90/…) leave modal state untouched.
         continue;
       }
-      if (Number.isNaN(val)) continue;
       switch (letter) {
         case "X":
           x = val;
@@ -179,7 +201,23 @@ function parseMoves(gcode: string, zTop: number): Move[] {
         hasZ,
         f,
         invTime,
+        machineFrame,
       });
+    }
+
+    // Where the tool sits in WORK coordinates after a G53 move is unknowable —
+    // nothing in the program records the offset between the two frames. Carrying
+    // the machine numbers forward is worse than admitting that: a `G53 G0 Z-5`
+    // retract left the NEXT move with a "before" Z of −5, so an innocent `G0 Z5`
+    // read as engaged in material at whatever XY was current, and on a stock that
+    // does not straddle the origin that produced a confident out-of-bounds error
+    // — on the machine-coordinate retract this app's own Machine Settings
+    // recommends. Leaving the work-frame position untouched is the honest
+    // approximation: the tool has moved, but not to anywhere we can name.
+    if (machineFrame) {
+      x = wasX;
+      y = wasY;
+      z = wasZ;
     }
   }
 
@@ -192,6 +230,11 @@ function parseMoves(gcode: string, zTop: number): Move[] {
     m.px = prevX;
     m.py = prevY;
     m.pz = prevZ;
+    // A machine-frame move stores coordinates in the OTHER frame, so propagating
+    // them as the next move's "before" position is what actually produced the
+    // false out-of-bounds error — the parse loop's restore alone cannot fix it,
+    // because this pass reads the stored move, not the running position.
+    if (m.machineFrame) continue;
     prevX = m.x;
     prevY = m.y;
     prevZ = m.z;
@@ -213,6 +256,7 @@ function checkRapidThroughStock(moves: Move[], ctx: LintContext): LintFinding | 
   let first: Move | null = null,
     count = 0;
   for (const m of moves) {
+    if (m.machineFrame) continue; // machine-frame Z says nothing about the stock top
     if (m.motion !== 0) continue;
     if (!m.hasX && !m.hasY) continue; // a pure Z retract is fine
     if (Math.min(m.pz, m.z) < ctx.zTop - EPS) {
@@ -248,6 +292,7 @@ function checkOutOfBounds(moves: Move[], ctx: LintContext): LintFinding | null {
     // No hasX/hasY guard: a pure-Z plunge still leaves the tool at (x,y), and
     // that's exactly where an off-stock plunge engages. Aggregation dedupes the
     // noise of repeated moves at one out-of-bounds spot.
+    if (m.machineFrame) continue; // machine coordinates, not comparable to the stock
     if (!engaged(m)) continue;
     const out = m.x < xMin - EPS || m.x > xMax + EPS || m.y < yMin - EPS || m.y > yMax + EPS;
     if (out) {
@@ -272,6 +317,7 @@ function checkOverDeep(moves: Move[], ctx: LintContext): LintFinding | null {
   let first: Move | null = null,
     deepest = Infinity;
   for (const m of moves) {
+    if (m.machineFrame) continue; // machine-frame Z is not a depth into the stock
     if (m.motion === 0) continue; // rapids handled elsewhere
     if (m.z < ctx.zBottom - OVERCUT_TOLERANCE) {
       if (!first) first = m;
@@ -414,6 +460,7 @@ function checkFixtures(moves: Move[], ctx: LintContext): LintFinding | null {
   let needZ = Number.NEGATIVE_INFINITY;
   let unknownHeight = false;
   for (const m of moves) {
+    if (m.machineFrame) continue; // fixture polygons are in work/emitted coordinates
     const lowZ = Math.min(m.pz, m.z);
     for (const f of fixtures) {
       const clearAt = ctx.zTop + f.height;
@@ -484,6 +531,8 @@ function checkBedTravel(moves: Move[], ctx: LintContext): LintFinding | null {
     yMin = Number.POSITIVE_INFINITY,
     yMax = Number.NEGATIVE_INFINITY;
   for (const m of moves) {
+    // Mixing machine-frame coordinates into a work-frame span measures neither.
+    if (m.machineFrame) continue;
     // Both ends of every move: a span is defined by where the tool actually goes.
     xMin = Math.min(xMin, m.px, m.x);
     xMax = Math.max(xMax, m.px, m.x);
