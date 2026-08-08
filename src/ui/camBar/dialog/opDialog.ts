@@ -6,6 +6,7 @@ import type { CADDocument } from "../../../model/document";
 import { RasterImageEntity } from "../../../model/entities";
 import type { CAMOperation, CAMOpType } from "../../../cam/types";
 import { registerModal } from "../../modal";
+import { toast } from "../../toast";
 import {
   type OpCombo,
   AUTO_NAME_RE,
@@ -245,7 +246,11 @@ export function openOpDialog(options: OpDialogOptions): void {
       // none are (e.g. an image selected for a Cut → "can only be engraved").
       const check = checkOpSelection(doc.entities, state.entityIds, state.combo);
       if (check.error) {
-        alert(check.error);
+        // Toast, not alert(): the dialog stays open and keyboard-usable so the
+        // refusal can be acted on directly. A native alert() blocks the page —
+        // clicks landing during it are swallowed, which reads as a dead button
+        // and is what the "Apply hang" turned out to be (see raster engrave).
+        toast(check.error);
         return;
       }
       ids = check.validIds;

@@ -7,6 +7,7 @@
 import type { CADDocument } from "../model/document";
 import { applyRotate } from "../core/transform";
 import { registerModal } from "./modal";
+import { toast } from "./toast";
 
 /** Backdrop element carrying its own registered close (unregister + remove). */
 interface BackdropEl extends HTMLElement {
@@ -18,7 +19,7 @@ interface BackdropEl extends HTMLElement {
 
 export function openRectArrayDialog(doc: CADDocument, pushHistory: () => void): void {
   if (doc.selected.length === 0) {
-    alert("Select entities to array first.");
+    toast("Select entities to array first.");
     return;
   }
 
@@ -61,7 +62,7 @@ export function openRectArrayDialog(doc: CADDocument, pushHistory: () => void): 
 
 export function openCircArrayDialog(doc: CADDocument, pushHistory: () => void): void {
   if (doc.selected.length === 0) {
-    alert("Select entities to array first.");
+    toast("Select entities to array first.");
     return;
   }
 

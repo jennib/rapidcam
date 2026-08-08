@@ -113,7 +113,7 @@ export class CamExportService {
   /** Export all toolpaths. */
   public async generate(): Promise<void> {
     if (this.doc.operations.length === 0) {
-      alert("Add at least one toolpath first.");
+      toast("Add at least one toolpath first.");
       return;
     }
     if (!(await this.confirmMissingFonts())) return;
@@ -249,7 +249,7 @@ export class CamExportService {
   /** Hand the whole program to a running sender app. */
   public async sendToMachine(): Promise<void> {
     if (this.doc.operations.length === 0) {
-      alert("Add at least one toolpath first.");
+      toast("Add at least one toolpath first.");
       return;
     }
     showSenderDialog((selectedApp) => {

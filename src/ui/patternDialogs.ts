@@ -22,6 +22,7 @@ import {
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
 import { registerModal } from "./modal";
+import { toast } from "./toast";
 
 /** Backdrop element carrying its own registered close (unregister + remove). */
 interface BackdropEl extends HTMLElement {
@@ -37,7 +38,7 @@ export function openLinearPatternDialog(doc: CADDocument, pushHistory: () => voi
     buildLinearDialog(doc, pushHistory, existing);
   } else {
     if (doc.selected.length === 0) {
-      alert("Select entities to pattern first.");
+      toast("Select entities to pattern first.");
       return;
     }
     buildLinearDialog(doc, pushHistory, null);
@@ -50,7 +51,7 @@ export function openCircularPatternDialog(doc: CADDocument, pushHistory: () => v
     buildCircularDialog(doc, pushHistory, existing);
   } else {
     if (doc.selected.length === 0) {
-      alert("Select entities to pattern first.");
+      toast("Select entities to pattern first.");
       return;
     }
     buildCircularDialog(doc, pushHistory, null);
@@ -116,11 +117,11 @@ function buildLinearDialog(
     const spacingX = resolveSpacing(sxInp.value, doc);
     const spacingY = resolveSpacing(syInp.value, doc);
     if (countX === null || countY === null) {
-      alert("Invalid count — enter a whole number or a variable name.");
+      toast("Invalid count — enter a whole number or a variable name.");
       return;
     }
     if (spacingX === null || spacingY === null) {
-      alert("Invalid spacing — enter a number or a variable name.");
+      toast("Invalid spacing — enter a number or a variable name.");
       return;
     }
     if (countX === 1 && countY === 1) return;
@@ -220,11 +221,11 @@ function buildCircularDialog(
     const cy = parseFloat(cyInp2.value);
     const totalAngle = (parseFloat(angInp.value) || 360) * (Math.PI / 180);
     if (count === null) {
-      alert("Invalid count — enter a whole number or a variable name.");
+      toast("Invalid count — enter a whole number or a variable name.");
       return;
     }
     if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(totalAngle)) {
-      alert("Invalid values.");
+      toast("Invalid values.");
       return;
     }
 

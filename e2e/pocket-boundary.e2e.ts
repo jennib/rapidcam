@@ -21,12 +21,16 @@ function docWithNestedSlot(): { text: string; rectId: string } {
 }
 
 test("Pocket boundary mode respects explicit entities over region flood-fill", async ({ page }) => {
-  // A native alert must fail this test with its own message. camBar's Apply
-  // handler alerts and bails when checkOpSelection rejects the picks, and
-  // Playwright auto-dismisses unhandled dialogs — so without this the failure
-  // would surface as an opaque timeout on the dialog-closed assertion below,
-  // with the actual reason discarded. Registered before any click: a handler
-  // attached afterwards never sees the dialog it was meant to catch.
+  // Apply bails when checkOpSelection rejects the picks, and says why in a
+  // toast (role=status). Capture that below so the failure reports the actual
+  // reason instead of an opaque timeout on the dialog-closed assertion.
+  //
+  // The native-dialog handler stays as a regression guard: Apply used to
+  // alert() here, and Playwright auto-dismisses unhandled dialogs, so a
+  // reintroduced alert() would otherwise vanish silently. It must be
+  // registered before any click — a handler attached afterwards never sees the
+  // dialog it was meant to catch. NB: on its own this assertion is vacuous now
+  // that nothing on this path alerts; the toast check is what has teeth.
   const nativeAlerts: string[] = [];
   page.on("dialog", async (d) => {
     nativeAlerts.push(d.message());
@@ -67,6 +71,10 @@ test("Pocket boundary mode respects explicit entities over region flood-fill", a
   await dialog.locator("button", { hasText: "+ From Selection" }).click();
 
   await dialog.locator("button.tp-apply-btn").click();
+  // Read the refusal before asserting the dialog closed: a rejected Apply
+  // leaves the dialog open, so the toast text is the informative failure.
+  const refusals = await page.locator('[role="status"]').allTextContents();
+  expect(refusals, "Apply refused to save the op").toEqual([]);
   expect(nativeAlerts, "Apply raised a native alert instead of saving the op").toEqual([]);
   await expect(dialog).toHaveCount(0);
 
