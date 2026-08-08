@@ -9,7 +9,7 @@
  */
 
 import type { CADDocument, FlipSettings } from "../model/document";
-import { defaultPins, defaultFlipSettings } from "../cam/flip";
+import { defaultPins, defaultFlipSettings, stockBox } from "../cam/flip";
 import type { FlipPreview } from "../view/overlay";
 import type { Vec2 } from "../core/vec2";
 import { registerModal } from "./modal";
@@ -161,7 +161,7 @@ export function openFlipDialog(params: FlipDialogParams): void {
       pinDepth: Math.max(0, Number(depthIn.value) || 0),
       pins:
         regSel.value === "pins"
-          ? defaultPins(doc.canvas, axis, Math.max(0, Number(insetIn.value) || 0))
+          ? defaultPins(stockBox(doc), axis, Math.max(0, Number(insetIn.value) || 0))
           : [],
     };
   };

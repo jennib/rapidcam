@@ -13,6 +13,7 @@ import {
   defaultFlipSettings,
   mirrorPoint,
   pinsSymmetric,
+  stockBox,
   mirrorDocForFlip,
   validateFlip,
   generateFlipPrograms,
@@ -113,25 +114,25 @@ test("partitionOps splits by face and preserves document order", () => {
 // --- pin math ----------------------------------------------------------------
 
 test("default pins sit on the flip-axis centreline and are symmetric", () => {
-  const canvas = { width: 200, height: 120 };
-  const ph = defaultPins(canvas, "h");
+  const stock = { x: 0, y: 0, width: 200, height: 120 };
+  const ph = defaultPins(stock, "h");
   expect(ph.every((p) => Math.abs(p.x - 100) < 1e-9)).toBe(true); // on the vertical centreline
-  expect(pinsSymmetric(ph, "h", canvas)).toBe(true);
+  expect(pinsSymmetric(ph, "h", stock)).toBe(true);
 
-  const pv = defaultPins(canvas, "v");
+  const pv = defaultPins(stock, "v");
   expect(pv.every((p) => Math.abs(p.y - 60) < 1e-9)).toBe(true); // on the horizontal centreline
-  expect(pinsSymmetric(pv, "v", canvas)).toBe(true);
+  expect(pinsSymmetric(pv, "v", stock)).toBe(true);
 });
 
 test("mirrorPoint reflects about the correct axis", () => {
-  const canvas = { width: 200, height: 120 };
-  expect(mirrorPoint({ x: 40, y: 30 }, "h", canvas)).toEqual({ x: 160, y: 30 });
-  expect(mirrorPoint({ x: 40, y: 30 }, "v", canvas)).toEqual({ x: 40, y: 90 });
+  const stock = { x: 0, y: 0, width: 200, height: 120 };
+  expect(mirrorPoint({ x: 40, y: 30 }, "h", stock)).toEqual({ x: 160, y: 30 });
+  expect(mirrorPoint({ x: 40, y: 30 }, "v", stock)).toEqual({ x: 40, y: 90 });
 });
 
 test("asymmetric pins are rejected; a mirror-image pair is accepted", () => {
-  const canvas = { width: 200, height: 120 };
-  expect(pinsSymmetric([{ x: 40, y: 30 }], "h", canvas)).toBe(false); // lone off-axis pin
+  const stock = { x: 0, y: 0, width: 200, height: 120 };
+  expect(pinsSymmetric([{ x: 40, y: 30 }], "h", stock)).toBe(false); // lone off-axis pin
   expect(
     pinsSymmetric(
       [
@@ -139,7 +140,7 @@ test("asymmetric pins are rejected; a mirror-image pair is accepted", () => {
         { x: 160, y: 30 },
       ],
       "h",
-      canvas,
+      stock,
     ),
   ).toBe(true); // its mirror partner
 });
@@ -155,6 +156,45 @@ test("mirrorDocForFlip reflects entity geometry about the stock centreline", () 
   expect(mc.center.y).toBeCloseTo(60, 6);
   // The original document is untouched (we mirror a clone).
   expect((doc.entities.find((e) => e.id === c.id) as CircleEntity).center.x).toBe(40);
+});
+
+test("a blank OFFSET on its sheet mirrors about the blank, not the sheet", () => {
+  // The case the old code got wrong. While New Project centred the blank, the
+  // sheet's centreline and the blank's were the same point, so mirroring about
+  // the sheet looked right; offset the blank and it is out by twice the offset.
+  // A physical flip turns the MATERIAL over about its own centreline.
+  const doc = new CADDocument({ width: 300, height: 250 });
+  doc.stockRect = { x: 40, y: 30, width: 200, height: 150 };
+  // A hole 20mm in from the blank's left edge.
+  const c = doc.add(new CircleEntity({ x: 60, y: 105 }, 5)) as CircleEntity;
+
+  const mDoc = mirrorDocForFlip(doc, "h");
+  const mc = mDoc.entities.find((e) => e.id === c.id) as CircleEntity;
+
+  // It must come back 20mm in from the blank's RIGHT edge: 40 + 200 - 20 = 220.
+  expect(mc.center.x).toBeCloseTo(220, 6);
+  expect(mc.center.y).toBeCloseTo(105, 6);
+  // Mirroring about the sheet would have put it at 300 - 60 = 240 — 20mm past
+  // the blank's right edge, i.e. cutting fresh air.
+  expect(mc.center.x).not.toBeCloseTo(240, 6);
+});
+
+test("default pins land inside an offset blank, and stay symmetric about it", () => {
+  const doc = new CADDocument({ width: 300, height: 250 });
+  doc.stockRect = { x: 40, y: 30, width: 200, height: 150 };
+  const stock = stockBox(doc);
+  const pins = defaultPins(stock, "h");
+
+  // On the BLANK's vertical centreline (40 + 100), not the sheet's (150).
+  expect(pins.every((p) => Math.abs(p.x - 140) < 1e-9)).toBe(true);
+  // And within the material, which is what validateFlip checks.
+  for (const p of pins) {
+    expect(p.x).toBeGreaterThanOrEqual(stock.x);
+    expect(p.x).toBeLessThanOrEqual(stock.x + stock.width);
+    expect(p.y).toBeGreaterThanOrEqual(stock.y);
+    expect(p.y).toBeLessThanOrEqual(stock.y + stock.height);
+  }
+  expect(pinsSymmetric(pins, "h", stock)).toBe(true);
 });
 
 test("a bottom-face op is generated mirrored about the flip axis", () => {
@@ -255,7 +295,7 @@ test("flipSides splits ops by face for per-side preview (bottom ops off side A)"
     registration: "pins",
     pinDiameter: 8,
     pinDepth: 4,
-    pins: defaultPins(doc.canvas, "h"),
+    pins: defaultPins(stockBox(doc), "h"),
   };
 
   const { sideA, sideB, hasPins } = flipSides(doc);
@@ -290,7 +330,7 @@ test("side A ends with pin bores reaching stockThickness + pinDepth below the to
     registration: "pins",
     pinDiameter: 8,
     pinDepth: 4,
-    pins: defaultPins(doc.canvas, "h"),
+    pins: defaultPins(stockBox(doc), "h"),
   };
 
   const { sideA, hasPins } = generateFlipPrograms(doc);
@@ -341,7 +381,7 @@ test("side B is in bounds; registration bores don't trip over-deep with the pin 
     registration: "pins",
     pinDiameter: 6,
     pinDepth: 4,
-    pins: defaultPins(doc.canvas, "h"),
+    pins: defaultPins(stockBox(doc), "h"),
   };
 
   const { sideA, sideB } = generateFlipPrograms(doc);
@@ -405,7 +445,7 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
     registration: "pins",
     pinDiameter: 6,
     pinDepth: 4,
-    pins: defaultPins(d1.canvas, "h"),
+    pins: defaultPins(stockBox(d1), "h"),
   };
   expect(validateFlip(d1).some((w) => /can't cut a clean straight hole|v-bit/.test(w))).toBe(true);
 
@@ -419,7 +459,7 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
     registration: "pins",
     pinDiameter: 4,
     pinDepth: 4,
-    pins: defaultPins(d2.canvas, "h"),
+    pins: defaultPins(stockBox(d2), "h"),
   };
   expect(validateFlip(d2).some((w) => /smaller than the boring tool|too loose/.test(w))).toBe(true);
 
@@ -433,7 +473,7 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
     registration: "pins",
     pinDiameter: 8,
     pinDepth: 4,
-    pins: defaultPins(d3.canvas, "h"),
+    pins: defaultPins(stockBox(d3), "h"),
   };
   const w3 = validateFlip(d3);
   expect(w3.some((w) => /boring tool|straight hole/.test(w))).toBe(false);

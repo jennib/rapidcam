@@ -22,7 +22,7 @@
  * wrong. Mill-only.
  */
 
-import { CADDocument, type FlipSettings } from "../model/document";
+import { CADDocument, type FlipSettings, stockFootprint } from "../model/document";
 import { CircleEntity, TextEntity } from "../model/entities";
 import { applyFlipH, applyFlipV } from "../core/transform";
 import { generateGCode, type GCodeOptions } from "./gcode";
@@ -32,6 +32,30 @@ import { nextId } from "../model/ids";
 
 /** Positions on/near the flip axis are matched within this tolerance (mm). */
 const SYM_TOL = 0.05;
+
+/** A rectangle in work coordinates — position included, unlike `doc.canvas`. */
+export interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The blank's rectangle in work coordinates.
+ *
+ * Every flip calculation belongs to the MATERIAL, not the sheet: you turn a
+ * physical workpiece over about its own centreline, and a registration pin is
+ * bored through the blank. Passing `doc.canvas` here used to look correct only
+ * because New Project centred the blank on its sheet, which made the two
+ * centrelines the same point — so a hole 20mm from the blank's left edge came
+ * back 20mm from its right edge by coincidence. Offset the blank and the same
+ * code puts it 80mm off the material entirely.
+ */
+export function stockBox(doc: CADDocument): Box {
+  const { width, height } = stockFootprint(doc);
+  return { x: doc.stockRect?.x ?? 0, y: doc.stockRect?.y ?? 0, width, height };
+}
 
 /** The face an op cuts, defaulting undefined → "top". */
 export function opFace(op: CAMOperation): "top" | "bottom" {
@@ -52,24 +76,20 @@ export function partitionOps(ops: CAMOperation[]): { top: CAMOperation[]; bottom
  * mirror). For "h" (mirror X) the centreline is vertical at x = W/2; for "v" it
  * is horizontal at y = H/2.
  */
-export function defaultPins(
-  canvas: { width: number; height: number },
-  axis: "h" | "v",
-  inset?: number,
-): { x: number; y: number }[] {
+export function defaultPins(stock: Box, axis: "h" | "v", inset?: number): { x: number; y: number }[] {
   if (axis === "h") {
-    const cx = canvas.width / 2;
-    const d = inset ?? Math.min(15, canvas.height * 0.2);
+    const cx = stock.x + stock.width / 2;
+    const d = inset ?? Math.min(15, stock.height * 0.2);
     return [
-      { x: cx, y: d },
-      { x: cx, y: canvas.height - d },
+      { x: cx, y: stock.y + d },
+      { x: cx, y: stock.y + stock.height - d },
     ];
   }
-  const cy = canvas.height / 2;
-  const d = inset ?? Math.min(15, canvas.width * 0.2);
+  const cy = stock.y + stock.height / 2;
+  const d = inset ?? Math.min(15, stock.width * 0.2);
   return [
-    { x: d, y: cy },
-    { x: canvas.width - d, y: cy },
+    { x: stock.x + d, y: cy },
+    { x: stock.x + stock.width - d, y: cy },
   ];
 }
 
@@ -81,17 +101,19 @@ export function defaultFlipSettings(doc: CADDocument): FlipSettings {
     registration: "pins",
     pinDiameter: 6,
     pinDepth: 4,
-    pins: defaultPins(doc.canvas, axis),
+    pins: defaultPins(stockBox(doc), axis),
   };
 }
 
-/** Mirror a point about the flip axis of a stock of the given size. */
+/** Mirror a point about the flip axis of the given stock (position included). */
 export function mirrorPoint(
   p: { x: number; y: number },
   axis: "h" | "v",
-  canvas: { width: number; height: number },
+  stock: Box,
 ): { x: number; y: number } {
-  return axis === "h" ? { x: canvas.width - p.x, y: p.y } : { x: p.x, y: canvas.height - p.y };
+  return axis === "h"
+    ? { x: 2 * stock.x + stock.width - p.x, y: p.y }
+    : { x: p.x, y: 2 * stock.y + stock.height - p.y };
 }
 
 /**
@@ -102,10 +124,10 @@ export function mirrorPoint(
 export function pinsSymmetric(
   pins: { x: number; y: number }[],
   axis: "h" | "v",
-  canvas: { width: number; height: number },
+  stock: Box,
 ): boolean {
   for (const p of pins) {
-    const m = mirrorPoint(p, axis, canvas);
+    const m = mirrorPoint(p, axis, stock);
     if (!pins.some((q) => Math.hypot(q.x - m.x, q.y - m.y) <= SYM_TOL)) return false;
   }
   return true;
@@ -125,7 +147,9 @@ export function cloneDoc(doc: CADDocument): CADDocument {
  */
 export function mirrorDocForFlip(doc: CADDocument, axis: "h" | "v"): CADDocument {
   const c = cloneDoc(doc);
-  const center = axis === "h" ? c.canvas.width / 2 : c.canvas.height / 2;
+  // The blank's centreline, not the sheet's — see stockBox.
+  const stock = stockBox(c);
+  const center = axis === "h" ? stock.x + stock.width / 2 : stock.y + stock.height / 2;
   // Text is excluded from the editor-level flip: applyFlipH/V keep text
   // readable and only relocate its footprint (MIRRTEXT=0 convention), but the
   // reverse side needs a TRUE mirror image. The `mirror` flag makes
@@ -258,13 +282,21 @@ export function validateFlip(doc: CADDocument): string[] {
         "Registration is set to pins but none are placed — the flipped stock has nothing to align to.",
       );
     } else {
-      if (!pinsSymmetric(flip.pins, flip.axis, doc.canvas)) {
+      const stock = stockBox(doc);
+      if (!pinsSymmetric(flip.pins, flip.axis, stock)) {
         out.push(
           "Registration pins are not symmetric about the flip axis — after flipping, the holes won't line up on the dowels. Place pins on the centreline or in mirror-image pairs.",
         );
       }
       for (const p of flip.pins) {
-        if (p.x < 0 || p.x > doc.canvas.width || p.y < 0 || p.y > doc.canvas.height) {
+        // Against the blank, which is what this message has always claimed to
+        // check. A pin in the sheet's margin is in fresh air, or in a clamp.
+        if (
+          p.x < stock.x ||
+          p.x > stock.x + stock.width ||
+          p.y < stock.y ||
+          p.y > stock.y + stock.height
+        ) {
           out.push("A registration pin lies outside the stock — move it within the material.");
           break;
         }
