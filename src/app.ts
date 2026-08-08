@@ -35,17 +35,9 @@ import { type Dimension, dimensionLayout, dimensionHitDistance } from "./model/d
 import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "./model/document";
 import type { Bounds, Entity, EntityId } from "./model/entities";
 import { nextId } from "./model/ids";
-import { regenerateAllStalePatterns, regenerateStalePatterns } from "./model/patternEngine";
-import { computeSourceSnapshot } from "./model/patterns";
-import { evaluateAll, varMap } from "./model/variables";
-import {
-  computeEntityDofStatus,
-  constraintJacobianRankChange,
-  type PinMap,
-  solve,
-  solveConverged,
-  solveFailureEvent,
-} from "./solver/solver";
+import { varMap } from "./model/variables";
+import { SolveCoordinator, type SolveSinks } from "./shell/solveCoordinator";
+import { constraintJacobianRankChange, type PinMap } from "./solver/solver";
 import { ArcTool } from "./tools/arcTool";
 import { BezierTool } from "./tools/bezierTool";
 import { type CenterAxis, canCenter, planCenter } from "./tools/centerCommand";
@@ -79,7 +71,7 @@ import { ToolManager, type ToolPointerEvent } from "./tools/tool";
 import { TrimTool } from "./tools/trimTool";
 import { AlignBar } from "./ui/alignBar";
 import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
-import { GENERATORS, findFeatureForEntities, regenerateStaleFeatures } from "./generators/index";
+import { GENERATORS, findFeatureForEntities } from "./generators/index";
 import { openGeneratorDialog } from "./ui/generatorDialog";
 import { CamBar } from "./ui/camBar";
 import { ConstraintBar } from "./ui/constraintBar";
@@ -419,12 +411,16 @@ export class App {
     );
     this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
     this.statusBar.setHint(TOOL_HINTS[this.tools.active.id] ?? "");
+    // After the status bar, design tree and renderer exist: the sinks read them
+    // through `this`, and nothing above solves synchronously — every runSolve()
+    // reference passed to a bar or dialog above is a closure invoked later.
+    this.solver = new SolveCoordinator(this.doc, this.buildSolveSinks());
     new ConstraintBar(
       dom.constraintbar,
       this.doc,
       () => {
         this.runSolve();
-        return this.lastSolveResult;
+        return this.solver.result;
       },
       this.project.pushHistory,
       () => this.project.undoRedo("undo"),
@@ -708,122 +704,48 @@ export class App {
   };
 
   // --- constraint solving --------------------------------------------------
-  private lastSolveResult: import("./solver/solver").SolveResult | null = null;
-  private stalePatternIds: Set<string> = new Set();
+  /**
+   * Solve orchestration lives in {@link SolveCoordinator}, wired to the renderer,
+   * status bar and design tree through the sinks built in `buildSolveSinks`.
+   * The methods below are thin forwarders kept so the ~20 call sites across this
+   * class read the same as before.
+   */
+  private solver!: SolveCoordinator;
 
-  private currentDof(): number {
-    if (!this.lastSolveResult) return Infinity;
-    return this.lastSolveResult.variables - this.lastSolveResult.equations;
+  /** The UI fan-out for the coordinator. Grouped by fact, not by widget. */
+  private buildSolveSinks(): SolveSinks {
+    return {
+      publishEntityStatus: (status) => {
+        this.renderer.entityStatus = status;
+        this.designTree.setEntityStatus(status);
+      },
+      publishSolveStatus: (res, anyUnderDefined) => {
+        this.statusBar.setSolveStatus(res, anyUnderDefined);
+        this.designTree.setSolveStatus(solveStatusLabel(res, anyUnderDefined));
+      },
+      publishPatternStaleness: (staleEntityIds, staleCount) => {
+        this.renderer.stalePatternEntityIds = staleEntityIds;
+        this.statusBar.setPatternStatus(staleCount);
+      },
+      requestRender: () => this.requestRender(),
+      pushHistory: () => this.project.pushHistory(),
+    };
   }
 
-  private autoRegenerating = false;
+  private currentDof(): number {
+    return this.solver.dof;
+  }
 
-  /**
-   * A variable was committed (name/value/delete). Re-evaluate variables and
-   * solve so any variable-driven dimensions move their geometry into place, then
-   * regenerate any pattern OR generator feature that became stale — whether its
-   * count/spacing/param expression changed or (for patterns) its source moved —
-   * and solve again to refresh. All inside the history transaction the
-   * VariablesBar already opened, so one undo reverts the edit and the regen
-   * together. The guard keeps a regen's emitChange from recursing back in.
-   */
   private onVariablesChanged(): void {
-    this.runSolve(); // re-evaluates variables/dimensions and settles geometry
-    if (this.autoRegenerating) return;
-    this.autoRegenerating = true;
-    try {
-      const p = regenerateStalePatterns(this.doc);
-      const f = regenerateStaleFeatures(this.doc);
-      if (p || f) this.runSolve();
-    } finally {
-      this.autoRegenerating = false;
-    }
-    this.doc.emitChange();
+    this.solver.onVariablesChanged();
   }
 
   private runSolve(pins?: PinMap): void {
-    evaluateAll(
-      this.doc.variables,
-      this.doc.dimensions,
-      this.doc.displayUnit,
-      this.doc.stockThickness,
-      this.doc.operations,
-    );
-    const res = solve(this.doc, pins);
-    if (!pins) {
-      this.lastSolveResult = res;
-      this.renderer.entityStatus = computeEntityDofStatus(this.doc, res);
-      this.updatePatternStaleness();
-      this.reportSolveHealth(res);
-    }
-    // Always report definedness (solveStatusLabel blanks an empty canvas): a
-    // fresh, unconstrained sketch reads "under-constrained" and draws blue, per
-    // the SolidWorks model — the status bar must agree with the geometry colour.
-    // Pass whether anything is ACTUALLY drawn under-defined so a feature-only
-    // sketch (controlled geometry, free solver DOF but not loose) reads
-    // "Fully constrained" instead of contradicting its own layer-coloured parts.
-    const anyUnderDefined = [...this.renderer.entityStatus.values()].some(
-      (s) => s === "under-defined",
-    );
-    this.statusBar.setSolveStatus(res, anyUnderDefined);
-    // The design tree's Constraints folder shows the SAME verdict, from the same
-    // call on the same inputs — not its own reading of the solve result, so the
-    // two can never contradict each other.
-    this.designTree.setSolveStatus(solveStatusLabel(res, anyUnderDefined));
-    this.designTree.setEntityStatus(this.renderer.entityStatus);
-    this.requestRender();
-  }
-
-  /** Whether the last committed solve converged, so only the TRANSITION is reported. */
-  private lastSolveConverged = true;
-
-  /**
-   * Report a sketch that stopped solving.
-   *
-   * A failed solve is the strongest quality signal this app has and it is
-   * otherwise invisible after the fact — the user sees red geometry, fixes or
-   * undoes it, and nothing records that it happened.
-   *
-   * The edge-triggering decision lives in `solveFailureEvent` (pure, tested);
-   * this keeps only the previous-state bookkeeping. Drag solves (`pins`) never
-   * reach here — mid-drag non-convergence is normal and transient.
-   */
-  private reportSolveHealth(res: import("./solver/solver").SolveResult): void {
-    const payload = solveFailureEvent(res, this.lastSolveConverged, {
-      entities: this.doc.entities.length,
-      constraints: this.doc.constraints.length,
-      dimensions: this.doc.dimensions.length,
-    });
-    if (payload) track("solve_unconverged", payload);
-    this.lastSolveConverged = solveConverged(res);
-  }
-
-  private updatePatternStaleness(): void {
-    const stale = new Set<string>();
-    for (const pat of this.doc.patterns) {
-      if (pat.sourceSnapshot === undefined) continue;
-      if (computeSourceSnapshot(this.doc.entities, pat.sourceIds) !== pat.sourceSnapshot) {
-        stale.add(pat.id);
-      }
-    }
-    this.stalePatternIds = stale;
-
-    const staleInstanceIds = new Set<string>();
-    for (const pat of this.doc.patterns) {
-      if (stale.has(pat.id)) {
-        for (const inst of pat.instanceIds) for (const id of inst) staleInstanceIds.add(id);
-      }
-    }
-    this.renderer.stalePatternEntityIds = staleInstanceIds;
-    this.statusBar.setPatternStatus(stale.size);
+    this.solver.run(pins);
   }
 
   private doRegeneratePatterns(): void {
-    if (this.stalePatternIds.size === 0) return;
-    this.project.pushHistory();
-    regenerateAllStalePatterns(this.doc, this.stalePatternIds);
-    this.runSolve();
-    this.doc.emitChange();
+    this.solver.regenerateStale();
   }
 
   private render(): void {
@@ -1223,7 +1145,7 @@ export class App {
     dim.driving = true;
     this.runSolve();
 
-    if (this.lastSolveResult && !this.lastSolveResult.converged) {
+    if (this.solver.result && !this.solver.result.converged) {
       // Say WHICH kind of refusal this is while the failing state is still
       // loaded — "over-constrained" and "this value is unreachable" need
       // different fixes, and after the rollback below the evidence is gone.
@@ -1445,7 +1367,7 @@ export class App {
     this.project.pushHistory();
     for (const c of plan.constraints) this.doc.addConstraint(c);
     this.runSolve();
-    if (this.lastSolveResult && !this.lastSolveResult.converged) {
+    if (this.solver.result && !this.solver.result.converged) {
       this.project.undoRedo("undo");
       this.statusBar.flash("Couldn't centre — it conflicts with an existing constraint");
       return;
@@ -1708,7 +1630,7 @@ export class App {
       entries.push("sep");
     }
 
-    if (this.stalePatternIds.size > 0) {
+    if (this.solver.staleCount > 0) {
       entries.push({
         label: "Regenerate Patterns",
         shortcut: "^⇧P",
