@@ -1,7 +1,19 @@
 /**
  * Application shell: owns the document, view, tools, and UI, and translates raw
- * DOM input into tool/viewport actions. This is the only place that touches the
- * browser event system — everything below it works in clean model/view terms.
+ * DOM input into tool/viewport actions. Everything it hands down — tools, the
+ * solver, the renderer — works in clean model/view terms and never sees a DOM
+ * event.
+ *
+ * It owns the CANVAS pointer/wheel events and the GLOBAL `keydown` that drives
+ * tool switching and editing commands. It is not, however, the only listener on
+ * the window: menus and dialogs each attach their own document-level `keydown`
+ * (Escape) and `click` (dismiss-on-outside) — ~16 files at last count. So a new
+ * global shortcut added in `onKeyDown` can be swallowed by whatever transient
+ * popup is open, and there is no central arbiter that would prevent it. Check
+ * for a conflict rather than assuming this file gets first refusal.
+ *
+ * `tools/shortcuts.ts` is the key→tool table shared with the palette tooltips.
+ * It is a lookup table, not a dispatcher — it arbitrates nothing.
  */
 
 import { track } from "./analytics";
