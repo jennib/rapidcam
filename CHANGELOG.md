@@ -10,6 +10,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Open in GEditor.** *Send G-code* now offers a third destination alongside
+  gSender and ncSender: [GEditor](https://editor.rapidcam.app), the browser
+  G-code editor and 3D simulator. It opens in a new tab with the posted program
+  already loaded, so the last look at a job before it cuts can be at the code
+  itself — read it, tweak a feed, scrub the backplot — without a download-and-
+  reopen detour. There is no address to configure and nothing to test: it is a
+  hosted page, not a machine on the shop network.
+
+  The program is handed over by `postMessage` once the editor announces itself,
+  rather than packed into the URL. GEditor accepts `?base64=`/`#base64=` too and
+  that needs no handshake, but browsers cap URL length at their own undocumented
+  figures and an over-long one fails by *truncation* — which would deliver a
+  program that ends mid-cut and looks complete. A message has no size limit.
+
+  Two-sided jobs still go a side at a time, and a blocked pop-up falls back to
+  the same "download the file instead" offer as an unreachable sender.
+
 - **Crash reports and a solver-health signal.** RapidCAM now records the two
   things that indicate it failed to do its job, rather than only which buttons
   were pressed.
