@@ -242,6 +242,50 @@ describe("glossary table integrity", () => {
     }
   });
 
+  test("every `no` claim is one we can source", () => {
+    // `"no"` renders as an error, and a false error is the worst output this
+    // module has — it teaches people to click through pre-flight. So the set is
+    // pinned here rather than left to whoever edits the table next.
+    //
+    // What earns a "no": GRBL and LinuxCNC publish curated lists of the codes
+    // they accept, so an absence is a fact. Marlin and Smoothieware are printer
+    // firmwares whose CNC features are build-flag or config gated, so their
+    // absences are claims about someone else's binary — those get "optional".
+    // The one exception is M98: none of the four have subprograms (LinuxCNC uses
+    // O-codes), and that is not a build option anywhere.
+    //
+    // Sources: Grbl v1.1 command list (gnea/grbl wiki) and smoothieware.org's
+    // supported-g-codes page.
+    const claims = GLOSSARY.flatMap((e) =>
+      DIALECTS.filter((d) => e.support[d] === "no").map((d) => `${e.code}/${d}`),
+    ).sort();
+    expect(claims).toEqual(
+      [
+        // Absent from Grbl v1.1's supported set.
+        "G43/grbl",
+        "G5/grbl",
+        "G64/grbl",
+        "G81/grbl",
+        // No controller of ours has subprograms.
+        "M98/grbl",
+        "M98/linuxcnc",
+        "M98/marlin",
+        "M98/smoothie",
+      ].sort(),
+    );
+  });
+
+  test("Marlin and Smoothie are never told a CNC code is unsupported", () => {
+    // The positive control for the rule above: their absences are unverifiable,
+    // so they must read as "your build may not have this", not as an error.
+    for (const entry of GLOSSARY) {
+      for (const d of ["marlin", "smoothie"] as const) {
+        if (entry.code === "M98") continue;
+        expect(entry.support[d], `${entry.code} tells ${d} it is unsupported`).not.toBe("no");
+      }
+    }
+  });
+
   test("dialect resolution covers every post id the app can store", () => {
     expect(dialectOf("grbl")).toBe("grbl");
     expect(dialectOf("linuxcnc")).toBe("linuxcnc");

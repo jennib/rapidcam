@@ -36,6 +36,24 @@ export interface GMoveEvent {
   f?: number;
 }
 
+/**
+ * Known limitation, deliberately left alone — see the "keeps commented moves
+ * verbatim" test.
+ *
+ * The generator attaches comments to two REAL moves: `G0 X.. Y.. ; park for tool
+ * change` (gcode.ts) and `; return to end position`. Both are pass-through here,
+ * so a tiled job leaves them at their original coordinates while every move
+ * around them shifts — on the second tile onward the park is a physically
+ * different spot than the operator picked.
+ *
+ * Translating them is NOT obviously the fix. The park is authored in work
+ * coordinates, but a park outside the tile being cut would translate to a
+ * negative coordinate, i.e. off the machine — worse than leaving it. The real
+ * answer is a product decision about what a park means once a job is split
+ * (per-tile park? machine coordinates via G53?), not a parser change, so the
+ * behaviour stays as it is until that decision is made.
+ */
+
 export interface GRawEvent {
   kind: "raw";
   text: string;
@@ -103,7 +121,19 @@ export function parseProgram(gcode: string): GProgram {
             break;
         }
       }
-      events.push({ kind: "move", motion, x, y, z, hasX, hasY, hasZ, i, j, f });
+      events.push({
+        kind: "move",
+        motion,
+        x,
+        y,
+        z,
+        hasX,
+        hasY,
+        hasZ,
+        i,
+        j,
+        f,
+      });
     } else {
       events.push({ kind: "raw", text: line });
     }

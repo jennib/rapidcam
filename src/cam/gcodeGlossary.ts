@@ -167,17 +167,36 @@ const ALL: Record<Dialect, SupportLevel> = {
   marlin: "yes",
   smoothie: "yes",
 };
+/**
+ * **When `"no"` is allowed.**
+ *
+ * `"no"` renders as an error, and a false error is the worst thing this module
+ * can produce — it teaches people to click through the pre-flight warnings. So
+ * it is reserved for absences we can actually source: GRBL and LinuxCNC publish
+ * curated lists of the codes they accept, and they are the two mill posts.
+ *
+ * Marlin and Smoothieware get `"optional"` for CNC-specific codes instead. Both
+ * are 3D-printer firmwares whose CNC features are almost entirely build-flag or
+ * config gated (`G38_PROBE_TARGET`, `BEZIER_CURVE_SUPPORT`, `CNC_COORDINATE_SYSTEMS`,
+ * `COOLANT_CONTROL`, Smoothie switch modules), so "your build may not have this"
+ * is both true and safe, where "does not support" is a claim about someone
+ * else's binary that we cannot check. The failure biases toward saying too
+ * little, which is the harmless direction.
+ *
+ * test/gcodeGlossary.test.ts pins the exact set of `"no"` claims, so adding one
+ * has to be deliberate.
+ */
 const CNC_ONLY: Record<Dialect, SupportLevel> = {
   grbl: "yes",
   linuxcnc: "yes",
-  marlin: "no",
-  smoothie: "no",
+  marlin: "optional",
+  smoothie: "optional",
 };
 const LINUXCNC_ONLY: Record<Dialect, SupportLevel> = {
   grbl: "no",
   linuxcnc: "yes",
-  marlin: "no",
-  smoothie: "no",
+  marlin: "optional",
+  smoothie: "optional",
 };
 
 export const GLOSSARY: readonly GlossaryEntry[] = [
@@ -243,6 +262,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     divergence: {
       linuxcnc: "Your post emits this for engraved curves; the others flatten them to G1 segments.",
       grbl: "GRBL has no spline support — RapidCAM flattens curves to G1 segments for it instead.",
+      marlin: "Marlin's G5 is a Bezier curve behind the BEZIER_CURVE_SUPPORT build flag.",
     },
     emitted: true,
   },
@@ -410,7 +430,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       { letter: "Z", meaning: "how far to probe toward" },
       { letter: "F", meaning: "probing feed rate — keep it slow" },
     ],
-    support: CNC_ONLY,
+    support: { grbl: "yes", linuxcnc: "yes", marlin: "optional", smoothie: "yes" },
+    divergence: { marlin: "Requires the G38_PROBE_TARGET build flag and a defined probe." },
     caution:
       "Requires a wired, tested probe. If the probe input is not connected the machine drives " +
       "the full commanded distance into the material.",
@@ -420,7 +441,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     title: "Apply tool length offset (from the tool table)",
     summary: "Shift Z by the length stored for tool H in the machine's tool table.",
     params: [{ letter: "H", meaning: "tool table slot to read the length from" }],
-    support: { grbl: "no", linuxcnc: "yes", marlin: "no", smoothie: "no" },
+    support: { grbl: "no", linuxcnc: "yes", marlin: "optional", smoothie: "optional" },
     divergence: {
       grbl:
         "GRBL has no tool table — use G43.1, which carries the length on the line itself. " +
@@ -432,7 +453,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     code: "G43.1",
     title: "Apply tool length offset (dynamic)",
     summary: "Shift Z by a tool length given on this line, rather than from a tool table.",
-    support: { grbl: "yes", linuxcnc: "yes", marlin: "no", smoothie: "no" },
+    support: { grbl: "yes", linuxcnc: "yes", marlin: "optional", smoothie: "optional" },
     divergence: {
       linuxcnc: "LinuxCNC also has plain G43 with a tool table; GRBL only has G43.1.",
     },
@@ -513,10 +534,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     code: "M7",
     title: "Mist coolant on",
     summary: "Switch on the mist coolant output.",
-    support: { grbl: "optional", linuxcnc: "yes", marlin: "optional", smoothie: "no" },
+    support: { grbl: "optional", linuxcnc: "yes", marlin: "optional", smoothie: "optional" },
     divergence: {
       grbl: "Mist output exists only in builds compiled with ENABLE_M7.",
       marlin: "Requires the COOLANT_CONTROL build flag.",
+      smoothie: "Depends on a switch module being configured for it in config.",
     },
     emitted: true,
   },
@@ -555,7 +577,12 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     code: "M6",
     title: "Tool change",
     summary: "Change to the tool selected by T. On a manual machine, pauses for the swap.",
-    support: CNC_ONLY,
+    support: { grbl: "optional", linuxcnc: "yes", marlin: "optional", smoothie: "optional" },
+    divergence: {
+      grbl:
+        "Stock Grbl v1.1 has no M6 at all — it is FluidNC and the grblHAL-style forks that add " +
+        "it. Check yours before relying on the program pausing for a tool change.",
+    },
   },
   {
     code: "M30",
