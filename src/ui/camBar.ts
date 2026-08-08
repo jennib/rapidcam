@@ -164,7 +164,7 @@ export class CamBar {
     sendBtn.className = "cam-add-btn";
     sendBtn.style.cssText = "width:100%;margin-top:6px;";
     sendBtn.textContent = "Send G-code";
-    sendBtn.title = "Load these toolpaths into a running sender application";
+    sendBtn.title = "Load these toolpaths into a running sender application, or open them in GEditor";
     sendBtn.addEventListener("click", () => void this.exportService.sendToMachine());
     this.content.appendChild(sendBtn);
 

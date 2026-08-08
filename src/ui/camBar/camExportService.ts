@@ -17,7 +17,7 @@ import { zipStore } from "../../io/zip";
 import { isFontResolvable } from "../../core/fontManager";
 import { confirmDialog } from "../modal";
 import { openExportPreview } from "../exportPreviewDialog";
-import { showSenderDialog } from "../senderDialog";
+import { showSenderDialog, type SendTarget } from "../senderDialog";
 import { toast } from "../toast";
 import { maybeShowSharePrompt } from "../sharePrompt";
 import { track } from "../../analytics";
@@ -34,6 +34,7 @@ import {
 } from "../../core/prefs";
 import { sendToGsender } from "../../io/gsender";
 import { sendToNcsender } from "../../io/ncsender";
+import { openInGeditor } from "../../io/geditor";
 
 export interface CamExportContext {
   doc: CADDocument;
@@ -257,7 +258,35 @@ export class CamExportService {
     });
   }
 
-  private async doSendToMachine(app: "gSender" | "ncSender"): Promise<void> {
+  /**
+   * Hand one program to a destination. The two senders POST it to a server on the
+   * shop network; GEditor is a browser-window handoff. Same result shape either
+   * way, so every caller below stays destination-agnostic.
+   */
+  private sendProgram(
+    app: SendTarget,
+    name: string,
+    gcode: string,
+  ): Promise<{ ok: boolean; error?: string; hint?: string; port?: string }> {
+    switch (app) {
+      case "gSender":
+        return sendToGsender(getGsenderUrl(), name, gcode);
+      case "ncSender":
+        return sendToNcsender(getNcsenderUrl(), name, gcode);
+      case "GEditor":
+        return openInGeditor(name, gcode);
+    }
+  }
+
+  /**
+   * "open" / "send" — GEditor is a tab you open, not a machine you send to, and
+   * the wording either side of that follows it around the messages below.
+   */
+  private sendVerb(app: SendTarget): string {
+    return app === "GEditor" ? "open" : "send";
+  }
+
+  private async doSendToMachine(app: SendTarget): Promise<void> {
     if (!(await this.confirmMissingFonts())) return;
     const isRotary = this.doc.isRotary;
     // A two-sided job can't run as one program — send side A now, side B after
@@ -276,16 +305,11 @@ export class CamExportService {
     }
     if (!(await this.preflight(gcode))) return;
 
-    toast(`Sending to ${app}…`);
+    toast(app === "GEditor" ? "Opening GEditor…" : `Sending to ${app}…`);
     // One name for both the send and any fallback download below.
     const jobName = this.exportName(isRotary ? "all-rotary" : "all");
 
-    let res: { ok: boolean; hint?: string; error?: string; port?: string };
-    if (app === "gSender") {
-      res = await sendToGsender(getGsenderUrl(), jobName, gcode);
-    } else {
-      res = await sendToNcsender(getNcsenderUrl(), jobName, gcode);
-    }
+    const res = await this.sendProgram(app, jobName, gcode);
 
     track("gcode_sent_machine", {
       app,
@@ -295,6 +319,12 @@ export class CamExportService {
     });
 
     if (res.ok) {
+      if (app === "GEditor") {
+        // No share prompt here: focus has just moved to the editor tab, so a
+        // prompt in the tab behind it would only be found by accident.
+        toast("Opened in GEditor — review it there, then send it to your machine.");
+        return;
+      }
       toast(
         res.port
           ? `Loaded into ${app} on ${res.port} — press Play there to run.`
@@ -306,7 +336,7 @@ export class CamExportService {
 
     // Couldn't send — surface why, and offer the file so they're not stuck.
     const download = await confirmDialog({
-      title: `Couldn't send to ${app}`,
+      title: app === "GEditor" ? "Couldn't open GEditor" : `Couldn't send to ${app}`,
       message: `${res.error}\n\nDownload the G-code file instead?`,
       confirmLabel: "Download file",
       cancelLabel: "Close",
@@ -317,7 +347,7 @@ export class CamExportService {
     }
   }
 
-  private async sendFlip(app: "gSender" | "ncSender"): Promise<void> {
+  private async sendFlip(app: SendTarget): Promise<void> {
     const flip = this.doc.flip!;
     const { sideA, sideB, warnings, hasPins } = generateFlipPrograms(this.doc, this.gcodeOpts());
     if (warnings.length > 0) {
@@ -341,19 +371,14 @@ export class CamExportService {
     const nameA = formatExportName({ project, scope: "sideA", stamp });
     const nameB = formatExportName({ project, scope: "sideB", stamp });
 
-    toast(`Sending side A to ${app}…`);
+    toast(app === "GEditor" ? "Opening side A in GEditor…" : `Sending side A to ${app}…`);
 
-    let resA: { ok: boolean; hint?: string; error?: string };
-    if (app === "gSender") {
-      resA = await sendToGsender(getGsenderUrl(), nameA, sideA);
-    } else {
-      resA = await sendToNcsender(getNcsenderUrl(), nameA, sideA);
-    }
+    const resA = await this.sendProgram(app, nameA, sideA);
 
     track("gcode_sent_machine", { app, ok: resA.ok, hint: resA.hint, flip: "A" });
     if (!resA.ok) {
       const dl = await confirmDialog({
-        title: "Couldn't send side A",
+        title: `Couldn't ${this.sendVerb(app)} side A`,
         message: `${resA.error}\n\nDownload the side A + side B files instead?`,
         confirmLabel: "Download files",
         cancelLabel: "Close",
@@ -362,38 +387,53 @@ export class CamExportService {
       return;
     }
 
-    // Side A is loaded — the operator runs it, then flips before side B.
-    const goB = await confirmDialog({
-      title: "Side A loaded",
-      message:
-        `Side A is loaded in ${app} — press Play there to run it.\n\n` +
-        "When it finishes: flip the stock onto the registration pins and re-zero Z on the new top face. " +
-        "Then send side B.",
-      confirmLabel: "Send side B",
-      cancelLabel: "Later",
-    });
+    // Side A is away — at a machine the operator runs it and flips the stock
+    // before side B; in the editor it's simply the other program to look at.
+    const goB = await confirmDialog(
+      app === "GEditor"
+        ? {
+            title: "Side A open in GEditor",
+            message:
+              "Side A is open in GEditor.\n\n" +
+              "Open side B too? It replaces side A in the same editor tab.",
+            confirmLabel: "Open side B",
+            cancelLabel: "Not now",
+          }
+        : {
+            title: "Side A loaded",
+            message:
+              `Side A is loaded in ${app} — press Play there to run it.\n\n` +
+              "When it finishes: flip the stock onto the registration pins and re-zero Z on the new top face. " +
+              "Then send side B.",
+            confirmLabel: "Send side B",
+            cancelLabel: "Later",
+          },
+    );
     if (!goB) {
-      toast(`Side B not sent — reopen and Send to ${app} when ready.`);
+      toast(
+        app === "GEditor"
+          ? "Side B not opened — Send G-code again when you want it."
+          : `Side B not sent — reopen and Send to ${app} when ready.`,
+      );
       return;
     }
     if (!(await this.preflight(sideB))) return;
-    toast(`Sending side B to ${app}…`);
+    toast(app === "GEditor" ? "Opening side B in GEditor…" : `Sending side B to ${app}…`);
 
-    let resB: { ok: boolean; hint?: string; error?: string };
-    if (app === "gSender") {
-      resB = await sendToGsender(getGsenderUrl(), nameB, sideB);
-    } else {
-      resB = await sendToNcsender(getNcsenderUrl(), nameB, sideB);
-    }
+    const resB = await this.sendProgram(app, nameB, sideB);
 
     track("gcode_sent_machine", { app, ok: resB.ok, hint: resB.hint, flip: "B" });
     if (resB.ok) {
+      if (app === "GEditor") {
+        toast("Side B open in GEditor.");
+        return;
+      }
       toast(`Side B loaded — press Play in ${app} to run it.`);
       maybeShowSharePrompt();
       return;
     }
     const dl = await confirmDialog({
-      title: "Couldn't send side B",
+      title: `Couldn't ${this.sendVerb(app)} side B`,
       message: `${resB.error}\n\nDownload the side B file instead?`,
       confirmLabel: "Download file",
       cancelLabel: "Close",
