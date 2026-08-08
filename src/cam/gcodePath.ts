@@ -11,6 +11,7 @@
  */
 
 import type { Vec2 } from "../core/vec2";
+import { wordMap } from "./gcodeWords";
 
 export interface ToolpathSegment {
   /** true = G0 traverse (drawn faint/dashed), false = a cutting move. */
@@ -30,20 +31,6 @@ export interface GcodeToolpath {
   bounds: ToolpathBounds | null;
 }
 
-const wordRe = /([A-Za-z])\s*(-?\d*\.?\d+)/g;
-
-function parseWords(line: string): Map<string, number> {
-  const clean = line.replace(/\(.*?\)/g, " ").split(";")[0];
-  const words = new Map<string, number>();
-  wordRe.lastIndex = 0;
-  let m = wordRe.exec(clean);
-  while (m !== null) {
-    const v = parseFloat(m[2]);
-    if (Number.isFinite(v)) words.set(m[1].toUpperCase(), v);
-    m = wordRe.exec(clean);
-  }
-  return words;
-}
 
 /** Swept angle (0, 2π] from `a0` to `a1` in the given direction (ccw = G3). */
 function sweptAngle(a0: number, a1: number, ccw: boolean): number {
@@ -90,7 +77,7 @@ export function parseGcodePath(gcode: string): GcodeToolpath {
   };
 
   for (const raw of gcode.split("\n")) {
-    const w = parseWords(raw);
+    const w = wordMap(raw);
     if (w.size === 0) continue;
     if (w.has("G")) {
       const g = w.get("G")!;

@@ -18,6 +18,8 @@
  *    spindle spin-up pauses are not counted.
  */
 
+import { wordMap } from "./gcodeWords";
+
 /** Default rapid (G0) traverse rate, mm/min, when the caller doesn't supply one. */
 export const DEFAULT_RAPID_RATE = 3000;
 
@@ -35,21 +37,6 @@ export interface TimeEstimate {
   rapidSeconds: number;
 }
 
-const wordRe = /([A-Za-z])\s*(-?\d*\.?\d+)/g;
-
-/** Parse one line's letter→number words (comments stripped). */
-function parseWords(line: string): Map<string, number> {
-  const clean = line.replace(/\(.*?\)/g, " ").split(";")[0];
-  const words = new Map<string, number>();
-  wordRe.lastIndex = 0;
-  let m = wordRe.exec(clean);
-  while (m !== null) {
-    const v = parseFloat(m[2]);
-    if (Number.isFinite(v)) words.set(m[1].toUpperCase(), v);
-    m = wordRe.exec(clean);
-  }
-  return words;
-}
 
 /** Swept angle (0, 2π] from `a0` to `a1` in the given direction (+1 = CCW/G3). */
 function sweptAngle(a0: number, a1: number, ccw: boolean): number {
@@ -77,7 +64,7 @@ export function estimateGCodeTime(gcode: string, opts: TimeEstimateOptions = {})
   let rapidMin = 0;
 
   for (const raw of gcode.split("\n")) {
-    const w = parseWords(raw);
+    const w = wordMap(raw);
     if (w.size === 0) continue;
 
     // Modal G-words: motion mode + feed mode. A line may restate G90/G17/etc. too.

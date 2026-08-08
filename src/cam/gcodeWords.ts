@@ -55,3 +55,17 @@ export function lexWords(line: string): GWord[] {
   }
   return out;
 }
+
+/**
+ * One line's words as a letter→value lookup, which is what the modal
+ * interpreters ({@link ../cam/gcodePath}, {@link ../cam/timeEstimate}) want: they
+ * ask "does this line set X?" rather than walking the words in order.
+ *
+ * A repeated letter keeps its LAST value, matching how a controller reads the
+ * line and how the two hand-rolled copies this replaces behaved.
+ */
+export function wordMap(line: string): Map<string, number> {
+  const words = new Map<string, number>();
+  for (const w of lexWords(line)) words.set(w.letter, w.value);
+  return words;
+}
