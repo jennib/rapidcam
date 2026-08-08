@@ -22,13 +22,15 @@ async function newProject(page: Page): Promise<void> {
 /**
  * Position the blank away from the canvas origin.
  *
- * This offset is what gives the spec its teeth, and it must not be left to the
- * New Project default. The bug guarded here measured from canvas (0,0) instead
- * of the stock's own corner — so if the stock sat AT the origin, the wrong
- * answer and the right one would be numerically identical and every assertion
- * below would pass on the broken code. New Project now places the blank at the
- * origin (drawing coords match blank coords), so the offset is set here
- * explicitly rather than inherited.
+ * This offset is what gives the spec its teeth, so it is set here rather than
+ * inherited. The bug guarded below measured from canvas (0,0) instead of the
+ * stock's own corner — so with the blank AT the origin the wrong answer and the
+ * right one are numerically identical, and every assertion here would pass on
+ * broken code.
+ *
+ * New Project does centre the blank, which would supply an offset for free. But
+ * that placement has already been changed and reverted once, and this spec
+ * should not silently lose its meaning the next time someone moves it.
  */
 async function placeStockAt(page: Page, x: number, y: number): Promise<void> {
   await page.evaluate(

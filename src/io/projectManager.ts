@@ -147,22 +147,25 @@ export class ProjectManager {
           this.doc.canvas = { width: cfg.width, height: cfg.height };
           this.doc.stockRect = null;
         } else {
-          // The blank sits AT the sheet origin, so drawing coordinates and
-          // blank coordinates agree: a feature you place at (10, 10) is 10mm in
-          // from the corner of the material, with nothing to subtract.
-          //
-          // This is a display/authoring choice only — it does not move G-code
-          // zero. `resolveOrigin` folds `stockRect.x/y` into ox/oy, so the datum
-          // is relative to the blank wherever the blank sits.
-          //
-          // The consequence is that the derived margin is no longer even: the
-          // sheet is still stock + SHEET_MARGIN on each axis, but all of that
-          // room is now above and to the right of the blank rather than split
-          // around it. Fixtures overhanging the near or left edge need the sheet
-          // grown, or the blank nudged, by hand.
           this.doc.stockRect = { x: 0, y: 0, width: cfg.width, height: cfg.height };
           const sheet = deriveSheet(this.doc, getBed());
           if (sheet) this.doc.canvas = { ...sheet };
+          // Centre the blank on the generated sheet so the margin is even and
+          // there is equal room for hold-downs on every side. That evenness is
+          // the whole point: a clamp can overhang any edge, so putting the blank
+          // in a corner would leave two sides with nowhere to draw one.
+          //
+          // Do NOT "simplify" this to (0, 0) to make drawing coordinates match
+          // blank coordinates. That was tried and reverted: it buys an alignment
+          // that nothing needed — `resolveOrigin` already folds stockRect.x/y
+          // into ox/oy, so G-code zero has always been on the blank wherever the
+          // blank sits — and it costs the fixture room this margin exists for.
+          this.doc.stockRect = {
+            x: (this.doc.canvas.width - cfg.width) / 2,
+            y: (this.doc.canvas.height - cfg.height) / 2,
+            width: cfg.width,
+            height: cfg.height,
+          };
         }
         this.currentFileName = cfg.name;
         this.currentFileHandle = null;
