@@ -3,7 +3,7 @@
  * Used by gcode.ts and stockRasterizer.ts to expand text into cuttable geometry.
  */
 
-import { getFont } from "../core/fontManager";
+import { getFont, textPath } from "../core/fontManager";
 import type { Vec2 } from "../core/vec2";
 import type { TextEntity } from "../model/entities";
 
@@ -16,7 +16,8 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
   const font = getFont(ent.fontId);
   if (!font || !ent.text) return [];
 
-  const path = font.getPath(ent.text, 0, 0, ent.sizeMM);
+  const path = textPath(font, ent.text, ent.sizeMM);
+  if (!path) return [];
   const cos = Math.cos(ent.angle);
   const sin = Math.sin(ent.angle);
 

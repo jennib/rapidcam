@@ -5,6 +5,7 @@
 
 import { listFonts, defaultFontId, loadFromFile, initBundledFonts } from "../core/fontManager";
 import { registerModal } from "./modal";
+import { openWebFontDialog } from "./webFontDialog";
 
 export interface TextParams {
   text: string;
@@ -118,6 +119,24 @@ export function openTextDialog(
   });
   loadRow.appendChild(loadBtn);
   body.appendChild(loadRow);
+
+  // Same idea as the file picker, sourced from the web instead: Google's
+  // families by name, or a URL to any font file.
+  const webRow = document.createElement("div");
+  webRow.className = "tp-field";
+  webRow.appendChild(document.createElement("label")); // spacer
+  const webBtn = document.createElement("button");
+  webBtn.className = "btn";
+  webBtn.textContent = "Add a font from the web…";
+  webBtn.style.fontSize = "11px";
+  webBtn.addEventListener("click", () => {
+    openWebFontDialog((fontId) => {
+      refreshFonts();
+      fontSel.value = fontId;
+    });
+  });
+  webRow.appendChild(webBtn);
+  body.appendChild(webRow);
 
   // Size
   const sizeInp = addField(body, "Height (mm)", (inp) => {

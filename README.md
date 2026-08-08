@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/c4c5327a-c474-4d0b-95a6-56a732f8f3a5
 | Polygon | `N` | Click centre then a vertex **or drag out**; `[`/`]` change side count |
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
-| Text | — | Click to place; double-click to edit in place; outlines can be profiled, pocketed, engraved, or **v-carved** |
+| Text | — | Click to place; double-click to edit in place; outlines can be profiled, pocketed, engraved, or **v-carved**. Fonts come from the bundled pair, a local `.ttf`/`.otf`/`.woff`, or the web — search Google's families in the picker — and are embedded in the project file |
 | Dimension | `D` | Click an entity to annotate; drag the witness line |
 | Offset | `O` | Click an entity to offset inward or outward |
 | Fillet | `F` | Click a sharp corner to round it with a user-typed radius |

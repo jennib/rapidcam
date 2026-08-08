@@ -64,7 +64,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         callout: {
           type: "tip",
           title: "Core Workflow at a Glance",
-          text: "1. Draft 2D Vector Geometry → 2. Apply Geometric Constraints & Driving Dimensions → 3. Assign CAM Toolpaths (Profile, Pocket, Drill, V-Carve, Laser) → 4. Preview & 3D Simulate → 5. Export G-Code or Stream via WebSerial.",
+          text: "1. Draft 2D Vector Geometry → 2. Apply Geometric Constraints & Driving Dimensions → 3. Assign CAM Toolpaths (Profile, Pocket, Drill, V-Carve, Laser) → 4. Preview & 3D Simulate → 5. Export the G-Code, or send it to gSender, ncSender or GEditor.",
         },
       },
       {
@@ -99,8 +99,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "2d-drafting",
     title: "2D Drawing Primitives",
     category: "2D Drafting",
-    summary: "Comprehensive guide to drawing lines, polylines, circles, arcs, beziers, slots, polygons, and single-stroke text.",
-    keywords: ["line", "polyline", "rectangle", "circle", "arc", "bezier", "spline", "polygon", "slot", "text", "hershey", "truetype", "primitives"],
+    summary: "Comprehensive guide to drawing lines, polylines, circles, arcs, beziers, slots, polygons, and text.",
+    keywords: ["line", "polyline", "rectangle", "circle", "arc", "bezier", "spline", "polygon", "slot", "text", "font", "truetype", "primitives"],
     sections: [
       {
         heading: "CAD Drawing Tools Roster",
@@ -115,16 +115,16 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Bezier Curve Tool (B): Create smooth cubic Bezier splines. Click start and end anchors, then adjust tangent control handles.",
           "Slot Tool (U): Create elongated obround slots. Click two center points, then drag or input the slot width.",
           "Polygon Tool (N): Generate regular inscribed or circumscribed polygons (triangles, pentagons, hexagons, octagons, etc.) with configurable side counts.",
-          "Text Tool: Place true single-stroke Hershey vector fonts (perfect for CNC milling and diamond drag engraving) or outline TrueType fonts.",
+          "Text Tool: Place text in any outline font (TrueType, OpenType or WOFF). Roboto ships with the app; add more from a file on your computer or from the web.",
         ],
       },
       {
-        heading: "Single-Stroke Hershey vs Outline Fonts",
-        body: "For CNC routing and engraving, traditional TrueType fonts generate double-outline paths that can result in overly thick lettering. RapidCAM includes built-in single-stroke Hershey fonts that produce a single clean centerline vector path per character, cutting machining time dramatically.",
+        heading: "Where Fonts Come From",
+        body: "Text is cut from the glyph outlines of a real font, so every character becomes closed contours the toolpaths can follow. Roboto Regular and Bold ship with the app. Beyond those, load a .ttf, .otf or .woff from your computer, or use \"Add a font from the web…\" to search Google's families and download one. Either way the font is saved inside the .rcam project, so the design still cuts on a machine with no internet — unless the font's own license forbids embedding, which RapidCAM will tell you at the time.",
         callout: {
           type: "best-practice",
           title: "Text for CNC Machining",
-          text: "Use Hershey Single-Line fonts for small decorative text, serial numbers, and diamond drag engraving. Use TrueType fonts with V-Carve or Pocket toolpaths for bold, deep sign lettering.",
+          text: "Outline fonts give each stroke two edges, so an Engrave toolpath traces both sides of every letter. For sign lettering, V-Carve the text instead — the bit's angle produces the tapered serif look from the same outlines — or Pocket it to clear the interior.",
         },
       },
       {
@@ -491,14 +491,14 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
 
   // ==========================================
-  // 9. 3D SIMULATION & MACHINE SENDER
+  // 9. 3D SIMULATION
   // ==========================================
   {
     id: "simulation-cnc",
-    title: "3D Simulation & Direct WebSerial Machine Sender",
+    title: "3D Simulation & Machining Preview",
     category: "Simulation & CNC",
-    summary: "Simulate volumetric stock removal in 3D WebGL, inspect cycle times, and control your CNC directly via WebSerial USB.",
-    keywords: ["simulation", "3d preview", "webgl", "stock", "webserial", "sender", "jog", "dro", "zero", "usb", "candle"],
+    summary: "Simulate volumetric stock removal in 3D WebGL and inspect cycle times before the program reaches a machine.",
+    keywords: ["simulation", "3d preview", "webgl", "stock", "cycle time", "verify", "preview"],
     sections: [
       {
         heading: "Real-Time 3D WebGL Stock Simulation",
@@ -509,23 +509,6 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Machining Time Estimator: Accurate cycle time estimation accounting for rapid moves, plunge decelerations, and cutting feeds.",
           "Collision & Machinability Checks: Flags unreachable tight radii, spindle collisions, or excessive plunge depths.",
         ],
-      },
-      {
-        heading: "Direct WebSerial USB Machine Sender",
-        body: "Stream G-code directly from your browser to your CNC machine or laser cutter via the built-in WebSerial USB sender — no third-party sender apps required!",
-        tips: [
-          "One-Click USB Connection: Connect directly to Arduino, Teensy, STM32, or BlackBox GRBL controllers.",
-          "Interactive Jog Controls: Step or continuously jog X, Y, and Z axes with customizable step increments (0.1mm, 1mm, 10mm, 50mm).",
-          "Digital Readout (DRO): Real-time live display of Work Coordinates (WPos) and Machine Coordinates (MPos).",
-          "Zeroing & Probing: Zero individual axes (Zero X, Zero Y, Zero Z) or set all axes to origin with one click.",
-          "Real-Time Overrides: Adjust Feed Rate Override (10%–200%) and Spindle Speed Override on the fly during cutting.",
-          "Emergency Controls: Instant Feed Hold, Cycle Resume, and Soft Reset abort commands.",
-        ],
-        callout: {
-          type: "warning",
-          title: "Safety First",
-          text: "Always keep one hand near your CNC machine's physical Emergency Stop (E-Stop) button during initial job runs and tool changes.",
-        },
       },
     ],
   },
