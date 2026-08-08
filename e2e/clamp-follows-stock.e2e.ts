@@ -8,8 +8,14 @@ import { test, expect, waitForApp } from "./appFixture";
  * invisible to unit tests — it depends on settingsBar's commit calling back into
  * the solve coordinator, which is wiring no unit test sees (the same gap that
  * once let "changing stock thickness never re-solves" ship green).
+ *
+ * The progress screenshots go through `testInfo.outputPath`, NOT a bare
+ * filename: a bare path is relative to the CWD, so these used to drop three
+ * untracked `scratch-clamp-*.png` files into the repo root on every run.
+ * outputPath puts them in this test's folder under test-results/, which is
+ * gitignored and cleaned between runs — and the HTML report picks them up.
  */
-test("a clamp lands on the blank's edge and follows a stock resize", async ({ page }) => {
+test("a clamp lands on the blank's edge and follows a stock resize", async ({ page }, testInfo) => {
   await page.goto("/");
   await waitForApp(page);
 
@@ -31,7 +37,7 @@ test("a clamp lands on the blank's edge and follows a stock resize", async ({ pa
 
   const dialog = page.locator(".tp-dialog");
   await expect(dialog).toBeVisible();
-  await page.screenshot({ path: "scratch-clamp-dialog.png" });
+  await page.screenshot({ path: testInfo.outputPath("clamp-dialog.png") });
 
   // The edge parameter must render as a DROPDOWN, not a number spinner — the
   // reason ParamSpec.choices exists.
@@ -75,7 +81,7 @@ test("a clamp lands on the blank's edge and follows a stock resize", async ({ pa
   const faceBefore = after.stockX + after.stockW;
   expect(after.minX).toBeCloseTo(faceBefore - 12, 1);
   expect(after.maxX).toBeCloseTo(faceBefore + 28, 1);
-  await page.screenshot({ path: "scratch-clamp-inserted.png" });
+  await page.screenshot({ path: testInfo.outputPath("clamp-inserted.png") });
 
   // --- Resize the blank in Settings ---------------------------------------
   // Open the settings panel and widen the stock. This is the path that used to
@@ -109,7 +115,7 @@ test("a clamp lands on the blank's edge and follows a stock resize", async ({ pa
     return { minX: b.min.x, maxX: b.max.x, stock: doc.stockRect, entId: ent.id };
   });
   console.log("after resize:", JSON.stringify(moved));
-  await page.screenshot({ path: "scratch-clamp-after-resize.png" });
+  await page.screenshot({ path: testInfo.outputPath("clamp-after-resize.png") });
 
   // The blank is 60mm wider, so its right face moved 60mm and the clamp must
   // have moved with it. Asserting the DELTA as well as the absolute position:
