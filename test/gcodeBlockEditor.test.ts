@@ -8,7 +8,7 @@ import { createGcodeBlockEditor, type BlockContext } from "../src/ui/gcodeBlockE
  * happy-dom has no layout engine, so this can only prove the field's LOGIC —
  * that the picker offers what the selected controller can actually run, that
  * insertion appends rather than replaces, and that changing the controller
- * re-resolves both halves. Whether any of it is visible or reachable on screen
+ * re-resolves the catalogue and the findings. Whether any of it is visible or reachable on screen
  * is not knowable here (see e2e/unreachable-controls.e2e.ts), and was checked by
  * driving the real dialog in a browser.
  */
@@ -35,7 +35,6 @@ function open(over: Partial<Parameters<typeof createGcodeBlockEditor>[0]> = {}) 
     options: () => qa<HTMLButtonElement>(".gbe-option"),
     optionLabels: () => qa(".gbe-option-label").map((e) => e.textContent ?? ""),
     findings: () => qa(".gbe-finding").map((e) => e.textContent ?? ""),
-    notes: () => qa(".gbe-note").map((e) => e.textContent ?? ""),
   };
 }
 
@@ -102,7 +101,6 @@ describe("insertion", () => {
     ui.addBtn.click();
     ui.options()[0].click();
     expect(ui.picker.hidden).toBe(true);
-    expect(ui.notes().length).toBeGreaterThan(0);
   });
 });
 
@@ -110,17 +108,8 @@ describe("explanation and findings", () => {
   test("an empty block says nothing at all", () => {
     const ui = open();
     expect(ui.findings()).toEqual([]);
-    expect(ui.notes()).toEqual([]);
   });
 
-  test("a pasted industrial block is explained and its rejects are flagged", () => {
-    const ui = open({ value: "G54\nG43 H1\nG64 P0.01" });
-    const notes = ui.notes().join(" | ");
-    expect(notes).toContain("Work coordinate system 1");
-    // G43 and G64 are both LinuxCNC-or-better; GRBL rejects them.
-    expect(ui.findings().join(" ")).toContain("does not support");
-    expect(ui.findings().length).toBe(2);
-  });
 
   test("switching controller re-judges the same text", () => {
     const ui = open({ value: "G64 P0.01" });
@@ -136,10 +125,6 @@ describe("explanation and findings", () => {
     expect(ui.findings().join(" ")).toContain("already switches M8");
   });
 
-  test("comment and blank lines are not given invented meaning", () => {
-    const ui = open({ value: "; my shop's safe start\n\nG54" });
-    expect(ui.notes().length).toBe(1);
-  });
 
   test("an inches switch is surfaced as an error", () => {
     const ui = open({ value: "G20" });
@@ -192,14 +177,9 @@ describe("hiding", () => {
   // style.css gained an explicit `[hidden]` rule (an author `display` beats the
   // UA `[hidden]` rule at any specificity). Both facts are worth pinning: the
   // property here, the painting in e2e/machine-settings-gcode-blocks.e2e.ts.
-  test("the picker and the notes pane use the hidden property", () => {
+  test("the picker uses the hidden property", () => {
     const ui = open();
     expect(ui.picker.hidden).toBe(true);
-    expect(ui.editor.field.querySelector<HTMLElement>(".gbe-notes")!.hidden).toBe(true);
   });
 
-  test("the notes pane un-hides once there is something to explain", () => {
-    const ui = open({ value: "G54" });
-    expect(ui.editor.field.querySelector<HTMLElement>(".gbe-notes")!.hidden).toBe(false);
-  });
 });

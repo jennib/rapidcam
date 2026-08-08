@@ -1,33 +1,28 @@
 /**
- * The custom program start/end G-code field, with the two things a bare textarea
- * could never give you: an explanation of what is already in it, and a short list
- * of correct blocks to add.
+ * The custom program start/end G-code field: a textarea, a collapsed list of
+ * blocks that are correct for the selected controller, and nothing else until
+ * something is actually wrong.
  *
- * Both halves are resolved against the controller selected a few fields up in the
- * same dialog, which is the whole point — "what does this mean" and "will my
- * machine accept it" are different questions, and only the second one prevents a
- * crash. `$H` homes a GRBL; `G28` on the same machine rapids to a stored position
- * that may never have been taught. See cam/gcodeGlossary for the knowledge; this
- * file only renders it.
+ * The picker is resolved against the controller chosen a few fields up in the
+ * same dialog, which is the point — `$H` homes a GRBL, while `G28` on the same
+ * machine rapids to a stored position that may never have been taught. See
+ * cam/gcodeGlossary for the knowledge; this file only renders it.
  *
- * The textarea stays the source of truth. Picking a block INSERTS text (comments
- * and all — gcode.ts customLines passes lines through verbatim), so a pasted
- * block, a hand-typed one and a picked one are all the same kind of thing and all
- * get explained the same way. Storing picks as structured data would buy conflict
- * detection across blocks, but needs a prefs migration and still needs a
- * free-text escape hatch, so it waits until the catalogue earns it.
+ * The textarea stays the source of truth: picking INSERTS text, comments and all
+ * (gcode.ts customLines passes lines through verbatim), so a pasted block, a
+ * typed one and a picked one are the same kind of thing.
+ *
+ * **A per-line explanation pane was built here and removed.** It sat permanently
+ * under the field and was visually heavier than the input it described; it
+ * repeated text the picker was already showing; and its cautions keyed off a
+ * code being PRESENT rather than the hazard being present — warning that `G53`
+ * must share a line with its move, on a line that already did. A warning that
+ * does not apply is how a tool teaches people to ignore its warnings. What is
+ * left flags only real problems. `gcodeGlossary.annotate` survives, still
+ * tested, for a hover-to-explain that costs no permanent screen weight.
  */
 
-import {
-  annotate,
-  blocksFor,
-  checkBlock,
-  DIALECT_LABEL,
-  dialectOf,
-  type AnnotatedLine,
-  type LineStatus,
-  type Slot,
-} from "../cam/gcodeGlossary";
+import { blocksFor, checkBlock, DIALECT_LABEL, dialectOf, type Slot } from "../cam/gcodeGlossary";
 
 /** What the block is being judged against — all live values from the dialog. */
 export interface BlockContext {
@@ -45,18 +40,6 @@ export interface GcodeBlockEditor {
   /** Cancel the pending re-render. Call from the dialog's close funnel. */
   dispose(): void;
 }
-
-/** Leading glyph and CSS modifier per line status. `ok` stays unmarked — a tidy
- *  block should read as quiet, not as a wall of ticks. */
-const STATUS_MARK: Record<LineStatus, { mark: string; cls: string }> = {
-  blank: { mark: "", cls: "" },
-  comment: { mark: "", cls: "" },
-  ok: { mark: "", cls: "gbe-ok" },
-  caution: { mark: "⚠", cls: "gbe-caution" },
-  optional: { mark: "◐", cls: "gbe-caution" },
-  unsupported: { mark: "⛔", cls: "gbe-bad" },
-  unknown: { mark: "?", cls: "gbe-unknown" },
-};
 
 /** Re-render delay. Matches the generator dialog's live-preview debounce. */
 const RENDER_DEBOUNCE_MS = 150;
@@ -99,10 +82,7 @@ export function createGcodeBlockEditor(opts: {
   const findingsEl = document.createElement("div");
   findingsEl.className = "gbe-findings";
 
-  const notesEl = document.createElement("div");
-  notesEl.className = "gbe-notes";
-
-  field.append(head, picker, ta, findingsEl, notesEl);
+  field.append(head, picker, ta, findingsEl);
 
   // --- insertion ---
   const insert = (lines: readonly string[]): void => {
@@ -152,28 +132,7 @@ export function createGcodeBlockEditor(opts: {
     }
   };
 
-  // --- explanation + findings ---
-  const renderNote = (line: AnnotatedLine): HTMLElement => {
-    const { mark, cls } = STATUS_MARK[line.status];
-    const row = document.createElement("div");
-    row.className = `gbe-note ${cls}`;
-    const num = document.createElement("span");
-    num.className = "gbe-note-line";
-    num.textContent = `${line.n}`;
-    const body = document.createElement("span");
-    body.className = "gbe-note-body";
-    // Title first because it is the answer to "what is this"; the summary
-    // explains it, and the note carries the controller-specific sting.
-    const head = [mark, line.code, line.title].filter(Boolean).join(" ");
-    const strong = document.createElement("strong");
-    strong.textContent = head || mark || "";
-    body.append(strong);
-    const rest = [line.summary, line.note].filter(Boolean).join(" ");
-    if (rest) body.append(document.createTextNode(` ${rest}`));
-    row.append(num, body);
-    return row;
-  };
-
+  // --- findings ---
   const render = (): void => {
     const text = ta.value;
 
@@ -189,15 +148,6 @@ export function createGcodeBlockEditor(opts: {
       row.textContent = `${f.severity === "error" ? "⛔" : "⚠"} ${f.message}`;
       findingsEl.append(row);
     }
-
-    notesEl.replaceChildren();
-    const lines = annotate(text, ctx.postId).filter(
-      (l) => l.status !== "blank" && l.status !== "comment",
-    );
-    for (const line of lines) notesEl.append(renderNote(line));
-    // Nothing to explain and nothing wrong: stay silent rather than render an
-    // empty bordered box under every field.
-    notesEl.hidden = lines.length === 0;
   };
 
   let timer: ReturnType<typeof setTimeout> | null = null;

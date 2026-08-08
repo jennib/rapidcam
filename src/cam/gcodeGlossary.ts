@@ -803,8 +803,9 @@ export const BLOCK_CATALOGUE: readonly BlockOption[] = [
       "homing switches.",
     machine: "both",
     caution:
-      "Homing moves the machine to its limits at speed. Make sure the tool can travel there " +
-      "without hitting the work or a clamp.",
+      "Homing moves the machine to its limits at speed — make sure the tool can travel there " +
+      "without hitting the work or a clamp. On GRBL this is a sender command rather than " +
+      "G-code, and senders differ on whether they forward it from inside a file.",
     lines: (d) => {
       switch (d) {
         // $H is a GRBL system command, not G-code. It is the ONLY way to home GRBL
@@ -1076,20 +1077,6 @@ export function checkBlock(block: string, opts: CheckOptions): BlockFinding[] {
       }
     }
 
-    // GRBL system commands are not G-code and never reach the interpreter. Some
-    // senders forward them, some strip them, some abort — worth naming rather
-    // than letting a start block silently do nothing.
-    if (/^\s*\$/.test(text)) {
-      findings.push({
-        code: "sender-command",
-        severity: "warning",
-        line: n,
-        message:
-          `Line ${n} is a GRBL system command, not G-code. It works when typed into a sender's ` +
-          `console, but senders differ on whether they forward it from inside a file — check ` +
-          `yours before relying on it.`,
-      });
-    }
   });
 
   if (offsetsSeen.length > 1) {

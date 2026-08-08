@@ -417,11 +417,6 @@ describe("checkBlock", () => {
     expect(checkBlock("M8", { ...start, postId: "grbl", coolantEnabled: false })).toEqual([]);
   });
 
-  test("GRBL system commands are named as sender-level, not G-code", () => {
-    const f = checkBlock("$H", { ...start, postId: "grbl" })[0];
-    expect(f.code).toBe("sender-command");
-    expect(f.message).toMatch(/not G-code/i);
-  });
 
   test("leaving incremental mode active warns", () => {
     expect(checkBlock("G91", { ...start, postId: "grbl" })[0].code).toBe(
@@ -450,11 +445,7 @@ describe("block catalogue", () => {
               postId,
               slot,
               coolantEnabled: false,
-            }).filter(
-              // $H is inherently a sender command and says so in its own caution;
-              // the warning is the point, not a defect.
-              (f) => f.code !== "sender-command",
-            );
+            });
             expect(findings, `${postId}/${slot}/${machine}/${option.id}`).toEqual([]);
           }
         }

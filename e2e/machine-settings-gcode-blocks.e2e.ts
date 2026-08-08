@@ -3,10 +3,10 @@
  *
  * The field's logic is unit-tested in test/gcodeBlockEditor.test.ts, but
  * happy-dom has no layout engine, so that suite stayed green while the real
- * dialog was broken: the picker and explanation panes made Machine Settings
- * taller than the viewport and pushed Save off the bottom, leaving a dialog with
- * no visible way to commit. Everything asserted here is a question only a real
- * browser can answer.
+ * dialog was broken: the panes this field adds made Machine Settings taller than
+ * the viewport and pushed Save off the bottom, leaving a dialog with no visible
+ * way to commit. Everything asserted here is a question only a real browser can
+ * answer.
  */
 import { test, expect, waitForApp } from "./appFixture";
 
@@ -26,11 +26,10 @@ test("machine settings stays usable with the G-code block editors open", async (
 
   const startField = dialog.locator(".gbe").first();
 
-  // Text that exercises both panes at once: a run-together line (finding) and
-  // codes worth explaining (notes).
+  // A run-together line, which pre-flight cannot read — one of the few things
+  // this field speaks up about.
   await startField.locator("textarea").fill("G54 ; work offset\nG43 H1\nG0X10Y20");
   await expect(startField.locator(".gbe-finding")).not.toHaveCount(0);
-  await expect(startField.locator(".gbe-note")).toHaveCount(3);
 
   await startField.locator(".gbe-add").click();
   const picker = startField.locator(".gbe-picker");
@@ -38,7 +37,7 @@ test("machine settings stays usable with the G-code block editors open", async (
   await expect(picker.locator(".gbe-option")).not.toHaveCount(0);
 
   // Nothing may collapse to a zero box — the shape of "rendered but invisible".
-  for (const loc of [picker, startField.locator(".gbe-note").first()]) {
+  for (const loc of [picker, startField.locator(".gbe-finding").first()]) {
     const box = await loc.boundingBox();
     expect(box, "element has no layout box").not.toBeNull();
     expect(box!.width).toBeGreaterThan(50);
@@ -84,8 +83,9 @@ test("switching to a laser re-resolves the catalogue live", async ({ page }) => 
   await expect(options).not.toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
 
-  // And the explanation follows the laser controller too: M4 is GRBL's dynamic
-  // beam mode, which the default laser post emits.
+  // And the checks follow the laser controller too: M4 is GRBL's dynamic beam
+  // mode, so on a laser it raises the spindle/beam finding rather than an
+  // unsupported-code error.
   await startField.locator("textarea").fill("M4 S500");
-  await expect(startField.locator(".gbe-note")).toHaveCount(1);
+  await expect(startField.locator(".gbe-finding")).toHaveCount(1);
 });
