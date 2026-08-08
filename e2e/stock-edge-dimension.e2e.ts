@@ -19,6 +19,37 @@ async function newProject(page: Page): Promise<void> {
   await expect(welcome).toHaveCount(0);
 }
 
+/**
+ * Position the blank away from the canvas origin.
+ *
+ * This offset is what gives the spec its teeth, and it must not be left to the
+ * New Project default. The bug guarded here measured from canvas (0,0) instead
+ * of the stock's own corner — so if the stock sat AT the origin, the wrong
+ * answer and the right one would be numerically identical and every assertion
+ * below would pass on the broken code. New Project now places the blank at the
+ * origin (drawing coords match blank coords), so the offset is set here
+ * explicitly rather than inherited.
+ */
+async function placeStockAt(page: Page, x: number, y: number): Promise<void> {
+  await page.evaluate(
+    ([px, py]) => {
+      const app = (
+        window as unknown as {
+          __app: {
+            doc: {
+              stockRect: { x: number; y: number; width: number; height: number };
+              emitChange(): void;
+            };
+          };
+        }
+      ).__app;
+      app.doc.stockRect = { ...app.doc.stockRect, x: px, y: py };
+      app.doc.emitChange();
+    },
+    [x, y],
+  );
+}
+
 /** Model millimetres -> viewport pixels, through the app's own viewport. */
 async function toPx(page: Page, mm: [number, number]): Promise<{ x: number; y: number }> {
   return page.evaluate(([x, y]) => {
@@ -88,7 +119,8 @@ test("dimensioning from the stock's left edge measures against the ACTUAL stock 
 }) => {
   await page.goto(APP_URL);
   await waitForApp(page);
-  await newProject(page); // default 200×150 stock, centred → stockRect {x:50,y:50,w:200,h:150}
+  await newProject(page); // default 200×150 stock on a 300×250 sheet
+  await placeStockAt(page, 50, 50); // deliberately off the origin — see the helper
 
   const stock = await stockRect(page);
   expect(stock).toEqual({ x: 50, y: 50, width: 200, height: 150 });
@@ -133,6 +165,7 @@ test("editing a stock-anchored dimension moves the geometry, and the stock itsel
   await page.goto(APP_URL);
   await waitForApp(page);
   await newProject(page);
+  await placeStockAt(page, 50, 50); // deliberately off the origin — see the helper
 
   await pickTool(page, "Circle");
   await click(page, [180, 100]);
