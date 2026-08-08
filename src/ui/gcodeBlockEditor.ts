@@ -77,6 +77,10 @@ export function createGcodeBlockEditor(opts: {
   ta.className = "post-settings-textarea";
   ta.spellcheck = false;
   ta.rows = 4;
+  // No soft wrap. A G-code line IS a line: wrapping made one logical line occupy
+  // two visual rows, which both breaks "go to line 6" arithmetic and misreads as
+  // two instructions. Long comments scroll horizontally instead.
+  ta.wrap = "off";
   ta.value = opts.value;
   ta.placeholder = opts.placeholder;
 
@@ -132,6 +136,37 @@ export function createGcodeBlockEditor(opts: {
     }
   };
 
+  /**
+   * Character range of a 1-based line within the textarea's value.
+   *
+   * Split on "\n" alone: a textarea's `value` is the API value, which the HTML
+   * spec normalises to LF regardless of what was pasted in, so there are no
+   * carriage returns here to account for in the offsets.
+   */
+  const lineRange = (text: string, line: number): [number, number] | null => {
+    const lines = text.split("\n");
+    if (line < 1 || line > lines.length) return null;
+    let start = 0;
+    for (let i = 0; i < line - 1; i++) start += lines[i].length + 1;
+    return [start, start + lines[line - 1].length];
+  };
+
+  /** Put the caret on the offending line, select it, and bring it into view. */
+  const revealLine = (line: number): void => {
+    const range = lineRange(ta.value, line);
+    if (!range) return;
+    ta.focus();
+    ta.setSelectionRange(range[0], range[1]);
+    // Selecting does not reliably scroll, and the box shows four rows, so a
+    // finding on line six would otherwise select something you cannot see.
+    // `wrap="off"` keeps one logical line on one visual row, which is what makes
+    // this arithmetic correct.
+    const cs = getComputedStyle(ta);
+    const lineHeight = Number.parseFloat(cs.lineHeight) || Number.parseFloat(cs.fontSize) * 1.5 || 16;
+    const target = (line - 1) * lineHeight - ta.clientHeight / 2 + lineHeight / 2;
+    ta.scrollTop = Math.max(0, target);
+  };
+
   // --- findings ---
   const render = (): void => {
     const text = ta.value;
@@ -143,9 +178,17 @@ export function createGcodeBlockEditor(opts: {
     });
     findingsEl.replaceChildren();
     for (const f of findings) {
-      const row = document.createElement("div");
+      // A button, not a div: a finding names a line, so it should take you
+      // there — and that has to work from the keyboard too.
+      const row = document.createElement("button");
+      row.type = "button";
       row.className = `gbe-finding ${f.severity === "error" ? "gbe-bad" : "gbe-caution"}`;
       row.textContent = `${f.severity === "error" ? "⛔" : "⚠"} ${f.message}`;
+      if (f.line !== undefined) {
+        row.classList.add("gbe-finding--linked");
+        row.title = `Go to line ${f.line}`;
+        row.addEventListener("click", () => revealLine(f.line as number));
+      }
       findingsEl.append(row);
     }
   };

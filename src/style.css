@@ -1985,6 +1985,9 @@ button.cbtn.solve {
   padding: 6px 8px;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 12px;
+  /* Explicit, so "scroll to line N" can do arithmetic instead of guessing what
+     `normal` resolved to. */
+  line-height: 1.5;
   resize: vertical;
 }
 .post-settings-textarea:focus {
@@ -2092,6 +2095,25 @@ button.cbtn.solve {
 .gbe-finding {
   font-size: 11px;
   line-height: 1.45;
+  /* Reset the button back to a line of text. */
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: inherit;
+  color: inherit;
+}
+.gbe-finding--linked {
+  cursor: pointer;
+}
+.gbe-finding--linked:hover,
+.gbe-finding--linked:focus-visible {
+  background: var(--hover);
+  border-color: var(--border);
+  outline: none;
 }
 .gbe-bad {
   color: var(--danger);

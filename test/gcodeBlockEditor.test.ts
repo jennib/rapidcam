@@ -234,3 +234,40 @@ describe("the picker is a popover", () => {
     expect(ui.picker.hidden).toBe(false);
   });
 });
+
+describe("clicking a finding goes to its line", () => {
+  const block = ["G54", "M8", "Gq9999", "G0 X0 Y0"].join("\n");
+
+  test("selects exactly the offending line", () => {
+    const ui = open({ value: block });
+    const linked = ui.editor.field.querySelectorAll<HTMLButtonElement>(".gbe-finding--linked");
+    expect(linked.length).toBeGreaterThan(0);
+    linked[0].click();
+    const ta = ui.textarea;
+    expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe("Gq9999");
+  });
+
+  test("the offsets are right when earlier lines differ in length", () => {
+    // A naive implementation that assumed a fixed line length would still pass
+    // on line 1; this puts the target last, behind lines of three widths.
+    const ui = open({ value: ["G54 ; a much longer first line", "M8", "", "G20"].join("\n") });
+    const linked = ui.editor.field.querySelector<HTMLButtonElement>(".gbe-finding--linked")!;
+    linked.click();
+    const ta = ui.textarea;
+    expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe("G20");
+  });
+
+  test("the finding is a button, so it is reachable by keyboard", () => {
+    const ui = open({ value: block });
+    const linked = ui.editor.field.querySelector<HTMLButtonElement>(".gbe-finding--linked")!;
+    expect(linked.tagName).toBe("BUTTON");
+    expect(linked.type).toBe("button");
+    expect(linked.title).toMatch(/^Go to line \d+$/);
+  });
+
+  test("the textarea does not soft-wrap, so a line is one row", () => {
+    // The scroll arithmetic multiplies the line number by the line height, which
+    // is only true while one logical line occupies one visual row.
+    expect(open().textarea.wrap).toBe("off");
+  });
+});

@@ -78,6 +78,50 @@ test("machine settings stays usable with the G-code block editors open", async (
   await expect(textarea).toHaveValue(/^Gq9999\n/);
 });
 
+test("clicking a finding scrolls to its line and selects it", async ({ page }) => {
+  // happy-dom has no layout, so it cannot answer whether the box actually
+  // scrolled — only a real browser can.
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto("/");
+  await waitForApp(page);
+  const welcome = page.locator(".welcome-backdrop");
+  await welcome.locator(".welcome-card", { hasText: "New Project" }).click();
+  await page.locator("#npd-backdrop .tp-apply-btn").click();
+  await expect(welcome).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+
+  const startField = page.locator(".post-settings-dialog .gbe").first();
+  const textarea = startField.locator("textarea");
+
+  // The offender is well below the four visible rows, so reaching it REQUIRES
+  // scrolling — the assertion below is not satisfiable by selection alone.
+  const lines = ["G54", "M8", "G0 X0 Y0", "G0 X1 Y1", "G0 X2 Y2", "G0 X3 Y3", "Gq9999"];
+  await textarea.fill(lines.join(String.fromCharCode(10)));
+
+  const finding = startField.locator(".gbe-finding--linked").first();
+  await expect(finding).toBeVisible();
+
+  // Scroll back to the top and drop focus first. `fill()` leaves the caret at
+  // the end, so the box is already scrolled down — without this reset the
+  // assertion below would pass on a scroll the click had nothing to do with.
+  await textarea.evaluate((el: HTMLTextAreaElement) => {
+    el.scrollTop = 0;
+    el.blur();
+  });
+  expect(await textarea.evaluate((el: HTMLTextAreaElement) => el.scrollTop)).toBe(0);
+
+  await finding.click();
+
+  const state = await textarea.evaluate((el: HTMLTextAreaElement) => ({
+    selected: el.value.slice(el.selectionStart, el.selectionEnd),
+    scrollTop: el.scrollTop,
+    focused: document.activeElement === el,
+  }));
+  expect(state.selected).toBe("Gq9999");
+  expect(state.focused).toBe(true);
+  expect(state.scrollTop).toBeGreaterThan(0);
+});
+
 test("switching to a laser re-resolves the catalogue live", async ({ page }) => {
   // The laser branch is unit-covered, but the wiring that re-resolves it from the
   // machine-type dropdown is only exercised by driving the real dialog — and the
