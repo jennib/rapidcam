@@ -267,10 +267,38 @@ export function wrapGCode(
 
   for (const rawLine of program.split("\n")) {
     const semi = rawLine.indexOf(";");
-    const codePart = semi >= 0 ? rawLine.slice(0, semi) : rawLine;
+    const beforeSemi = semi >= 0 ? rawLine.slice(0, semi) : rawLine;
+    // Parenthetical comments must come out BEFORE the line is parsed. They are the
+    // other standard comment syntax, and `parseMove` reads words wherever it finds
+    // them: `(then G0 X50 Y10)` was being read as a real move, so a line that only
+    // *described* a position became a commanded one — the parentheses vanished from
+    // the output and the machine went there. RapidCAM's own posts write `;`
+    // comments, so this only ever arrived via a custom program block or a
+    // hand-edited file, but a phantom rapid on a rotary job is not a defect worth
+    // leaving to chance. Captured, not discarded, so the text still reaches the
+    // operator's file.
+    const parens: string[] = [];
+    const codePart = beforeSemi.replace(/\([^)]*\)/g, (m) => {
+      parens.push(m);
+      return " ";
+    });
     // Carry a single separating space so the re-joined move + comment reads
     // "... F1000 ; cut" (the original space lived in the trimmed code part).
-    const comment = semi >= 0 ? ` ${rawLine.slice(semi)}` : "";
+    const comment =
+      (parens.length ? ` ${parens.join(" ")}` : "") + (semi >= 0 ? ` ${rawLine.slice(semi)}` : "");
+
+    // G53 makes a line's coordinates raw MACHINE position. Wrapping them would be
+    // meaningless twice over: it would drop the G53 itself and convert a machine
+    // axis coordinate into a rotary angle, so `G53 G0 X0 Y0` — a park — came out as
+    // `G0 X0 A0`, rotating the work. A machine-frame move is already independent of
+    // how the design is rolled onto the cylinder, so the honest transform is none
+    // at all: emit it untouched and leave the tracked work position alone, since
+    // where the tool now sits in work coordinates is not knowable (the same
+    // reasoning as cam/lint.ts's machineFrame flag).
+    if (/(^|\s)G53(\s|$)/.test(codePart.toUpperCase())) {
+      out.push(rawLine);
+      continue;
+    }
 
     const mv = codePart.trim() ? parseMove(codePart) : null;
     if (!mv) {

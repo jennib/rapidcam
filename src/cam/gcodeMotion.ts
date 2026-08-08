@@ -17,6 +17,7 @@
  */
 
 import { n } from "./postprocessors/base";
+import { lexWords } from "./gcodeWords";
 
 export interface GMoveEvent {
   kind: "move";
@@ -56,23 +57,29 @@ export function parseProgram(gcode: string): GProgram {
     z = 0;
 
   for (const line of gcode.split(/\r?\n/)) {
-    const code = line.split(";")[0].trim();
-    const tokens = code.length ? code.split(/\s+/) : [];
-    const head = tokens[0];
-
     // Only translate bare moves; anything with a comment stays verbatim so its
     // text (e.g. a "park for tool change" note) survives.
-    if (head && MOVE_WORDS.has(head) && !line.includes(";")) {
-      const motion = (parseInt(head.slice(1), 10) % 4) as 0 | 1 | 2 | 3;
+    //
+    // The leading motion word is found by LEXING rather than by reading the first
+    // whitespace-separated token: `G0X10Y20` is legal, and as one token it matched
+    // no MOVE_WORD, so the whole line fell through to verbatim pass-through — a
+    // move that tiling then never translated, with `unsupportedMotions` not
+    // reporting it either. Only hand-typed text reaches this (our posts always
+    // space their words), which is exactly what a custom program block injects.
+    // A leading non-motion word still falls through, so `G53 G0 X0 Y0` keeps its
+    // existing verbatim treatment — machine coordinates must not be tile-shifted.
+    const words = lexWords(line);
+    const lead = words[0];
+    const leadCode = lead?.letter === "G" ? `G${lead.value}` : "";
+    if (leadCode && MOVE_WORDS.has(leadCode) && !line.includes(";")) {
+      const motion = (lead.value % 4) as 0 | 1 | 2 | 3;
       let hasX = false,
         hasY = false,
         hasZ = false;
       let i: number | undefined, j: number | undefined, f: number | undefined;
-      for (let k = 1; k < tokens.length; k++) {
-        const t = tokens[k];
-        const v = parseFloat(t.slice(1));
-        if (Number.isNaN(v)) continue;
-        switch (t[0].toUpperCase()) {
+      for (let k = 1; k < words.length; k++) {
+        const v = words[k].value;
+        switch (words[k].letter) {
           case "X":
             x = v;
             hasX = true;
@@ -146,13 +153,19 @@ export function isCutMove(m: GMoveEvent): boolean {
 export function unsupportedMotions(gcode: string): string[] {
   const seen = new Set<string>();
   for (const line of gcode.split(/\r?\n/)) {
-    const code = line.split(";")[0].trim();
-    const head = code.split(/\s+/)[0];
-    if (!head || MOVE_WORDS.has(head)) continue;
-    // A motion word we don't handle: G-code carrying coordinates but not G0–G3.
-    if (/^G\d/.test(head) && /\b[XYZ]-?\d/.test(code) && !/^G(17|20|21|90|91|93|94)$/.test(head)) {
-      seen.add(head);
-    }
+    const words = lexWords(line);
+    const lead = words[0];
+    if (lead?.letter !== "G") continue;
+    const head = `G${lead.value}`;
+    if (MOVE_WORDS.has(head)) continue;
+    // A motion word we don't handle: G-code carrying coordinates but not G0-G3.
+    // Coordinates are detected from the LEXED words rather than a `\b[XYZ]` regex:
+    // that boundary never matches inside `G0X120Y10`, because a digit and a letter
+    // are both word characters, so run-together lines slipped past this check
+    // silently — the one case where a warning mattered most.
+    if (!words.some((w) => w.letter === "X" || w.letter === "Y" || w.letter === "Z")) continue;
+    if (/^G(17|20|21|90|91|93|94)$/.test(head)) continue;
+    seen.add(head);
   }
   return [...seen];
 }
