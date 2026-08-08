@@ -501,3 +501,49 @@ describe("block catalogue", () => {
     }
   });
 });
+
+describe("malformed lines", () => {
+  // Reported from the running app: a start block containing `Gq9999` was
+  // accepted in silence. It lexes to the single word `Q9999` — the `G` is
+  // orphaned and dropped, and `Q` is not a code any check looks at — so every
+  // check had nothing to say and the field said nothing.
+  test("gibberish is an error, not silence", () => {
+    const f = checkBlock("Gq9999", { ...start, postId: "grbl" });
+    expect(f[0]?.code).toBe("malformed-line");
+    expect(f[0]?.severity).toBe("error");
+    expect(f[0]?.message).toContain("G");
+  });
+
+  test("an address with no value is caught", () => {
+    expect(checkBlock("G1 X10 F", { ...start, postId: "grbl" })[0].code).toBe("malformed-line");
+  });
+
+  test("a stray character among good words is caught", () => {
+    expect(checkBlock("G0 X10 ? Y20", { ...start, postId: "grbl" })[0].code).toBe("malformed-line");
+  });
+
+  test("well-formed lines are never called malformed", () => {
+    // Positive controls. The last one matters most: `G10 L20 P1 X0` is a real
+    // start-block line that this table does NOT document, and "unknown to us"
+    // must not be reported as "wrong".
+    for (const line of [
+      "G54",
+      "G0 X10 Y20",
+      "G0X10Y20",
+      "G1 X-5.5 F600",
+      "G4 P0.5",
+      "G53 G0 Z-5 ; retract",
+      "$H",
+      "$X",
+      "%",
+      "; just a comment",
+      "(paren comment)",
+      "G10 L20 P1 X0",
+      "N10 G1 X5",
+      "T1 M6",
+    ]) {
+      const codes = checkBlock(line, { ...start, postId: "linuxcnc" }).map((f) => f.code);
+      expect(codes, `false positive on ${JSON.stringify(line)}`).not.toContain("malformed-line");
+    }
+  });
+});

@@ -71,6 +71,7 @@ export function createGcodeBlockEditor(opts: {
   const picker = document.createElement("div");
   picker.className = "gbe-picker";
   picker.hidden = true;
+  let pickerOpen = false;
 
   const ta = document.createElement("textarea");
   ta.className = "post-settings-textarea";
@@ -88,8 +89,7 @@ export function createGcodeBlockEditor(opts: {
   const insert = (lines: readonly string[]): void => {
     const existing = ta.value.replace(/\s+$/, "");
     ta.value = (existing ? `${existing}\n` : "") + lines.join("\n");
-    picker.hidden = true;
-    addBtn.setAttribute("aria-expanded", "false");
+    setPickerOpen(false);
     render();
     ta.focus();
     // Caret to the end, so the next thing typed continues the block rather than
@@ -159,11 +159,38 @@ export function createGcodeBlockEditor(opts: {
     }, RENDER_DEBOUNCE_MS);
   };
 
-  addBtn.addEventListener("click", () => {
-    picker.hidden = !picker.hidden;
-    addBtn.setAttribute("aria-expanded", picker.hidden ? "false" : "true");
-    if (!picker.hidden) renderPicker();
-  });
+  // The picker is a POPOVER, not an inline section: it used to expand in flow and
+  // shove the textarea down the dialog, so opening the menu moved the thing you
+  // were about to type into. It now overlays, anchored under its button.
+  const onDocPointerDown = (e: PointerEvent): void => {
+    if (!field.contains(e.target as Node)) setPickerOpen(false);
+  };
+  const setPickerOpen = (open: boolean): void => {
+    pickerOpen = open;
+    picker.hidden = !open;
+    addBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      renderPicker();
+      document.addEventListener("pointerdown", onDocPointerDown, true);
+    } else {
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+    }
+  };
+
+  addBtn.addEventListener("click", () => setPickerOpen(!pickerOpen));
+  // Escape closes the picker only — the dialog's own Escape handler would
+  // otherwise discard the whole edit while a menu was open.
+  field.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && pickerOpen) {
+        e.stopPropagation();
+        setPickerOpen(false);
+        addBtn.focus();
+      }
+    },
+    true,
+  );
   ta.addEventListener("input", scheduleRender);
 
   renderPicker();
@@ -182,6 +209,7 @@ export function createGcodeBlockEditor(opts: {
     dispose() {
       if (timer !== null) clearTimeout(timer);
       timer = null;
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
     },
   };
 }

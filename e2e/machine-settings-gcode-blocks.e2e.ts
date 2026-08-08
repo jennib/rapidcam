@@ -25,34 +25,57 @@ test("machine settings stays usable with the G-code block editors open", async (
   await expect(dialog).toBeVisible();
 
   const startField = dialog.locator(".gbe").first();
-
-  // A run-together line, which pre-flight cannot read — one of the few things
-  // this field speaks up about.
-  await startField.locator("textarea").fill("G54 ; work offset\nG43 H1\nG0X10Y20");
-  await expect(startField.locator(".gbe-finding")).not.toHaveCount(0);
-
-  await startField.locator(".gbe-add").click();
+  const textarea = startField.locator("textarea");
   const picker = startField.locator(".gbe-picker");
-  await expect(picker).toBeVisible();
-  await expect(picker.locator(".gbe-option")).not.toHaveCount(0);
+  const findings = startField.locator(".gbe-finding");
+
+  // The button TOGGLES, so every open and close asserts the state it reached
+  // rather than assuming it — an earlier version of this test tracked the state
+  // in its head, guessed wrong (`fill()` does not fire pointerdown, so the
+  // picker it thought it was opening was already open) and closed the menu it
+  // was about to click into.
+  const openPicker = async () => {
+    await startField.locator(".gbe-add").click();
+    await expect(picker).toBeVisible();
+  };
+
+  // --- findings speak up, and only about real problems -----------------------
+  await textarea.fill("G54 ; work offset\nG43 H1\nG0X10Y20");
+  await expect(findings).not.toHaveCount(0); // run-together words
+
+  await textarea.fill("Gq9999");
+  await expect(findings).toHaveCount(1);
+  await expect(findings).toContainText("not valid G-code");
+
+  // --- the picker overlays rather than displacing the field ------------------
+  await expect(picker).toBeHidden();
+  const closedY = (await textarea.boundingBox())!.y;
+  await openPicker();
+  expect((await textarea.boundingBox())!.y).toBeCloseTo(closedY, 0);
 
   // Nothing may collapse to a zero box — the shape of "rendered but invisible".
-  for (const loc of [picker, startField.locator(".gbe-finding").first()]) {
+  for (const loc of [picker, findings.first()]) {
     const box = await loc.boundingBox();
     expect(box, "element has no layout box").not.toBeNull();
     expect(box!.width).toBeGreaterThan(50);
     expect(box!.height).toBeGreaterThan(5);
   }
 
-  // The regression this file exists for: Save must stay on screen with both
-  // fields expanded. The dialog scrolls; its footer is pinned (style.css).
+  // The regression this file exists for: Save must stay reachable.
   await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
   await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport();
 
-  // Picking a block appends to the textarea rather than replacing it.
+  // --- picking appends to what is already there ------------------------------
+  await expect(picker.locator(".gbe-option")).not.toHaveCount(0);
   await picker.locator(".gbe-option").first().click();
-  await expect(startField.locator("textarea")).toHaveValue(/^G54 ; work offset/);
+  await expect(textarea).toHaveValue(/^Gq9999\n/);
   await expect(picker).toBeHidden();
+
+  // A click outside closes it without inserting anything.
+  await openPicker();
+  await dialog.locator(".post-settings-title").click();
+  await expect(picker).toBeHidden();
+  await expect(textarea).toHaveValue(/^Gq9999\n/);
 });
 
 test("switching to a laser re-resolves the catalogue live", async ({ page }) => {

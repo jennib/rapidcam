@@ -2010,18 +2010,31 @@ button.cbtn.solve {
 .gbe-picker[hidden] {
   display: none;
 }
+/* The picker OVERLAYS the field rather than expanding in flow. Inline, opening
+   it pushed the textarea down the dialog — the menu moved the very thing you
+   were about to type into. Anchored under its button, it now covers content
+   instead of displacing it, so nothing shifts on open or close. */
+.gbe {
+  position: relative;
+}
 .gbe-picker {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 230px;
+  max-height: 260px;
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  /* Transparent, not a filled panel: a transient menu must never compete with
-     the field for attention. */
-  background: none;
+  /* Opaque now that it floats over the field, and lifted so it reads as a
+     transient menu rather than another section of the form. */
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .gbe-option {
   display: flex;

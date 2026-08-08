@@ -57,7 +57,7 @@
  * stays quiet.
  */
 
-import { lexWords, stripComments, type GWord as RawWord } from "./gcodeWords";
+import { lexWords, stripComments, WORD_RE, type GWord as RawWord } from "./gcodeWords";
 
 // --- posts and dialects ------------------------------------------------------
 
@@ -933,6 +933,28 @@ export interface CheckOptions {
   coolantEnabled?: boolean;
 }
 
+/**
+ * The part of a line the lexer could not account for — text that is not a word.
+ *
+ * A G-code line is letter+number pairs and nothing else, so anything left over
+ * is a typo. This matters because the leftovers are SILENT otherwise: `Gq9999`
+ * lexes to the single word `Q9999` (the `G` is orphaned and dropped, and `Q` is
+ * not a code we check), and `G1 X10 F` quietly loses its valueless `F`. Neither
+ * produced a single finding — the field accepted gibberish without a word.
+ *
+ * Returns "" for a clean line.
+ */
+function unlexedResidue(line: string): string {
+  const bare = stripComments(line);
+  let out = "";
+  let cursor = 0;
+  for (const m of bare.matchAll(WORD_RE)) {
+    out += bare.slice(cursor, m.index);
+    cursor = m.index + m[0].length;
+  }
+  return (out + bare.slice(cursor)).trim();
+}
+
 const WORK_OFFSETS = new Set(["G54", "G55", "G56", "G57", "G58", "G59"]);
 
 /**
@@ -956,6 +978,31 @@ export function checkBlock(block: string, opts: CheckOptions): BlockFinding[] {
     const n = i + 1;
     const bare = stripComments(text);
     if (!bare.trim()) return;
+
+    // Not G-code at all. Checked FIRST and reported as an error, because every
+    // check below reasons about recognised words and therefore has nothing to
+    // say about a line that has none.
+    //
+    // `$`/`%` lines are exempt: `$H`/`$X` are GRBL system commands (the picker
+    // emits one) and `%` is a program delimiter. Neither is letter+number, and
+    // neither is a mistake.
+    //
+    // A well-formed code we simply don't document is NOT flagged here. `G10 L20
+    // P1 X0` is a perfectly good start-block line that is absent from the table,
+    // and "unknown to RapidCAM" is not the same claim as "wrong" — saying so
+    // would be the false-warning problem this field already had once.
+    const residue = unlexedResidue(text);
+    if (residue && !/^[$%]/.test(bare.trim())) {
+      findings.push({
+        code: "malformed-line",
+        severity: "error",
+        line: n,
+        message:
+          `Line ${n} is not valid G-code: "${residue}" is not a word the controller can read. ` +
+          `A line is letter-and-number pairs (G0, X10, F600) — check for a typo.`,
+      });
+      return;
+    }
 
     // A word written without a space (`G0X10Y20`) is legal on GRBL, but RapidCAM's
     // pre-flight parser splits on whitespace (cam/lint.ts parseMoves), so the whole

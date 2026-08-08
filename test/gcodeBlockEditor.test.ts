@@ -183,3 +183,54 @@ describe("hiding", () => {
   });
 
 });
+
+describe("the picker is a popover", () => {
+  // It used to expand in flow, pushing the textarea down the dialog — opening
+  // the menu moved the thing you were about to type into.
+  test("opening it does not reorder or displace the field", () => {
+    const ui = open();
+    const before = [...ui.editor.field.children].map((c) => c.className);
+    ui.addBtn.click();
+    const after = [...ui.editor.field.children].map((c) => c.className);
+    expect(after).toEqual(before);
+  });
+
+  test("a click outside closes it", () => {
+    const ui = open();
+    ui.addBtn.click();
+    expect(ui.picker.hidden).toBe(false);
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(ui.picker.hidden).toBe(true);
+  });
+
+  test("a click inside leaves it open", () => {
+    const ui = open();
+    ui.addBtn.click();
+    ui.picker.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(ui.picker.hidden).toBe(false);
+  });
+
+  test("Escape closes the picker and stops there", () => {
+    // The dialog's own Escape handler would discard the whole edit; a menu must
+    // swallow the first Escape.
+    const ui = open();
+    ui.addBtn.click();
+    const esc = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    let reachedDocument = false;
+    document.addEventListener("keydown", () => { reachedDocument = true; }, { once: true });
+    ui.picker.dispatchEvent(esc);
+    expect(ui.picker.hidden).toBe(true);
+    expect(reachedDocument).toBe(false);
+  });
+
+  test("dispose detaches the outside-click listener", () => {
+    const ui = open();
+    ui.addBtn.click();
+    ui.editor.dispose();
+    // The listener is gone, so an outside click no longer reaches this field —
+    // demonstrated by the picker NOT closing. dispose tears down; it does not
+    // tidy up state the closing dialog is about to discard anyway.
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(ui.picker.hidden).toBe(false);
+  });
+});
