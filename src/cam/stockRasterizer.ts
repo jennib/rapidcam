@@ -38,6 +38,8 @@ import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { restCentreRegions } from "./rest";
+import { finishAllowance } from "./gcode";
 import {
   chainOpenCurvesIntoLoops,
   collectClosedLoops,
@@ -1029,12 +1031,28 @@ function rasPocketPolygon(
 ): void {
   const toolR = op.diameter / 2;
   const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
-  const insets = offsetPolygon(verts, -toolR);
-  const islandKeepouts = islands.flatMap((isl) => {
-    const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
-    const expanded = offsetPolygon(pts, toolR);
-    return expanded.length > 0 ? expanded : [pts];
-  });
+
+  // Rest machining takes only what a bigger tool left, so the preview has to
+  // remove only that. Without this the simulation showed the whole pocket
+  // coming off while the program cut four corners — a preview that disagrees
+  // with the program is worse than no preview, because it is believed.
+  //
+  // `restCentreRegions` already returns where the tool CENTRE may go, which is
+  // exactly what `insets` is below, so it substitutes for the inset directly.
+  const restD = op.restToolDiameter ?? 0;
+  const restRegions =
+    restD > op.diameter
+      ? restCentreRegions(verts, islands, restD / 2, toolR, finishAllowance(op))
+      : null;
+
+  const insets = restRegions ? restRegions.map((r) => r.outer) : offsetPolygon(verts, -toolR);
+  const islandKeepouts = restRegions
+    ? restRegions.flatMap((r) => r.holes) // already in centre space — no growing
+    : islands.flatMap((isl) => {
+        const pts = signedArea(isl) >= 0 ? isl : [...isl].reverse();
+        const expanded = offsetPolygon(pts, toolR);
+        return expanded.length > 0 ? expanded : [pts];
+      });
   for (const inset of insets) {
     if (inset.length < 2) continue;
     const rows =
@@ -1079,6 +1097,11 @@ function rasPocketCircle(
   stepR: number,
 ): void {
   const toolR = op.diameter / 2;
+  // Same rule the emitter applies: a round tool that fits a round pocket sweeps
+  // all of it, so a rest pass over one removes nothing and must preview as
+  // removing nothing. (Islands put corners back, so those fall through.)
+  const restD = op.restToolDiameter ?? 0;
+  if (restD > op.diameter && islands.length === 0 && restD / 2 <= r) return;
   if (islands.length > 0) {
     const nSegs = Math.max(64, Math.ceil((2 * Math.PI * r) / 0.5));
     const verts: Vec2[] = Array.from({ length: nSegs }, (_, i) => {

@@ -592,6 +592,38 @@ function checkEmptyOps(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: a rest-machining operation naming a roughing tool that no other
+ * operation in the job actually uses.
+ *
+ * The previous diameter is typed in, deliberately — which operation counts as
+ * "the roughing pass" is a judgement the file can't make. The cost of that
+ * choice is that it goes stale in silence: change the roughing op's cutter and
+ * the rest pass keeps clearing the corners of a tool that is no longer in the
+ * job. It then either cuts air, or leaves standing stock it was told was gone.
+ * Nothing else in the program can reveal that, because the motion it emits is
+ * perfectly valid — for the wrong tool.
+ */
+function checkRestToolMismatch(doc: CADDocument): LintFinding | null {
+  const diameters = new Set(doc.operations.map((o) => Math.round(o.diameter * 1000)));
+  const stale = doc.operations.filter((op) => {
+    const d = op.restToolDiameter ?? 0;
+    return d > 0 && !diameters.has(Math.round(d * 1000));
+  });
+  if (stale.length === 0) return null;
+  const names = stale.map((o) => `"${o.name}" (rest ⌀${o.restToolDiameter}mm)`).join(", ");
+  return {
+    code: "rest-tool-mismatch",
+    severity: "warning",
+    message:
+      `${stale.length} rest-machining toolpath${stale.length > 1 ? "s" : ""} (${names}) ` +
+      `name${stale.length > 1 ? "" : "s"} a roughing tool that no toolpath in this job uses. ` +
+      `If the roughing pass changed tool, this one is clearing the corners of a cutter that ` +
+      `isn't cutting — check the diameter.`,
+    entityIds: stale.flatMap((o) => o.entityIds),
+  };
+}
+
+/**
  * WARNING: an operation bound to geometry that is hidden, and which CAM
  * therefore did not cut (see machinable.ts).
  *
@@ -684,6 +716,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // Empty-toolpath is doc-level and machine-agnostic (an empty cut/engrave on a
   // laser cuts nothing too); the move stream can't see it since it emits none.
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
+  if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));
   // Machine-agnostic too: a laser will happily burn a clamp.

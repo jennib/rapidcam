@@ -39,8 +39,9 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   const isCCW = signedArea(loop) >= 0;
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
-import { contourParallelClear, type ClearingMove } from "./clearing";
+import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
 import { adaptiveClear } from "./adaptive";
+import { restRegions, restCentreRegions, restArea } from "./rest";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
@@ -108,7 +109,7 @@ const FINISH_ALLOWANCE_DEFAULT = 0.2;
  * value clamped below the tool radius so the finish lap still plunges through
  * already-cleared stock (its centre stays inside the rough kerf).
  */
-function finishAllowance(op: CAMOperation): number {
+export function finishAllowance(op: CAMOperation): number {
   if (!op.finishPass) return 0;
   const a = op.finishAllowance ?? FINISH_ALLOWANCE_DEFAULT;
   return Math.max(0, Math.min(a, (op.diameter / 2) * 0.8));
@@ -580,7 +581,63 @@ function pocketPolygon(
 
   const allowance = finishAllowance(op);
   const lines: string[] = [];
-  if (allowance > 0) {
+
+  // Rest machining: replace the pocket with just the parts the earlier, bigger
+  // tool could not reach, and clear each of those with the chosen strategy.
+  const restD = op.restToolDiameter ?? 0;
+  if (restD > 0) {
+    if (restD <= op.diameter) {
+      return [
+        `; NOTE: rest machining needs a previous tool LARGER than this one ` +
+          `(previous dia ${n(restD)}mm, this dia ${n(op.diameter)}mm) — skipped`,
+      ];
+    }
+    const leftover = restRegions(verts, islands, restD / 2, allowance);
+    const centres = restCentreRegions(verts, islands, restD / 2, op.diameter / 2, allowance);
+    const header =
+      `; rest machining after dia ${n(restD)}mm: ${leftover.length} area` +
+      `${leftover.length === 1 ? "" : "s"}, ${n(restArea(leftover))}mm2 standing`;
+    const stepoverMM = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+    // The centre set is handed to the clearer as-is: it is already where the
+    // cutter may go, so insetting it again by a radius would shrink the pass off
+    // the very stock it exists to take.
+    const cut = centres.flatMap((r) =>
+      emitClearingMoves(
+        clearCentreRegion(
+          [r.outer, ...r.holes],
+          op.diameter / 2,
+          stepoverMM,
+          islands.map((h) => h),
+        ),
+        `rest, ${n(restArea(leftover))}mm2`,
+        op,
+        ox,
+        oy,
+        zOff,
+        // Arc-fitted: a leftover region is bounded by the arc the round roughing
+        // cutter swept, so these loops are genuinely curved and post as a swarm
+        // of short segments otherwise.
+        true,
+      ),
+    );
+    // Judged on what came out, not on an area threshold: whether a cutter can
+    // take a sliver depends on its shape, and a rule of thumb about square
+    // millimetres gets both answers wrong at the edges.
+    if (!cut.some((l) => /^G[123]\b/.test(l))) {
+      return [
+        `; NOTE: nothing to rest machine — a dia ${n(restD)}mm tool already reached everything ` +
+          `this dia ${n(op.diameter)}mm one could take`,
+      ];
+    }
+    lines.push(header, ...cut);
+    // Falls through to the shared wall-lap block below rather than returning.
+    // Returning here made two controls in the same dialog silently inert on a
+    // rest pass: the dog-bone, whose corner relief is cut BY that lap — and
+    // corners are the whole of what a rest pass does — and the finishing pass,
+    // which changed the roughing allowance but never laid down the lap it names.
+    // "Finishing pass" means the same lap on every other pocket; it means it
+    // here too, and its cost shows up in the run-time estimate like any other.
+  } else if (allowance > 0) {
     // Shrink the region (and grow islands) by the allowance so clearing leaves a
     // skin on the true walls, which the finishing lap then removes.
     const ccw = signedArea(verts) >= 0 ? verts : [...verts].reverse();
@@ -886,6 +943,26 @@ function pocketCircle(
   oy: number,
   zOff: number,
 ): string[] {
+  // Rest machining a round pocket has a closed-form answer, and it is usually
+  // "nothing": a round cutter that fits at all sweeps the whole circle, corners
+  // included, because there are none. Without this the flag would be silently
+  // ignored here and the pocket cut again in full — the opposite of what was
+  // asked for. (Islands put corners back, so those go the polygon route.)
+  const restD = op.restToolDiameter ?? 0;
+  if (restD > 0 && islands.length === 0) {
+    if (restD <= op.diameter) {
+      return [
+        `; NOTE: rest machining needs a previous tool LARGER than this one ` +
+          `(previous dia ${n(restD)}mm, this dia ${n(op.diameter)}mm) — skipped`,
+      ];
+    }
+    if (restD / 2 <= r) {
+      return [
+        `; NOTE: nothing to rest machine — a dia ${n(restD)}mm tool sweeps a round pocket entirely`,
+      ];
+    }
+    // The earlier tool never fitted, so the pocket is untouched: cut it all.
+  }
   // Islands make smooth concentric arcs impossible — fall back to the general
   // polygon clearer (tessellated), which handles arbitrary islands.
   if (islands.length > 0) {

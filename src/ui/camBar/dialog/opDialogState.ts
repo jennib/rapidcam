@@ -43,6 +43,8 @@ export interface OpState {
   pocketBoundaryMode: "regions" | "entities";
   finishPass: boolean;
   finishAllowance: number;
+  /** Rest machining: diameter of the tool that already roughed this pocket. 0 = off. */
+  restToolDiameter: number;
   chamferWidth: number;
   chamferSide: ChamferSide;
   sharpenCorners: boolean;
@@ -151,6 +153,7 @@ export function createInitialOpState(
       | "entities",
     finishPass: existing?.finishPass ?? false,
     finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
+    restToolDiameter: existing?.restToolDiameter ?? 0,
     chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
     chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
     sharpenCorners: existing?.sharpenCorners ?? false,

@@ -196,6 +196,9 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   stepover: flat("stepover", within(0.01, 1)),
   peckDepth: flat("peckDepth", atLeast(0)),
   finishAllowance: flat("finishAllowance", atLeast(0)),
+  // Rest machining: the diameter of the tool that already roughed this pocket.
+  // 0 means off, so it floors at 0 rather than at a smallest sensible cutter.
+  restToolDiameter: flat("restToolDiameter", atLeast(0)),
   chamferWidth: flat("chamferWidth", atLeast(0)),
   rampAngle: flat("rampAngle", within(0.5, 45)),
   vStep: flat("vStep", atLeast(0.01)),

@@ -229,6 +229,18 @@ export interface CAMOperation {
    * - "raster"   — zig-zag rows.
    */
   pocketStrategy?: "offset" | "adaptive" | "raster";
+  /**
+   * Pocket only. Rest machining: the diameter (mm) of the tool that already
+   * roughed this pocket. When set and larger than this operation's own tool, the
+   * pocket clears ONLY what that tool could not reach — the corner radii it left
+   * standing — instead of cutting the whole area again.
+   *
+   * Stated rather than inferred from the other operations in the job: which
+   * earlier operation counts as "the roughing pass" is a judgement about intent
+   * that the file cannot make, and guessing it wrong means either cutting air or
+   * driving a small cutter into stock it was told wasn't there.
+   */
+  restToolDiameter?: number;
   islandIds?: EntityId[]; // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
    * Pocket only: the enclosed regions to clear, identified *parametrically* so

@@ -767,6 +767,7 @@
         "coolant": { "enum": ["off", "mist", "flood"], "description": "Coolant for this operation: \"mist\" → M7, \"flood\" → M8 (M9 off). Default \"off\". Only emitted if the machine is flagged as having coolant (a machine-wide app preference)." },
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter (pocket/clearing). Optional; defaults to 0.4 when omitted." },
         "pocketStrategy": { "enum": ["offset", "adaptive", "raster"], "description": "Pocket only; default \"offset\". \"adaptive\" trochoids wherever a plain offset loop would bury the cutter deeper than a straight wall step." },
+        "restToolDiameter": { "type": "number", "minimum": 0, "description": "Pocket only. Rest machining: diameter (mm) of the tool that already roughed this pocket. When larger than this operation's own tool, only the corners and channels that tool could not reach are cut. 0 or absent = off." },
         "islandIds": { "type": "array", "items": { "type": "string" }, "description": "Pocket only (legacy): entities treated as islands." },
         "regions": {
           "type": "array",

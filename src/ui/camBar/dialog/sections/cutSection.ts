@@ -279,6 +279,25 @@ export function buildCutSection(
   const strategyRow = dField("Clearing", strategySelect);
   cutSec.appendChild(strategyRow);
 
+  // Rest machining — clear only what a bigger tool left standing. 0 = off, so
+  // the field is one number rather than a checkbox plus a number.
+  const restRow = paramRow(
+    doc,
+    state,
+    "restToolDiameter",
+    `Rest: prev tool ⌀ (${du})`,
+    () => state.restToolDiameter,
+    (v) => {
+      state.restToolDiameter = v;
+    },
+    "len",
+  );
+  restRow.el.title =
+    "Set to the diameter of the tool that already roughed this pocket, and this " +
+    "operation cuts only the corners and channels that tool could not reach. " +
+    "Leave at 0 to clear the whole pocket.";
+  cutSec.appendChild(restRow.el);
+
   // Finishing pass — profile + pocket only. Leaves an allowance during
   // roughing and removes it in a final full-depth wall lap.
   const finishChk = document.createElement("input");
@@ -492,6 +511,10 @@ export function buildCutSection(
     stepoverRow.el.style.display =
       state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket" ? "" : "none";
+    // Rest machining is a clearing idea, so it belongs to pockets only — it was
+    // showing on a profile, where it would have been read as a promise and done
+    // nothing (the emitter only honours it for pockets).
+    restRow.el.style.display = state.combo === "pocket" ? "" : "none";
     vStepRow.el.style.display = state.combo === "vcarve" ? "" : "none";
     vHopRow.el.style.display = state.combo === "vcarve" ? "" : "none";
 

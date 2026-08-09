@@ -179,7 +179,36 @@ export function contourParallelClear(
   const boundaries = inflate([ccwize(outer)], -toolR);
   const keepouts = holes.flatMap((h) => (h.length >= 3 ? inflate([ccwize(h)], toolR) : []));
 
-  const rings = concentricRings(areaPaths, stepover);
+  return orderRings(concentricRings(areaPaths, stepover), toolR, boundaries, keepouts);
+}
+
+/**
+ * Clear a region the caller has already worked out the tool CENTRE may occupy,
+ * rather than one bounded by walls.
+ *
+ * Rest machining needs this: the leftover in a corner is bounded by air the
+ * roughing pass made, not by a wall, so the centre is free to sit outside it and
+ * insetting by a tool radius — which is what {@link contourParallelClear} does —
+ * finds nowhere to go. Passing the centre set directly also keeps the pass
+ * minimal: rings inside it sweep the leftover and a tool radius of margin,
+ * instead of a padded box around it.
+ */
+export function clearCentreRegion(
+  centreRegion: Vec2[][],
+  toolR: number,
+  stepover: number,
+  keepouts: Vec2[][] = [],
+): ClearingMove[] {
+  if (centreRegion.length === 0 || toolR <= 0 || stepover <= 0) return [];
+  return orderRings(concentricRings(centreRegion, stepover), toolR, centreRegion, keepouts);
+}
+
+function orderRings(
+  rings: { k: number; loop: Vec2[] }[],
+  toolR: number,
+  boundaries: Vec2[][],
+  keepouts: Vec2[][],
+): ClearingMove[] {
   if (rings.length === 0) return [];
 
   // Order innermost-first (largest k) via greedy nearest-neighbour, so the very
