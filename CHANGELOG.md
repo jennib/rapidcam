@@ -29,7 +29,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   listing "Bold" for one would have handed back Regular outlines and cut the
   wrong thing.
 
+### Added
+
+- **Adaptive pocket clearing — the real thing this time.** A third clearing
+  strategy that keeps the cutter's radial engagement down to what a straight
+  wall step would produce, by replacing any stretch that would exceed it with
+  trochoidal circles. The load is then set by the advance per circle rather than
+  by the shape of the wall.
+
+  Measured on a 40mm square pocket, 3.175mm cutter, 40% stepover (nominal load
+  157°), with a bitmap simulation that shares no code with the generator:
+
+  | | offset | adaptive |
+  |---|---|---|
+  | worst sustained (p95) | 225° | **160°** |
+  | median | 155° | **105°** |
+  | L-shaped pocket, p95 | 360° | **195°** |
+  | pocket with a narrow neck, p95 | 360° | **175°** |
+
+  It costs travel: the path is 3–4× longer, and posts about 10× the moves. That
+  is the trade — machine time for tool life — which is why it is a choice and
+  not the default. Trochoidal circles post as arcs; drawn as line segments they
+  came to 20,876 moves for that pocket, against 2,080 fitted.
+
 ### Changed
+
+- **What was labelled "Adaptive" in the pocket dialog was not adaptive.** It is
+  contour-parallel offset clearing, and its load follows the shape of the wall:
+  the innermost loop is a full-width slot in solid stock (360°, fully buried),
+  a corner runs about 1.5× the straight-wall load, and a neck narrower than two
+  passes is another slot. The help page claimed it "keeps constant tool
+  engagement", which is precisely what it does not do. It is now called
+  "Offset (contour-parallel)" and described accurately. Nothing about how it
+  cuts has changed — the flat-mill golden proves that.
 
 - **A profile now spirals into the cut instead of plunging straight down.** Every
   profile pass used to begin `G1 Z<depth>` at the plunge feed — the tool driven

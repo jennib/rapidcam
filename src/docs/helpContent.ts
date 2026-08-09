@@ -332,10 +332,11 @@ export const HELP_TOPICS: HelpTopic[] = [
         },
       },
       {
-        heading: "Pocketing Strategies: Raster vs Offset Clearing",
-        body: "Choose the optimal clearing pattern for your pocket operations:",
+        heading: "Pocketing Strategies: Offset, Adaptive and Raster",
+        body: "Choose the clearing pattern for your pocket operations. The first two differ in how hard they work the cutter, not in the shape they leave:",
         tips: [
-          "Offset Spiral Clearing: Generates concentric contours from outside-in or inside-out. Keeps constant tool engagement and smooth directional changes.",
+          "Offset (contour-parallel): concentric contours worked from the inside out, wrapping islands without lifting. Fast, but the load follows the shape of the wall — the first loop is a full-width slot in solid stock, a corner runs about 1.5× the straight-wall load, and a neck narrower than two passes is another slot.",
+          "Adaptive: the same contours, with trochoidal circles wherever the cutter would otherwise be buried deeper than a straight stepover — so the load is set by the advance per circle instead of by the wall. Much kinder to small cutters and to deep passes in hard material; the path is several times longer, so it trades machine time for tool life.",
           "Raster Clearing: Scans back and forth across the pocket at a specified angle, followed by an optional perimeter cleanup pass.",
           "Island Detection: Automatically detects and preserves internal features, bosses, and holes inside the pocket perimeter.",
           "Stepover Percentage: Recommended 40%–50% of tool diameter for roughing pockets in wood and plastics; 20%–40% in metals.",

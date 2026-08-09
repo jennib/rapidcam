@@ -39,7 +39,8 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   const isCCW = signedArea(loop) >= 0;
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
-import { contourParallelClear } from "./clearing";
+import { contourParallelClear, type ClearingMove } from "./clearing";
+import { adaptiveClear } from "./adaptive";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
@@ -566,10 +567,16 @@ function pocketPolygon(
   oy: number,
   zOff: number,
 ): string[] {
-  const clear = (v: Vec2[], isl: Vec2[][]): string[] =>
-    (op.pocketStrategy ?? "offset") === "raster"
-      ? pocketPolygonRaster(v, isl, op, ox, oy, zOff)
-      : pocketPolygonOffset(v, isl, op, ox, oy, zOff);
+  const clear = (v: Vec2[], isl: Vec2[][]): string[] => {
+    switch (op.pocketStrategy ?? "offset") {
+      case "raster":
+        return pocketPolygonRaster(v, isl, op, ox, oy, zOff);
+      case "adaptive":
+        return pocketPolygonAdaptive(v, isl, op, ox, oy, zOff);
+      default:
+        return pocketPolygonOffset(v, isl, op, ox, oy, zOff);
+    }
+  };
 
   const allowance = finishAllowance(op);
   const lines: string[] = [];
@@ -635,6 +642,104 @@ function pocketWallFinish(
 }
 
 /**
+ * Emit a plan of clearing moves at every depth level. Shared by both clearing
+ * strategies, which differ in the moves they produce, not in how they're cut:
+ * each level is cleared completely before descending, the first cut of a level
+ * helixes in, and later moves feed straight across ground the previous move
+ * already cleared.
+ */
+function emitClearingMoves(
+  moves: ClearingMove[],
+  /** Full text for the per-pass comment, e.g. "contour-parallel, 14 loops". */
+  label: string,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
+  /**
+   * Arc-fit the cutting moves. On by default for adaptive clearing, whose motion
+   * is circles by construction: drawn as line segments a 40mm pocket posted
+   * 20,876 moves against contour-parallel's 218, which is a file no controller
+   * should be asked to look ahead through. Off for contour-parallel, whose loops
+   * are offsets of arbitrary geometry — fitting those is a worthwhile change on
+   * its own terms, and one that would move its golden.
+   */
+  arcFit = false,
+): string[] {
+  /** Emit a run of points from the current position, as arcs where they fit. */
+  const emitRun = (pts: Vec2[]): string[] => {
+    if (!arcFit) return pts.map((p) => `G1 X${X(p.x, ox)} Y${Y(p.y, oy)}`);
+    const out: string[] = [];
+    let cur = pts[0];
+    for (const mv of fitArcs(pts)) {
+      if (mv.kind === "line") {
+        out.push(`G1 X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)}`);
+      } else {
+        out.push(
+          `${mv.cw ? "G2" : "G3"} X${X(mv.to.x, ox)} Y${Y(mv.to.y, oy)} I${n(mv.cx - cur.x)} J${n(mv.cy - cur.y)}`,
+        );
+      }
+      cur = mv.to;
+    }
+    return out;
+  };
+  const lines: string[] = [];
+  let prevZ = 0; // top of stock (work surface)
+  for (const z of depthPasses(op)) {
+    lines.push(`; clearing pass Z${n(z)} (${label})`);
+    let entered = false;
+    for (const mv of moves) {
+      const loop = mv.loop;
+      // A closed loop needs three points to enclose anything; an open run is
+      // valid with two — adaptive clearing emits those where a neck is too
+      // narrow to loop in.
+      const closed = mv.closed !== false;
+      if (loop.length < (closed ? 3 : 2)) continue;
+      if (entered && mv.link) {
+        // Safe feed-link straight into this move (gap already cleared), trace at depth.
+        lines.push(...emitRun(closed ? [...loop, loop[0]] : loop));
+      } else if (closed) {
+        // First move of the pass, or a gap too wide to feed across: helix in.
+        lines.push(...helicalLoop(loop, prevZ, z, op, ox, oy, zOff));
+        entered = true;
+      } else {
+        // An open run can't be helixed round — ramp down its own length instead.
+        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+        lines.push(`G0 X${X(loop[0].x, ox)} Y${Y(loop[0].y, oy)}`);
+        lines.push(...rampPlunge(loop[0], loop[1], prevZ, z, op, ox, oy, zOff));
+        for (let i = 2; i < loop.length; i++)
+          lines.push(`G1 X${X(loop[i].x, ox)} Y${Y(loop[i].y, oy)}`);
+        entered = true;
+      }
+    }
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    prevZ = z;
+  }
+  return lines;
+}
+
+/**
+ * Adaptive clearing: the same loop topology, but any stretch where the cutter
+ * would be buried deeper than a straight wall step is replaced by trochoidal
+ * circles, so the load is set by the advance per circle rather than by the shape
+ * of the wall. See src/cam/adaptive.ts for the measurements behind that.
+ */
+function pocketPolygonAdaptive(
+  verts: Vec2[],
+  islands: Vec2[][],
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
+): string[] {
+  const toolR = op.diameter / 2;
+  const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const moves = adaptiveClear(verts, islands, toolR, { stepover });
+  if (moves.length === 0) return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
+  return emitClearingMoves(moves, `adaptive, ${moves.length} moves`, op, ox, oy, zOff, true);
+}
+
+/**
  * Contour-parallel clearing: concentric offset loops that wrap islands without
  * lifting. Each depth level is cleared completely (innermost loop → outer wall)
  * before descending; loops link with short feed moves where the gap is already
@@ -653,29 +758,9 @@ function pocketPolygonOffset(
   const moves = contourParallelClear(verts, islands, toolR, stepover);
   if (moves.length === 0) return [`; NOTE: pocket too small for ⌀${op.diameter}mm tool — skipped`];
 
-  const lines: string[] = [];
-  let prevZ = 0; // top of stock (work surface)
-  for (const z of depthPasses(op)) {
-    lines.push(`; clearing pass Z${n(z)} (contour-parallel, ${moves.length} loops)`);
-    let entered = false;
-    for (const mv of moves) {
-      const loop = mv.loop;
-      if (loop.length < 3) continue;
-      if (entered && mv.link) {
-        // Safe feed-link straight into this loop (gap already cleared), trace at depth.
-        for (let i = 0; i < loop.length; i++)
-          lines.push(`G1 X${X(loop[i].x, ox)} Y${Y(loop[i].y, oy)}`);
-        lines.push(`G1 X${X(loop[0].x, ox)} Y${Y(loop[0].y, oy)}`);
-      } else {
-        // First loop of the pass, or a gap too wide to feed across: helix in.
-        lines.push(...helicalLoop(loop, prevZ, z, op, ox, oy, zOff));
-        entered = true;
-      }
-    }
-    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-    prevZ = z;
-  }
-  return lines;
+  // Wording preserved exactly: the enclosure golden is the control proving this
+  // strategy's output is untouched, and a comment counts.
+  return emitClearingMoves(moves, `contour-parallel, ${moves.length} loops`, op, ox, oy, zOff);
 }
 
 function pocketPolygonRaster(

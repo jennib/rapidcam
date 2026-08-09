@@ -260,8 +260,11 @@ export function buildCutSection(
 
   const strategySelect = document.createElement("select");
   strategySelect.className = "unit";
+  // "offset" was labelled "Adaptive" and is not: its load follows the shape of
+  // the wall. The real one is now a separate choice.
   for (const [v, l] of [
-    ["offset", "Adaptive (contour-parallel)"],
+    ["offset", "Offset (contour-parallel)"],
+    ["adaptive", "Adaptive (light cuts, longer path)"],
     ["raster", "Raster (zig-zag)"],
   ] as const) {
     const o = document.createElement("option");
@@ -271,7 +274,7 @@ export function buildCutSection(
   }
   strategySelect.value = state.pocketStrategy;
   strategySelect.addEventListener("change", () => {
-    state.pocketStrategy = strategySelect.value as "offset" | "raster";
+    state.pocketStrategy = strategySelect.value as "offset" | "adaptive" | "raster";
   });
   const strategyRow = dField("Clearing", strategySelect);
   cutSec.appendChild(strategyRow);

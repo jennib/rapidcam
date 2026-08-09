@@ -16,10 +16,17 @@ import type { Vec2 } from "../core/vec2";
 import { inflatePathsD, differenceD, JoinType, EndType, FillRule } from "clipper2-ts";
 import { signedArea } from "./offset";
 
-/** One closed loop to cut at the current depth, plus how to get to it. */
+/** One run of cutting to do at the current depth, plus how to get to it. */
 export interface ClearingMove {
-  /** Closed-loop vertices, rotated so [0] is the entry point (nearest to the previous move). */
+  /** Path vertices, rotated so [0] is the entry point (nearest to the previous move). */
   loop: Vec2[];
+  /**
+   * Whether `loop` closes back on itself. Contour-parallel clearing only ever
+   * produces closed loops; adaptive clearing also produces open runs of
+   * trochoidal circles, which must not be closed by the emitter — the closing
+   * move would cut straight back across the pass.
+   */
+  closed?: boolean;
   /**
    * true  → feed straight from the previous loop's end into this loop (the gap
    *         is already cleared by the previous swath, so it's safe at depth).
@@ -114,6 +121,51 @@ function linkIsSafe(
  * @param stepover Radial step between concentric loops (mm), 0 < stepover.
  * @returns Ordered loops with link flags, or [] if the pocket is too small.
  */
+/**
+ * Where the tool CENTRE may legally sit: the wall inset by a tool radius, minus
+ * every island grown by one. Shared with adaptive clearing, which needs the same
+ * boundary to keep its trochoidal circles off the walls.
+ */
+export function cuttableRegion(outer: Vec2[], holes: Vec2[][], toolR: number): Vec2[][] {
+  const boundaries = inflate([ccwize(outer)], -toolR);
+  if (boundaries.length === 0) return []; // smaller than the tool
+  const keepouts = holes.flatMap((h) => (h.length >= 3 ? inflate([ccwize(h)], toolR) : []));
+  return keepouts.length > 0
+    ? differenceD(boundaries, keepouts, FillRule.NonZero).map(toV)
+    : boundaries;
+}
+
+/**
+ * Concentric rings of `region`, shrinking by `stepover` until nothing is left.
+ * Each is re-offset from the original rather than from its predecessor, so the
+ * rounding error of one step can't accumulate across forty of them.
+ */
+export function concentricRings(
+  region: Vec2[][],
+  stepover: number,
+): { k: number; loop: Vec2[] }[] {
+  const rings: { k: number; loop: Vec2[] }[] = [];
+  if (region.length === 0 || stepover <= 0) return rings;
+  // Safety cap from the bounding-box diagonal so we always terminate.
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const p of region.flat()) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const cap = Math.ceil(Math.hypot(maxX - minX, maxY - minY) / stepover) + 2;
+  for (let k = 0; k <= cap; k++) {
+    const off = k === 0 ? region : inflate(region, -k * stepover);
+    if (off.length === 0) break;
+    for (const loop of off) if (loop.length >= 3) rings.push({ k, loop });
+  }
+  return rings;
+}
+
 export function contourParallelClear(
   outer: Vec2[],
   holes: Vec2[][],
@@ -122,35 +174,12 @@ export function contourParallelClear(
 ): ClearingMove[] {
   if (outer.length < 3 || toolR <= 0 || stepover <= 0) return [];
 
-  // Cuttable region = (wall inset by toolR) minus (islands grown by toolR).
-  const boundaries = inflate([ccwize(outer)], -toolR);
-  if (boundaries.length === 0) return []; // smaller than the tool
-
-  const keepouts = holes.flatMap((h) => (h.length >= 3 ? inflate([ccwize(h)], toolR) : []));
-  const areaPaths =
-    keepouts.length > 0 ? differenceD(boundaries, keepouts, FillRule.NonZero).map(toV) : boundaries;
+  const areaPaths = cuttableRegion(outer, holes, toolR);
   if (areaPaths.length === 0) return [];
+  const boundaries = inflate([ccwize(outer)], -toolR);
+  const keepouts = holes.flatMap((h) => (h.length >= 3 ? inflate([ccwize(h)], toolR) : []));
 
-  // Concentric rings: shrink the whole region by k·stepover until nothing remains.
-  // Re-offset from the original each step to avoid cumulative rounding drift.
-  const rings: { k: number; loop: Vec2[] }[] = [];
-  // Safety cap from the bounding-box diagonal so we always terminate.
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  for (const p of areaPaths.flat()) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  const cap = Math.ceil(Math.hypot(maxX - minX, maxY - minY) / stepover) + 2;
-  for (let k = 0; k <= cap; k++) {
-    const off = k === 0 ? areaPaths : inflate(areaPaths, -k * stepover);
-    if (off.length === 0) break;
-    for (const loop of off) if (loop.length >= 3) rings.push({ k, loop });
-  }
+  const rings = concentricRings(areaPaths, stepover);
   if (rings.length === 0) return [];
 
   // Order innermost-first (largest k) via greedy nearest-neighbour, so the very

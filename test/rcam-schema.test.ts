@@ -421,7 +421,11 @@ function kitchenSinkDoc(): CADDocument {
       side: "inside",
       toolType: "end-mill",
       ...base,
-      pocketStrategy: "raster",
+      // Every value of the enum has to appear on a kitchen-sink doc or the
+      // drift guard never sees it: the schema is additionalProperties:false, so
+      // an enum the app can emit but the schema doesn't list breaks the app's
+      // own validators while still loading.
+      pocketStrategy: "adaptive",
       islandIds: [island.id],
       regions: [{ containingLoops: [[outer.id]] }],
       finishPass: true,

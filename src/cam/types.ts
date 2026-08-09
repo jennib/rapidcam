@@ -217,11 +217,18 @@ export interface CAMOperation {
   // pocket
   stepover: number; // fraction of tool diameter (default 0.4)
   /**
-   * Pocket clearing strategy. "offset" = contour-parallel concentric loops
-   * (default; wraps islands with no lifting), "raster" = zig-zag rows.
-   * Undefined is treated as "offset".
+   * Pocket clearing strategy. Undefined is treated as "offset".
+   *
+   * - "offset"   — contour-parallel concentric loops (default; wraps islands
+   *                with no lifting). Fast, but the cutter's load follows the
+   *                shape of the wall: full immersion on the first loop and in
+   *                any neck, and about 1.5× the straight-wall load at a corner.
+   * - "adaptive" — the same loops, with trochoidal circles wherever that load
+   *                would exceed a straight wall step. Gentle on the cutter, and
+   *                several times further to travel.
+   * - "raster"   — zig-zag rows.
    */
-  pocketStrategy?: "offset" | "raster";
+  pocketStrategy?: "offset" | "adaptive" | "raster";
   islandIds?: EntityId[]; // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
    * Pocket only: the enclosed regions to clear, identified *parametrically* so

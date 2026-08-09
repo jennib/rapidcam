@@ -64,7 +64,7 @@ export interface OpState {
   cornerStyle: CornerStyle;
   cutDirection: "climb" | "conventional";
   rampAngle?: number;
-  pocketStrategy: "offset" | "raster";
+  pocketStrategy: "offset" | "adaptive" | "raster";
   leadInType: LeadType;
   leadInLen: number;
   leadOutType: LeadType;
@@ -180,7 +180,7 @@ export function createInitialOpState(
     cutDirection:
       existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
     rampAngle: existing?.rampAngle,
-    pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "raster",
+    pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "adaptive" | "raster",
     leadInType: (existing?.leadIn?.type ?? "none") as LeadType,
     leadInLen: existing?.leadIn?.length ?? 2,
     leadOutType: (existing?.leadOut?.type ?? "none") as LeadType,
