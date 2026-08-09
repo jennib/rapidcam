@@ -161,14 +161,39 @@ function profilePolygon(
 
   const lines: string[] = [];
 
-  // Trace one closed lap of `path` at depth `z` (approach/plunge, body with
-  // optional tabs, lead-out).
-  const tracePass = (path: Vec2[], z: number): void => {
+  // Trace one closed lap of `path` at depth `z` (approach/entry, body with
+  // optional tabs, lead-out). `zFrom` is the depth the previous pass left the
+  // floor at, and the height this one has to lose; null means "just plunge".
+  const tracePass = (path: Vec2[], z: number, zFrom: number | null): void => {
     const s = path[0];
     const geo = useLead ? leadInGeo(path, Math.max(liLen, loLen), op.side) : null;
     const useTabsThisPass = hasTabs && z < tabZOff;
 
-    if (liType === "none" || !geo) {
+    // A closed lap can be entered by spiralling down the contour itself, which
+    // spreads the descent along the cut instead of driving the tool in axially —
+    // the treatment pocket entries have always had. Two cases keep the plunge:
+    // a lead-in (the lead IS the entry, and it starts off the contour, so a
+    // helix around the contour would cut before the lead did), and the finishing
+    // lap (`zFrom` null), whose plunge lands in the rough kerf rather than solid
+    // stock.
+    //
+    // With tabs, the helix stops at the tab tops: it laps the WHOLE contour,
+    // including the spans that have to stay standing, so descending to `z` here
+    // would machine the tabs away. The tab-aware body below then takes the
+    // remaining depth between them, exactly as it did before.
+    const entryFloor = useTabsThisPass ? Math.max(z, tabZOff) : z;
+    const canHelix =
+      zFrom !== null && liType === "none" && path.length >= 3 && zFrom - entryFloor > 1e-9;
+    let reachedZ = z;
+
+    if (canHelix) {
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
+      lines.push(`G0 Z${Z(zFrom + RAMP_CLEAR, zOff)}`);
+      lines.push(`G1 Z${Z(zFrom, zOff)} F${n(op.plungeRate)}`);
+      lines.push(...helicalDescent(path, zFrom, entryFloor, op, ox, oy, zOff));
+      reachedZ = entryFloor;
+    } else if (liType === "none" || !geo) {
       lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
       lines.push(`G0 X${X(s.x, ox)} Y${Y(s.y, oy)}`);
       lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
@@ -230,7 +255,8 @@ function profilePolygon(
       // Walk the split segments, arc-fitting each maximal run of material-cutting
       // (non-tab) segments so curved profiles stay smooth between tabs; tab bridges
       // ride up to tabZOff and stay straight G1 lines (they're short by design).
-      let currentZ = z;
+      // The helix may have stopped at the tab tops rather than at `z`.
+      let currentZ = reachedZ;
       let first = liType === "none";
       let i = 0;
       while (i < segs.length) {
@@ -289,13 +315,17 @@ function profilePolygon(
   for (const rawPath of roughPaths) {
     if (rawPath.length < 2) continue;
     const path = prep(rawPath);
-    for (const z of depthPasses(op)) tracePass(path, z);
+    let prevZ = 0; // top of stock (work surface)
+    for (const z of depthPasses(op)) {
+      tracePass(path, z, prevZ);
+      prevZ = z;
+    }
   }
   // Finishing lap at the true wall, full depth (its centre sits in the rough
-  // kerf, so the plunge enters cleared stock).
+  // kerf, so the plunge enters cleared stock — no helix needed, hence null).
   for (const rawPath of finishPaths) {
     if (rawPath.length < 2) continue;
-    tracePass(prep(rawPath), op.depth);
+    tracePass(prep(rawPath), op.depth, null);
   }
 
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
@@ -388,6 +418,67 @@ function rampPlunge(
 const HELIX_ANGLE_MAX_DEG = 10;
 
 /**
+ * Laps needed to lose `depth` around a path of length `perim` without exceeding
+ * the op's helix angle. Shared by every helical entry — the pocket loop, the
+ * bore and the profile entry — so they cannot drift into disagreeing about what
+ * the angle means. Zero when there is nothing to descend, or nowhere to do it.
+ */
+function helixLapCount(perim: number, depth: number, op: CAMOperation): number {
+  if (perim < 1e-9 || depth < 1e-9) return 0;
+  return Math.max(
+    1,
+    Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))),
+  );
+}
+
+/**
+ * Spiral down `loop` from `zStart` to `zTarget`, ending back at `loop[0]` at
+ * depth. Assumes the tool is already sitting at `loop[0]` at `zStart` — the
+ * caller owns the approach — and emits no flat lap, because for a profile the
+ * pass that follows this *is* one.
+ */
+function helicalDescent(
+  loop: Vec2[],
+  zStart: number,
+  zTarget: number,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
+): string[] {
+  const N = loop.length;
+  const seg: number[] = [];
+  let perim = 0;
+  for (let i = 0; i < N; i++) {
+    const a = loop[i],
+      b = loop[(i + 1) % N];
+    const L = Math.hypot(b.x - a.x, b.y - a.y);
+    seg.push(L);
+    perim += L;
+  }
+  const depth = zStart - zTarget;
+  const nLaps = helixLapCount(perim, depth, op);
+  if (nLaps === 0) return [];
+
+  const out: string[] = [];
+  const totalArc = nLaps * perim;
+  let acc = 0;
+  let first = true;
+  for (let lap = 0; lap < nLaps; lap++) {
+    for (let i = 1; i <= N; i++) {
+      acc += seg[(i - 1) % N];
+      const zc = zStart - depth * Math.min(1, acc / totalArc);
+      const p = loop[i % N];
+      out.push(
+        `G1 X${X(p.x, ox)} Y${Y(p.y, oy)} Z${Z(zc, zOff)}${first ? ` F${n(op.feedrate)}` : ""}`,
+      );
+      first = false;
+    }
+  }
+  return out;
+}
+
+/**
  * Cut a closed loop with a helical entry: descend from `zStart` to `z` while
  * spiralling around the loop (one or more laps, kept under HELIX_ANGLE_MAX_DEG),
  * then one flat finishing lap so the floor is level. Always ends back at loop[0].
@@ -429,10 +520,7 @@ function helicalLoop(
     return out;
   }
 
-  const nLaps = Math.max(
-    1,
-    Math.ceil(depth / (perim * Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180))),
-  );
+  const nLaps = helixLapCount(perim, depth, op);
   const totalArc = nLaps * perim;
   let acc = 0,
     first = true;
@@ -694,19 +782,7 @@ function helicalBore(
     `G1 Z${Z(zStart, zOff)} F${n(op.plungeRate)}`,
   ];
   const depth = zStart - zTarget;
-  const turns =
-    depth < 1e-9
-      ? 0
-      : Math.max(
-          1,
-          Math.ceil(
-            depth /
-              (2 *
-                Math.PI *
-                rad *
-                Math.tan((rampAngleDeg(op, HELIX_ANGLE_MAX_DEG) * Math.PI) / 180)),
-          ),
-        );
+  const turns = helixLapCount(2 * Math.PI * rad, depth, op);
   for (let i = 1; i <= turns; i++) {
     const zc = zStart - depth * (i / turns);
     out.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-rad)} J0 Z${Z(zc, zOff)} F${n(op.feedrate)}`);
@@ -806,7 +882,16 @@ function profileCircle(
     lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
     lines.push(`G2 X${X(sx, ox)} Y${Y(cy, oy)} I${n(-radius)} J0 F${n(op.feedrate)}`);
   };
-  for (const z of depthPasses(op)) circleAt(cutRrough, z);
+  // Spiral down the wall rather than plunging at each step. A circle can do this
+  // as true helical interpolation — G2 with a Z word — so the entry stays one
+  // arc per turn instead of the segment soup a tessellated helix would post.
+  let prevZ = 0; // top of stock (work surface)
+  for (const z of depthPasses(op)) {
+    lines.push(...helicalBore(cx, cy, cutRrough, prevZ, z, op, ox, oy, zOff));
+    prevZ = z;
+  }
+  // The finishing lap plunges: its centre sits inside the rough kerf, so it is
+  // dropping through stock that has already been cleared.
   if (op.finishPass) circleAt(cutR, op.depth);
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;

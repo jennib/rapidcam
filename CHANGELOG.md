@@ -29,6 +29,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   listing "Bold" for one would have handed back Regular outlines and cut the
   wrong thing.
 
+### Changed
+
+- **A profile now spirals into the cut instead of plunging straight down.** Every
+  profile pass used to begin `G1 Z<depth>` at the plunge feed — the tool driven
+  axially into solid stock at each stepdown, on every shape, with a
+  non-centre-cutting end mill as likely as not. It now descends around the
+  contour itself, the way pocket entries always have; a circle does it as true
+  helical interpolation (`G2` with a `Z` word) so the entry stays one arc per
+  turn. The `Ramp angle` setting, which already governed the pocket helix, now
+  governs this too.
+
+  Three cases deliberately keep the plunge: a **lead-in** (the lead *is* the
+  entry, and it starts off the contour), the **finishing lap** (its centre sits
+  in the rough kerf, so it drops through stock already cleared), and the part of
+  a **tabbed** pass below the tab tops — a helix laps the whole contour, so
+  descending past a tab would machine away the thing holding the part in.
+
+  Expect slightly longer cycle times: the entry costs about one extra lap per
+  stepdown, which is what buys the gentler descent.
+
 ### Fixed
 
 - **Text in about one font in eight produced no toolpath, and could break the

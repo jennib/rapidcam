@@ -112,11 +112,24 @@ function laserGcode(): string {
 // printed its full precision straight into this fixture's header
 // ("314.15926535897933mm") before the fix. Comment-only change: motion is
 // identical, confirmed by diffing the two programs before re-pinning.
+// `rotary` and `centerBed` re-baselined 2026-08-09: a profile now enters a closed
+// contour by spiralling down it instead of plunging axially at each stepdown
+// (gcode.ts helicalDescent / helicalBore) — the entry pocket ops always had.
+// Both fixtures profile a CIRCLE, so each `G1 Z<step> F<plunge>` became a rapid
+// to just above the previous floor, a feed down to it, and one helical `G2 … Z`
+// revolution; the flat lap after it is unchanged. Diffed both programs in full
+// before re-pinning: nothing else moved, and the rotary wrap linearises the
+// helical arc into X/A/Z the same way it does every other arc.
+//
+// `enclosure` is deliberately NOT re-baselined and MUST NOT change: its profile
+// op has an arc lead-in, which keeps the plunge (the lead is the entry), and its
+// pocket op already helixed. That it still matches is the control proving this
+// change is scoped to the entry it claims.
 const GOLDEN = {
   enclosure: "9bf1734f6f723146914d9fdcc1b67795c652b4e510522f02f1714488e5fbe1fb",
-  rotary: "81a1ce2be108c787773a70a351e4b2b5a97fc76c14fc19ba388bbfd5c9e33dd8",
+  rotary: "d2228e4a0e443e6b470284c98594750009ddb6c547a67706cf2843c43a734b13",
   laser: "f3e5f9507f27537af3aed24b87a86529e246937d36e48327912626e00a29c51a",
-  centerBed: "fed6641e9377ccfe0b60fc74211753cda30ebbaae5f2b0e0531f89918d906326",
+  centerBed: "7ade9976a6df896e4a385ea7c0096fa75a5cb5a46611ade4cd10f3bb582e402e",
 };
 
 test("golden: flat-mill (Enclosure Lid) G-code is byte-stable", () => {
