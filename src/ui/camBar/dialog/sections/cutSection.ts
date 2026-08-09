@@ -279,6 +279,74 @@ export function buildCutSection(
   const strategyRow = dField("Clearing", strategySelect);
   cutSec.appendChild(strategyRow);
 
+  // --- facing ---------------------------------------------------------------
+  const faceTargetSelect = document.createElement("select");
+  faceTargetSelect.className = "unit";
+  for (const [v, l] of [
+    ["stock", "The blank (top of the stock)"],
+    ["bed", "The spoilboard — machine must be empty"],
+  ] as const) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    faceTargetSelect.appendChild(o);
+  }
+  faceTargetSelect.value = state.faceTarget;
+  faceTargetSelect.addEventListener("change", () => {
+    state.faceTarget = faceTargetSelect.value as "stock" | "bed";
+    // Re-run visibility: the spoilboard warning appears and disappears with it.
+    update();
+  });
+  const faceTargetRow = dField("Skim", faceTargetSelect);
+  cutSec.appendChild(faceTargetRow);
+
+  // The spoilboard case is a different job, not a different setting: no
+  // workpiece on the machine and Z zeroed on the board. Said here, at the
+  // moment of choosing, as well as in the program and at pre-flight.
+  const faceWarn = document.createElement("div");
+  faceWarn.style.cssText =
+    "font-size:11px;line-height:1.4;padding:6px 8px;border-radius:4px;" +
+    "background:rgba(220,160,60,0.14);border:1px solid rgba(220,160,60,0.5);";
+  faceWarn.textContent =
+    "Surfacing the spoilboard cuts your wasteboard. Take the workpiece off the machine, " +
+    "check no clamp stands in the way, and zero X/Y/Z on the spoilboard itself — not on stock. " +
+    "Post it as its own program.";
+  cutSec.appendChild(faceWarn);
+
+  const faceDirSelect = document.createElement("select");
+  faceDirSelect.className = "unit";
+  for (const [v, l] of [
+    ["x", "Along X"],
+    ["y", "Along Y"],
+  ] as const) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    faceDirSelect.appendChild(o);
+  }
+  faceDirSelect.value = state.faceDirection;
+  faceDirSelect.addEventListener("change", () => {
+    state.faceDirection = faceDirSelect.value as "x" | "y";
+  });
+  const faceDirRow = dField("Rows", faceDirSelect);
+  cutSec.appendChild(faceDirRow);
+
+  const faceOverhangRow = paramRow(
+    doc,
+    state,
+    "faceOverhang",
+    `Extra overhang (${du})`,
+    () => state.faceOverhang,
+    (v) => {
+      state.faceOverhang = v;
+    },
+    "len",
+  );
+  faceOverhangRow.el.title =
+    "The cutter already overhangs the edge by its own radius. Add to that when the " +
+    "blank's true size is uncertain, or it sits slightly out of square.";
+  cutSec.appendChild(faceOverhangRow.el);
+
   // Rest machining — clear only what a bigger tool left standing. 0 = off, so
   // the field is one number rather than a checkbox plus a number.
   const restRow = paramRow(
@@ -511,6 +579,14 @@ export function buildCutSection(
     stepoverRow.el.style.display =
       state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket" ? "" : "none";
+
+    const facing = state.combo === "face";
+    faceTargetRow.style.display = facing ? "" : "none";
+    faceDirRow.style.display = facing ? "" : "none";
+    faceOverhangRow.el.style.display = facing ? "" : "none";
+    // Only when the spoilboard is the target — on the blank it would be noise,
+    // and a warning shown for everything is read as decoration.
+    faceWarn.style.display = facing && state.faceTarget === "bed" ? "" : "none";
     // Rest machining is a clearing idea, so it belongs to pockets only — it was
     // showing on a profile, where it would have been read as a promise and done
     // nothing (the emitter only honours it for pockets).

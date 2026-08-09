@@ -16,6 +16,7 @@ import { type Entity, RasterImageEntity } from "../../../model/entities";
 import type { Vec2 } from "../../../core/vec2";
 import {
   type OpCombo,
+  autoName,
   comboOf,
   defaultCombo,
   legacyPocketSeeds,
@@ -45,6 +46,12 @@ export interface OpState {
   finishAllowance: number;
   /** Rest machining: diameter of the tool that already roughed this pocket. 0 = off. */
   restToolDiameter: number;
+  /** Facing: what gets skimmed. */
+  faceTarget: "stock" | "bed";
+  /** Facing: extra travel past the target's edge, mm (on top of the tool radius). */
+  faceOverhang: number;
+  /** Facing: which way the rows run. */
+  faceDirection: "x" | "y";
   chamferWidth: number;
   chamferSide: ChamferSide;
   sharpenCorners: boolean;
@@ -90,27 +97,13 @@ export interface OpState {
   paramExprs: Record<string, string>;
 }
 
+/**
+ * Delegates to {@link autoName} rather than keeping its own copy of the
+ * combo-to-prefix table. There were two, and adding a toolpath type updated one
+ * of them: a facing op arrived in the dialog named "Drill 1".
+ */
 export function autoOpName(combo: OpCombo, doc: CADDocument): string {
-  const prefix =
-    combo === "profile-outside"
-      ? "Profile (outside)"
-      : combo === "profile-inside"
-        ? "Profile (inside)"
-        : combo === "pocket"
-          ? "Pocket"
-          : combo === "chamfer"
-            ? "Chamfer"
-            : combo === "vcarve"
-              ? "V-Carve"
-              : combo === "engrave"
-                ? "Engrave"
-                : combo === "relief-rough"
-                  ? "Relief Roughing"
-                  : combo === "score"
-                    ? "Score / Fold"
-                    : "Drill";
-  const n = doc.operations.filter((o) => comboOf(o) === combo).length + 1;
-  return `${prefix} ${n}`;
+  return autoName(combo, doc);
 }
 
 export function createInitialOpState(
@@ -154,6 +147,9 @@ export function createInitialOpState(
     finishPass: existing?.finishPass ?? false,
     finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
     restToolDiameter: existing?.restToolDiameter ?? 0,
+    faceTarget: existing?.faceTarget ?? "stock",
+    faceOverhang: existing?.faceOverhang ?? 0,
+    faceDirection: existing?.faceDirection ?? "x",
     chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
     chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
     sharpenCorners: existing?.sharpenCorners ?? false,

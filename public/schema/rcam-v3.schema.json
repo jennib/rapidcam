@@ -735,7 +735,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve", "relief-rough", "score"] },
+        "type": { "enum": ["profile", "engrave", "drill", "pocket", "chamfer", "vcarve", "relief-rough", "score", "face"] },
         "entityIds": { "type": "array", "items": { "type": "string" }, "description": "Target geometry ids." },
         "side": { "enum": ["outside", "inside"], "description": "Which side of the contour the cut runs on. Required for \"profile\" (and drives laser kerf offset); ignored — and may be omitted — for every other type." },
         "followPattern": { "type": "boolean", "description": "When the op's geometry belongs to a pattern, the toolpath covers the whole pattern and follows its count. Set false to cut only the literal entityIds. Default (omitted) = follow." },
@@ -768,6 +768,9 @@
         "stepover": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "fraction of tool diameter (pocket/clearing). Optional; defaults to 0.4 when omitted." },
         "pocketStrategy": { "enum": ["offset", "adaptive", "raster"], "description": "Pocket only; default \"offset\". \"adaptive\" trochoids wherever a plain offset loop would bury the cutter deeper than a straight wall step." },
         "restToolDiameter": { "type": "number", "minimum": 0, "description": "Pocket only. Rest machining: diameter (mm) of the tool that already roughed this pocket. When larger than this operation's own tool, only the corners and channels that tool could not reach are cut. 0 or absent = off." },
+        "faceTarget": { "enum": ["stock", "bed"], "description": "Facing only. What gets skimmed: the blank (default) or the machine spoilboard. Spoilboard surfacing is zeroed on the board with the machine empty, so it must be posted as its own program." },
+        "faceOverhang": { "type": "number", "minimum": 0, "description": "Facing only. Extra distance (mm) the tool centre runs past the target edge, on top of the tool radius it already overhangs by." },
+        "faceDirection": { "enum": ["x", "y"], "description": "Facing only. Which way the rows run; default \"x\"." },
         "islandIds": { "type": "array", "items": { "type": "string" }, "description": "Pocket only (legacy): entities treated as islands." },
         "regions": {
           "type": "array",

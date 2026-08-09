@@ -332,6 +332,15 @@ export const HELP_TOPICS: HelpTopic[] = [
         },
       },
       {
+        heading: "Facing & Surfacing",
+        body: "A facing toolpath skims a surface flat, and is the one operation that needs no geometry selected — it takes its extent from the job. Choose whether it skims the blank or the spoilboard, and it runs the cutter a full tool radius past every edge, which is what cleans up a blank that is slightly over size or out of square.",
+        callout: {
+          type: "warning",
+          title: "Surfacing the spoilboard is its own job",
+          text: "It cuts your wasteboard, with the machine empty. Take the workpiece off, check no clamp stands in the way, and zero X, Y and Z on the spoilboard itself — not on stock. RapidCAM posts a setup banner into the program and refuses to pass pre-flight if a spoilboard pass shares a program with cutting toolpaths: one Z zero cannot be right for both.",
+        },
+      },
+      {
         heading: "Pocketing Strategies: Offset, Adaptive and Raster",
         body: "Choose the clearing pattern for your pocket operations. The first two differ in how hard they work the cutter, not in the shape they leave:",
         tips: [

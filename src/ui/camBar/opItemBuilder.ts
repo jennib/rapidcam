@@ -186,7 +186,9 @@ export function buildOpItem(
                 ? "RUF"
                 : op.type === "score"
                   ? "SCR"
-                  : "DRL";
+                  : op.type === "face"
+                    ? "FCE"
+                    : "DRL";
   topRow.appendChild(badge);
 
   // Double-sided: mark bottom-face ops so they're distinguishable in the list.
@@ -260,7 +262,7 @@ export function buildOpItem(
   info.appendChild(params);
 
   // Estimated run time
-  const cuts = (op.regions?.length ?? 0) + (op.entityIds?.length ?? 0) > 0;
+  const cuts = op.type === "face" || (op.regions?.length ?? 0) + (op.entityIds?.length ?? 0) > 0;
   const laserSkips =
     doc.isLaser &&
     op.type !== "profile" &&
@@ -302,7 +304,10 @@ export function buildOpItem(
   // Geometry binding
   const nRegions = op.regions?.length ?? 0;
   const nEntities = op.entityIds?.length ?? 0;
-  if (nRegions === 0 && nEntities === 0) {
+  // Facing binds to no geometry by design — it skims the blank or the bed — so
+  // the "cuts nothing" warning would be wrong on the one op where an empty
+  // entity list is correct, and it cuts more than anything else in the job.
+  if (op.type !== "face" && nRegions === 0 && nEntities === 0) {
     const warn = document.createElement("div");
     warn.className = "tp-op-params";
     warn.style.color = "var(--warn, #e0a85a)";
@@ -318,10 +323,17 @@ export function buildOpItem(
     const bind = document.createElement("div");
     bind.className = "tp-op-params";
     bind.style.opacity = "0.6";
-    bind.textContent = nRegions
-      ? `cuts ${n} region${n > 1 ? "s" : ""}`
-      : `cuts ${n} shape${n > 1 ? "s" : ""}`;
-    bind.title = "Click the card to highlight the shapes this toolpath cuts.";
+    // Facing binds to no shape: say what it skims instead of "cuts 0 shape".
+    bind.textContent =
+      op.type === "face"
+        ? `skims the ${op.faceTarget === "bed" ? "spoilboard" : "blank"}`
+        : nRegions
+          ? `cuts ${n} region${n > 1 ? "s" : ""}`
+          : `cuts ${n} shape${n > 1 ? "s" : ""}`;
+    bind.title =
+      op.type === "face"
+        ? "Facing takes its extent from the job, not from geometry."
+        : "Click the card to highlight the shapes this toolpath cuts.";
     info.appendChild(bind);
   }
   botRow.appendChild(info);

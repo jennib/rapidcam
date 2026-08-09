@@ -101,6 +101,7 @@ export function openOpDialog(options: OpDialogOptions): void {
         ["engrave", "Engrave"],
         ["relief-rough", "Relief Roughing (image)"],
         ["drill", "Drill"],
+        ["face", "Facing (skim a surface flat)"],
       ];
   for (const [v, l] of combos) {
     const o = document.createElement("option");
@@ -283,6 +284,9 @@ export function openOpDialog(options: OpDialogOptions): void {
     } else if (state.combo === "relief-rough") {
       type = "relief-rough";
       side = "outside";
+    } else if (state.combo === "face") {
+      type = "face";
+      side = "inside";
     } else {
       type = "drill";
       side = "outside";
@@ -350,6 +354,9 @@ export function openOpDialog(options: OpDialogOptions): void {
         type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
       coolant: state.coolant !== "off" ? state.coolant : undefined,
       pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
+      faceTarget: type === "face" ? state.faceTarget : undefined,
+      faceOverhang: type === "face" && state.faceOverhang > 0 ? state.faceOverhang : undefined,
+      faceDirection: type === "face" ? state.faceDirection : undefined,
       restToolDiameter:
         type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
       regions: regionBased ? refsFromSeeds(doc, state.regionSeeds) : undefined,

@@ -31,6 +31,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Facing / surfacing.** A new toolpath that skims a surface flat — the top of
+  the blank, or the machine's spoilboard. It's the one operation with no
+  geometry to point at: it takes its extent from the job, so there is no
+  rectangle to draw round it.
+
+  It would nearly be a pocket over a rectangle, and the difference is one line of
+  geometry. A pocket insets the tool *centre* by a radius so the cutting edge
+  stops exactly at the boundary; facing puts the centre **on** the boundary, so
+  the cutter runs a full radius past every edge. That overhang is what actually
+  cleans up a blank that's a millimetre over size or a degree out of square.
+  Rows alternate direction with no lift between them, step down like any other
+  roughing pass, and start clear of the material — so there is nothing to plunge
+  into.
+
+  **Surfacing the spoilboard is a different job wearing the same clothes**, and
+  is treated as one. The machine has to be empty and the datum is the board
+  itself, not a workpiece that isn't there — so it is zeroed on the spoilboard's
+  own corner, the program opens with a banner saying exactly that, the dialog
+  warns before you pick it, and pre-flight raises an **error** if it shares a
+  program with cutting toolpaths. One Z zero cannot be right for both, and both
+  halves are valid G-code, so nothing downstream could catch it. The 3D preview
+  shows nothing happening, because nothing happens to a workpiece that isn't on
+  the machine.
+
 - **Rest machining.** A pocket can now cut only what a bigger tool left standing.
   Set *Rest: previous tool ⌀* to the cutter that roughed the pocket, and the
   operation clears its corner radii and any channel it was too fat to enter,

@@ -199,6 +199,9 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   // Rest machining: the diameter of the tool that already roughed this pocket.
   // 0 means off, so it floors at 0 rather than at a smallest sensible cutter.
   restToolDiameter: flat("restToolDiameter", atLeast(0)),
+  // Facing: extra travel past the target's edge, on top of the tool radius the
+  // cutter already overhangs by. 0 is the normal answer, hence the floor.
+  faceOverhang: flat("faceOverhang", atLeast(0)),
   chamferWidth: flat("chamferWidth", atLeast(0)),
   rampAngle: flat("rampAngle", within(0.5, 45)),
   vStep: flat("vStep", atLeast(0.01)),
