@@ -286,8 +286,17 @@ export function buildCutSection(
   reliefGammaInp.step = "any";
   reliefGammaInp.min = "0.1";
   reliefGammaInp.value = String(state.reliefGamma);
-  reliefGammaInp.title =
+  // The advice differs by mode and the two point OPPOSITE ways, so the tooltip
+  // has to follow the mode rather than state one of them as the rule. A relief
+  // shades a shaped surface (mid-tones usually want lifting); a halftone already
+  // matches photo tone through the linear-light mapping, so gamma is only a trim
+  // — and a groove in pale stock is not black, which shows up as flat DARKS, not
+  // flat mid-tones.
+  const RELIEF_GAMMA_TIP =
     "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
+  const HALFTONE_GAMMA_TIP =
+    "Tone curve on groove width. Halftone maps tone through linear light, so 1 is the matched setting and this is a trim. Above 1 lightens and opens up the shadows — useful because a groove in pale stock is not black, so the darkest tones compress into each other. Below 1 deepens the mid-tones.";
+  reliefGammaInp.title = RELIEF_GAMMA_TIP;
   reliefGammaInp.addEventListener("change", () => {
     const v = parseFloat(reliefGammaInp.value);
     if (Number.isFinite(v) && v > 0) state.reliefGamma = v;
@@ -596,6 +605,11 @@ export function buildCutSection(
   events.onUpdateVBitHint(() => {
     updateVBitHint();
     updateChamHint();
+    // The halftone screen is derived from the SAME bit geometry — angle, tip and
+    // diameter — so anything that moves the V-bit hint moves the row pitch, and
+    // with it the readout AND the cut-time estimate. Without this, changing the
+    // V angle left both showing the previous bit's numbers.
+    updateReliefEstimate();
   });
 
   const updateChamferVisibility = () => {
@@ -658,6 +672,7 @@ export function buildCutSection(
     if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") {
       events.emitSetToolType("ball-nose");
     }
+    reliefGammaInp.title = halftoning ? HALFTONE_GAMMA_TIP : RELIEF_GAMMA_TIP;
     if (halftoning) updateHalftoneInfo();
     if (isFinish || isRough) updateReliefEstimate();
   };

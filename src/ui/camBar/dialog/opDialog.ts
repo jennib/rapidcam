@@ -393,7 +393,12 @@ export function openOpDialog(options: OpDialogOptions): void {
           ? state.laserOverscan
           : undefined,
       airAssist: isLaser && state.airAssist ? true : undefined,
-      rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
+      // A halftone DERIVES its row pitch, so writing this field would leave a
+      // number in the file that describes nothing the program does.
+      rasterLineInterval:
+        rasterFields && !(imageEngrave && state.toolType === "v-bit" && state.halftone)
+          ? Math.max(0.001, state.rasterLineInterval)
+          : undefined,
       rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
       rasterMinPower:
         raster && state.rasterDither === "none" && state.rasterMinPower > 0

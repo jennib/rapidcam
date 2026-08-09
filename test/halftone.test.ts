@@ -21,6 +21,7 @@ import {
   OVERLAP_WARN_RATIO,
   HALFTONE_DOT_PITCH_MM,
 } from "../src/cam/halftone";
+import { rasterField, srgbToLinear } from "../src/cam/rasterEngrave";
 import { CADDocument } from "../src/model/document";
 import { RasterImageEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
@@ -378,4 +379,195 @@ describe("preview agrees with the program", () => {
     expect(library).toBeGreaterThan(0);
     expect(library).not.toBeCloseTo(inline, 3);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Tone: coverage mixes by REFLECTANCE, so it reads linear light
+
+describe("tone mapping", () => {
+  test("sRGB → linear matches the standard at its landmarks", () => {
+    expect(srgbToLinear(0)).toBeCloseTo(0, 12);
+    expect(srgbToLinear(1)).toBeCloseTo(1, 12);
+    // The one that matters: "middle grey" reflects about a fifth of the light,
+    // which is why it needs most of a row covered rather than half.
+    expect(srgbToLinear(0.5)).toBeCloseTo(0.2140, 4);
+    expect(srgbToLinear(128 / 255)).toBeCloseTo(0.2159, 4);
+    // Monotonic, and the linear part below the knee.
+    expect(srgbToLinear(0.04)).toBeCloseTo(0.04 / 12.92, 12);
+  });
+
+  const grid = { width: 1, height: 1, data: [128 / 255] };
+  const field = (tone?: "encoded" | "linear") =>
+    rasterField(grid, { widthMM: 1, heightMM: 1, lineIntervalMM: 1, tone }).rows[0].levels[0];
+
+  test("the default is unchanged — omitting `tone` still inverts the byte", () => {
+    // The laser and the ordinary relief both ride this path; a silent change to
+    // either would be a tonal shift on work that already prints correctly.
+    expect(field()).toBeCloseTo(1 - 128 / 255, 2);
+    expect(field("encoded")).toBeCloseTo(1 - 128 / 255, 2);
+  });
+
+  test("linear tone puts middle grey at ~78% coverage, not 50%", () => {
+    expect(field("linear")).toBeCloseTo(1 - 0.2159, 2);
+  });
+
+  test("a halftone asks for linear tone; nothing else does", () => {
+    expect(reliefSpacing({ ...OP_BASE, halftone: true }).tone).toBe("linear");
+    expect(reliefSpacing(OP_BASE).tone).toBe("encoded");
+    expect(reliefSpacing({ ...OP_BASE, toolType: "ball-nose", halftone: true }).tone).toBe(
+      "encoded",
+    );
+  });
+
+  test("and it reaches the cut: a grey halftone goes deeper than half depth", () => {
+    const id = registerGrid([
+      [128, 128],
+      [128, 128],
+    ]);
+    const doc = new CADDocument({ width: 200, height: 200 });
+    doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+    const entId = doc.entities.find((e) => e.type === "image")!.id;
+    const op = { ...OP_BASE, entityIds: [entId], depth: -2, stepdown: 2, rasterDotPitch: 1 };
+    const deepest = (g: string) =>
+      Math.min(...[...g.matchAll(/Z(-[\d.]+)/g)].map((m) => +m[1]), 0);
+    // 1 − linear(128/255) = 0.784 of 2mm.
+    expect(deepest(generateGCode([{ ...op, halftone: true }], doc))).toBeCloseTo(-1.568, 2);
+    // The ordinary relief keeps the encoded mapping: about half.
+    expect(deepest(generateGCode([op], doc))).toBeCloseTo(-0.996, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stepdown passes that cut nothing
+
+describe("stepdown passes", () => {
+  /**
+   * 4 rows top-down: black, light, light, black. The deep rows are deliberately
+   * NON-adjacent — with them side by side the second pass is one unbroken run
+   * and the gap case below can never arise, which is exactly how the first
+   * version of this fixture made its own gouge test vacuous.
+   */
+  function bandedDoc(): { doc: CADDocument; entId: string } {
+    const id = registerGrid([
+      [0, 0],
+      [230, 230],
+      [230, 230],
+      [0, 0],
+    ]);
+    const doc = new CADDocument({ width: 200, height: 200 });
+    doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+    return { doc, entId: doc.entities.find((e) => e.type === "image")!.id };
+  }
+
+  /**
+   * Feed moves, split into unbroken cutting CHAINS — a `G0` ends one and starts
+   * the next. The first version of this matched G1 lines with a global regex,
+   * which skipped the G0s entirely and so could not tell a retract from a cut:
+   * it reported the hop between two passes as a gouge, and would equally have
+   * missed a real one.
+   */
+  const feedChains = (g: string): { x: number; y: number; z: number }[][] => {
+    const chains: { x: number; y: number; z: number }[][] = [];
+    let cur: { x: number; y: number; z: number }[] = [];
+    for (const line of g.split("\n")) {
+      if (line.startsWith("G0")) {
+        if (cur.length) chains.push(cur);
+        cur = [];
+        continue;
+      }
+      const m = /^G1 X(-?[\d.]+) Y(-?[\d.]+) Z(-?[\d.]+)/.exec(line);
+      if (m) cur.push({ x: +m[1], y: +m[2], z: +m[3] });
+    }
+    if (cur.length) chains.push(cur);
+    return chains;
+  };
+  const allMoves = (g: string) => feedChains(g).flat();
+
+  test("a later pass skips rows the earlier one already finished", () => {
+    const { doc, entId } = bandedDoc();
+    const op = {
+      ...OP_BASE,
+      entityIds: [entId],
+      depth: -4,
+      stepdown: 2, // 2 passes
+      rasterLineInterval: 5,
+      rasterDotPitch: 5,
+      toolType: "ball-nose" as const,
+    };
+    const g = generateGCode([op], doc);
+    const moves = allMoves(g);
+    // 4 rows of a 20mm image ⇒ row centres at 2.5, 7.5, 12.5, 17.5.
+    const rowsAt = (ms: { y: number }[]) => [...new Set(ms.map((m) => m.y))].sort((a, b) => a - b);
+    // Control: the program as a whole still visits every row.
+    expect(rowsAt(moves)).toEqual([2.5, 7.5, 12.5, 17.5]);
+    // But only the black band goes past the first pass's floor, so only those
+    // two rows are traced a second time. The light band is left alone.
+    expect(rowsAt(moves.filter((m) => m.z < -2 - 1e-9))).toEqual([2.5, 17.5]);
+  });
+
+  test("no feed move ever spans more than one row — a skip must retract", () => {
+    // The gouge this guards: skipping rows breaks the boustrophedon snake, and
+    // continuing at cutting depth across the gap would plough a groove through
+    // every row in between.
+    const { doc, entId } = bandedDoc();
+    const g = generateGCode(
+      [
+        {
+          ...OP_BASE,
+          entityIds: [entId],
+          depth: -4,
+          stepdown: 2,
+          rasterLineInterval: 5,
+          rasterDotPitch: 5,
+          toolType: "ball-nose" as const,
+        },
+      ],
+      doc,
+    );
+    const rowPitch = 5;
+    const chains = feedChains(g);
+    expect(chains.flat().length).toBeGreaterThan(0); // control: it posts a program
+    // Within one chain the tool never leaves the material, so a Y step bigger
+    // than a row means it cut its way across the rows in between.
+    const spans: string[] = [];
+    for (const chain of chains)
+      for (let i = 1; i < chain.length; i++)
+        if (Math.abs(chain[i].y - chain[i - 1].y) > rowPitch + 1e-6)
+          spans.push(`${chain[i - 1].y} → ${chain[i].y}`);
+    expect(spans).toEqual([]);
+  });
+
+  test("a single-pass relief still rides every row, blank ones included", () => {
+    // The first pass is deliberately untouched: it establishes the surface and
+    // its continuity is what keeps the path one snake.
+    const { doc, entId } = bandedDoc();
+    const g = generateGCode(
+      [
+        {
+          ...OP_BASE,
+          entityIds: [entId],
+          depth: -4,
+          stepdown: 4, // one pass
+          rasterLineInterval: 5,
+          rasterDotPitch: 5,
+          toolType: "ball-nose" as const,
+        },
+      ],
+      doc,
+    );
+    const ys = new Set(allMoves(g).map((m) => m.y));
+    expect(ys.size).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test("halftone set on a non-V-bit says it is being ignored", () => {
+  // The dialog cannot produce this; a hand-written or generated .rcam can.
+  const { doc, entId } = splitDoc();
+  const g = generateGCode(
+    [{ ...OP_BASE, entityIds: [entId], toolType: "ball-nose", halftone: true }],
+    doc,
+  );
+  expect(g).toMatch(/halftone needs a V-bit \(got "ball-nose"\) - ignored/);
 });

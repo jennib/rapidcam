@@ -623,6 +623,7 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
             ? op.rasterLineInterval
             : DEFAULTS.rasterLineInterval,
         dotPitch: op.rasterDotPitch,
+        tone: "encoded" as const,
       }
     : reliefSpacing(op);
   const field = rasterField(grid, {
@@ -630,6 +631,7 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
     heightMM: ent.heightMM,
     lineIntervalMM: spacing.lineInterval,
     dotPitchMM: spacing.dotPitch,
+    tone: spacing.tone,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
     // op.rasterDither is intentionally NOT applied here: the 3-D height field is

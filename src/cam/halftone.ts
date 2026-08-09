@@ -174,6 +174,12 @@ export interface ReliefSpacing {
   lineInterval: number;
   /** Along-row pitch, or undefined to let `rasterField` use square dots. */
   dotPitch: number | undefined;
+  /**
+   * Tone mapping to hand `rasterField`. A halftone drives AREA COVERAGE, whose
+   * visual result mixes by reflectance, so it reads linear light; a relief
+   * drives DEPTH, whose result is shading, and keeps the encoded value.
+   */
+  tone: "encoded" | "linear";
   /** The halftone screen, or null when this op is an ordinary relief. */
   plan: HalftonePlan | null;
 }
@@ -191,7 +197,7 @@ export function isHalftone(op: ReliefSpacingInput): boolean {
 export function reliefSpacing(op: ReliefSpacingInput): ReliefSpacing {
   if (isHalftone(op)) {
     const plan = halftonePlan(op, Math.abs(op.depth), op.halftoneLand, op.rasterDotPitch);
-    return { lineInterval: plan.rowPitch, dotPitch: plan.dotPitch, plan };
+    return { lineInterval: plan.rowPitch, dotPitch: plan.dotPitch, tone: "linear", plan };
   }
   return {
     lineInterval:
@@ -199,6 +205,7 @@ export function reliefSpacing(op: ReliefSpacingInput): ReliefSpacing {
         ? op.rasterLineInterval
         : DEFAULTS.rasterLineInterval,
     dotPitch: op.rasterDotPitch,
+    tone: "encoded",
     plan: null,
   };
 }

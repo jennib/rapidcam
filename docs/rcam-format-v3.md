@@ -791,6 +791,10 @@ Because of that, the row pitch stops being a free parameter: it is **derived** a
 
 `halftoneLand` is the surface left standing between grooves in the blackest area: 0 (the default) makes the darkest tone solid, and a positive land trades peak blackness for a visible line texture and a shorter cut. Two limits are reported in the dialog and as G-code notes rather than silently absorbed: a bit whose major diameter caps the groove before full `depth` (the darkest tones flatten together), and a **flat-tip** bit, which cuts a `tipDiameter`-wide groove the instant it touches and so cannot render the lightest tones at all.
 
+A halftone also maps tone through **linear light** rather than through the stored byte. Coverage mixes by reflectance — a row half covered reflects about half the light, and half the light reads as byte ~188, not as the 128 that produced it — so middle grey wants ~79% of its row covered, not 50%. An ordinary relief keeps the encoded mapping, because its tone comes from shading a carved surface rather than from area coverage. `reliefGamma` still applies on top, and for a halftone 1 is the matched setting. Because the mapping puts most of the depth range into the light half of the image, the dark end lands within a fraction of a millimetre of full depth — and a groove in pale stock is not black, which compresses it further. So the trim to reach for is **above** 1, which lightens and opens up the shadows; below 1 deepens the mid-tones.
+
+Independently of halftoning, a relief's `stepdown` passes after the first now visit only the rows that actually go deeper than the previous pass reached. Re-tracing a row already at its final depth cuts air for the row's whole length, which on a shallow image was most of every later pass. Where skipping breaks the boustrophedon, the tool retracts and re-approaches rather than feeding across the rows in between.
+
 ```jsonc
 // Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.
 // (document-level: "machineKind": "laser")

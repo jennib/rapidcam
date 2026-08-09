@@ -228,10 +228,39 @@ export interface RasterFieldParams {
    * so this is how the user dials in the look. Endpoints (black/white) are fixed.
    */
   gamma?: number;
+  /**
+   * How a pixel's stored value becomes a cut level.
+   *
+   * `"encoded"` (default, and what every caller did before this existed) treats
+   * the byte as the quantity to invert: level = 1 − value. That is right when
+   * the level drives something whose visual result is roughly proportional to
+   * it — a laser's burn darkness, or a relief's carved DEPTH, where tone comes
+   * from shading a shaped surface.
+   *
+   * `"linear"` first converts the byte out of sRGB into linear light, so
+   * level = 1 − luminance. That is right when the level drives AREA COVERAGE,
+   * because the surface's reflectance is what mixes: a halftone covering half
+   * its row reflects half the light, and half the light reads as byte ~188, not
+   * as the byte 128 that produced it. Middle grey (128) wants ~79% coverage,
+   * not 50%. Without this a halftone comes out visibly washed out through the
+   * mid-tones — and no single `gamma` reproduces the curve, so it cannot be
+   * dialled in after the fact.
+   */
+  tone?: "encoded" | "linear";
   /** Mirror the sampled content left↔right. Default false. */
   flipX?: boolean;
   /** Mirror the sampled content top↔bottom. Default false. */
   flipY?: boolean;
+}
+
+/**
+ * sRGB → linear light (IEC 61966-2-1). Used by the `"linear"` tone mapping;
+ * `srgbToLinear(0.5) ≈ 0.214`, which is why middle grey needs most of a row
+ * covered rather than half of it.
+ */
+export function srgbToLinear(v: number): number {
+  const c = clamp01(v);
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }
 
 /**
@@ -289,10 +318,14 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
   // Dithering is shown where it's resolvable: the flat laser preview + the G-code.
 
   // darkness, quantised; blank (0) where the dot is at/above the white threshold.
+  // The white test stays on the ENCODED value either way, so "what counts as
+  // background" doesn't move when the tone mapping does.
+  const linear = params.tone === "linear";
   const levelFor = (gray: number): number => {
     const g = clamp01(invert ? 1 - gray : gray);
     if (g >= whiteThreshold) return 0;
-    const curved = gamma === 1 ? 1 - g : (1 - g) ** gamma;
+    const darkness = linear ? 1 - srgbToLinear(g) : 1 - g;
+    const curved = gamma === 1 ? darkness : darkness ** gamma;
     const q = Math.round(curved / levelStep) * levelStep;
     return q > 0 ? q : 0;
   };
