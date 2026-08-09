@@ -426,6 +426,7 @@ function kitchenSinkDoc(): CADDocument {
       // an enum the app can emit but the schema doesn't list breaks the app's
       // own validators while still loading.
       pocketStrategy: "adaptive",
+      restToolDiameter: 8,
       islandIds: [island.id],
       regions: [{ containingLoops: [[outer.id]] }],
       finishPass: true,

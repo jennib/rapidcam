@@ -350,6 +350,8 @@ export function openOpDialog(options: OpDialogOptions): void {
         type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
       coolant: state.coolant !== "off" ? state.coolant : undefined,
       pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
+      restToolDiameter:
+        type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
       regions: regionBased ? refsFromSeeds(doc, state.regionSeeds) : undefined,
       tabs: isProfile
         ? {

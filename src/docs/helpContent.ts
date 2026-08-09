@@ -338,6 +338,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Offset (contour-parallel): concentric contours worked from the inside out, wrapping islands without lifting. Fast, but the load follows the shape of the wall — the first loop is a full-width slot in solid stock, a corner runs about 1.5× the straight-wall load, and a neck narrower than two passes is another slot.",
           "Adaptive: the same contours, with trochoidal circles wherever the cutter would otherwise be buried deeper than a straight stepover — so the load is set by the advance per circle instead of by the wall. Much kinder to small cutters and to deep passes in hard material; the path is several times longer, so it trades machine time for tool life.",
           "Raster Clearing: Scans back and forth across the pocket at a specified angle, followed by an optional perimeter cleanup pass.",
+          "Rest machining: set \"Rest: previous tool ⌀\" to the cutter that already roughed the pocket, and this operation cuts only what that one couldn't reach — the corner radii it left, and any channel too narrow for it. A round pocket has nothing to leave, and the program says so rather than cutting air.",
           "Island Detection: Automatically detects and preserves internal features, bosses, and holes inside the pocket perimeter.",
           "Stepover Percentage: Recommended 40%–50% of tool diameter for roughing pockets in wood and plastics; 20%–40% in metals.",
         ],

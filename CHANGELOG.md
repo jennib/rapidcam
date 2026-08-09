@@ -31,6 +31,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Rest machining.** A pocket can now cut only what a bigger tool left standing.
+  Set *Rest: previous tool ⌀* to the cutter that roughed the pocket, and the
+  operation clears its corner radii and any channel it was too fat to enter,
+  instead of running the whole pocket again with a small cutter.
+
+  What a round tool can reach is exactly a morphological opening — erode by its
+  radius, dilate back — so the leftover is polygon arithmetic rather than a
+  guess, and a 90° corner comes out at the textbook R²(1 − π/4). It works with
+  all three clearing strategies, accounts for a finishing allowance the earlier
+  pass left on the walls, and says so in a comment when there is nothing to do
+  (a round pocket, for instance, has no corners to leave).
+
+  The previous tool is stated, not inferred from the other operations in the
+  job: which one counts as "the roughing pass" is a judgement about intent that
+  the file can't make, and guessing wrong means either cutting air or driving a
+  small cutter into stock it was told wasn't there. The cost of stating it is
+  that it can go stale, so the **pre-flight check warns** when a rest pass names
+  a roughing tool no toolpath in the job uses — the motion it emits is perfectly
+  valid G-code for a cutter that isn't there, so nothing else could reveal it.
+
+  The **3D preview** takes off only the leftover too. It has its own model of
+  what each operation removes, which didn't know about rest machining, and
+  showed the whole pocket coming off while the program cut four corners.
+
+  **Finishing pass** and **corner overcut** work on a rest pass as they do on any
+  other pocket. Both were silently inert on one at first — the dog-bone
+  especially, whose relief is cut at the corners, which is the entire job of a
+  rest pass.
+
 - **Adaptive pocket clearing — the real thing this time.** A third clearing
   strategy that keeps the cutter's radial engagement down to what a straight
   wall step would produce, by replacing any stretch that would exceed it with
