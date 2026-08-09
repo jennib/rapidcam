@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { CamBar } from "../src/ui/camBar";
 import { CADDocument } from "../src/model/document";
-import { RectEntity } from "../src/model/entities";
+import { RasterImageEntity, RectEntity } from "../src/model/entities";
+import { registerEmbeddedImage } from "../src/core/imageManager";
 import { applyOpParam, makeVariable } from "../src/model/variables";
 import type { CAMOperation } from "../src/cam/types";
 
@@ -330,5 +331,82 @@ describe("Add-Toolpath dialog: shared clamping", () => {
     const op = { depth: 0 } as unknown as CAMOperation;
     applyOpParam(op, "depth", 8);
     expect(op.depth).toBe(-8);
+  });
+});
+
+describe("Add-Toolpath dialog: V-carve halftone", () => {
+  /** A mill doc whose only entity is a selected greyscale image. */
+  function imageDoc(): CADDocument {
+    registerEmbeddedImage({
+      id: "ht-dlg",
+      name: "ht-dlg",
+      width: 2,
+      height: 2,
+      data: btoa(String.fromCharCode(0, 128, 200, 255)),
+    });
+    const doc = new CADDocument({ width: 300, height: 200 });
+    doc.stockThickness = 19.05;
+    const img = new RasterImageEntity("ht-dlg", { x: 10, y: 10 }, 40, 40, 0);
+    doc.add(img);
+    img.selected = true;
+    return doc;
+  }
+
+  const toolSelect = (dialog: HTMLElement) =>
+    row(dialog, "Tool Type").querySelector("select") as HTMLSelectElement;
+
+  const setTool = (dialog: HTMLElement, t: string): void => {
+    const sel = toolSelect(dialog);
+    sel.value = t;
+    sel.dispatchEvent(new Event("change"));
+  };
+
+  test("the halftone row appears when a V-bit is loaded, not before", () => {
+    // The bug this guards: the tool lives in a different section, and nothing
+    // told the cut section a tool had been PICKED (only the reverse — a section
+    // forcing a tool). So the option stayed hidden however the user set the bit,
+    // and the only way to reach it was not to need it. Found by opening the app.
+    const dialog = openDialog(imageDoc());
+    selectType(dialog, "engrave");
+    // An image engrave forces a depth-shaping bit; a ball-nose has no groove to
+    // widen, so the option is correctly absent here.
+    expect(toolSelect(dialog).value).toBe("ball-nose");
+    expect(shown(row(dialog, "V-carve halftone"))).toBe(false);
+
+    setTool(dialog, "v-bit");
+    expect(shown(row(dialog, "V-carve halftone"))).toBe(true);
+  });
+
+  test("ticking halftone hides the stepover it derives, and reveals the land", () => {
+    const dialog = openDialog(imageDoc());
+    selectType(dialog, "engrave");
+    setTool(dialog, "v-bit");
+    expect(shown(row(dialog, "Relief stepover"))).toBe(true);
+    expect(shown(row(dialog, "Groove land"))).toBe(false);
+
+    const chk = row(dialog, "V-carve halftone").querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    chk.click();
+
+    // A halftone's row pitch IS the bit's groove width — leaving the stepover
+    // field on screen while it is ignored is the same lie as a dead control.
+    expect(shown(row(dialog, "Relief stepover"))).toBe(false);
+    expect(shown(row(dialog, "Groove land"))).toBe(true);
+  });
+
+  test("switching back off a V-bit takes the halftone rows with it", () => {
+    const dialog = openDialog(imageDoc());
+    selectType(dialog, "engrave");
+    setTool(dialog, "v-bit");
+    (
+      row(dialog, "V-carve halftone").querySelector("input[type=checkbox]") as HTMLInputElement
+    ).click();
+    expect(shown(row(dialog, "Groove land"))).toBe(true);
+
+    setTool(dialog, "ball-nose");
+    expect(shown(row(dialog, "V-carve halftone"))).toBe(false);
+    expect(shown(row(dialog, "Groove land"))).toBe(false);
+    expect(shown(row(dialog, "Relief stepover"))).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import {
   type ChamferSide,
   type CoolantMode,
 } from "../../../../cam/types";
+import { halftonePlan } from "../../../../cam/halftone";
 import { formatLength } from "../../../../core/units";
 import { getMachineHasCoolant } from "../../../../core/prefs";
 import type { OpState, OpDialogEvents } from "../opDialogState";
@@ -155,6 +156,82 @@ export function buildCutSection(
   );
   cutSec.appendChild(vHopRow.el);
 
+  // V-carve halftone: screen the photo as parallel V-grooves whose width carries
+  // the tone, instead of carving it as a surface. The row pitch stops being a
+  // free parameter (it is the bit's widest groove), so the stepover row below is
+  // hidden while this is on rather than left sitting there being ignored.
+  const halftoneChk = document.createElement("input");
+  halftoneChk.type = "checkbox";
+  halftoneChk.className = "settings-checkbox";
+  halftoneChk.checked = state.halftone;
+  halftoneChk.addEventListener("change", () => {
+    state.halftone = halftoneChk.checked;
+    // The width law here is the V's. Ticking this with a ball-nose loaded would
+    // silently mean nothing, so switch the tool the way the relief rows do.
+    if (state.halftone && state.toolType !== "v-bit") events.emitSetToolType("v-bit");
+    updateReliefVisibility();
+  });
+  const halftoneRow = dField("V-carve halftone (photo as V-grooves)", halftoneChk);
+  halftoneRow.title =
+    "Reproduce the image as parallel V-grooves whose WIDTH carries the tone (the PhotoVCarve look), rather than as a carved 2.5-D surface. Row spacing is derived from the bit angle and the cut depth so the darkest grooves just meet.";
+  cutSec.appendChild(halftoneRow);
+
+  const halftoneLandRow = paramRow(
+    doc,
+    state,
+    "halftoneLand",
+    `Groove land (${du}, 0 = touching)`,
+    () => state.halftoneLand,
+    (v) => {
+      state.halftoneLand = v;
+      updateReliefVisibility();
+    },
+    "len",
+    {
+      title:
+        "Surface left standing between grooves in the BLACKEST area. 0 = the darkest tone is solid. A positive land trades peak blackness for a visible line texture and a shorter cut.",
+    },
+  );
+  cutSec.appendChild(halftoneLandRow.el);
+
+  // The screen this bit + depth actually produces. These numbers are geometry,
+  // not preference — no adjustment to the image widens the tonal range — so they
+  // belong in front of the user before the cut, not in a G-code comment after it.
+  const halftoneInfoRow = document.createElement("div");
+  halftoneInfoRow.className = "props-row";
+  const halftoneInfoSpan = document.createElement("span");
+  halftoneInfoSpan.style.cssText = "opacity:0.7;font-size:11px;";
+  halftoneInfoRow.appendChild(halftoneInfoSpan);
+  cutSec.appendChild(halftoneInfoRow);
+
+  /** The bit the halftone maths must use: library tool if one is selected, else inline. */
+  const halftoneBit = (): { vAngle: number; tipDiameter: number; diameter: number } => {
+    const t = state.toolId ? doc.tools.find((td) => td.id === state.toolId) : undefined;
+    return {
+      vAngle: t?.vAngle ?? state.vAngle,
+      tipDiameter: t?.tipDiameter ?? 0,
+      diameter: t?.diameter ?? state.diameter,
+    };
+  };
+
+  const updateHalftoneInfo = (): void => {
+    if (!state.halftone) {
+      halftoneInfoSpan.textContent = "";
+      return;
+    }
+    const bit = halftoneBit();
+    const depth = Math.abs(state.depth);
+    const plan = halftonePlan(bit, depth, state.halftoneLand);
+    const parts = [
+      `${lenU(plan.grooveWidth, doc)} grooves at ${lenU(plan.rowPitch, doc)} rows`,
+      `darkest ${Math.round(plan.maxCoverage * 100)}% coverage`,
+    ];
+    if (plan.minCoverage > 0)
+      parts.push(`lightest ${Math.round(plan.minCoverage * 100)}% (flat tip — no highlights)`);
+    if (plan.capped) parts.push(`⚠ bit runs out of flute at ${lenU(plan.usableDepth, doc)}`);
+    halftoneInfoSpan.textContent = `${bit.vAngle}° bit ${lenU(depth, doc)} deep → ${parts.join(" · ")}`;
+  };
+
   // Relief engrave (a mill Engrave op targeting an image) — carve the image as
   // depth-modulated 2.5-D. Depth (max) + Stepdown above drive the cut; these set
   // the raster resolution. Needs a ball-nose/V-bit (forced below).
@@ -209,8 +286,17 @@ export function buildCutSection(
   reliefGammaInp.step = "any";
   reliefGammaInp.min = "0.1";
   reliefGammaInp.value = String(state.reliefGamma);
-  reliefGammaInp.title =
+  // The advice differs by mode and the two point OPPOSITE ways, so the tooltip
+  // has to follow the mode rather than state one of them as the rule. A relief
+  // shades a shaped surface (mid-tones usually want lifting); a halftone already
+  // matches photo tone through the linear-light mapping, so gamma is only a trim
+  // — and a groove in pale stock is not black, which shows up as flat DARKS, not
+  // flat mid-tones.
+  const RELIEF_GAMMA_TIP =
     "Tone curve: depth ∝ darkness^gamma. 1 = linear. >1 lifts mid-tones (flatter background), <1 deepens them. Photos usually need ~1.5–2.5.";
+  const HALFTONE_GAMMA_TIP =
+    "Tone curve on groove width. Halftone maps tone through linear light, so 1 is the matched setting and this is a trim. Above 1 lightens and opens up the shadows — useful because a groove in pale stock is not black, so the darkest tones compress into each other. Below 1 deepens the mid-tones.";
+  reliefGammaInp.title = RELIEF_GAMMA_TIP;
   reliefGammaInp.addEventListener("change", () => {
     const v = parseFloat(reliefGammaInp.value);
     if (Number.isFinite(v) && v > 0) state.reliefGamma = v;
@@ -228,6 +314,9 @@ export function buildCutSection(
   cutSec.appendChild(reliefEstRow);
 
   const updateReliefEstimate = (): void => {
+    // Depth and the bit drive both readouts, and every field that changes either
+    // already refreshes the estimate — so piggyback rather than re-hook them all.
+    updateHalftoneInfo();
     const ent = [...state.entityIds]
       .map((id) => doc.entities.find((e) => e.id === id))
       .find((e): e is RasterImageEntity => e instanceof RasterImageEntity);
@@ -241,11 +330,15 @@ export function buildCutSection(
     // depth minus the finish allowance; the finish pass rasters at its line
     // interval over the full depth.
     const rough = state.combo === "relief-rough";
+    // A halftone ignores the stepover field — its rows are the bit's groove width
+    // — so estimating off that field would report a job several times the real one.
     const li = rough
       ? Math.max(0.05, state.stepover * state.diameter)
-      : state.rasterLineInterval > 0
-        ? state.rasterLineInterval
-        : DEFAULTS.rasterLineInterval;
+      : state.halftone && state.toolType === "v-bit"
+        ? halftonePlan(halftoneBit(), maxDepth, state.halftoneLand).rowPitch
+        : state.rasterLineInterval > 0
+          ? state.rasterLineInterval
+          : DEFAULTS.rasterLineInterval;
     const cutDepth = rough
       ? Math.max(0, maxDepth - Math.max(0, state.finishAllowance))
       : maxDepth;
@@ -512,6 +605,11 @@ export function buildCutSection(
   events.onUpdateVBitHint(() => {
     updateVBitHint();
     updateChamHint();
+    // The halftone screen is derived from the SAME bit geometry — angle, tip and
+    // diameter — so anything that moves the V-bit hint moves the row pitch, and
+    // with it the readout AND the cut-time estimate. Without this, changing the
+    // V angle left both showing the previous bit's numbers.
+    updateReliefEstimate();
   });
 
   const updateChamferVisibility = () => {
@@ -558,15 +656,31 @@ export function buildCutSection(
   const updateReliefVisibility = (): void => {
     const isFinish = state.combo === "engrave" && opTargetsImage(state.entityIds);
     const isRough = state.combo === "relief-rough";
-    for (const r of [reliefLineRow.el, reliefDotRow.el]) r.style.display = isFinish ? "" : "none";
+    // Halftoning is a V-bit trick and only applies to the relief FINISH pass.
+    const canHalftone = isFinish && state.toolType === "v-bit";
+    const halftoning = canHalftone && state.halftone;
+    halftoneRow.style.display = canHalftone ? "" : "none";
+    for (const r of [halftoneLandRow.el, halftoneInfoRow])
+      r.style.display = halftoning ? "" : "none";
+    // The stepover is what a halftone DERIVES; leaving the field on screen while
+    // it is ignored is the same lie as a disabled control that looks live.
+    reliefLineRow.el.style.display = isFinish && !halftoning ? "" : "none";
+    reliefDotRow.el.style.display = isFinish ? "" : "none";
     // Image controls shared by finish + roughing (invert / tone curve / estimate).
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
       r.style.display = isFinish || isRough ? "" : "none";
     if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") {
       events.emitSetToolType("ball-nose");
     }
+    reliefGammaInp.title = halftoning ? HALFTONE_GAMMA_TIP : RELIEF_GAMMA_TIP;
+    if (halftoning) updateHalftoneInfo();
     if (isFinish || isRough) updateReliefEstimate();
   };
+
+  // The halftone row is gated on a V-bit being loaded, and the tool is chosen in
+  // a different section — so without this the option stayed hidden however the
+  // user set the tool, and the only way to reach it was not to need it.
+  events.onToolTypeChanged(() => updateReliefVisibility());
 
   const update = () => {
     if (isLaser) {

@@ -297,6 +297,10 @@ export function buildToolSection(
     safeZRow.setValue(t.safeZ);
     updateToolTypeVisibility();
     events.emitUpdateVBitHint();
+    // Picking a library tool sets the select's value directly, which fires no
+    // `change` — so the notification has to be sent by hand or sections gated on
+    // the tool type miss the library route entirely.
+    events.emitToolTypeChanged(state.toolType);
   };
 
   updateToolTypeVisibility();
@@ -305,6 +309,7 @@ export function buildToolSection(
     state.toolType = toolTypeSelect.value as ToolType;
     updateToolTypeVisibility();
     events.emitUpdateVBitHint();
+    events.emitToolTypeChanged(state.toolType);
   });
 
   events.onSetToolType((t: ToolType) => {

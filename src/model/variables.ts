@@ -207,6 +207,10 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   vStep: flat("vStep", atLeast(0.01)),
   vHopClearance: flat("vHopClearance", atLeast(0)),
   reliefGamma: flat("reliefGamma", atLeast(0.01)),
+  // V-carve halftone: surface left standing between grooves at full depth. 0 is
+  // the normal answer (grooves touch), and a negative land would mean overlapping
+  // the darkest grooves — spending depth range to lose contrast — so it floors at 0.
+  halftoneLand: flat("halftoneLand", atLeast(0)),
 
   // Tool + feeds.
   //

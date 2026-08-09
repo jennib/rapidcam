@@ -393,7 +393,12 @@ export function openOpDialog(options: OpDialogOptions): void {
           ? state.laserOverscan
           : undefined,
       airAssist: isLaser && state.airAssist ? true : undefined,
-      rasterLineInterval: rasterFields ? Math.max(0.001, state.rasterLineInterval) : undefined,
+      // A halftone DERIVES its row pitch, so writing this field would leave a
+      // number in the file that describes nothing the program does.
+      rasterLineInterval:
+        rasterFields && !(imageEngrave && state.toolType === "v-bit" && state.halftone)
+          ? Math.max(0.001, state.rasterLineInterval)
+          : undefined,
       rasterDotPitch: rasterFields && state.rasterDotPitch > 0 ? state.rasterDotPitch : undefined,
       rasterMinPower:
         raster && state.rasterDither === "none" && state.rasterMinPower > 0
@@ -406,6 +411,16 @@ export function openOpDialog(options: OpDialogOptions): void {
       reliefGamma:
         !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1
           ? state.reliefGamma
+          : undefined,
+      // V-carve halftone: the relief FINISH pass only (roughing clears bulk with
+      // a flat tool — there is no groove to widen), and only with a V-bit.
+      halftone:
+        !isLaser && imageEngrave && state.toolType === "v-bit" && state.halftone
+          ? true
+          : undefined,
+      halftoneLand:
+        !isLaser && imageEngrave && state.halftone && state.halftoneLand > 0
+          ? state.halftoneLand
           : undefined,
       paramExprs:
         Object.keys(state.paramExprs).length > 0

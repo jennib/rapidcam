@@ -389,7 +389,9 @@ function kitchenSinkDoc(): CADDocument {
       paramExprs: { depth: "-stock", feedrate: "1000 * 1.2" },
     },
     {
-      // engrave
+      // engrave, incl. the image-relief resolution fields and the V-carve
+      // halftone screen. These only reach the guard if something SETS them —
+      // an unset field is invisible to an additionalProperties:false schema.
       id: "op-engrave",
       name: "Engrave",
       type: "engrave",
@@ -398,6 +400,12 @@ function kitchenSinkDoc(): CADDocument {
       toolType: "v-bit",
       vAngle: 30,
       ...base,
+      rasterLineInterval: 0.3,
+      rasterDotPitch: 0.1,
+      rasterInvert: true,
+      reliefGamma: 1.8,
+      halftone: true,
+      halftoneLand: 0.15,
     },
     {
       // drill: peckDepth, tipAngle, coolant

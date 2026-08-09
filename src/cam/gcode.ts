@@ -13,6 +13,12 @@ import {
   RasterImageEntity,
 } from "../model/entities";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
+import {
+  reliefSpacing,
+  grooveWidth,
+  grooveOverlapRatio,
+  OVERLAP_WARN_RATIO,
+} from "./halftone";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import {
@@ -1266,16 +1272,16 @@ function reliefImage(
   if (maxDepth <= 0)
     return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
   const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
-  const lineInterval =
-    op.rasterLineInterval && op.rasterLineInterval > 0
-      ? op.rasterLineInterval
-      : DEFAULTS.rasterLineInterval;
+  // Row/dot pitch comes from the shared resolver so the 3-D preview (rasRelief)
+  // cannot disagree with what is posted here — halftone or ordinary relief.
+  const { lineInterval, dotPitch, tone, plan } = reliefSpacing(op);
 
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
     heightMM: ent.heightMM,
     lineIntervalMM: lineInterval,
-    dotPitchMM: op.rasterDotPitch,
+    dotPitchMM: dotPitch,
+    tone,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
     flipX: ent.flipX,
@@ -1289,53 +1295,122 @@ function reliefImage(
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
 
-  // A V-bit cuts a cone per dot, not a smooth surface — fine for line-art but
-  // engraving-like for a photo. Flag it so the result isn't a surprise.
-  if (op.toolType === "v-bit")
+  if (plan) {
+    // Halftone: state the screen. Its tonal range is a property of the bit and
+    // the depth — no amount of adjusting the image widens it — so the operator
+    // needs the numbers, not a reassurance.
+    const pct = (c: number) => Math.round(c * 100);
     lines.push(
-      `; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, or a V-carve op for line art`,
+      `; V-carve halftone: ${n(op.vAngle ?? DEFAULTS.vAngle)}° bit at ${n(maxDepth)}mm deep cuts ` +
+        `${n(plan.grooveWidth)}mm grooves, spaced ${n(plan.rowPitch)}mm — ` +
+        `${rows.length} rows, darkest tone ${pct(plan.maxCoverage)}% coverage`,
     );
+    if (plan.capped)
+      lines.push(
+        `; NOTE: a ⌀${n(op.diameter)}mm ${n(op.vAngle ?? DEFAULTS.vAngle)}° bit runs out of flute at ` +
+          `${n(plan.usableDepth)}mm — below that the groove stops widening, so the darkest tones ` +
+          `flatten together. Cut ${n(plan.usableDepth)}mm deep, or use a wider bit.`,
+      );
+    if (plan.minCoverage > 0)
+      lines.push(
+        `; NOTE: the ${n(op.tipDiameter ?? 0)}mm flat on this bit cuts a ${n(op.tipDiameter ?? 0)}mm groove ` +
+          `the instant it touches, so the lightest ${pct(plan.minCoverage)}% of the tonal range cannot be ` +
+          `cut and prints as white. A sharp bit reaches the highlights.`,
+      );
+  } else if (op.halftone) {
+    // The flag is set but the width law it depends on is the V's, so it is being
+    // ignored. The dialog cannot produce this; a hand-written or AI-generated
+    // .rcam can, and silently carving an ordinary relief instead is the sort of
+    // "did what you asked" that is worse than refusing.
+    lines.push(
+      `; NOTE: halftone needs a V-bit (got "${op.toolType}") — ignored, carving an ordinary relief instead`,
+    );
+  } else if (op.toolType === "v-bit") {
+    // Not halftoning: a V-bit cuts a cone per dot, not a smooth surface — fine
+    // for line art, engraving-like for a photo. Flag it so the result isn't a
+    // surprise, and name the mode that is built for this.
+    lines.push(
+      `; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, a V-carve op for line art, or turn on V-carve halftone to screen the photo as V-grooves`,
+    );
+    const overlap = grooveOverlapRatio(op);
+    if (overlap >= OVERLAP_WARN_RATIO)
+      lines.push(
+        `; NOTE: rows are ${n(lineInterval)}mm apart but this bit cuts ${n(grooveWidth(maxDepth, op))}mm ` +
+          `wide at ${n(maxDepth)}mm deep — each groove is re-cut by ~${overlap.toFixed(1)} of its ` +
+          `neighbours, so fine detail is replaced by whatever was darkest nearby. Turn on V-carve ` +
+          `halftone to space the rows to the bit.`,
+      );
+  }
 
   for (let p = 1; p <= passes; p++) {
     const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
-    // Build the whole pass as one continuous boustrophedon path, merging runs of
-    // equal Z within a row into straight segments.
-    const verts: { x: number; y: number; z: number }[] = [];
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r];
-      const ltr = r % 2 === 0;
-      const zAt = (c: number) => Math.max(-row.levels[c] * maxDepth, passFloor);
-      for (let k = 0; k < cols; k++) {
-        const c = ltr ? k : cols - 1 - k;
-        // Keep run boundaries and depth changes; drop interior collinear dots.
-        const prev = ltr ? c - 1 : c + 1;
-        const next = ltr ? c + 1 : c - 1;
-        const z = zAt(c);
-        const keep =
-          k === 0 ||
-          k === cols - 1 ||
-          prev < 0 ||
-          prev >= cols ||
-          z !== zAt(prev) ||
-          next < 0 ||
-          next >= cols ||
-          z !== zAt(next);
-        // Lift the local (x, y) dot through the entity transform (rotation-aware).
-        if (keep) {
-          const w = xfPoint(xf, (c + 0.5) * colPitch, row.y);
-          verts.push({ x: w.x, y: w.y, z });
+    // How deep the previous pass already got. A row with nothing below that gets
+    // clamped to exactly the Z it is already sitting at, so re-tracing it cuts
+    // AIR for the row's whole length — on a halftone, where most of an image is
+    // shallower than one stepdown, that was most of every pass after the first.
+    // The first pass has nothing behind it and still rides the whole image
+    // (blank rows included), so its output is unchanged.
+    const prevReach = (p - 1) * stepdown;
+    const needsPass = (r: number): boolean =>
+      p === 1 || rows[r].levels.some((lv) => lv * maxDepth > prevReach + 1e-9);
+
+    /** Vertices for rows `from..to`, one continuous boustrophedon, equal-Z merged. */
+    const vertsFor = (from: number, to: number): { x: number; y: number; z: number }[] => {
+      const verts: { x: number; y: number; z: number }[] = [];
+      for (let r = from; r <= to; r++) {
+        const row = rows[r];
+        // Keyed to the ROW index, not to emission order, so the snake keeps
+        // alternating within a run however the runs happen to fall.
+        const ltr = r % 2 === 0;
+        const zAt = (c: number) => Math.max(-row.levels[c] * maxDepth, passFloor);
+        for (let k = 0; k < cols; k++) {
+          const c = ltr ? k : cols - 1 - k;
+          // Keep run boundaries and depth changes; drop interior collinear dots.
+          const prev = ltr ? c - 1 : c + 1;
+          const next = ltr ? c + 1 : c - 1;
+          const z = zAt(c);
+          const keep =
+            k === 0 ||
+            k === cols - 1 ||
+            prev < 0 ||
+            prev >= cols ||
+            z !== zAt(prev) ||
+            next < 0 ||
+            next >= cols ||
+            z !== zAt(next);
+          // Lift the local (x, y) dot through the entity transform (rotation-aware).
+          if (keep) {
+            const w = xfPoint(xf, (c + 0.5) * colPitch, row.y);
+            verts.push({ x: w.x, y: w.y, z });
+          }
         }
       }
-    }
-    if (verts.length === 0) continue;
+      return verts;
+    };
 
-    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-    lines.push(`G0 X${X(verts[0].x, ox)} Y${Y(verts[0].y, oy)}`);
-    lines.push(`G1 Z${Z(verts[0].z, zOff)} F${n(op.plungeRate)}`);
-    for (let i = 1; i < verts.length; i++) {
-      const v = verts[i];
-      const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-      lines.push(`G1 X${X(v.x, ox)} Y${Y(v.y, oy)} Z${Z(v.z, zOff)}${f}`);
+    // Skipped rows break the snake, so each unbroken stretch is its own path
+    // with its own approach — a feed move across the gap would plough a groove
+    // through the rows in between.
+    let r = 0;
+    while (r < rows.length) {
+      if (!needsPass(r)) {
+        r++;
+        continue;
+      }
+      let end = r;
+      while (end + 1 < rows.length && needsPass(end + 1)) end++;
+      const verts = vertsFor(r, end);
+      r = end + 1;
+      if (verts.length === 0) continue;
+
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(verts[0].x, ox)} Y${Y(verts[0].y, oy)}`);
+      lines.push(`G1 Z${Z(verts[0].z, zOff)} F${n(op.plungeRate)}`);
+      for (let i = 1; i < verts.length; i++) {
+        const v = verts[i];
+        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(v.x, ox)} Y${Y(v.y, oy)} Z${Z(v.z, zOff)}${f}`);
+      }
     }
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);

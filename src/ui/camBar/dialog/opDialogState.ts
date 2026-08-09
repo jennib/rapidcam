@@ -94,6 +94,10 @@ export interface OpState {
   rasterInvert: boolean;
   rasterDither: DitherMode;
   reliefGamma: number;
+  // V-carve halftone (a relief finish pass with a V-bit): screen the photo as
+  // grooves whose width carries the tone. Row pitch is derived, not typed.
+  halftone: boolean;
+  halftoneLand: number;
   paramExprs: Record<string, string>;
 }
 
@@ -207,6 +211,8 @@ export function createInitialOpState(
     rasterInvert: existing?.rasterInvert ?? false,
     rasterDither: existing?.rasterDither ?? "none",
     reliefGamma: existing?.reliefGamma ?? 1,
+    halftone: existing?.halftone ?? false,
+    halftoneLand: existing?.halftoneLand ?? DEFAULTS.halftoneLand,
     paramExprs: existing?.paramExprs ? { ...existing.paramExprs } : {},
   };
 }
@@ -214,6 +220,7 @@ export function createInitialOpState(
 export class OpDialogEvents {
   private updateVBitHintListeners: Array<() => void> = [];
   private setToolTypeListeners: Array<(t: ToolType) => void> = [];
+  private toolTypeChangedListeners: Array<(t: ToolType) => void> = [];
   private refreshBeamLayerListeners: Array<() => void> = [];
 
   public onUpdateVBitHint(fn: () => void): () => void {
@@ -236,6 +243,24 @@ export class OpDialogEvents {
 
   public emitSetToolType(t: ToolType): void {
     for (const fn of this.setToolTypeListeners) fn(t);
+  }
+
+  /**
+   * The tool type HAS changed — the opposite direction to {@link onSetToolType},
+   * which is a command asking for a change. Sections whose controls depend on the
+   * loaded tool subscribe here: until this existed, a section could force a tool
+   * (chamfer and v-carve both do) but nothing could react to the user picking one,
+   * so a control gated on "is a V-bit loaded" stayed hidden forever.
+   */
+  public onToolTypeChanged(fn: (t: ToolType) => void): () => void {
+    this.toolTypeChangedListeners.push(fn);
+    return () => {
+      this.toolTypeChangedListeners = this.toolTypeChangedListeners.filter((l) => l !== fn);
+    };
+  }
+
+  public emitToolTypeChanged(t: ToolType): void {
+    for (const fn of this.toolTypeChangedListeners) fn(t);
   }
 
   public onRefreshBeamLayer(fn: () => void): () => void {

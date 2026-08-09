@@ -344,6 +344,22 @@ export interface CAMOperation {
    */
   reliefGamma?: number;
   /**
+   * Mill relief only, V-bit only: reproduce the image as a halftone SCREEN of
+   * parallel V-grooves whose width carries the tone (the "PhotoVCarve" look)
+   * rather than as a carved surface. Row spacing is then DERIVED from the bit's
+   * angle and the cut depth so the darkest grooves just meet — `rasterLineInterval`
+   * is ignored — and the along-row pitch stays fine so the grooves keep the
+   * photograph's detail. See `cam/halftone.ts`. Default false.
+   */
+  halftone?: boolean;
+  /**
+   * V-carve halftone only: surface left standing between grooves in the BLACKEST
+   * area, mm. 0 (default) makes the darkest tone solid; a positive value trades
+   * peak blackness for a visible line texture and a shorter cut. Never negative —
+   * overlapping the darkest grooves saturates the tone before full depth.
+   */
+  halftoneLand?: number;
+  /**
    * Laser only: cut this operation with its own inline beam settings, ignoring
    * any recipe on the layer its geometry sits on (see {@link LaserRecipe} and
    * {@link resolveOpLaser}). Set when the user edits a beam field on an op that
@@ -437,6 +453,7 @@ export const DEFAULTS = {
   laserOverscan: 0,
   rasterLineInterval: 0.1,
   rasterMinPower: 0,
+  halftoneLand: 0,
 } as const;
 
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
