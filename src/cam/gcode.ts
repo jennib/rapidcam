@@ -13,6 +13,12 @@ import {
   RasterImageEntity,
 } from "../model/entities";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
+import {
+  reliefSpacing,
+  grooveWidth,
+  grooveOverlapRatio,
+  OVERLAP_WARN_RATIO,
+} from "./halftone";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import {
@@ -1266,16 +1272,15 @@ function reliefImage(
   if (maxDepth <= 0)
     return [`; NOTE: relief depth is 0 — set a cut depth; image ${ent.id} skipped`];
   const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
-  const lineInterval =
-    op.rasterLineInterval && op.rasterLineInterval > 0
-      ? op.rasterLineInterval
-      : DEFAULTS.rasterLineInterval;
+  // Row/dot pitch comes from the shared resolver so the 3-D preview (rasRelief)
+  // cannot disagree with what is posted here — halftone or ordinary relief.
+  const { lineInterval, dotPitch, plan } = reliefSpacing(op);
 
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
     heightMM: ent.heightMM,
     lineIntervalMM: lineInterval,
-    dotPitchMM: op.rasterDotPitch,
+    dotPitchMM: dotPitch,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
     flipX: ent.flipX,
@@ -1289,12 +1294,44 @@ function reliefImage(
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
 
-  // A V-bit cuts a cone per dot, not a smooth surface — fine for line-art but
-  // engraving-like for a photo. Flag it so the result isn't a surprise.
-  if (op.toolType === "v-bit")
+  if (plan) {
+    // Halftone: state the screen. Its tonal range is a property of the bit and
+    // the depth — no amount of adjusting the image widens it — so the operator
+    // needs the numbers, not a reassurance.
+    const pct = (c: number) => Math.round(c * 100);
     lines.push(
-      `; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, or a V-carve op for line art`,
+      `; V-carve halftone: ${n(op.vAngle ?? DEFAULTS.vAngle)}° bit at ${n(maxDepth)}mm deep cuts ` +
+        `${n(plan.grooveWidth)}mm grooves, spaced ${n(plan.rowPitch)}mm — ` +
+        `${rows.length} rows, darkest tone ${pct(plan.maxCoverage)}% coverage`,
     );
+    if (plan.capped)
+      lines.push(
+        `; NOTE: a ⌀${n(op.diameter)}mm ${n(op.vAngle ?? DEFAULTS.vAngle)}° bit runs out of flute at ` +
+          `${n(plan.usableDepth)}mm — below that the groove stops widening, so the darkest tones ` +
+          `flatten together. Cut ${n(plan.usableDepth)}mm deep, or use a wider bit.`,
+      );
+    if (plan.minCoverage > 0)
+      lines.push(
+        `; NOTE: the ${n(op.tipDiameter ?? 0)}mm flat on this bit cuts a ${n(op.tipDiameter ?? 0)}mm groove ` +
+          `the instant it touches, so the lightest ${pct(plan.minCoverage)}% of the tonal range cannot be ` +
+          `cut and prints as white. A sharp bit reaches the highlights.`,
+      );
+  } else if (op.toolType === "v-bit") {
+    // Not halftoning: a V-bit cuts a cone per dot, not a smooth surface — fine
+    // for line art, engraving-like for a photo. Flag it so the result isn't a
+    // surprise, and name the mode that is built for this.
+    lines.push(
+      `; NOTE: a V-bit carves an engraving-like relief (a cone per dot, not a smooth surface) — use a ball-nose for a smooth photo relief, a V-carve op for line art, or turn on V-carve halftone to screen the photo as V-grooves`,
+    );
+    const overlap = grooveOverlapRatio(op);
+    if (overlap >= OVERLAP_WARN_RATIO)
+      lines.push(
+        `; NOTE: rows are ${n(lineInterval)}mm apart but this bit cuts ${n(grooveWidth(maxDepth, op))}mm ` +
+          `wide at ${n(maxDepth)}mm deep — each groove is re-cut by ~${overlap.toFixed(1)} of its ` +
+          `neighbours, so fine detail is replaced by whatever was darkest nearby. Turn on V-carve ` +
+          `halftone to space the rows to the bit.`,
+      );
+  }
 
   for (let p = 1; p <= passes; p++) {
     const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach

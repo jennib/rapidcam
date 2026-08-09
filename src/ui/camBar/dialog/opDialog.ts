@@ -407,6 +407,16 @@ export function openOpDialog(options: OpDialogOptions): void {
         !isLaser && reliefImageFields && state.reliefGamma > 0 && state.reliefGamma !== 1
           ? state.reliefGamma
           : undefined,
+      // V-carve halftone: the relief FINISH pass only (roughing clears bulk with
+      // a flat tool — there is no groove to widen), and only with a V-bit.
+      halftone:
+        !isLaser && imageEngrave && state.toolType === "v-bit" && state.halftone
+          ? true
+          : undefined,
+      halftoneLand:
+        !isLaser && imageEngrave && state.halftone && state.halftoneLand > 0
+          ? state.halftoneLand
+          : undefined,
       paramExprs:
         Object.keys(state.paramExprs).length > 0
           ? { ...state.paramExprs }

@@ -783,6 +783,14 @@ A raster engrave is produced when an **Engrave** op's `entityIds` reference an `
 
 On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose** (the smooth-relief tool, and the default) — a **V-bit** is allowed but carves an engraving-like result (a cone per dot) and is flagged with a note; a flat end mill is rejected. The default stepover is ~10% of the cutter diameter. `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead; `reliefGamma` applies a tone curve (`depth ∝ darkness^gamma`, default linear) to keep a photo from reading flat. (`laserPower`/`rasterMinPower` are ignored.)
 
+### V-carve halftone
+
+With a **V-bit**, setting `halftone: true` switches that relief from carving a surface to cutting a halftone **screen**: parallel V-grooves whose **width** carries the tone (the "PhotoVCarve" look). A bit of included angle θ with a flat tip `t` cuts a groove `t + 2·d·tan(θ/2)` wide at depth `d` — capped at the bit's major `diameter`, past which the flutes have run out — so the tone at each dot is that width over the row pitch.
+
+Because of that, the row pitch stops being a free parameter: it is **derived** as the widest groove (at full `depth`) plus `halftoneLand`, and `rasterLineInterval` is ignored. Spacing rows finer than a groove width is what a *relief* wants (a smooth surface) and is wrong here — neighbouring grooves re-cut each other, so the carved result is the depth map dilated by half a groove and the extra rows are cutting time spent losing detail. A plain V-bit relief whose rows overlap 3× or more is flagged with a note pointing at this mode. The along-row pitch stays fine (0.1 mm, or `rasterDotPitch` when set) rather than inheriting the millimetre row pitch, so the grooves keep the photograph's detail along their length.
+
+`halftoneLand` is the surface left standing between grooves in the blackest area: 0 (the default) makes the darkest tone solid, and a positive land trades peak blackness for a visible line texture and a shorter cut. Two limits are reported in the dialog and as G-code notes rather than silently absorbed: a bit whose major diameter caps the groove before full `depth` (the darkest tones flatten together), and a **flat-tip** bit, which cuts a `tipDiameter`-wide groove the instant it touches and so cannot render the lightest tones at all.
+
 ```jsonc
 // Laser: cut a circle with 0.2mm kerf, and area-fill-engrave a rectangle.
 // (document-level: "machineKind": "laser")

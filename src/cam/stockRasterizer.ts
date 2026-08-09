@@ -32,7 +32,14 @@ import {
 import { textToContours } from "./textOutlines";
 import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
-import { type CAMOperation, DEFAULTS, chamferDepth, chamferSharpSequence } from "./types";
+import {
+  type CAMOperation,
+  DEFAULTS,
+  chamferDepth,
+  chamferSharpSequence,
+  resolveOpTool,
+} from "./types";
+import { reliefSpacing } from "./halftone";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
@@ -117,7 +124,10 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
   const isLaser = doc.isLaser;
   for (const op of ops) {
     rasterizeOp(
-      expandOpPatternTargets(op, doc),
+      // Resolve the library tool exactly as the emitter does (gcode.ts). Without
+      // this the preview drew every op with its INLINE geometry, so editing a
+      // tool in the library moved the toolpath and not the picture of it.
+      resolveOpTool(expandOpPatternTargets(op, doc), doc.tools),
       entityMap,
       data,
       gridW,
@@ -602,14 +612,24 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
   if (!grid) return;
   const maxDepth = Math.min(Math.abs(isLaser ? LASER_BURN_DEPTH_MM : op.depth), stockT);
   if (maxDepth <= 0) return;
+  // Same resolver the emitter uses, so a halftone previews on the screen it will
+  // actually be cut on rather than on the relief stepover it ignores. A laser
+  // never halftones (the width law here is the V-bit's), so it keeps its own
+  // beam-width line interval whatever the op happens to carry.
+  const spacing = isLaser
+    ? {
+        lineInterval:
+          op.rasterLineInterval && op.rasterLineInterval > 0
+            ? op.rasterLineInterval
+            : DEFAULTS.rasterLineInterval,
+        dotPitch: op.rasterDotPitch,
+      }
+    : reliefSpacing(op);
   const field = rasterField(grid, {
     widthMM: ent.widthMM,
     heightMM: ent.heightMM,
-    lineIntervalMM:
-      op.rasterLineInterval && op.rasterLineInterval > 0
-        ? op.rasterLineInterval
-        : DEFAULTS.rasterLineInterval,
-    dotPitchMM: op.rasterDotPitch,
+    lineIntervalMM: spacing.lineInterval,
+    dotPitchMM: spacing.dotPitch,
     invert: op.rasterInvert,
     gamma: op.reliefGamma,
     // op.rasterDither is intentionally NOT applied here: the 3-D height field is
