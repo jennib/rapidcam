@@ -433,6 +433,21 @@ function kitchenSinkDoc(): CADDocument {
       finishAllowance: 0.25,
     },
     {
+      // face: faceTarget, faceOverhang, faceDirection. Carries NO entityIds —
+      // facing takes its extent from the blank or the bed — which is itself
+      // worth round-tripping.
+      id: "op-face",
+      name: "Face",
+      type: "face",
+      entityIds: [],
+      side: "inside",
+      toolType: "end-mill",
+      ...base,
+      faceTarget: "bed",
+      faceOverhang: 2,
+      faceDirection: "y",
+    },
+    {
       // chamfer: vAngle, tipDiameter, chamferWidth/Side, sharpenCorners
       id: "op-chamfer",
       name: "Chamfer",

@@ -31,11 +31,12 @@ export type OpCombo =
   | "chamfer"
   | "vcarve"
   | "relief-rough"
-  | "score";
+  | "score"
+  | "face";
 
 /** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
 export const AUTO_NAME_RE =
-  /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold) \d+$/;
+  /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold|Facing) \d+$/;
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -60,7 +61,9 @@ export function autoName(combo: OpCombo, doc: CADDocument): string {
                   ? "Relief Roughing"
                   : combo === "score"
                     ? "Score / Fold"
-                    : "Drill";
+                    : combo === "face"
+                      ? "Facing"
+                      : "Drill";
   const n = doc.operations.filter((o) => comboOf(o) === combo).length + 1;
   return `${prefix} ${n}`;
 }
@@ -127,6 +130,11 @@ export function checkOpSelection(
   selectedIds: Iterable<string>,
   combo: OpCombo,
 ): OpSelectionCheck {
+  // Facing needs nothing selected and cannot use anything that is: its extent
+  // comes from the blank or the bed. Without this it fell into the "select some
+  // geometry first" refusal below and could not be created at all.
+  if (combo === "face") return { validIds: [], error: null };
+
   const byId = new Map(entities.map((e) => [e.id, e]));
   const sel: Entity[] = [];
   for (const id of selectedIds) {
@@ -200,6 +208,11 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
       return e instanceof RasterImageEntity;
     case "drill":
       return e instanceof CircleEntity;
+    case "face":
+      // Facing takes its extent from the blank or the bed, so no entity is
+      // valid for it — and none is needed. Selecting geometry while a facing
+      // op is open simply doesn't apply to it.
+      return false;
   }
 }
 

@@ -1,5 +1,5 @@
 import type { Vec2 } from "../core/vec2";
-import { type CADDocument, resolveOrigin, stockFootprint } from "../model/document";
+import { type CADDocument, resolveOrigin, stockFootprint, stockBox } from "../model/document";
 import { machinableEntityMap } from "./machinable";
 import {
   type Entity,
@@ -42,6 +42,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
 import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
 import { adaptiveClear } from "./adaptive";
 import { restRegions, restCentreRegions, restArea } from "./rest";
+import { facePlan, type Rect } from "./facing";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
@@ -695,6 +696,98 @@ function pocketWallFinish(
       lines.push(...finishContour(k, op.depth, op.depth, op, ox, oy, zOff));
   }
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  return lines;
+}
+
+/**
+ * Skim a surface level: the top of the blank, or the spoilboard.
+ *
+ * The rows run off the edge on every side (see facing.ts), so the tool is
+ * already clear of the material at the start and end of each one — there is
+ * nothing to plunge into. It steps down to depth like any other roughing
+ * operation, and each level is a zig-zag with no lift between rows.
+ *
+ * Surfacing the bed is a different job wearing the same clothes: no workpiece on
+ * the machine, and Z zeroed on the spoilboard rather than on stock that isn't
+ * there. That cannot be inferred from the program, so it is stated in it.
+ */
+function faceSurface(
+  op: CAMOperation,
+  doc: CADDocument,
+  ox: number,
+  oy: number,
+  zOff: number,
+  machineBed?: { width: number; height: number } | null,
+): string[] {
+  // The bed comes in with the machine options rather than being read here: the
+  // emitter is pure, and its tests build a job without touching localStorage.
+  // A rotary job wraps a flat program around a cylinder, and there is no flat
+  // surface on a dowel to skim. Left alone it emitted 46 moves of wrapped
+  // facing rows spiralling round the workpiece — valid G-code for something
+  // nobody asked for, which is worse than refusing.
+  if (doc.isRotary) {
+    return [
+      `; NOTE: facing has no meaning on a rotary job — there is no flat surface on a cylinder — skipped`,
+    ];
+  }
+
+  const bed: Rect | null =
+    op.faceTarget === "bed" && machineBed && machineBed.width > 0 && machineBed.height > 0
+      ? { x: 0, y: 0, width: machineBed.width, height: machineBed.height }
+      : null;
+  if (op.faceTarget === "bed" && !bed) {
+    return [
+      `; NOTE: spoilboard surfacing needs the machine's bed size — set it in Machine Settings — skipped`,
+    ];
+  }
+  const target: Rect = bed ?? stockBox(doc);
+  // Surfacing the bed is zeroed on the BED's front-left corner, not on the
+  // blank's — there is no blank on the machine. Emitting the bed through the
+  // stock's origin offset posted a 600mm bed as X-30..570, i.e. told the
+  // operator to drive 30mm off the front of their own machine.
+  if (bed) {
+    ox = 0;
+    oy = 0;
+  }
+  const toolR = op.diameter / 2;
+  const stepover = Math.max(0.01, (op.stepover ?? 0.4) * op.diameter);
+  const plan = facePlan(target, toolR, stepover, op.faceOverhang ?? 0, op.faceDirection ?? "x");
+  if (!plan || plan.rows.length === 0) {
+    return [`; NOTE: nothing to face — check the stock size and tool diameter — skipped`];
+  }
+
+  const lines: string[] = [];
+  if (bed) {
+    // Loud, and in the program itself: this one is run with the machine empty.
+    lines.push(
+      `; ***  SPOILBOARD SURFACING  ***`,
+      `; ZERO ON THE SPOILBOARD, not on stock: X0 Y0 at its front-left corner,`,
+      `; Z0 on its surface. This program ignores the blank in the drawing.`,
+      `; Take the workpiece OFF the machine, and check that no clamp stands`,
+      `; inside ${n(target.width)} x ${n(target.height)}mm of bed before starting.`,
+    );
+  }
+  lines.push(
+    `; facing ${bed ? "spoilboard" : "stock"}: ${n(plan.swept.width)} x ${n(plan.swept.height)}mm swept, ` +
+      `${plan.rows.length} rows at ${n(stepover)}mm`,
+  );
+
+  for (const z of depthPasses(op)) {
+    lines.push(`; facing pass Z${n(z)}`);
+    const first = plan.rows[0];
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+    lines.push(`G0 X${X(first[0].x, ox)} Y${Y(first[0].y, oy)}`);
+    // Down to depth clear of the material: every row starts off the edge.
+    lines.push(`G1 Z${Z(z, zOff)} F${n(op.plungeRate)}`);
+    let feed = true;
+    for (const row of plan.rows) {
+      for (const p of row) {
+        lines.push(`G1 X${X(p.x, ox)} Y${Y(p.y, oy)}${feed ? ` F${n(op.feedrate)}` : ""}`);
+        feed = false;
+      }
+    }
+    lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+  }
   return lines;
 }
 
@@ -1553,6 +1646,8 @@ function toolpathBody(
   oy: number,
   zOff: number,
   pp: PostProcessor,
+  /** Machine travel envelope, for facing the bed. Absent when unconfigured. */
+  bed?: { width: number; height: number } | null,
 ): string[] {
   const lines: string[] = [];
   const entityMap = machinableEntityMap(doc);
@@ -1605,6 +1700,13 @@ function toolpathBody(
       );
     }
     return lines;
+  }
+
+  // Facing takes its extent from the job, not from geometry — it is the one
+  // operation with nothing drawn to point at, so it is handled before the loop
+  // over entityIds below (which would find none and emit nothing).
+  if (op.type === "face") {
+    return faceSurface(op, doc, ox, oy, zOff, bed);
   }
 
   // Region pockets: resolve each parametric region against live geometry and
@@ -2060,7 +2162,7 @@ export function generateGCode(
       const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);
       lines.push(`; V-Bit effective cut width at ${op.depth}mm: ${width}mm`);
     }
-    for (const l of toolpathBody(op, doc, ox, oy, zOffset, pp)) lines.push(l); // not spread: a relief op can emit 100k+ lines
+    for (const l of toolpathBody(op, doc, ox, oy, zOffset, pp, opts.bed)) lines.push(l); // not spread: a relief op can emit 100k+ lines
     lines.push("");
   }
 

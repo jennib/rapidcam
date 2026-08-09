@@ -577,7 +577,16 @@ function checkBedTravel(moves: Move[], ctx: LintContext): LintFinding | null {
  */
 function checkEmptyOps(doc: CADDocument): LintFinding | null {
   const empty = doc.operations.filter(
-    (op) => op.entityIds.length === 0 && (op.regions?.length ?? 0) === 0,
+    // Facing has no geometry BY DESIGN — it takes its extent from the blank or
+    // the bed — so an empty entity list is normal there, not a broken binding.
+    // On a LASER it is not exempt: a beam can't face, so a facing toolpath in a
+    // laser job really does cut nothing, and this exemption would have been the
+    // one thing hiding that. (It can only get there by switching machine kind
+    // after the op was made — the laser dialog doesn't offer facing.)
+    (op) =>
+      !(op.type === "face" && !doc.isLaser) &&
+      op.entityIds.length === 0 &&
+      (op.regions?.length ?? 0) === 0,
   );
   if (empty.length === 0) return null;
   const names = empty.map((o) => `"${o.name}"`).join(", ");
@@ -588,6 +597,31 @@ function checkEmptyOps(doc: CADDocument): LintFinding | null {
       `${empty.length} toolpath${empty.length > 1 ? "s" : ""} (${names}) ` +
       `${empty.length > 1 ? "have" : "has"} no geometry and will cut nothing — the shape ` +
       `it was bound to may have been deleted. Reassign geometry or remove the toolpath.`,
+  };
+}
+
+/**
+ * ERROR: a spoilboard surfacing pass sharing a program with anything else.
+ *
+ * The two jobs disagree about where zero is. Surfacing the bed is zeroed on the
+ * spoilboard with the machine empty; every other operation is zeroed on the top
+ * of a workpiece that has to be clamped down. Run them from one program and
+ * whichever datum was set is wrong for half of it — either the surfacing pass
+ * cuts air a stock-thickness above the board, or the cutting passes drive that
+ * far into it. Nothing downstream can catch this: both halves are valid G-code.
+ */
+function checkSpoilboardMixed(doc: CADDocument): LintFinding | null {
+  const bedFacing = doc.operations.filter((op) => op.type === "face" && op.faceTarget === "bed");
+  if (bedFacing.length === 0 || doc.operations.length === bedFacing.length) return null;
+  const others = doc.operations.length - bedFacing.length;
+  return {
+    code: "spoilboard-mixed-program",
+    severity: "error",
+    message:
+      `A spoilboard surfacing pass ("${bedFacing[0].name}") is in the same program as ` +
+      `${others} other toolpath${others > 1 ? "s" : ""}. Surfacing is zeroed on the spoilboard ` +
+      `with the machine empty; the rest are zeroed on the workpiece. One Z zero cannot be right ` +
+      `for both — post the surfacing pass on its own.`,
   };
 }
 
@@ -717,6 +751,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // laser cuts nothing too); the move stream can't see it since it emits none.
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
+  if (ctx.doc) findings.push(checkSpoilboardMixed(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));
   // Machine-agnostic too: a laser will happily burn a clamp.
@@ -776,13 +811,32 @@ export function buildLintContext(
           poly: f.poly.map((p) => ({ x: p.x - ox, y: p.y - oy })),
           height: f.height,
         }));
+  /**
+   * A spoilboard surfacing program isn't measured against the stock. It cuts the
+   * bed, with the workpiece off the machine and zero on the board's own corner,
+   * so it spans the whole table on purpose — against the blank's bounds every
+   * row reads as off-stock, and pre-flight failed a correct program with
+   * "102 moves travel outside the stock. Check the toolpath fits."
+   *
+   * Only when that is the WHOLE program: mixing surfacing with cutting is
+   * already an error of its own (checkSpoilboardMixed), and in that case the
+   * stock bounds are the right thing to judge the cutting half by.
+   */
+  const bedOnly =
+    doc.operations.length > 0 &&
+    doc.operations.every((op) => op.type === "face" && op.faceTarget === "bed");
+  const bedRect = opts.bed ?? null;
+
   return {
-    bounds: {
-      xMin: sx - ox,
-      xMax: sx + width - ox,
-      yMin: sy - oy,
-      yMax: sy + height - oy,
-    },
+    bounds:
+      bedOnly && bedRect
+        ? { xMin: 0, xMax: bedRect.width, yMin: 0, yMax: bedRect.height }
+        : {
+            xMin: sx - ox,
+            xMax: sx + width - ox,
+            yMin: sy - oy,
+            yMax: sy + height - oy,
+          },
     zTop: zOffset,
     zBottom: zOffset - doc.stockThickness - (opts.extraDepthBelowBottom ?? 0),
     fixtures,

@@ -10,7 +10,8 @@ export type CAMOpType =
   | "chamfer"
   | "vcarve"
   | "relief-rough"
-  | "score";
+  | "score"
+  | "face";
 
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";
@@ -241,6 +242,24 @@ export interface CAMOperation {
    * driving a small cutter into stock it was told wasn't there.
    */
   restToolDiameter?: number;
+  /**
+   * Facing only. What gets skimmed: the blank ("stock", the default), or the
+   * machine's spoilboard ("bed").
+   *
+   * They are not variations of one job. Facing the stock runs with the
+   * workpiece clamped down and Z zeroed on its top. Surfacing the bed runs with
+   * the workpiece OFF the machine and Z zeroed on the spoilboard — a different
+   * datum, so the two must not share a program.
+   */
+  faceTarget?: "stock" | "bed";
+  /**
+   * Facing only. Extra distance (mm) the tool centre runs beyond the target's
+   * edge, on top of the tool radius it already overhangs by. 0 is usually
+   * right; raise it when the blank's true size is uncertain.
+   */
+  faceOverhang?: number;
+  /** Facing only. Which way the rows run. Defaults to "x". */
+  faceDirection?: "x" | "y";
   islandIds?: EntityId[]; // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
    * Pocket only: the enclosed regions to clear, identified *parametrically* so

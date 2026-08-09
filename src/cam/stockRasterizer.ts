@@ -39,6 +39,7 @@ import { addCornerReliefs } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { restCentreRegions } from "./rest";
+import { facePlan } from "./facing";
 import { finishAllowance } from "./gcode";
 import {
   chainOpenCurvesIntoLoops,
@@ -170,6 +171,40 @@ function rasterizeOp(
       sweepPolyline(op, data, gridW, gridH, stockT, ring, true, stamp, stepR);
     for (const [a, b] of segments)
       sweepPolyline(op, data, gridW, gridH, stockT, [a, b], false, stamp, stepR);
+    return;
+  }
+
+  // Facing (mirrors gcode.ts): no geometry, so it is handled before the walk
+  // over entityIds — which would find none and preview the blank untouched
+  // while the program skimmed its whole top.
+  //
+  // Only the blank is simulated. Surfacing the SPOILBOARD is a job run with the
+  // machine empty and Z zeroed on the board, so there is no workpiece for this
+  // preview to show anything happening to; drawing the cut on the blank would
+  // be a picture of something the program does not do.
+  if (op.type === "face") {
+    if (op.faceTarget !== "bed") {
+      // The blank, back out of what this function is given: offX/offY are its
+      // corner scaled by RES, and the grid is its size. Good to within a cell,
+      // which is finer than anything this preview renders.
+      const box = {
+        x: offX / RES,
+        y: offY / RES,
+        width: gridW / RES,
+        height: gridH / RES,
+      };
+      const plan = facePlan(
+        box,
+        op.diameter / 2,
+        Math.max(0.01, (op.stepover ?? 0.4) * op.diameter),
+        op.faceOverhang ?? 0,
+        op.faceDirection ?? "x",
+      );
+      if (plan) {
+        for (const row of plan.rows)
+          sweepPolyline(op, data, gridW, gridH, stockT, row, false, stamp, stepR);
+      }
+    }
     return;
   }
 
