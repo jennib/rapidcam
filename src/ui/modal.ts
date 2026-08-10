@@ -23,6 +23,7 @@ interface ModalEntry {
   el: HTMLElement;
   close: () => void;
   escapable?: boolean;
+  keepOnDocumentSwap?: boolean;
 }
 
 const stack: ModalEntry[] = [];
@@ -40,9 +41,14 @@ const ESCAPABLE_SELECTOR = ".tp-backdrop";
 export function registerModal(
   el: HTMLElement,
   close: () => void,
-  opts: { escapable?: boolean } = {},
+  opts: { escapable?: boolean; keepOnDocumentSwap?: boolean } = {},
 ): () => void {
-  const entry: ModalEntry = { el, close, escapable: opts.escapable ?? true };
+  const entry: ModalEntry = {
+    el,
+    close,
+    escapable: opts.escapable ?? true,
+    keepOnDocumentSwap: opts.keepOnDocumentSwap ?? false,
+  };
   stack.push(entry);
   return () => {
     const i = stack.indexOf(entry);
@@ -73,12 +79,21 @@ function closeTopModal(): void {
  * file open, draft restore) so a dialog can't act on a document that's gone.
  * Registered modals close via their own cleanup; any un-registered editor
  * backdrops are removed as a fallback. The welcome/start overlay is left alone.
+ *
+ * A modal registered with `keepOnDocumentSwap` survives. That is for the dialog
+ * that *caused* the swap and still has something to say about the document that
+ * arrived — the AI Assistant, whose import warnings describe the file it just
+ * loaded. Closing it there was how those warnings ended up with nowhere to live
+ * but a toast.
  */
 export function closeAllModals(): void {
   // Copy: each close() mutates the stack via its disposer.
-  for (const entry of [...stack]) entry.close();
+  for (const entry of [...stack]) {
+    if (!entry.keepOnDocumentSwap) entry.close();
+  }
+  const keep = new Set(stack.filter((e) => e.keepOnDocumentSwap).map((e) => e.el));
   document.querySelectorAll<HTMLElement>(ESCAPABLE_SELECTOR).forEach((el) => {
-    el.remove();
+    if (!keep.has(el)) el.remove();
   });
 }
 

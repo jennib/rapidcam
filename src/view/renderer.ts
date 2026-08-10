@@ -469,7 +469,7 @@ export class Renderer {
       const b = e.bounds();
       if (b.max.x < vb.min.x || b.min.x > vb.max.x || b.max.y < vb.min.y || b.min.y > vb.max.y)
         continue;
-      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layerFor(e);
       if (!layer.visible) continue;
       if (e.visible === false) continue;
 
@@ -691,7 +691,7 @@ export class Renderer {
       const cleanId = lineRefEntityId(id);
       const e = byId.get(cleanId);
       if (!e) return false;
-      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layerFor(e);
       return layer.visible;
     };
 
@@ -797,7 +797,7 @@ export class Renderer {
       const cleanId = lineRefEntityId(id);
       const e = byId.get(cleanId);
       if (!e) return false;
-      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layerFor(e);
       return layer.visible;
     };
 
@@ -891,7 +891,7 @@ export class Renderer {
     for (const ref of doc.selectedSegments) {
       const ent = byId.get(ref.entityId);
       if (!(ent instanceof PolylineEntity)) continue;
-      const layer = doc.layers.find((l) => l.id === ent.layerId) || doc.layers[0];
+      const layer = doc.layerFor(ent);
       if (!layer.visible) continue;
 
       const count = ent.segmentCount();
@@ -917,7 +917,7 @@ export class Renderer {
       const ent = byId.get(ref.entityId);
       if (!ent) continue;
 
-      const layer = doc.layers.find((l) => l.id === ent.layerId) || doc.layers[0];
+      const layer = doc.layerFor(ent);
       if (!layer.visible && ent.id !== ORIGIN_ENTITY_ID) continue;
 
       let pos: Vec2;

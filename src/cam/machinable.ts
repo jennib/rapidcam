@@ -22,7 +22,7 @@ import type { Entity, EntityId } from "../model/entities";
 /** True when `e` should reach the toolpath: not construction, and not hidden. */
 export function isMachinable(doc: CADDocument, e: Entity): boolean {
   if (e.isConstruction || !e.visible) return false;
-  const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+  const layer = doc.layerFor(e);
   return layer?.visible !== false;
 }
 

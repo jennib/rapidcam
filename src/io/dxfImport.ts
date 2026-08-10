@@ -420,6 +420,11 @@ export interface DxfImportOptions {
    * on the exact same path as a declared-inch one.
    */
   mmPerUnit?: number;
+  /**
+   * Offset to apply to all imported geometry after scaling. Used to map the
+   * CAD origin (0,0) to the physical stock corner.
+   */
+  offset?: { x: number; y: number };
 }
 
 const SKIP_SILENTLY = new Set(["SEQEND", "VIEWPORT", "ATTDEF", "ATTRIB"]);
@@ -739,8 +744,8 @@ export function importDxf(text: string, opts: DxfImportOptions = {}): DxfImportR
   const entities: Entity[] = [];
   parseEntityRange(ctx, entStart, entEnd, entities, 0);
 
-  if (unitScale !== 1) {
-    const t: Xform = { s: unitScale, rot: 0, tx: 0, ty: 0 };
+  if (unitScale !== 1 || opts.offset) {
+    const t: Xform = { s: unitScale, rot: 0, tx: opts.offset?.x ?? 0, ty: opts.offset?.y ?? 0 };
     for (const e of entities) xformEntity(e, t);
   }
 

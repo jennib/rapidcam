@@ -547,7 +547,8 @@ export class ProjectManager {
     const text = await file.text();
     let result: ReturnType<typeof importDxf>;
     try {
-      result = importDxf(text);
+      const offset = { x: this.doc.stockRect?.x ?? 0, y: this.doc.stockRect?.y ?? 0 };
+      result = importDxf(text, { offset });
     } catch (e) {
       alert(`Could not import DXF: ${(e as Error).message}`);
       return;
@@ -566,7 +567,8 @@ export class ProjectManager {
           recommended: recommendDxfUnit(bounds, result.units.hint),
         });
         if (!choice) return;
-        result = importDxf(text, { mmPerUnit: choice === "in" ? MM_PER_INCH : 1 });
+        const offset = { x: this.doc.stockRect?.x ?? 0, y: this.doc.stockRect?.y ?? 0 };
+        result = importDxf(text, { mmPerUnit: choice === "in" ? MM_PER_INCH : 1, offset });
       }
     }
 

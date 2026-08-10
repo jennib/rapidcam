@@ -106,11 +106,11 @@
     "layers": {
       "type": "array",
       "items": { "$ref": "#/$defs/layer" },
-      "description": "Layers. If omitted, a single \"layer-0\" / \"Default\" layer is created."
+      "description": "Layers. If omitted OR empty, a single \"layer-0\" / \"Default\" layer is created — a document always has at least one layer for entities to belong to."
     },
     "activeLayerId": {
       "type": "string",
-      "description": "Id of the active layer. Default \"layer-0\"."
+      "description": "Id of the active layer. Default \"layer-0\". Ignored (falling back to the first layer) if it names no layer in \"layers\"."
     },
     "entities": {
       "type": "array",
