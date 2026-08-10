@@ -1442,7 +1442,10 @@ button.cbtn.solve {
   border: 1px solid var(--border);
   border-radius: 8px;
   width: 380px;
-  max-height: 82vh;
+  /* Fallback only. buildDialogShell sets an inline max-height from the dialog's
+     actual top edge, so it fills to the bottom of the window from wherever it
+     sits; this value applies to any path that doesn't position the dialog. */
+  max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);

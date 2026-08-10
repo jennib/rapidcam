@@ -259,13 +259,24 @@ export function buildDialogShell(
   // side of the screen (just left of the right-hand panel). Once the user drags
   // it, that position is remembered (localStorage) and wins on the next open.
   const DIALOG_W = 380; // matches .tp-dialog width in style.css
+  /** Gap kept between the dialog and the window edges. */
+  const MARGIN = 12;
+  /** Below this the dialog is unusable, so it stops shrinking and overflows instead. */
+  const MIN_H = 220;
   const applyPos = (left: number, top: number) => {
     const maxLeft = Math.max(0, window.innerWidth - 100);
     const maxTop = Math.max(0, window.innerHeight - 50);
+    const t = Math.max(0, Math.min(top, maxTop));
     dialog.style.position = "absolute";
     dialog.style.margin = "0";
     dialog.style.left = `${Math.max(0, Math.min(left, maxLeft))}px`;
-    dialog.style.top = `${Math.max(0, Math.min(top, maxTop))}px`;
+    dialog.style.top = `${t}px`;
+    // Height follows the position rather than a fixed fraction of the viewport.
+    // A constant `max-height: 82vh` (the CSS fallback) wasted whatever space was
+    // left below the dialog, which was most of it once the default top sat under
+    // the toolbars — and dragging the dialog upward gained nothing. This way the
+    // dialog always fills to the bottom of the window from wherever it sits.
+    dialog.style.maxHeight = `${Math.max(MIN_H, window.innerHeight - t - MARGIN)}px`;
   };
 
   let positioned = false;
@@ -286,7 +297,12 @@ export function buildDialogShell(
   if (!positioned) {
     const rp = document.getElementById("right-panel")?.getBoundingClientRect();
     const rightEdge = rp ? rp.left : window.innerWidth;
-    applyPos(rightEdge - DIALOG_W - 16, rp ? Math.max(16, rp.top) : 80);
+    // Top of the WINDOW, not top of the right panel. Aligning with the panel put
+    // the dialog below the constraint and align toolbars and cost it their
+    // height for nothing: those bars are empty at this x, so the dialog sat low
+    // and short while the space above it went unused. This dialog is the tallest
+    // in the app and the one that actually needs the room.
+    applyPos(rightEdge - DIALOG_W - 16, MARGIN);
   }
 
   // Re-clamp on window resize so the dialog can't strand off-screen when the
