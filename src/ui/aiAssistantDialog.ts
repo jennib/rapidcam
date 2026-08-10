@@ -224,17 +224,32 @@ export function showAiAssistantDialog(
       ]);
       const result: AiCheckResult = checkRcamText(extractJson(paste.value), validator ?? undefined);
       track("ai_paste_checked", { ok: result.ok, issues: result.issues.length });
+      const schemaNote = validator
+        ? ""
+        : "\n(schema validation was unavailable — checks were structural only)";
       if (result.ok && result.file) {
         const warnings = result.issues.filter((i) => i.severity === "warning");
         const name = result.file.name || "AI design";
         if (!(await cb.onImport(result.file, name))) return;
-        close();
-        toast(
-          warnings.length
-            ? `Imported "${name}" — ${warnings.length} warning${warnings.length === 1 ? "" : "s"}: ${warnings[0].message}`
-            : `Imported "${name}".`,
-          warnings.length ? 6000 : undefined,
-        );
+        if (!warnings.length) {
+          close();
+          toast(`Imported "${name}".`);
+          return;
+        }
+        // Warnings used to be a 6-second toast carrying only warnings[0] —
+        // gone before it could be read, and never showing the rest. A warned
+        // import is exactly when the list matters, so it gets the same durable
+        // panel (and Copy Report) as an error, and the dialog stays put until
+        // it's been read. The file is already on the canvas either way.
+        lastReport = buildErrorReport(result, name);
+        resultBox.style.display = "block";
+        resultBox.style.borderColor = "#b8860b";
+        resultBox.textContent =
+          `⚠ Imported "${name}" — ${warnings.length} warning${warnings.length === 1 ? "" : "s"}. ` +
+          "The design is on the canvas; close this when you've read them.\n" +
+          warnings.map((i) => `• [${i.check}] ${i.message}`).join("\n") +
+          schemaNote;
+        copyReportBtn.style.display = "";
         return;
       }
       lastReport = buildErrorReport(result, result.file?.name || "pasted file");
@@ -247,7 +262,7 @@ export function showAiAssistantDialog(
         (warns.length ? `, ${warns.length} warning${warns.length === 1 ? "" : "s"}` : "") +
         ":\n" +
         result.issues.map((i) => `• [${i.check}] ${i.message}`).join("\n") +
-        (validator ? "" : "\n(schema validation was unavailable — checks were structural only)");
+        schemaNote;
       copyReportBtn.style.display = "";
     } finally {
       importBtn.disabled = false;
@@ -294,6 +309,9 @@ export function showAiAssistantDialog(
     if (e.target === backdrop) close();
   });
 
-  unregister = registerModal(backdrop, close);
+  // This dialog is the one that *causes* a document swap, and its warning panel
+  // describes the document that just arrived — so the swap's closeAllModals()
+  // must not take it down with the rest. Escape and the ✕ still close it.
+  unregister = registerModal(backdrop, close, { keepOnDocumentSwap: true });
   document.body.appendChild(backdrop);
 }

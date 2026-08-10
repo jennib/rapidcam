@@ -552,6 +552,18 @@ function cloneLayer(l: LayerDef): LayerDef {
   return { ...l, ...(l.laser ? { laser: { ...l.laser } } : {}) };
 }
 
+/** Id of the layer every entity falls back to when it names none. */
+export const DEFAULT_LAYER_ID = "layer-0";
+
+/**
+ * The layer a document has when nobody has made one. A factory, not a shared
+ * constant, so the caller owns its copy — and one definition rather than the
+ * three literals this used to be spelled as (fresh doc, `clear()`, `restore()`).
+ */
+export function defaultLayer(): LayerDef {
+  return { id: DEFAULT_LAYER_ID, name: "Default", color: "#cdd2da", visible: true, locked: false };
+}
+
 /**
  * Fields every entity snapshot carries whatever its geometry. Factored out so a
  * new one can't be added to seven of the eight shapes and silently dropped from
@@ -775,10 +787,8 @@ export class CADDocument {
   groups: GroupDef[] = [];
   features: FeatureInstance[] = [];
   patterns: PatternDef[] = [];
-  layers: LayerDef[] = [
-    { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
-  ];
-  activeLayerId: string = "layer-0";
+  layers: LayerDef[] = [defaultLayer()];
+  activeLayerId: string = DEFAULT_LAYER_ID;
   constraints: Constraint[] = [];
   dimensions: Dimension[] = [];
   variables: Variable[] = [];
@@ -841,7 +851,7 @@ export class CADDocument {
 
   // --- entity management ---------------------------------------------------
   add<T extends Entity>(e: T): T {
-    if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
+    if (e.layerId === DEFAULT_LAYER_ID && this.activeLayerId !== DEFAULT_LAYER_ID) {
       e.layerId = this.activeLayerId;
     }
     if (this.isConstructionMode && !e.isConstruction) {
@@ -856,7 +866,7 @@ export class CADDocument {
     for (const ent of this.entities) ent.selected = false;
     this.selectedPoints = [];
     this.selectedSegments = [];
-    if (e.layerId === "layer-0" && this.activeLayerId !== "layer-0") {
+    if (e.layerId === DEFAULT_LAYER_ID && this.activeLayerId !== DEFAULT_LAYER_ID) {
       e.layerId = this.activeLayerId;
     }
     if (this.isConstructionMode && !e.isConstruction) {
@@ -912,10 +922,8 @@ export class CADDocument {
     this.groups = [];
     this.features = [];
     this.patterns = [];
-    this.layers = [
-      { id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false },
-    ];
-    this.activeLayerId = "layer-0";
+    this.layers = [defaultLayer()];
+    this.activeLayerId = DEFAULT_LAYER_ID;
     this.operations = [];
     this.tools = [];
     this.endPosition = null;
@@ -1315,9 +1323,23 @@ export class CADDocument {
    * Deliberately NOT consulted by the CAM side: hiding geometry is a drafting
    * convenience and must never quietly change a toolpath that references it.
    */
+  /**
+   * The layer an entity belongs to — always a real layer, never undefined.
+   *
+   * Renderer, snapping, picking and CAM all need this and all used to spell it
+   * `layers.find(...) || layers[0]`, which is only total while `layers` is
+   * non-empty. It wasn't: a file carrying `"layers": []` produced a document
+   * with none, and the seven copies of that expression each threw on
+   * `layer.visible`. One definition, and it holds even if the array is somehow
+   * emptied again.
+   */
+  layerFor(e: { layerId: string }): LayerDef {
+    return this.layers.find((l) => l.id === e.layerId) ?? this.layers[0] ?? defaultLayer();
+  }
+
   isPickable(e: Entity): boolean {
     if (!e.visible) return false;
-    const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
+    const layer = this.layerFor(e);
     return layer.visible && !layer.locked;
   }
 
@@ -1402,7 +1424,7 @@ export class CADDocument {
     const out: SnapPoint[] = [];
     for (const e of this.entities) {
       if (exclude?.has(e.id)) continue;
-      const layer = this.layers.find((l) => l.id === e.layerId) || this.layers[0];
+      const layer = this.layerFor(e);
       // Snapping still works on locked geometry — that's what a locked datum is
       // FOR — but never on something you cannot see.
       if (!layer.visible || !e.visible) continue;
@@ -1561,10 +1583,19 @@ export class CADDocument {
   }
 
   restore(s: DocSnapshot): void {
-    this.layers = s.layers
-      ? s.layers.map(cloneLayer)
-      : [{ id: "layer-0", name: "Default", color: "#cdd2da", visible: true, locked: false }];
-    this.activeLayerId = s.activeLayerId ?? "layer-0";
+    // Length, not truthiness: a hand- or AI-authored file that writes
+    // `"layers": []` is saying "I have no layers", not "give me none". Left
+    // empty, every entity's `layerId` names a layer that doesn't exist and the
+    // `layerFor` fallback has nothing to fall back TO — which used to throw on
+    // the first entity drawn and abort the frame, leaving a canvas with grid,
+    // stock and origin but no geometry at all.
+    this.layers = s.layers?.length ? s.layers.map(cloneLayer) : [defaultLayer()];
+    // Likewise the active layer must name one that exists: a file listing only
+    // "l-cut" and no activeLayerId would otherwise point at the absent
+    // "layer-0", and every entity drawn next would be filed onto nothing.
+    this.activeLayerId = this.layers.some((l) => l.id === s.activeLayerId)
+      ? s.activeLayerId!
+      : this.layers[0].id;
 
     // Legacy image direct-drive formulas (widthExpr/heightExpr/angleExpr) migrated
     // to scalar bindings during entity restore; merged into `bindings` below.
@@ -1648,7 +1679,7 @@ export class CADDocument {
         updateCounter(e.id);
         e.selected = es.selected ?? false;
         e.isConstruction = es.isConstruction ?? false;
-        e.layerId = es.layerId ?? "layer-0";
+        e.layerId = es.layerId ?? DEFAULT_LAYER_ID;
         e.name = es.name || undefined;
         // Absent = the default, so a pre-design-tree file loads fully visible
         // and unlocked. Coerced rather than trusted: applyFile doesn't

@@ -212,7 +212,7 @@ export class SnapEngine {
   private snappableEntities(doc: CADDocument, exclude?: Set<EntityId>) {
     return doc.entities.filter((e) => {
       if (exclude?.has(e.id)) return false;
-      const layer = doc.layers.find((l) => l.id === e.layerId) || doc.layers[0];
+      const layer = doc.layerFor(e);
       return layer.visible;
     });
   }

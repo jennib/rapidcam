@@ -86,7 +86,7 @@ vocabularies is unchanged.
   "endPosition": null,                          // optional park position; see below
   "metadata": { "job": "", "revision": "", "notes": "" }, // optional job info; see below
   "groups": [],
-  "layers": [ /* optional; a Default layer is created if omitted */ ],
+  "layers": [ /* optional; a Default layer is created if omitted OR empty */ ],
   "activeLayerId": "layer-0",
   "entities": [ /* geometry */ ],
   "constraints": [ /* parametric constraints */ ],
