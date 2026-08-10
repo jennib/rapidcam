@@ -28,6 +28,28 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
 };
 
 /**
+ * Tools that offer **Type to Draw** — the floating field that opens mid-tool so
+ * an exact value can be typed instead of clicking the next point. The keyboard
+ * twin of drag-to-draw (dragDraw.ts).
+ *
+ * One source of truth, because the in-app help has twice advertised typed input
+ * for tools that never had any (Circle's "enter exact diameter in the input
+ * HUD"; Rotate's "enter angle") while saying nothing about the tools that did.
+ * `test/typeToDraw.test.ts` drives every tool named here and fails if its field
+ * does not actually open — so the list cannot become a claim again.
+ */
+export const TYPE_TO_DRAW_TOOLS: readonly string[] = [
+  "line",
+  "rect",
+  "circle",
+  "arc",
+  "polygon",
+  "slot",
+  "fillet",
+  "chamfer",
+];
+
+/**
  * One-line status-bar hint per tool: what to click next and the modifiers worth
  * knowing. Kept deliberately static (no per-state machinery) and honest — each
  * line matches the tool's actual first-interaction flow.
@@ -35,9 +57,9 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
 export const TOOL_HINTS: Record<string, string> = {
   select:
     "Drag = move · Shift+drag = marquee · Ctrl+click = pick points · double-click = chain select",
-  line: "Click start then end, or drag · Shift = ortho · Esc cancels",
+  line: "Click start then end, or drag · Shift = ortho · type for an exact length/angle",
   rect: "Click two corners, or drag",
-  circle: "Click the centre then a point on it, or drag out",
+  circle: "Click the centre then a point on it, or drag out · type for an exact diameter",
   arc: "Click centre → start → end · Tab flips direction",
   polyline: "Click vertices · Esc or double-click finishes",
   dimension: "Click two points (or a circle), then place the dimension",
