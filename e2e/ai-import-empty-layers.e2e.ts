@@ -149,7 +149,8 @@ test("live: a layers:[] file draws its geometry, and its warnings stay readable"
   // 4. The warnings are still readable long after the old 6s toast would have
   //    gone, and the dialog did not close out from under them.
   await expect(dialog).toBeVisible();
-  const box = dialog.locator("div", { hasText: "⚠ Imported" }).last();
+  const box = dialog.locator("#ai-result");
+  await expect(box).toContainText("⚠ Imported");
   await expect(box).toContainText("extend outside");
   await expect(dialog.getByRole("button", { name: /Copy Error Report/ })).toBeVisible();
   await page.waitForTimeout(6500);

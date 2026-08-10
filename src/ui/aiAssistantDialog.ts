@@ -188,21 +188,45 @@ export function showAiAssistantDialog(
   s2.appendChild(paste);
 
   const importRow = document.createElement("div");
-  importRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px;";
+  // Wraps, and the buttons don't: three of them (Check & Import · Copy Error
+  // Report · Clear) exceed the 560px dialog's content width, and flex's default
+  // is to shrink them until "Check & Import" breaks across two lines. A button
+  // that wraps its own label reads as broken; one that drops to the next row
+  // doesn't.
+  importRow.style.cssText =
+    "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;";
   const importBtn = document.createElement("button");
   importBtn.className = "btn";
   importBtn.textContent = "Check & Import";
-  importBtn.style.cssText = "padding:6px 16px;";
+  importBtn.style.cssText = "padding:6px 16px;white-space:nowrap;";
   importRow.appendChild(importBtn);
 
   const copyReportBtn = document.createElement("button");
   copyReportBtn.className = "btn";
   copyReportBtn.textContent = "Copy Error Report for AI";
-  copyReportBtn.style.cssText = "padding:6px 16px;display:none;";
+  copyReportBtn.style.cssText = "padding:6px 16px;white-space:nowrap;display:none;";
   importRow.appendChild(copyReportBtn);
+
+  // Emptying the box by hand is a select-all-and-delete in a 96px-tall field
+  // holding a whole document. `margin-left:auto` parks Clear at the far right,
+  // away from the primary action it must never be fat-fingered instead of, and
+  // it only appears once there's something to clear.
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn";
+  clearBtn.textContent = "Clear";
+  clearBtn.title = "Empty the paste box and dismiss its report";
+  clearBtn.style.cssText = "padding:6px 16px;white-space:nowrap;margin-left:auto;display:none;";
+  importRow.appendChild(clearBtn);
+  const syncClearBtn = () => {
+    clearBtn.style.display = paste.value ? "" : "none";
+  };
+  paste.addEventListener("input", syncClearBtn);
   s2.appendChild(importRow);
 
   const resultBox = document.createElement("div");
+  // Stable handle: the errors/warnings panel is what the tests assert on, and
+  // matching it by inline style or by the text inside it is how those go brittle.
+  resultBox.id = "ai-result";
   resultBox.style.cssText =
     "display:none;margin-top:10px;padding:10px 12px;border-radius:6px;font-size:12px;" +
     "line-height:1.5;max-height:180px;overflow-y:auto;white-space:pre-wrap;" +
@@ -210,6 +234,23 @@ export function showAiAssistantDialog(
   s2.appendChild(resultBox);
 
   let lastReport = "";
+
+  clearBtn.addEventListener("click", () => {
+    paste.value = "";
+    // The report — and the Copy Report button that offers to send it to an AI —
+    // describes text that no longer exists, so it goes with it. Leaving errors
+    // on screen over an empty box reads as "still broken" after you've cleared
+    // the thing that was broken.
+    resultBox.style.display = "none";
+    resultBox.textContent = "";
+    copyReportBtn.style.display = "none";
+    lastReport = "";
+    syncClearBtn();
+    // Synchronous, inside the click — not a deferred focus() + select(), which
+    // is the pattern that used to steal keystrokes across these dialogs.
+    paste.focus();
+  });
+
   importBtn.addEventListener("click", async () => {
     if (!paste.value.trim()) {
       toast("Paste the AI's JSON first.");
