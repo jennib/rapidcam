@@ -239,6 +239,14 @@ export function paramRow(
 
 
 /** Backdrop + draggable dialog frame (header, close, body). */
+/**
+ * Schema version for the remembered dialog position. Bump when a change makes
+ * previously-saved positions actively wrong rather than merely stale — restoring
+ * one then hides the new behaviour behind a localStorage entry the user cannot
+ * see. Bumped to 1 when the dialog gained full-window height.
+ */
+const POS_VERSION = 1;
+
 export function buildDialogShell(
   isNew: boolean,
   onClose: () => void,
@@ -283,10 +291,16 @@ export function buildDialogShell(
   const storedPos = localStorage.getItem(StorageKeys.toolpathDialogPosition);
   if (storedPos) {
     try {
-      const { left, top } = JSON.parse(storedPos);
+      const { left, top, v } = JSON.parse(storedPos);
       const lVal = parseFloat(left);
       const tVal = parseFloat(top);
-      if (!Number.isNaN(lVal) && !Number.isNaN(tVal)) {
+      // Positions saved before POS_VERSION are ignored ONCE. They were chosen
+      // against a dialog that defaulted below the toolbars and was capped at
+      // 82vh, so restoring one reinstates exactly the low, short placement this
+      // change exists to remove — and the user has no way to know a stale
+      // localStorage entry is why the new default never appears. The next drag
+      // saves at the current version and is honoured from then on.
+      if (v === POS_VERSION && !Number.isNaN(lVal) && !Number.isNaN(tVal)) {
         applyPos(lVal, tVal);
         positioned = true;
       }
@@ -338,6 +352,7 @@ export function buildDialogShell(
     localStorage.setItem(
       StorageKeys.toolpathDialogPosition,
       JSON.stringify({
+        v: POS_VERSION,
         left: dialog.style.left,
         top: dialog.style.top,
       }),
