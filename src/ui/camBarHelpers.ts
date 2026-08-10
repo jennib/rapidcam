@@ -20,6 +20,7 @@ import { dist } from "../core/vec2";
 import { formatLength } from "../core/units";
 import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops } from "../cam/loops";
+import { OP_TYPES, OP_TYPE_BY_COMBO } from "./camBar/opTypeInfo";
 import { interiorPoint, resolveRegion, seedsFromEntityIds } from "../cam/regions";
 
 export type OpCombo =
@@ -34,9 +35,16 @@ export type OpCombo =
   | "score"
   | "face";
 
-/** Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1". */
-export const AUTO_NAME_RE =
-  /^(Profile \(outside\)|Profile \(inside\)|Pocket|Engrave|Drill|Chamfer|V-Carve|Relief Roughing|Score \/ Fold|Facing) \d+$/;
+/**
+ * Matches names produced by autoName(), e.g. "Pocket 2", "Profile (outside) 1".
+ *
+ * BUILT from the same table autoName reads, because these two were written out
+ * separately and drifted: a name the regex doesn't match is treated as one the
+ * user typed, so the dialog stops re-naming it when the type changes.
+ */
+export const AUTO_NAME_RE = new RegExp(
+  `^(${OP_TYPES.map((t) => t.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")}) \\d+$`,
+);
 
 export function comboOf(op: CAMOperation): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
@@ -44,28 +52,8 @@ export function comboOf(op: CAMOperation): OpCombo {
 }
 
 export function autoName(combo: OpCombo, doc: CADDocument): string {
-  const prefix =
-    combo === "profile-outside"
-      ? "Profile (outside)"
-      : combo === "profile-inside"
-        ? "Profile (inside)"
-        : combo === "pocket"
-          ? "Pocket"
-          : combo === "chamfer"
-            ? "Chamfer"
-            : combo === "vcarve"
-              ? "V-Carve"
-              : combo === "engrave"
-                ? "Engrave"
-                : combo === "relief-rough"
-                  ? "Relief Roughing"
-                  : combo === "score"
-                    ? "Score / Fold"
-                    : combo === "face"
-                      ? "Facing"
-                      : "Drill";
   const n = doc.operations.filter((o) => comboOf(o) === combo).length + 1;
-  return `${prefix} ${n}`;
+  return `${OP_TYPE_BY_COMBO[combo].name} ${n}`;
 }
 
 

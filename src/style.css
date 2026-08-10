@@ -1442,7 +1442,10 @@ button.cbtn.solve {
   border: 1px solid var(--border);
   border-radius: 8px;
   width: 380px;
-  max-height: 82vh;
+  /* Fallback only. buildDialogShell sets an inline max-height from the dialog's
+     actual top edge, so it fills to the bottom of the window from wherever it
+     sits; this value applies to any path that doesn't position the dialog. */
+  max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
@@ -3425,3 +3428,39 @@ body.design-tree-open #design-tree-toggle {
   gap: 6px;
 }
 
+
+/* Caption under the toolpath Type field. Deliberately small and muted: the
+   dialog already scrolls, so this earns its two lines by being the only place
+   that says what a type does — not by competing with the controls. */
+.tp-type-hint {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: -4px 0 2px;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Fixed width so the text column doesn't reflow as the diagram changes; the
+   aspect ratio matches opTypeDiagram's viewBox. */
+.tp-type-art {
+  flex: 0 0 96px;
+  height: 51px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px;
+}
+
+.tp-type-hint > div:last-child {
+  opacity: 0.78;
+}
+
+/* The pairing line changes what you must do NEXT, so it is accented rather than
+   set in the same grey as the description. */
+.tp-type-pairs {
+  margin-top: 4px;
+  color: var(--accent-text, #9dc0ff);
+  opacity: 1;
+}
