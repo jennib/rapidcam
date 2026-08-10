@@ -1102,7 +1102,7 @@ button.cbtn.solve {
 .fmenu-dropdown {
   display: none;
   position: fixed;
-  z-index: 200;
+  z-index: 10000;
   min-width: 200px;
   background: var(--panel);
   border: 1px solid var(--border);
