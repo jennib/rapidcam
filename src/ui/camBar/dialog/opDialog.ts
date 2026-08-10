@@ -15,6 +15,8 @@ import {
   refsFromSeeds,
 } from "../../camBarHelpers";
 import { collectClosedLoops } from "../../../cam/loops";
+import { OP_TYPE_BY_COMBO, labelFor, opTypesFor } from "../opTypeInfo";
+import { opTypeDiagram } from "../opTypeDiagram";
 import { regionAtPoint } from "../../../cam/regions";
 import { nextId } from "../../../model/ids";
 import { type OpState, OpDialogEvents, createInitialOpState } from "./opDialogState";
@@ -85,32 +87,48 @@ export function openOpDialog(options: OpDialogOptions): void {
   // Nine selects in this dialog share `.unit`, so positional selectors are the
   // only handle e2e had on this one. Named so it survives layout changes.
   typeSelect.dataset.testid = "op-type-select";
-  const combos: [OpCombo, string][] = isLaser
-    ? [
-        ["profile-outside", "Cut (outside)"],
-        ["profile-inside", "Cut (inside)"],
-        ["score", "Score / Fold (low power)"],
-        ["engrave", "Engrave (centreline)"],
-      ]
-    : [
-        ["profile-outside", "Profile (outside)"],
-        ["profile-inside", "Profile (inside)"],
-        ["pocket", "Pocket (interior clear)"],
-        ["chamfer", "Chamfer (V-bevel edge)"],
-        ["vcarve", "V-Carve (text/shape)"],
-        ["engrave", "Engrave"],
-        ["relief-rough", "Relief Roughing (image)"],
-        ["drill", "Drill"],
-        ["face", "Facing (skim a surface flat)"],
-      ];
-  for (const [v, l] of combos) {
+  const combos = opTypesFor(isLaser ? "laser" : "mill");
+  for (const info of combos) {
     const o = document.createElement("option");
-    o.value = v;
-    o.textContent = l;
+    o.value = info.combo;
+    o.textContent = labelFor(info, isLaser ? "laser" : "mill");
+    // The blurb the picker shows as a card; here it is the option's tooltip, so
+    // the explanation is reachable from the dropdown too rather than only from
+    // the route that happens to open the picker.
+    o.title = info.pairsWith ? `${info.blurb}\n\nPairs with ${info.pairsWith}` : info.blurb;
     typeSelect.appendChild(o);
   }
   typeSelect.value = state.combo;
   body.appendChild(dField("Type", typeSelect));
+
+  // A caption for the type, because the type is the one field in this dialog you
+  // cannot sanity-check by reading it back: every other row is a number you can
+  // compare against the part, while this one is a concept you either know or
+  // don't. The pairing line is the reason this exists — Relief Roughing leaves a
+  // staircase and needs an Engrave pass to become a surface, which used to be
+  // written only in a doc comment.
+  const typeHint = document.createElement("div");
+  typeHint.className = "tp-type-hint";
+  // Diagram left, words right. The drawing carries "what does this remove"
+  // faster than the sentence does — a pocket next to a profile is one glance.
+  const typeArt = document.createElement("div");
+  typeArt.className = "tp-type-art";
+  const typeText = document.createElement("div");
+  const typeBlurb = document.createElement("div");
+  const typePairs = document.createElement("div");
+  typePairs.className = "tp-type-pairs";
+  typeText.append(typeBlurb, typePairs);
+  typeHint.append(typeArt, typeText);
+  body.appendChild(typeHint);
+
+  const updateTypeHint = (): void => {
+    const info = OP_TYPE_BY_COMBO[state.combo];
+    typeArt.replaceChildren(opTypeDiagram(state.combo));
+    typeBlurb.textContent = info.blurb;
+    typePairs.textContent = info.pairsWith ? `Pairs with ${info.pairsWith}` : "";
+    typePairs.style.display = info.pairsWith ? "" : "none";
+  };
+  updateTypeHint();
 
   // Tool section (collapsible — starts collapsed when editing an existing op).
   // Hidden for a laser (no spindle/Z/tool-library concept); the laser section
@@ -196,6 +214,7 @@ export function openOpDialog(options: OpDialogOptions): void {
       state.name = autoName(state.combo, doc);
       nameInput.value = state.name;
     }
+    updateTypeHint();
     if (getPickActive()) stopPickMode();
     updateAllSections();
     if (state.combo === "pocket") {

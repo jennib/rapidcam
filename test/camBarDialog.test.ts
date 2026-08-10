@@ -410,3 +410,52 @@ describe("Add-Toolpath dialog: V-carve halftone", () => {
     expect(shown(row(dialog, "Relief stepover"))).toBe(true);
   });
 });
+
+describe("Add-Toolpath dialog: the type caption", () => {
+  const caption = (dialog: HTMLElement) =>
+    dialog.querySelector(".tp-type-hint") as HTMLElement;
+  const pairs = (dialog: HTMLElement) =>
+    dialog.querySelector(".tp-type-pairs") as HTMLElement;
+
+  test("describes the type the dialog opened on", () => {
+    const dialog = openDialog(millDoc());
+    expect(caption(dialog).textContent).toMatch(/outside of the line/);
+  });
+
+  test("follows the dropdown", () => {
+    const dialog = openDialog(millDoc());
+    selectType(dialog, "drill");
+    expect(caption(dialog).textContent).toMatch(/circle/i);
+    selectType(dialog, "pocket");
+    expect(caption(dialog).textContent).toMatch(/inside a closed shape/i);
+    // Control: it changed rather than accumulating both.
+    expect(caption(dialog).textContent).not.toMatch(/circle/i);
+  });
+
+  test("draws a diagram, and redraws it when the type changes", () => {
+    const dialog = openDialog(millDoc());
+    const svg = () => dialog.querySelector(".tp-type-art svg");
+    // Not just "an svg exists" — an empty one would render as a blank box.
+    expect(svg()?.childElementCount ?? 0).toBeGreaterThan(0);
+    const before = svg()!.innerHTML;
+
+    selectType(dialog, "drill");
+    expect(svg()?.childElementCount ?? 0).toBeGreaterThan(0);
+    expect(svg()!.innerHTML).not.toBe(before);
+  });
+
+  test("only Relief Roughing gets a pairing line, and it names the Engrave pass", () => {
+    // The gap that prompted this: nothing said relief roughing leaves a
+    // staircase and needs a second op to become a surface.
+    const dialog = openDialog(millDoc());
+    expect(shown(pairs(dialog))).toBe(false);
+
+    selectType(dialog, "relief-rough");
+    expect(shown(pairs(dialog))).toBe(true);
+    expect(pairs(dialog).textContent).toMatch(/Engrave/);
+    expect(pairs(dialog).textContent).toMatch(/ball-nose/);
+
+    selectType(dialog, "pocket");
+    expect(shown(pairs(dialog))).toBe(false);
+  });
+});
