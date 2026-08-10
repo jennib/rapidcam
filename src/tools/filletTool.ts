@@ -12,7 +12,7 @@
  */
 
 import { type Vec2, dist } from "../core/vec2";
-import { LineEntity, ArcEntity, PolylineEntity, RectEntity } from "../model/entities";
+import { ArcEntity } from "../model/entities";
 import type { CADDocument } from "../model/document";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 import { parseLength, formatLengthWithUnit } from "../core/units";
@@ -20,47 +20,19 @@ import type { Unit } from "../core/units";
 import type { PreviewShape } from "../view/overlay";
 import { TAU } from "../core/geom";
 import { ICONS } from "./icons";
-
-const CORNER_EPS = 1e-4;
-const HIT_PX = 16;
-const DRAG_THRESHOLD_PX = 4;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface LineCorner {
-  kind: "line";
-  line1: LineEntity;
-  key1: "a" | "b";
-  line2: LineEntity;
-  key2: "a" | "b";
-  pos: Vec2;
-}
-
-interface PolyCorner {
-  kind: "poly";
-  entity: PolylineEntity;
-  index: number;
-  pos: Vec2;
-}
-
-interface RectCorner {
-  kind: "rect";
-  entity: RectEntity;
-  index: number; // 0–3 in corners() order
-  pos: Vec2;
-}
-
-type Corner = LineCorner | PolyCorner | RectCorner;
-
-interface CornerDirs {
-  P: Vec2;
-  d1: Vec2;
-  len1: number;
-  d2: Vec2;
-  len2: number;
-}
+import {
+  CORNER_EPS,
+  DRAG_THRESHOLD_PX,
+  type Corner,
+  type CornerDirs,
+  cornerAngle,
+  dropCornerJoin,
+  findCorner,
+  getCornerDirs,
+  joinCornerEnds,
+  spliceCornerVertices,
+  trimCornerLegs,
+} from "./corner";
 
 interface FilletGeo {
   T1: Vec2;
@@ -73,132 +45,14 @@ interface FilletGeo {
 type Phase = "idle" | "dragging";
 
 // ---------------------------------------------------------------------------
-// Corner detection
+// Geometry — the arc tangent to both legs. Corner picking and the surgery
+// around this live in ./corner.ts, shared with the chamfer tool.
 // ---------------------------------------------------------------------------
-
-function findCorner(worldPos: Vec2, doc: CADDocument, scale: number): Corner | null {
-  const thresh = HIT_PX / scale;
-  let best: { corner: Corner; d: number } | null = null;
-
-  // Line-line corners
-  let nearestPt: { line: LineEntity; key: "a" | "b"; pos: Vec2; d: number } | null = null;
-  for (const ent of doc.entities) {
-    if (!(ent instanceof LineEntity) || ent.isConstruction) continue;
-    for (const key of ["a", "b"] as const) {
-      const d = dist(worldPos, ent[key]);
-      if (d < thresh && (!nearestPt || d < nearestPt.d))
-        nearestPt = { line: ent, key, pos: ent[key], d };
-    }
-  }
-  if (nearestPt) {
-    for (const ent of doc.entities) {
-      if (!(ent instanceof LineEntity) || ent.isConstruction || ent.id === nearestPt.line.id)
-        continue;
-      for (const key of ["a", "b"] as const) {
-        if (dist(ent[key], nearestPt.pos) < CORNER_EPS) {
-          if (!best || nearestPt.d < best.d)
-            best = {
-              corner: {
-                kind: "line",
-                line1: nearestPt.line,
-                key1: nearestPt.key,
-                line2: ent,
-                key2: key,
-                pos: nearestPt.pos,
-              },
-              d: nearestPt.d,
-            };
-        }
-      }
-    }
-  }
-
-  // Polyline vertices
-  for (const ent of doc.entities) {
-    if (!(ent instanceof PolylineEntity) || ent.isConstruction) continue;
-    const n = ent.points.length;
-    for (let i = 0; i < n; i++) {
-      if (!ent.closed && (i === 0 || i === n - 1)) continue;
-      const d = dist(worldPos, ent.points[i]);
-      if (d < thresh && (!best || d < best.d))
-        best = { corner: { kind: "poly", entity: ent, index: i, pos: ent.points[i] }, d };
-    }
-  }
-
-  // Rect corners
-  for (const ent of doc.entities) {
-    if (!(ent instanceof RectEntity) || ent.isConstruction) continue;
-    const corners = ent.corners();
-    for (let i = 0; i < 4; i++) {
-      const d = dist(worldPos, corners[i]);
-      if (d < thresh && (!best || d < best.d))
-        best = { corner: { kind: "rect", entity: ent, index: i, pos: corners[i] }, d };
-    }
-  }
-
-  return best?.corner ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Geometry
-// ---------------------------------------------------------------------------
-
-function getCornerDirs(corner: Corner): CornerDirs | null {
-  if (corner.kind === "line") {
-    const { line1, key1, line2, key2, pos: P } = corner;
-    const o1 = key1 === "a" ? line1.b : line1.a;
-    const o2 = key2 === "a" ? line2.b : line2.a;
-    const len1 = dist(P, o1),
-      len2 = dist(P, o2);
-    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return {
-      P,
-      d1: { x: (o1.x - P.x) / len1, y: (o1.y - P.y) / len1 },
-      len1,
-      d2: { x: (o2.x - P.x) / len2, y: (o2.y - P.y) / len2 },
-      len2,
-    };
-  } else if (corner.kind === "poly") {
-    const { entity: pl, index: i } = corner;
-    const n = pl.points.length;
-    if (!pl.closed && (i === 0 || i === n - 1)) return null;
-    const P = pl.points[i];
-    const prev = pl.points[(i - 1 + n) % n];
-    const next = pl.points[(i + 1) % n];
-    const len1 = dist(P, prev),
-      len2 = dist(P, next);
-    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return {
-      P,
-      d1: { x: (prev.x - P.x) / len1, y: (prev.y - P.y) / len1 },
-      len1,
-      d2: { x: (next.x - P.x) / len2, y: (next.y - P.y) / len2 },
-      len2,
-    };
-  } else {
-    const { entity: rect, index: i } = corner;
-    const c = rect.corners();
-    const P = c[i];
-    const prev = c[(i + 3) % 4];
-    const next = c[(i + 1) % 4];
-    const len1 = dist(P, prev),
-      len2 = dist(P, next);
-    if (len1 < CORNER_EPS || len2 < CORNER_EPS) return null;
-    return {
-      P,
-      d1: { x: (prev.x - P.x) / len1, y: (prev.y - P.y) / len1 },
-      len1,
-      d2: { x: (next.x - P.x) / len2, y: (next.y - P.y) / len2 },
-      len2,
-    };
-  }
-}
 
 function computeGeo(dirs: CornerDirs, r: number): FilletGeo | null {
   const { P, d1, len1, d2, len2 } = dirs;
-  const cosA = d1.x * d2.x + d1.y * d2.y;
-  const angle = Math.acos(Math.max(-1, Math.min(1, cosA)));
-  if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return null;
+  const angle = cornerAngle(dirs);
+  if (angle === null) return null;
   const tangentLen = r / Math.tan(angle / 2);
   if (r <= 0 || tangentLen >= len1 - CORNER_EPS || tangentLen >= len2 - CORNER_EPS) return null;
 
@@ -256,8 +110,6 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
   if (!geo) return false;
 
   if (corner.kind === "line") {
-    const { line1, key1, line2, key2 } = corner;
-
     // Determine arc winding (CCW from startAngle to endAngle)
     const crossVal =
       (geo.T1.x - geo.C.x) * (geo.T2.y - geo.C.y) - (geo.T1.y - geo.C.y) * (geo.T2.x - geo.C.x);
@@ -266,56 +118,14 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
     const arcStartKey: "start" | "end" = crossVal >= 0 ? "start" : "end";
     const arcEndKey: "start" | "end" = crossVal >= 0 ? "end" : "start";
 
-    if (key1 === "a") line1.a = geo.T1;
-    else line1.b = geo.T1;
-    if (key2 === "a") line2.a = geo.T2;
-    else line2.b = geo.T2;
-
-    doc.constraints = doc.constraints.filter((c) => {
-      if (c.type !== "coincident" || c.points.length !== 2) return true;
-      const has1 = c.points.some((p) => p.entityId === line1.id && p.key === key1);
-      const has2 = c.points.some((p) => p.entityId === line2.id && p.key === key2);
-      return !(has1 && has2);
-    });
+    trimCornerLegs(corner, geo.T1, geo.T2);
+    dropCornerJoin(doc, corner);
 
     const arc = new ArcEntity(geo.C, radius, startAngle, endAngle);
     doc.add(arc);
-    doc.addConstraint({
-      id: `fillet-c1-${arc.id}`,
-      type: "coincident",
-      points: [
-        { entityId: line1.id, key: key1 },
-        { entityId: arc.id, key: arcStartKey },
-      ],
-      entities: [],
-      params: [],
-    });
-    doc.addConstraint({
-      id: `fillet-c2-${arc.id}`,
-      type: "coincident",
-      points: [
-        { entityId: line2.id, key: key2 },
-        { entityId: arc.id, key: arcEndKey },
-      ],
-      entities: [],
-      params: [],
-    });
+    joinCornerEnds(doc, corner, arc.id, arcStartKey, arcEndKey, "fillet");
   } else {
     // poly or rect — tessellate the short arc into the polyline
-    let pl: PolylineEntity;
-    let i: number;
-    if (corner.kind === "poly") {
-      pl = corner.entity;
-      i = corner.index;
-    } else {
-      pl = new PolylineEntity(
-        corner.entity.corners().map((p) => ({ ...p })),
-        true,
-      );
-      pl.layerId = corner.entity.layerId;
-      pl.selected = corner.entity.selected;
-      i = corner.index;
-    }
     let span = (((geo.a2 - geo.a1) % TAU) + TAU) % TAU;
     if (span > Math.PI) span -= TAU;
     const steps = Math.max(2, Math.ceil(Math.abs(span) / (Math.PI / 90)));
@@ -324,11 +134,7 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
       const a = geo.a1 + (span * k) / steps;
       arcPts.push({ x: geo.C.x + radius * Math.cos(a), y: geo.C.y + radius * Math.sin(a) });
     }
-    pl.spliceVertices(i, 1, ...arcPts);
-    if (corner.kind === "rect") {
-      doc.remove(corner.entity);
-      doc.add(pl);
-    }
+    spliceCornerVertices(corner, doc, arcPts);
   }
 
   return true;
