@@ -38,12 +38,11 @@ function makeCtx(doc: CADDocument): Harness {
     pushHistory() {},
     openDimEditor() {},
     currentDof: () => 0,
-    openValueEditor() {},
-    openMultiValueEditor(_pos, _fields, commit, _cancel, change) {
-      onCommit = commit;
-      onChange = change ?? null;
+    openTypeToDraw(_pos, _fields, handlers) {
+      onCommit = handlers.onCommit;
+      onChange = handlers.onChange ?? null;
     },
-    closeValueEditor() {
+    closeTypeToDraw() {
       onCommit = null;
       onChange = null;
     },

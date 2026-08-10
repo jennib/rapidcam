@@ -140,21 +140,23 @@ export class ChamferTool implements Tool {
     this.reset(ctx);
 
     if (screenDelta < DRAG_THRESHOLD_PX) {
-      // click — open value editor for precise input
-      ctx.openValueEditor(
+      // A click rather than a drag — ask for the exact distance (Type to Draw).
+      ctx.openTypeToDraw(
         corner.pos,
-        `chamfer distance (${ctx.doc.displayUnit})`,
-        (raw) => {
-          const d = parseLength(raw, ctx.doc.displayUnit);
-          if (d === null || d <= 0) return false;
-          const dirs = getCornerDirs(corner);
-          if (!dirs || !computeGeo(dirs, d)) return false;
-          ctx.pushHistory();
-          applyChamfer(corner, d, ctx.doc);
-          ctx.solve();
-          ctx.doc.emitChange();
+        [{ placeholder: `Chamfer distance (${ctx.doc.displayUnit})` }],
+        {
+          onCommit: (raws) => {
+            const d = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
+            if (d === null || d <= 0) return false;
+            const dirs = getCornerDirs(corner);
+            if (!dirs || !computeGeo(dirs, d)) return false;
+            ctx.pushHistory();
+            applyChamfer(corner, d, ctx.doc);
+            ctx.solve();
+            ctx.doc.emitChange();
+          },
+          onCancel: () => {},
         },
-        () => {},
       );
     } else {
       // drag commit

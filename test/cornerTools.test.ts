@@ -37,13 +37,13 @@ interface Harness {
 }
 
 function makeCtx(doc: CADDocument, scale = 1): Harness {
-  let onCommit: ((raw: string) => boolean | undefined) | null = null;
+  let onCommit: ((raws: string[]) => boolean | undefined) | null = null;
   const h: Harness = {
     solves: 0,
     editorOpen: () => onCommit !== null,
     type(raw) {
-      if (!onCommit) throw new Error("no value editor is open");
-      return onCommit(raw);
+      if (!onCommit) throw new Error("no Type to Draw field is open");
+      return onCommit([raw]);
     },
     ctx: {
       doc,
@@ -55,11 +55,10 @@ function makeCtx(doc: CADDocument, scale = 1): Harness {
       pushHistory() {},
       openDimEditor() {},
       currentDof: () => 0,
-      openValueEditor(_pos, _placeholder, commit) {
-        onCommit = commit;
+      openTypeToDraw(_pos, _fields, handlers) {
+        onCommit = handlers.onCommit;
       },
-      openMultiValueEditor() {},
-      closeValueEditor() {
+      closeTypeToDraw() {
         onCommit = null;
       },
       notify() {},

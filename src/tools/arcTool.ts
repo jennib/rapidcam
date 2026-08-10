@@ -39,19 +39,18 @@ export class ArcTool implements Tool {
       this.startSnap = e.snap?.key ? e.snap : null;
       this.phase = "end";
       const unit = ctx.doc.displayUnit;
-      ctx.openValueEditor(
-        e.world,
-        `arc length (${unit})`,
-        (raw) => this.commitByLength(raw, ctx),
-        () => this.cancel(ctx),
-        () => {
-          ctx.closeValueEditor();
+      ctx.openTypeToDraw(e.world, [{ placeholder: `Arc length (${unit})` }], {
+        onCommit: (raws) => this.commitByLength(raws[0] ?? "", ctx),
+        onCancel: () => this.cancel(ctx),
+        // One field, so Tab is free for the tool: it flips the arc's direction.
+        onTab: () => {
+          ctx.closeTypeToDraw();
           this.clockwise = !this.clockwise;
           ctx.requestRender();
         },
-      );
+      });
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       this.commit(e, ctx);
     }
   }
@@ -105,7 +104,7 @@ export class ArcTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.phase = "center";
     this.center = null;
     this.centerSnap = null;

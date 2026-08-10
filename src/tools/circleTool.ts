@@ -47,18 +47,16 @@ export class CircleTool implements Tool {
       this.anchorScreen = e.screen;
       this.cursor = e.world;
       ctx.setHint("Click a point on the circle, or type a diameter");
-      ctx.openMultiValueEditor(
-        e.world,
-        [{ placeholder: `Ø (${ctx.doc.displayUnit})` }],
-        (raws) => this.commitByText(raws, ctx),
-        () => this.cancel(ctx),
-        (raws) => {
+      ctx.openTypeToDraw(e.world, [{ placeholder: `Ø (${ctx.doc.displayUnit})` }], {
+        onCommit: (raws) => this.commitByText(raws, ctx),
+        onCancel: () => this.cancel(ctx),
+        onChange: (raws) => {
           this.typedDia = this.readDia(raws, ctx);
           ctx.requestRender();
         },
-      );
+      });
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       if (!this.commitCircle(this.radiusFor(e.world), ctx)) {
         // Snapping can pull the second point onto the first. Refusing silently
         // reads as "my drag did nothing" — say why (see ToolContext.notify).
@@ -107,7 +105,7 @@ export class CircleTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.reset(ctx);
     ctx.requestRender();
   }

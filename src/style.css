@@ -1707,7 +1707,14 @@ button.cbtn.solve {
   opacity: 1;
 }
 
-.dim-multi-edit {
+/*
+ * Type to Draw — the field(s) a tool floats at the cursor mid-gesture so an
+ * exact value can be typed instead of clicking the next point. Holds one field
+ * (Circle's diameter) or several (Line's length + angle), which is why it is a
+ * flex container rather than a bare input. Distinct from .dim-edit above, which
+ * edits an EXISTING dimension; the two used to share that class.
+ */
+.type-to-draw {
   position: absolute;
   display: flex;
   align-items: center;
@@ -1718,7 +1725,7 @@ button.cbtn.solve {
   overflow: hidden;
 }
 
-.dim-multi-input {
+.type-to-draw-input {
   width: 72px;
   height: 22px;
   background: transparent;
@@ -1729,11 +1736,11 @@ button.cbtn.solve {
   text-align: center;
   outline: none;
 }
-.dim-multi-input:focus {
+.type-to-draw-input:focus {
   background: var(--panel);
 }
 
-.dim-multi-separator {
+.type-to-draw-sep {
   width: 1px;
   height: 14px;
   background: var(--border);

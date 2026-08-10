@@ -31,26 +31,50 @@ export interface ToolContext {
    *  modifiers that apply mid-drag); pass null to restore the active tool's
    *  default hint. */
   setHint(text: string | null): void;
-  /** Show a floating text input near `worldPos`. Pressing Enter calls `onCommit`.
-   *  Return `false` from `onCommit` to flash red and keep the editor open; any other return closes it.
-   *  If `onTab` is provided, Tab calls it instead of moving browser focus. */
-  openValueEditor(
+  /**
+   * Open the **Type to Draw** field(s) near `worldPos` — the floating input a
+   * tool offers mid-gesture so an exact value can be typed instead of clicking
+   * the next point. See `TYPE_TO_DRAW_TOOLS` in ./shortcuts.
+   *
+   * Not to be confused with {@link ToolContext.openDimEditor}, which edits an
+   * existing dimension. Both used to be called "the value editor".
+   */
+  openTypeToDraw(
     worldPos: Vec2,
-    placeholder: string,
-    onCommit: (raw: string) => boolean | undefined,
-    onCancel: () => void,
-    onTab?: () => void,
+    fields: TypeToDrawField[],
+    handlers: TypeToDrawHandlers,
   ): void;
-  /** Show a floating multi-input container near `worldPos`. Pressing Enter commits all fields. */
-  openMultiValueEditor(
-    worldPos: Vec2,
-    fields: { placeholder: string; initial?: string }[],
-    onCommit: (raws: string[]) => boolean | undefined,
-    onCancel: () => void,
-    onChange?: (raws: string[]) => void,
-  ): void;
-  /** Close any open floating value editor without committing. */
-  closeValueEditor(): void;
+  /** Close the Type to Draw fields without committing. */
+  closeTypeToDraw(): void;
+}
+
+export interface TypeToDrawField {
+  placeholder: string;
+  initial?: string;
+}
+
+export interface TypeToDrawHandlers {
+  /**
+   * Enter was pressed. Return `false` to reject the input — the field flashes
+   * red and stays open, so a typo costs a retype rather than a fresh gesture.
+   */
+  onCommit: (raws: string[]) => boolean | undefined;
+  /** Escape was pressed. */
+  onCancel: () => void;
+  /** Every keystroke, for a live preview. Values are raw, unparsed strings. */
+  onChange?: (raws: string[]) => void;
+  /**
+   * Single-field only: what Tab does when there is no next field to move to.
+   * With two or more fields Tab moves between them and this is ignored.
+   */
+  onTab?: () => void;
+  /**
+   * Backspace pressed while EVERY field is empty — there is no text left to
+   * delete, so the tool may claim the key. Gated on empty precisely so it can
+   * never eat a character the user meant to erase. The polyline tool uses it to
+   * step back a vertex, which is what Backspace did before its fields took focus.
+   */
+  onEmptyBackspace?: () => void;
 }
 
 export interface ToolPointerEvent {

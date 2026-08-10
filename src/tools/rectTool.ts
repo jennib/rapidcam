@@ -49,24 +49,26 @@ export class RectTool implements Tool {
       this.start = e.world;
       this.anchorScreen = e.screen;
       ctx.setHint("Click the opposite corner, or drag (Alt = centred).");
-      ctx.openMultiValueEditor(
+      ctx.openTypeToDraw(
         e.world,
         [
           { placeholder: `W (${ctx.doc.displayUnit})` },
           { placeholder: `H (${ctx.doc.displayUnit})` },
         ],
-        (raws) => this.commitByText(raws, ctx),
-        () => this.cancel(ctx),
-        (raws) => {
-          const w = parseLength(raws[0].trim(), ctx.doc.displayUnit);
-          const h = parseLength(raws[1].trim(), ctx.doc.displayUnit);
-          this.typedW = w != null && w > 0 ? w : null;
-          this.typedH = h != null && h > 0 ? h : null;
-          ctx.requestRender();
+        {
+          onCommit: (raws) => this.commitByText(raws, ctx),
+          onCancel: () => this.cancel(ctx),
+          onChange: (raws) => {
+            const w = parseLength(raws[0].trim(), ctx.doc.displayUnit);
+            const h = parseLength(raws[1].trim(), ctx.doc.displayUnit);
+            this.typedW = w != null && w > 0 ? w : null;
+            this.typedH = h != null && h > 0 ? h : null;
+            ctx.requestRender();
+          },
         },
       );
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       const { p0, p1 } = this.getRectExtents(e.world);
       const w = Math.abs(p1.x - p0.x);
       const h = Math.abs(p1.y - p0.y);
@@ -150,7 +152,7 @@ export class RectTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.start = null;
     this.anchorScreen = null;
     this.typedW = null;

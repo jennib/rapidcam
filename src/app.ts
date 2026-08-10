@@ -67,7 +67,12 @@ import {
 import { TOOL_HINTS, TOOL_SHORTCUTS } from "./tools/shortcuts";
 import { SlotTool } from "./tools/slotTool";
 import { TextTool } from "./tools/textTool";
-import { ToolManager, type ToolPointerEvent } from "./tools/tool";
+import {
+  ToolManager,
+  type ToolPointerEvent,
+  type TypeToDrawField,
+  type TypeToDrawHandlers,
+} from "./tools/tool";
 import { TrimTool } from "./tools/trimTool";
 import { AlignBar } from "./ui/alignBar";
 import { openCircArrayDialog, openRectArrayDialog } from "./ui/arrayDialogs";
@@ -181,7 +186,21 @@ export class App {
   private spaceDown = false;
 
   private dimEditor = new DimEditor();
-  private valueEditor: HTMLElement | null = null;
+  private typeToDrawEl: HTMLElement | null = null;
+  /**
+   * A requested-but-not-yet-built Type to Draw field. The open is deferred a
+   * tick (so the pointer event that triggered it finishes first), which leaves a
+   * window where the tool can finish or cancel before the field exists —
+   * `closeTypeToDraw` has to be able to call that off, or the field appears over
+   * a gesture that is already over.
+   */
+  private typeToDrawPending: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Bumped on every open request. Lets a commit tell "the tool replaced the
+   * field" (polyline re-arming for its next segment) from "the tool is done",
+   * so committing does not tear down the replacement.
+   */
+  private typeToDrawGen = 0;
 
   private webglPreview: WebGLPreview | null = null;
   private preview3DVisible = false;
@@ -222,7 +241,7 @@ export class App {
       onFitView: () => this.fitView(),
       onCloseEditors: () => {
         this.dimEditor.close();
-        this.closeValueEditor();
+        this.closeTypeToDraw();
         // A document swap (New Project / open / draft restore) must not leave a
         // dialog open over the new document — it would act on geometry that's gone.
         closeAllModals();
@@ -244,13 +263,15 @@ export class App {
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.project.pushHistory,
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
-        openValueEditor: (worldPos, placeholder, onCommit, onCancel, onTab) => {
-          setTimeout(() => this.openValueEditor(worldPos, placeholder, onCommit, onCancel, onTab), 0);
+        openTypeToDraw: (worldPos, fields, handlers) => {
+          this.typeToDrawGen++;
+          if (this.typeToDrawPending) clearTimeout(this.typeToDrawPending);
+          this.typeToDrawPending = setTimeout(() => {
+            this.typeToDrawPending = null;
+            this.openTypeToDraw(worldPos, fields, handlers);
+          }, 0);
         },
-        openMultiValueEditor: (worldPos, fields, onCommit, onCancel, onChange) => {
-          setTimeout(() => this.openMultiValueEditor(worldPos, fields, onCommit, onCancel, onChange), 0);
-        },
-        closeValueEditor: () => this.closeValueEditor(),
+        closeTypeToDraw: () => this.closeTypeToDraw(),
         currentDof: () => this.currentDof(),
         notify: (msg) => this.statusBar.flash(msg),
         setHint: (text) => this.statusBar.setHint(text ?? TOOL_HINTS[this.tools.active.id] ?? ""),
@@ -1170,151 +1191,121 @@ export class App {
     return true;
   }
 
-  private openValueEditor(
+  /**
+   * Open the Type to Draw field(s) — the floating input a tool offers mid-gesture
+   * so an exact value can be typed instead of clicking the next point.
+   *
+   * This was two near-identical implementations: a single-field one with an
+   * `onTab` hook but no `onChange` (so it could never live-preview), and a
+   * multi-field one with `onChange` but no `onTab`. Which tool got which was an
+   * accident of what was needed first, and both wrote ~70 lines of the same DOM.
+   * One implementation now, and every tool can have both hooks.
+   */
+  private openTypeToDraw(
     worldPos: Vec2,
-    placeholder: string,
-    onCommit: (raw: string) => boolean | undefined,
-    onCancel: () => void,
-    onTab?: () => void,
+    fields: TypeToDrawField[],
+    handlers: TypeToDrawHandlers,
   ): void {
-    this.closeValueEditor();
+    this.closeTypeToDraw();
     const pos = this.view.worldToScreen(worldPos);
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "dim-edit";
-    input.placeholder = placeholder;
-    input.style.left = `${pos.x - 36}px`;
-    input.style.top = `${pos.y + 14}px`;
 
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const raw = input.value;
-        const ok = onCommit(raw);
-        if (ok === false) {
-          input.style.color = "#e05555";
-          setTimeout(() => {
-            input.style.color = "";
-          }, 600);
-        } else {
-          this.closeValueEditor();
-        }
-      } else if (e.key === "Escape") {
-        this.closeValueEditor();
-        onCancel();
-      } else if (e.key === "Tab" && onTab) {
-        e.preventDefault();
-        onTab();
-      }
-      e.stopPropagation();
-    });
-    // Blur just closes silently — canvas click commits via pointer event.
-    input.addEventListener("blur", () => {
-      if (this.valueEditor === input) {
-        this.valueEditor = null;
-        input.remove();
-      }
-    });
-
-    this.canvas.parentElement!.appendChild(input);
-    this.valueEditor = input;
-    input.focus();
-  }
-
-  private closeValueEditor(): void {
-    if (this.valueEditor) {
-      const el = this.valueEditor;
-      this.valueEditor = null;
-      el.remove();
-    }
-  }
-
-  private openMultiValueEditor(
-    worldPos: Vec2,
-    fields: { placeholder: string; initial?: string }[],
-    onCommit: (raws: string[]) => boolean | undefined,
-    onCancel: () => void,
-    onChange?: (raws: string[]) => void,
-  ): void {
-    this.closeValueEditor();
-    const pos = this.view.worldToScreen(worldPos);
-    
     const container = document.createElement("div");
-    container.className = "dim-multi-edit";
+    container.className = "type-to-draw";
     container.style.left = `${pos.x - 36}px`;
     container.style.top = `${pos.y + 14}px`;
 
     const inputs: HTMLInputElement[] = [];
-    
-    const tryCommit = () => {
-      const raws = inputs.map(i => i.value);
-      const ok = onCommit(raws);
+
+    const tryCommit = (): void => {
+      const gen = this.typeToDrawGen;
+      const ok = handlers.onCommit(inputs.map((i) => i.value));
       if (ok === false) {
+        // Flash rather than close: a typo should cost a retype, not a new gesture.
         container.style.borderColor = "#e05555";
         setTimeout(() => {
           container.style.borderColor = "";
         }, 600);
-      } else {
-        this.closeValueEditor();
+      } else if (this.typeToDrawGen === gen) {
+        // Unchanged generation = the handler did not ask for a replacement, so
+        // this field's work is done. If it DID (polyline arming its next
+        // segment), closing here would kill the field it just requested.
+        this.closeTypeToDraw();
       }
     };
 
     fields.forEach((field, idx) => {
       const input = document.createElement("input");
       input.type = "text";
-      input.className = "dim-multi-input";
+      input.className = "type-to-draw-input";
       input.placeholder = field.placeholder;
-      if (field.initial !== undefined) {
-        input.value = field.initial;
-      }
-      
+      if (field.initial !== undefined) input.value = field.initial;
+
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           tryCommit();
           e.preventDefault();
         } else if (e.key === "Escape") {
-          this.closeValueEditor();
-          onCancel();
+          this.closeTypeToDraw();
+          handlers.onCancel();
           e.preventDefault();
+        } else if (e.key === "Tab" && handlers.onTab && fields.length === 1) {
+          // One field means Tab has nowhere to go, so the tool may claim the key
+          // (the arc tool flips the arc's direction with it).
+          e.preventDefault();
+          handlers.onTab();
+        } else if (
+          e.key === "Backspace" &&
+          handlers.onEmptyBackspace &&
+          inputs.every((i) => i.value === "")
+        ) {
+          e.preventDefault();
+          handlers.onEmptyBackspace();
         }
         e.stopPropagation();
       });
-      
-      input.addEventListener("input", () => {
-        if (onChange) {
-          onChange(inputs.map(i => i.value));
-        }
-      });
-      
-      // Blur closes if focus moves outside the container
+
+      input.addEventListener("input", () => handlers.onChange?.(inputs.map((i) => i.value)));
+
+      // Blur closes only once focus has left the whole group — tabbing between
+      // fields must not tear the editor down.
       input.addEventListener("blur", () => {
         setTimeout(() => {
-          if (this.valueEditor === container && !container.contains(document.activeElement)) {
-            this.closeValueEditor();
+          if (this.typeToDrawEl === container && !container.contains(document.activeElement)) {
+            this.closeTypeToDraw();
           }
         }, 0);
       });
-      
-      input.addEventListener("focus", () => {
-        input.select();
-      });
+
+      input.addEventListener("focus", () => input.select());
 
       container.appendChild(input);
       inputs.push(input);
-      
-      // Add a subtle separator between inputs
+
       if (idx < fields.length - 1) {
         const sep = document.createElement("div");
-        sep.className = "dim-multi-separator";
+        sep.className = "type-to-draw-sep";
         container.appendChild(sep);
       }
     });
 
     this.canvas.parentElement!.appendChild(container);
-    this.valueEditor = container;
-    
-    if (inputs.length > 0) {
-      inputs[0].focus();
-      inputs[0].select();
+    this.typeToDrawEl = container;
+    inputs[0]?.focus();
+    inputs[0]?.select();
+  }
+
+  private closeTypeToDraw(): void {
+    // Call off a field that was requested but has not been built yet, or it
+    // pops up a tick later over a gesture that has already ended — which is
+    // exactly what a fast Enter after the last polyline segment produced.
+    if (this.typeToDrawPending) {
+      clearTimeout(this.typeToDrawPending);
+      this.typeToDrawPending = null;
+    }
+    if (this.typeToDrawEl) {
+      const el = this.typeToDrawEl;
+      this.typeToDrawEl = null;
+      el.remove();
     }
   }
 
@@ -1379,7 +1370,7 @@ export class App {
 
   private async deleteSelected(): Promise<void> {
     this.dimEditor.close();
-    this.closeValueEditor();
+    this.closeTypeToDraw();
 
     if (this.doc.selectedConstraintId) {
       this.project.pushHistory();

@@ -40,9 +40,11 @@ export const TOOL_SHORTCUTS: Record<string, string> = {
  */
 export const TYPE_TO_DRAW_TOOLS: readonly string[] = [
   "line",
+  "polyline",
   "rect",
   "circle",
   "arc",
+  "bezier",
   "polygon",
   "slot",
   "fillet",
@@ -61,11 +63,12 @@ export const TOOL_HINTS: Record<string, string> = {
   rect: "Click two corners, or drag",
   circle: "Click the centre then a point on it, or drag out · type for an exact diameter",
   arc: "Click centre → start → end · Tab flips direction",
-  polyline: "Click vertices · Esc or double-click finishes",
+  polyline:
+    "Click vertices, or type a length/angle for each · Enter finishes · click the start to close",
   dimension: "Click two points (or a circle), then place the dimension",
   measure: "Click two points to measure",
   offset: "Click an entity, then click the side to offset to",
-  bezier: "Click start and end, then the two curve handles",
+  bezier: "Click start and end — or type the chord — then the two curve handles",
   rotate: "Select objects first, then drag to rotate them",
   scale: "Select objects first, then drag to scale them",
   text: "Set the text in the dialog, then click the canvas to stamp it",

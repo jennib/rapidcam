@@ -33,24 +33,26 @@ export class PolygonTool implements Tool {
       this.center = e.world;
       this.anchorScreen = e.screen;
       this.phase = "radius";
-      ctx.openMultiValueEditor(
+      ctx.openTypeToDraw(
         e.world,
         [
           { placeholder: "Sides", initial: this.sides.toString() },
           { placeholder: `Ø (${ctx.doc.displayUnit})` },
         ],
-        (raws) => this.commitByText(raws, ctx),
-        () => this.cancel(ctx),
-        (raws) => {
-          const n = parseInt(raws[0].trim(), 10);
-          if (Number.isFinite(n) && n >= 3 && n <= 64) {
-            this.sides = n;
-            ctx.requestRender();
-          }
+        {
+          onCommit: (raws) => this.commitByText(raws, ctx),
+          onCancel: () => this.cancel(ctx),
+          onChange: (raws) => {
+            const n = parseInt(raws[0].trim(), 10);
+            if (Number.isFinite(n) && n >= 3 && n <= 64) {
+              this.sides = n;
+              ctx.requestRender();
+            }
+          },
         },
       );
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       const r = dist(this.center!, e.world);
       if (r < 1e-6) {
         // Snapping can pull the second point onto the first. Refusing silently
@@ -110,7 +112,7 @@ export class PolygonTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.reset();
     ctx.requestRender();
   }
