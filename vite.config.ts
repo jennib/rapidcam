@@ -5,6 +5,7 @@ import type { Plugin } from "vite";
 // vitest's defineConfig is vite's plus the `test` block below; vite itself reads
 // the result unchanged and ignores that key.
 import { defineConfig } from "vitest/config";
+import pkg from "./package.json" with { type: "json" };
 
 const repoRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +105,11 @@ function aiDocsPlugin(): Plugin {
 export default defineConfig({
   root: ".",
   plugins: [aiDocsPlugin()],
+  // The version the About dialog shows, taken from package.json so the two
+  // cannot disagree. It was typed out by hand there, which meant a release
+  // silently shipped the previous number unless someone remembered a file with
+  // no other reason to be opened.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   server: {
     port: 5173,
     open: false,

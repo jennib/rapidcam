@@ -8,7 +8,108 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.8.0] — 2026-08-09
+
 ### Added
+
+- **V-carve halftoning.** An Engrave op on an image, cut with a V-bit, can now
+  reproduce the photograph as a halftone *screen* — parallel V-grooves whose
+  width carries the tone, the way a printed halftone works — rather than as a
+  carved surface.
+
+  A V-bit's groove is `tip + 2·depth·tan(½·angle)` wide, so the row spacing
+  stops being a free parameter: it is derived from the bit and the cut depth so
+  the darkest grooves just meet, and `halftoneLand` trades peak blackness for a
+  visible line texture. Spacing rows finer than a groove — which is what a
+  relief wants, for a smooth surface — makes each groove re-cut its neighbours,
+  so the result is the depth map dilated by half a groove and the extra rows are
+  cutting time spent losing detail. On the default 6 mm 60° bit at 3 mm deep
+  that was 21,684 lines and ~21 minutes where the screened version is 3,792 and
+  ~4.
+
+  Tone is mapped through *linear light*, not the stored pixel byte. Coverage
+  mixes by reflectance — half a row covered reflects about half the light, and
+  half the light reads as byte ~188, not the 128 that produced it — so middle
+  grey wants about 79% coverage rather than 50%. No single gamma reproduces that
+  curve, so it could not have been dialled in afterwards.
+
+  Two limits are reported rather than absorbed: a bit whose flutes run out
+  before full depth (the darkest tones flatten together), and a flat-tip bit,
+  which cuts a tip-wide groove the instant it touches and so cannot reach the
+  highlights at all.
+
+- **Every toolpath type now says what it does.** The Type row in the toolpath
+  dialog carries a small cross-section, one sentence, and — where an operation
+  does not stand alone — a line naming what has to accompany it. *Relief
+  Roughing* leaves a stepped surface and needs an Engrave pass on the same image
+  to finish it; that was true before, and written only in a source comment.
+
+- **Open in GEditor.** *Send G-code* now offers a third destination alongside
+  gSender and ncSender: [GEditor](https://editor.rapidcam.app), the browser
+  G-code editor and 3D simulator. It opens in a new tab with the posted program
+  already loaded, so the last look at a job before it cuts can be at the code
+  itself — read it, tweak a feed, scrub the backplot — without a download-and-
+  reopen detour. There is no address to configure and nothing to test: it is a
+  hosted page, not a machine on the shop network.
+
+  The program is handed over by `postMessage` once the editor announces itself,
+  rather than packed into the URL. GEditor accepts `?base64=`/`#base64=` too and
+  that needs no handshake, but browsers cap URL length at their own undocumented
+  figures and an over-long one fails by *truncation* — which would deliver a
+  program that ends mid-cut and looks complete. A message has no size limit.
+
+  Two-sided jobs still go a side at a time, and a blocked pop-up falls back to
+  the same "download the file instead" offer as an unreachable sender.
+
+- **Crash reports and a solver-health signal.** RapidCAM now records the two
+  things that indicate it failed to do its job, rather than only which buttons
+  were pressed.
+
+  Uncaught exceptions and unhandled promise rejections are captured with their
+  stack trace. Repeats are collapsed to the first occurrence — the canvas render
+  loop runs at frame rate, so one bad entity would otherwise report sixty times a
+  second — and a session reports at most 25 distinct faults. Failed image and
+  script loads fire the same browser event but are *not* crashes, and are not
+  reported as such.
+
+  Separately, a sketch that stops converging emits `solve_unconverged` with
+  residual, DOF and object counts. It is edge-triggered: a broken sketch
+  re-solves on every subsequent edit, so what's recorded is the moment it broke,
+  not every keystroke until it was fixed. Solves during a drag are never
+  reported, because transient non-convergence mid-drag is normal.
+
+  Both sit behind the **existing** analytics consent — nothing is captured from a
+  browser that declined or has Do Not Track set, and errors thrown before the
+  user answers the banner are dropped rather than queued. Errors thrown while
+  PostHog is still loading *are* held and flushed, but only for a user who had
+  already consented in a previous session. The consent banner and Privacy dialog
+  now say crash reports are included.
+
+- **Laser jobs from layers.** A layer on a laser document can carry its own beam
+  recipe — power, speed, passes, optional kerf and air assist — and say what its
+  geometry is *for*: cut, score, engrave, or filled engrave. **Toolpaths from
+  Layers** then turns the drawing into a program in one press: one toolpath per
+  layer, in layer order, named after the layer. Hidden and workholding layers are
+  skipped and reported by name.
+
+  Power, speed and passes are **live**: any toolpath whose geometry all sits on a
+  layer takes them at export, so re-tuning after a test cut re-tunes everything on
+  that layer without a rebuild. The job *type* is deliberately not live, because a
+  cut, an engrave and a fill emit fundamentally different geometry — changing it
+  will not silently retype a toolpath you have already previewed.
+
+  Additive in `.rcam` (`layers[].laser`, `operations[].laserOverride`); the schema
+  and format guide document both.
+
+- **Drag to draw.** The line, rectangle, circle and polygon tools now accept
+  press-drag-release as well as click-then-click. No setting: a click and a drag
+  differ by how far the pointer moved, so the gesture is inferred. A press and
+  release in the same place is still a click and still arms the second point, so
+  existing muscle memory is unaffected. A dragged endpoint snaps exactly as a
+  clicked one does, and `Alt` (draw from centre) and `Shift` (ortho) work on a
+  drag too.
 
 - **Fonts from the web.** The text tool's font list is no longer whatever is on
   this computer. *Add a font from the web…* searches Google's ~2,000 families,
@@ -28,8 +129,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   spanning a weight axis and opentype.js renders its *default* instance, so
   listing "Bold" for one would have handed back Regular outlines and cut the
   wrong thing.
-
-### Added
 
 - **Facing / surfacing.** A new toolpath that skims a surface flat — the top of
   the blank, or the machine's spoilboard. It's the one operation with no
@@ -107,6 +206,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The toolpath dialog uses the full window height.** It opened below the
+  constraint and align toolbars — bars that are empty at that x — and was capped
+  at 82% of the viewport regardless of where it sat, so dragging it upward
+  gained nothing. It now opens near the top of the window and fills to the
+  bottom from wherever it is. In a 901 px window that is 877 px of dialog
+  instead of 739, which is the difference between scrolling for the Geometry
+  section and not.
+
 - **What was labelled "Adaptive" in the pocket dialog was not adaptive.** It is
   contour-parallel offset clearing, and its load follows the shape of the wall:
   the innermost loop is a full-width slot in solid stock (360°, fully buried),
@@ -135,6 +242,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stepdown, which is what buys the gentler descent.
 
 ### Fixed
+
+- **Reopening an image-bearing design from Recents destroyed the picture,
+  silently.** The Recents list cached a copy stripped of fonts and images to fit
+  the browser's storage quota — correct for drawing the list, wrong for opening,
+  which is what it was also used for. The reopened design held an image entity
+  whose pixels nothing had registered: an empty dashed rectangle on the canvas,
+  no warning, and a save that wrote the design out without its image.
+
+  The faithful document now goes to IndexedDB and is read when an entry is
+  actually opened; the stripped copy stays in local storage for the welcome
+  screen's first paint only. A file arriving without its pixels now warns, on
+  every load path — the check existed but had never been wired up, while its
+  font-side twin had guarded that half for years.
+
+- **The 3-D preview ignored the tool library.** It drew every operation with the
+  tool numbers stored on the operation itself, so editing a tool in the library
+  moved the toolpath and not the picture of it.
+
+- **Later stepdown passes of an image relief re-cut air.** A row already at its
+  final depth was traced again at exactly the depth it was already sitting at,
+  for the row's whole length — on a shallow image, most of every pass after the
+  first.
 
 - **Text in about one font in eight produced no toolpath, and could break the
   canvas.** opentype.js applies OpenType feature substitutions when it maps a
@@ -165,73 +294,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sections now describe what actually happens to text, and a drift guard in
   `test/helpContent.test.ts` fails if the app is again said to ship a font it
   doesn't have.
-
-- **Open in GEditor.** *Send G-code* now offers a third destination alongside
-  gSender and ncSender: [GEditor](https://editor.rapidcam.app), the browser
-  G-code editor and 3D simulator. It opens in a new tab with the posted program
-  already loaded, so the last look at a job before it cuts can be at the code
-  itself — read it, tweak a feed, scrub the backplot — without a download-and-
-  reopen detour. There is no address to configure and nothing to test: it is a
-  hosted page, not a machine on the shop network.
-
-  The program is handed over by `postMessage` once the editor announces itself,
-  rather than packed into the URL. GEditor accepts `?base64=`/`#base64=` too and
-  that needs no handshake, but browsers cap URL length at their own undocumented
-  figures and an over-long one fails by *truncation* — which would deliver a
-  program that ends mid-cut and looks complete. A message has no size limit.
-
-  Two-sided jobs still go a side at a time, and a blocked pop-up falls back to
-  the same "download the file instead" offer as an unreachable sender.
-
-- **Crash reports and a solver-health signal.** RapidCAM now records the two
-  things that indicate it failed to do its job, rather than only which buttons
-  were pressed.
-
-  Uncaught exceptions and unhandled promise rejections are captured with their
-  stack trace. Repeats are collapsed to the first occurrence — the canvas render
-  loop runs at frame rate, so one bad entity would otherwise report sixty times a
-  second — and a session reports at most 25 distinct faults. Failed image and
-  script loads fire the same browser event but are *not* crashes, and are not
-  reported as such.
-
-  Separately, a sketch that stops converging emits `solve_unconverged` with
-  residual, DOF and object counts. It is edge-triggered: a broken sketch
-  re-solves on every subsequent edit, so what's recorded is the moment it broke,
-  not every keystroke until it was fixed. Solves during a drag are never
-  reported, because transient non-convergence mid-drag is normal.
-
-  Both sit behind the **existing** analytics consent — nothing is captured from a
-  browser that declined or has Do Not Track set, and errors thrown before the
-  user answers the banner are dropped rather than queued. Errors thrown while
-  PostHog is still loading *are* held and flushed, but only for a user who had
-  already consented in a previous session. The consent banner and Privacy dialog
-  now say crash reports are included.
-
-- **Laser jobs from layers.** A layer on a laser document can carry its own beam
-  recipe — power, speed, passes, optional kerf and air assist — and say what its
-  geometry is *for*: cut, score, engrave, or filled engrave. **Toolpaths from
-  Layers** then turns the drawing into a program in one press: one toolpath per
-  layer, in layer order, named after the layer. Hidden and workholding layers are
-  skipped and reported by name.
-
-  Power, speed and passes are **live**: any toolpath whose geometry all sits on a
-  layer takes them at export, so re-tuning after a test cut re-tunes everything on
-  that layer without a rebuild. The job *type* is deliberately not live, because a
-  cut, an engrave and a fill emit fundamentally different geometry — changing it
-  will not silently retype a toolpath you have already previewed.
-
-  Additive in `.rcam` (`layers[].laser`, `operations[].laserOverride`); the schema
-  and format guide document both.
-
-- **Drag to draw.** The line, rectangle, circle and polygon tools now accept
-  press-drag-release as well as click-then-click. No setting: a click and a drag
-  differ by how far the pointer moved, so the gesture is inferred. A press and
-  release in the same place is still a click and still arms the second point, so
-  existing muscle memory is unaffected. A dragged endpoint snaps exactly as a
-  clicked one does, and `Alt` (draw from centre) and `Shift` (ortho) work on a
-  drag too.
-
-### Fixed
 
 - **Kerf direction on a cut layer containing holes.** The beam must run *outside*
   an outline and *inside* a hole for both to finish at the drawn size. A single
@@ -266,6 +328,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `3` — so an AI following the published guidance produced a file that failed
   validation.
 
+---
+
+---
 
 ## [1.7.0] — 2026-07-31
 
