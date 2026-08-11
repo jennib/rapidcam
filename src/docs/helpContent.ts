@@ -4,6 +4,8 @@
  * tool library, laser engraving, feeds & speeds, post-processors, 3D simulation, and CNC control.
  */
 
+import { toolReferenceRows } from "../tools/shortcuts";
+
 export interface HelpCallout {
   type: "tip" | "note" | "warning" | "best-practice";
   title?: string;
@@ -113,7 +115,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Circle Tool (C): Click the centre and drag outward to define the radius, or type an exact diameter (Type to Draw).",
           "Arc Tool (A): Click Center → Start → End. Type an exact arc length instead of clicking the end, and press (Tab) to flip the arc's direction.",
           "Bezier Curve Tool (B): Create smooth cubic Bezier splines. Click the start and end anchors — or type the chord's exact length and angle — then click the two tangent control handles. The handles are mouse-only: a control arm has no dimension to type.",
-          "Slot Tool (U): Create elongated obround slots. Click two center points, then drag or input the slot width.",
+          "Slot Tool (U): Create elongated obround slots. Click two centre points, then drag the width out or type it exactly.",
           "Polygon Tool (N): Generate regular polygons (triangles, pentagons, hexagons, octagons, etc.). Type the side count and an exact diameter — measured across the flats, the machinist convention — or click the centre then a vertex.",
           "Text Tool: Place text in any outline font (TrueType, OpenType or WOFF). Roboto ships with the app; add more from a file on your computer or from the web.",
         ],
@@ -155,8 +157,8 @@ export const HELP_TOPICS: HelpTopic[] = [
         heading: "Vector Modification Tools",
         body: "Shape, trim, and prepare your vector contours for optimal machining:",
         tips: [
-          "Fillet Tool (F): Click two intersecting lines or a polyline vertex to insert a smooth tangential circular fillet of specified radius.",
-          "Chamfer Tool: Bevel sharp corners with a symmetric distance or angle-based chamfer.",
+          "Fillet Tool (F): Click two intersecting lines or a polyline vertex to insert a smooth tangential circular arc. Drag away from the corner to size it by eye, or click it and type an exact radius.",
+          "Chamfer Tool: Bevel a sharp corner by a symmetric distance — the same setback along both legs. Drag away from the corner to size it by eye, or click it and type an exact distance.",
           "Trim Tool (T): Click any segment or curve to trim it back to the nearest intersecting boundary.",
           "Extend Tool (E): Click near the endpoint of a line or arc to extend it until it reaches the next boundary edge.",
           "Offset Tool (O): Select open or closed contours to generate concentric inside, outside, or dual offsets with sharp, miter, or rounded corners.",
@@ -539,25 +541,13 @@ export const HELP_TOPICS: HelpTopic[] = [
         body: "Activate CAD tools instantly with single-key shortcuts:",
         table: {
           headers: ["Key", "Tool", "Action / Workflow"],
+          // GENERATED from the tool reference table, not written out here. The
+          // hand-written copy that used to live at this spot is precisely what
+          // drifted — it advertised typed input for tools that had none and
+          // missed it on three that had it. See src/tools/shortcuts.ts.
           rows: [
-            ["V", "Select Tool", "Pick, drag vertices, marquee select (Shift+Drag), move geometry."],
-            ["L", "Line Tool", "Click start then end, or type a length/angle. Shift = horizontal or vertical."],
-            ["R", "Rectangle Tool", "Click corner to corner, drag, or type width and height. Alt = from centre."],
-            ["C", "Circle Tool", "Click centre then drag the radius, or type an exact diameter."],
-            ["A", "Arc Tool", "Click Center → Start → End, or type an arc length. Tab flips direction."],
-            ["P", "Polyline Tool", "Click vertices, or type each length/angle. Enter finishes open."],
-            ["B", "Bezier / Spline", "Click or type the chord, then click the two tangent handles."],
-            ["U", "Slot Tool", "Click two slot centres, then drag or type the slot width."],
-            ["N", "Polygon Tool", "Click centre then vertex, or type the side count and diameter."],
-            ["F", "Fillet Tool", "Click two intersecting lines or a vertex to add circular fillet."],
-            ["T", "Trim Tool", "Click any vector segment to trim to nearest intersection."],
-            ["E", "Extend Tool", "Click line or arc endpoint to extend to next boundary."],
-            ["O", "Offset Tool", "Click entity then click side to offset inward or outward."],
-            ["M", "Mirror Tool", "Select objects, then click 2 points to define mirror axis."],
-            ["Q", "Rotate Tool", "Select objects, then drag to rotate them about the pivot."],
-            ["S", "Scale Tool", "Select objects and scale about a reference basepoint."],
-            ["D", "Dimension Tool", "Click two points (or circle) to place driving dimension."],
-            ["I", "Measure Tool", "Click two points to inspect distance, angle, and coordinates."],
+            ...toolReferenceRows(),
+            // Not a tool, so not in that table: a modifier on the current selection.
             ["X", "Construction Toggle", "Toggle selected entities to non-machining reference lines."],
           ],
         },

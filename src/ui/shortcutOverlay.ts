@@ -7,7 +7,7 @@
 
 import { registerModal } from "./modal";
 import { showHelpDialog } from "./helpDialog";
-import { TOOL_SHORTCUTS } from "../tools/shortcuts";
+import { TOOLS } from "../tools/shortcuts";
 
 const EDITING_KEYS: [string, string][] = [
   ["Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste"],
@@ -61,10 +61,11 @@ export function showShortcutOverlay(): void {
   body.style.cssText = "display:flex;gap:24px;max-height:70vh;overflow-y:auto;";
   dialog.appendChild(body);
 
-  const toolRows: [string, string][] = Object.entries(TOOL_SHORTCUTS).map(([key, id]) => [
-    key.toUpperCase(),
-    id.charAt(0).toUpperCase() + id.slice(1),
-  ]);
+  // The tool's real label, not a capitalized id — that gave "Rect" for the
+  // Rectangle tool and "Bezier" where the palette says something else.
+  const toolRows: [string, string][] = Object.values(TOOLS)
+    .filter((t) => t.key)
+    .map((t) => [(t.key as string).toUpperCase(), t.label]);
 
   body.appendChild(column("Tools", toolRows));
   const right = document.createElement("div");
