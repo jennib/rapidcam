@@ -89,13 +89,23 @@ async function whitePixelCount(page: import("@playwright/test").Page): Promise<n
   });
 }
 
-/** Drive File ▸ Save and return the .rcam text the app actually wrote. */
+/**
+ * Drive File ▸ Save and return the .rcam text the app actually wrote.
+ *
+ * The name is asked for by `promptDialog`, not native `prompt()`, so it is
+ * answered by typing into it. `fileSave()` is deliberately not awaited until
+ * afterwards — it does not resolve until the prompt is answered.
+ */
 async function saveAndRead(page: import("@playwright/test").Page, name: string): Promise<string> {
-  page.once("dialog", (d) => d.accept(name)); // the `prompt("Save as:")` fallback
+  const saving = page.evaluate(() => (window as any).__app.project.fileSave());
+  const namePrompt = page.locator(".tp-prompt");
+  await expect(namePrompt).toBeVisible();
+  await namePrompt.locator("input").fill(name);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.evaluate(() => (window as any).__app.project.fileSave()),
+    namePrompt.locator(".tp-apply-btn").click(),
   ]);
+  await saving;
   return readFileSync(await download.path(), "utf8");
 }
 
@@ -133,24 +143,19 @@ test("an image survives a save, a reload, and reopening from Recents", async ({ 
   await page.reload();
   await waitForApp(page);
 
-  // Watch for any warning during the reopen ONLY — `warnMissingFonts` uses a
-  // native alert(), so a missing-image warning would surface the same way. The
-  // handler comes off again before the next save, whose prompt() must be
-  // answered rather than dismissed.
-  const dialogs: string[] = [];
-  const collect = (d: import("@playwright/test").Dialog) => {
-    dialogs.push(d.message());
-    void d.dismiss();
-  };
-  page.on("dialog", collect);
-
   // ---- session B: reopen it from Recents, the way a user actually would ------
   // The welcome screen offers it as "Resume Last Project" — click that rather
   // than calling fileOpenRecent(), so this exercises the real entry point.
   await page.getByText("Resume Last Project").click();
   await expect(page.locator(".welcome-backdrop")).toHaveCount(0);
   await page.waitForTimeout(500); // let the load + solve + fit settle
-  page.off("dialog", collect);
+
+  // Diagnostic: what did the reopen actually tell the user? This used to hook
+  // `page.on("dialog")`, because warnMissingFonts was a native alert(). Both
+  // warnings are ordinary DOM now — an .error-notice for fonts, a role=status
+  // toast for images — so read them off the page instead. Hooking dialogs here
+  // would collect nothing forever and look like "no warnings shown".
+  const dialogs = await page.locator(".error-notice, [role='status']").allTextContents();
 
   const entityStillThere = await page.evaluate(
     () =>

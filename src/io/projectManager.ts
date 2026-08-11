@@ -32,8 +32,9 @@ import { buildDesignLink } from "./shareLink";
 import { saveDraft, loadDraftData, clearDraft as dropDraft, getDraftMeta } from "./draftStore";
 import { loadRecentPayload } from "./recentsStore";
 import { copyToClipboard } from "../ui/clipboard";
+import { showError } from "../ui/errorNotice";
 import { toast } from "../ui/toast";
-import { confirmDialog } from "../ui/modal";
+import { confirmDialog, promptDialog } from "../ui/modal";
 import { chooseDxfUnits, recommendDxfUnit } from "../ui/dxfUnitsDialog";
 import { selectionBounds } from "../core/transform";
 import { MM_PER_INCH } from "../core/units";
@@ -286,7 +287,14 @@ export class ProjectManager {
       }
     }
 
-    const name = prompt("Save as:", this.currentFileName);
+    // Fallback for browsers without showSaveFilePicker (Firefox, Safari) — for
+    // them this IS Save As, so it gets a real dialog rather than native prompt().
+    const name = await promptDialog({
+      title: "Save As",
+      label: "File name",
+      initial: this.currentFileName,
+      confirmLabel: "Save",
+    });
     if (name === null) return;
     this.currentFileName = name || "Untitled";
     this.currentFileHandle = null;
@@ -308,7 +316,7 @@ export class ProjectManager {
   async copyShareLink(): Promise<void> {
     const { url, tooLong } = await buildDesignLink(this.doc, this.currentFileName);
     if (tooLong) {
-      alert(
+      showError(
         "This design is too large to share as a link.\n\n" +
           "Use File ▸ Save to share the .rcam file instead.",
       );
@@ -406,7 +414,7 @@ export class ProjectManager {
     );
     if (missing.length === 0) return;
     const list = missing.map((t) => `  • "${t.text}"  (font: ${t.fontId})`).join("\n");
-    alert(
+    showError(
       `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
         `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
         `omitted from G-code until the font is re-added.`,
@@ -419,10 +427,14 @@ export class ProjectManager {
    *
    * This existed as an unused helper (`isImageResolvable`) for a long time while
    * nothing called it, which is how reopening an image design from Recents lost
-   * its picture in silence. A toast rather than the font path's `alert()` — this
-   * fires on a load, where a blocking dialog is exactly the interruption we've
-   * been removing elsewhere — but a long one, because the next save bakes the
-   * loss into the file.
+   * its picture in silence.
+   *
+   * A long toast rather than the font path's `showError()`. That used to be a
+   * blocking-vs-not distinction; now that neither blocks, the reason is what it
+   * always should have been: the font report NAMES each affected item, so you
+   * need it on screen while you go and fix them, whereas this one is a single
+   * sentence about the whole document. It still gets 10s, because the next save
+   * bakes the loss into the file.
    */
   private warnMissingImages(): void {
     const missing = this.doc.entities.filter(
@@ -495,7 +507,7 @@ export class ProjectManager {
     try {
       decoded = await decodeImageFile(file);
     } catch {
-      alert("Could not read that image file.");
+      showError("Could not read that image file.");
       return;
     }
 
@@ -550,7 +562,7 @@ export class ProjectManager {
       const offset = { x: this.doc.stockRect?.x ?? 0, y: this.doc.stockRect?.y ?? 0 };
       result = importDxf(text, { offset });
     } catch (e) {
-      alert(`Could not import DXF: ${(e as Error).message}`);
+      showError(`Could not import DXF: ${(e as Error).message}`);
       return;
     }
 
@@ -575,7 +587,7 @@ export class ProjectManager {
     const warnings = result.warnings;
     const raw = result.entities;
     if (raw.length === 0) {
-      alert(
+      showError(
         "No supported geometry found in the DXF file." +
           (warnings.length ? `\n\n${warnings.join("\n")}` : ""),
       );
@@ -675,7 +687,7 @@ export class ProjectManager {
     const text = await file.text();
     const entities = importSvg(text);
     if (entities.length === 0) {
-      alert("No supported geometry found in the SVG file.");
+      showError("No supported geometry found in the SVG file.");
       return;
     }
     this.pushHistory();

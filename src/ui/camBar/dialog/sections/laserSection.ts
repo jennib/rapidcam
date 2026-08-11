@@ -3,6 +3,7 @@
  * raster engraving parameters, live dither swatch, and material presets.
  */
 import type { CADDocument } from "../../../../model/document";
+import { promptDialog } from "../../../modal";
 import { RasterImageEntity } from "../../../../model/entities";
 import {
   type DitherMode,
@@ -390,9 +391,16 @@ export function buildLaserSection(
     presetPicker.style.display = pickerOpen ? "" : "none";
   });
 
-  savePresetBtn.addEventListener("click", () => {
+  savePresetBtn.addEventListener("click", async () => {
     const suggested = state.name?.trim() || `${presetKind()} preset`;
-    const name = window.prompt("Name this material preset", suggested)?.trim();
+    const name = (
+      await promptDialog({
+        title: "Save Material Preset",
+        label: "Preset name",
+        initial: suggested,
+        confirmLabel: "Save",
+      })
+    )?.trim();
     if (!name) return;
     const kind = presetKind();
     addPreset({

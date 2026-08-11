@@ -1708,6 +1708,60 @@ button.cbtn.solve {
 }
 
 /*
+ * Non-blocking error notice — the alert() replacement (src/ui/errorNotice.ts).
+ * Persistent and dismissable on purpose, for the same reason .dim-error above
+ * is: these carry failure detail, sometimes a whole list, and a message that
+ * fades is a message unread.
+ */
+.error-notice {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Above .toast's 10000 — an error outranks a "copied!" confirmation. */
+  z-index: 10001;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  max-height: 40vh;
+  padding: 10px 12px;
+  background: var(--panel, #26282f);
+  color: var(--text, #d7dae0);
+  border: 1px solid #e05555;
+  border-left-width: 3px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 45%);
+  font: 13px/1.5 system-ui, sans-serif;
+}
+
+.error-notice-text {
+  flex: 1;
+  overflow-y: auto;
+  /* The multi-line reports are built with \n and bullet characters. */
+  white-space: pre-wrap;
+  /* An exception message is worth being able to copy. */
+  user-select: text;
+}
+
+.error-notice-close {
+  flex: none;
+  margin: -2px -2px 0 0;
+  padding: 0 3px;
+  background: none;
+  border: none;
+  color: var(--text, #d7dae0);
+  opacity: 0.6;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.error-notice-close:hover {
+  opacity: 1;
+}
+
+/*
  * Type to Draw — the field(s) a tool floats at the cursor mid-gesture so an
  * exact value can be typed instead of clicking the next point. Holds one field
  * (Circle's diameter) or several (Line's length + angle), which is why it is a

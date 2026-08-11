@@ -216,3 +216,108 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     okBtn.focus();
   });
 }
+
+// ---- styled prompt ----------------------------------------------------------
+
+export interface PromptOptions {
+  title: string;
+  /** Label above the input. */
+  label: string;
+  /** Pre-filled value, selected on open so typing replaces it. */
+  initial?: string;
+  /** Confirm-button label. Default "OK". */
+  confirmLabel?: string;
+  placeholder?: string;
+}
+
+/**
+ * A styled, promise-based text prompt. Resolves the entered string, or null on
+ * Cancel / Escape / backdrop-click. Replaces native `prompt()`.
+ *
+ * Its one caller is the Save-As fallback for browsers without
+ * `showSaveFilePicker` — so in Chrome you will never see it, but on Firefox and
+ * Safari it IS the Save-As dialog.
+ */
+export function promptDialog(opts: PromptOptions): Promise<string | null> {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "tp-backdrop";
+
+    const dialog = document.createElement("div");
+    // `tp-prompt` is a stable handle for tests: several dialogs can be open at
+    // once (this one is usually raised FROM another), so `.tp-dialog` alone is
+    // ambiguous, and matching on the title text is how selectors go brittle.
+    dialog.className = "tp-dialog tp-prompt";
+    dialog.style.width = "360px";
+    dialog.addEventListener("click", (e) => e.stopPropagation());
+    backdrop.appendChild(dialog);
+
+    const hdr = document.createElement("div");
+    hdr.className = "tp-dialog-header";
+    const h = document.createElement("h3");
+    h.textContent = opts.title;
+    hdr.appendChild(h);
+    dialog.appendChild(hdr);
+
+    const body = document.createElement("div");
+    body.className = "tp-dialog-body";
+    const lab = document.createElement("label");
+    lab.textContent = opts.label;
+    lab.style.cssText = "display:block;font-size:13px;color:var(--text);margin-bottom:6px;";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "tp-input";
+    input.value = opts.initial ?? "";
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    input.style.cssText =
+      "width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--border);" +
+      "border-radius:4px;color:var(--text);font-size:13px;padding:6px 8px;";
+    lab.appendChild(input);
+    body.appendChild(lab);
+    dialog.appendChild(body);
+
+    const ftr = document.createElement("div");
+    ftr.className = "tp-dialog-footer";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn";
+    cancelBtn.textContent = "Cancel";
+    const okBtn = document.createElement("button");
+    okBtn.className = "btn tp-apply-btn";
+    okBtn.textContent = opts.confirmLabel ?? "OK";
+    ftr.appendChild(cancelBtn);
+    ftr.appendChild(okBtn);
+    dialog.appendChild(ftr);
+
+    let settled = false;
+    const finish = (result: string | null) => {
+      if (settled) return;
+      settled = true;
+      dispose();
+      backdrop.remove();
+      resolve(result);
+    };
+    const close = () => finish(null);
+    const dispose = registerModal(backdrop, close);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) finish(null);
+    });
+    cancelBtn.addEventListener("click", () => finish(null));
+    okBtn.addEventListener("click", () => finish(input.value));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(input.value);
+      }
+      // Escape is left to the modal registry's capture-phase handler.
+      e.stopPropagation();
+    });
+
+    document.body.appendChild(backdrop);
+    // Synchronously — see the note in confirmDialog above. The input is the
+    // focus target here, so a deferred focus() + select() is exactly the bug
+    // that note describes.
+    input.focus();
+    input.select();
+  });
+}

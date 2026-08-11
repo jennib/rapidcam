@@ -7,6 +7,7 @@ import {
   registerEmbeddedImage,
   type EmbeddedImage,
 } from "../core/imageManager";
+import { showError } from "../ui/errorNotice";
 import { StorageKeys } from "../core/storageKeys";
 import { saveRecentPayload, pruneRecentPayloads } from "./recentsStore";
 import { reconcileLoadedPatterns } from "../model/patternEngine";
@@ -425,12 +426,12 @@ export async function openFile(): Promise<{
           pushRecent({ name, savedAt: Date.now(), data: file });
           settle({ name, file });
         } catch {
-          alert("Could not open file — not a valid .rcam file.");
+          showError("Could not open file — not a valid .rcam file.");
           settle(null);
         }
       };
       reader.onerror = () => {
-        alert("Could not read the file.");
+        showError("Could not read the file.");
         settle(null);
       };
       reader.readAsText(f);

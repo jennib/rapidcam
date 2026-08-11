@@ -10,6 +10,7 @@
 
 import type { CADDocument } from "../model/document";
 import { serializeDoc, normalizeRcam, type RcamFile } from "./fileio";
+import { showError } from "../ui/errorNotice";
 
 const HASH_KEY = "d";
 
@@ -114,7 +115,7 @@ export async function consumeSharedDesign(): Promise<{ file: RcamFile; name: str
     return { file, name: file.name || "Shared design" };
   } catch (e) {
     console.error("Failed to decode shared design link:", e);
-    alert("This RapidCAM share link is invalid or corrupted.");
+    showError("This RapidCAM share link is invalid or corrupted.");
     return null;
   }
 }

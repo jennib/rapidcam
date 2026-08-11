@@ -8,11 +8,14 @@ import { serializeDoc } from "../src/io/fileio";
  *
  * Deliberately narrow: the picker's filtering, the apply-repopulates-inputs
  * contract and the empty state are all covered far more cheaply in
- * test/camBarDialog.test.ts. What only exists here is the bit a DOM test has to
- * stub — saving goes through a NATIVE `window.prompt` (matching the tool
- * library's "Save tool as:" next to it), and a native dialog is the one thing
- * that has previously masqueraded as a hang in headless Chrome. So this pins the
- * real prompt round-trip, plus the manager dialog it feeds.
+ * test/camBarDialog.test.ts. What only exists here is the round trip through
+ * the name prompt and into the manager dialog it feeds.
+ *
+ * This used to save through a NATIVE `window.prompt`, and said so — the spec
+ * existed partly because a native dialog had previously masqueraded as a hang
+ * in headless Chrome. It is now `promptDialog`, a dialog like any other, which
+ * is why the `page.on("dialog")` dance below is gone: it can simply be typed
+ * into and clicked.
  */
 
 function laserDoc(): string {
@@ -43,15 +46,15 @@ test("a preset saved through the native prompt loads back and reaches the manage
   await power.fill("42");
   await power.dispatchEvent("change");
 
-  // The native prompt: registered BEFORE the click that raises it, or the
-  // handler never sees it and Playwright silently auto-dismisses instead.
-  let promptMessage = "";
-  page.once("dialog", async (d) => {
-    promptMessage = d.message();
-    await d.accept("3mm ply");
-  });
+  // The name prompt is now an ordinary dialog raised on top of this one. Close
+  // it before touching `dialog` again — two `.tp-dialog`s are open until then.
   await dialog.locator(".tp-preset-save").click();
-  await expect.poll(() => promptMessage).toMatch(/preset/i);
+  const namePrompt = page.locator(".tp-prompt");
+  await expect(namePrompt).toBeVisible();
+  await expect(namePrompt.locator("h3")).toContainText(/preset/i);
+  await namePrompt.locator("input").fill("3mm ply");
+  await namePrompt.locator(".tp-apply-btn").click();
+  await expect(namePrompt).toHaveCount(0);
 
   // It comes back with the numbers it was saved with...
   await dialog.locator(".tp-preset-load").click();
