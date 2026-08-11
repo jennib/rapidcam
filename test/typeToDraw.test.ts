@@ -21,15 +21,17 @@ import type { Tool, ToolContext, ToolPointerEvent } from "../src/tools/tool";
 import type { Vec2 } from "../src/core/vec2";
 
 import { LineTool } from "../src/tools/lineTool";
+import { PolylineTool } from "../src/tools/polylineTool";
 import { RectTool } from "../src/tools/rectTool";
 import { CircleTool } from "../src/tools/circleTool";
 import { ArcTool } from "../src/tools/arcTool";
+import { BezierTool } from "../src/tools/bezierTool";
 import { PolygonTool } from "../src/tools/polygonTool";
 import { SlotTool } from "../src/tools/slotTool";
 import { FilletTool } from "../src/tools/filletTool";
 import { ChamferTool } from "../src/tools/chamferTool";
-import { BezierTool } from "../src/tools/bezierTool";
 import { MeasureTool } from "../src/tools/measureTool";
+import { TrimTool } from "../src/tools/trimTool";
 
 interface Spy {
   ctx: ToolContext;
@@ -48,15 +50,11 @@ function makeCtx(doc: CADDocument): Spy {
     pushHistory() {},
     openDimEditor() {},
     currentDof: () => 0,
-    openValueEditor(_pos, placeholder) {
-      spy.fields = [placeholder];
-      spy.opened = true;
-    },
-    openMultiValueEditor(_pos, fields) {
+    openTypeToDraw(_pos, fields) {
       spy.fields = fields.map((f) => f.placeholder);
       spy.opened = true;
     },
-    closeValueEditor() {
+    closeTypeToDraw() {
       spy.fields = [];
     },
     notify() {},
@@ -93,6 +91,14 @@ const DRIVERS: Record<string, { tool: () => Tool; arm: (t: Tool, s: Spy) => void
   line: {
     tool: () => new LineTool(),
     arm: (t, s) => t.onPointerDown?.(evt({ x: 10, y: 10 }), s.ctx),
+  },
+  polyline: {
+    tool: () => new PolylineTool(),
+    arm: (t, s) => t.onPointerDown?.(evt({ x: 10, y: 10 }), s.ctx), // per segment
+  },
+  bezier: {
+    tool: () => new BezierTool(),
+    arm: (t, s) => t.onPointerDown?.(evt({ x: 10, y: 10 }), s.ctx), // the chord only
   },
   rect: {
     tool: () => new RectTool(),
@@ -171,8 +177,8 @@ describe("Type to Draw — every tool that claims it, has it", () => {
   // really has none — not that the harness is blind.
   it("does not fire for tools that have no typed input", () => {
     for (const [id, tool] of [
-      ["bezier", new BezierTool()],
       ["measure", new MeasureTool()],
+      ["trim", new TrimTool()],
     ] as const) {
       expect(TYPE_TO_DRAW_TOOLS).not.toContain(id);
       const spy = makeCtx(new CADDocument({ width: 400, height: 300 }));

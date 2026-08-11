@@ -33,14 +33,12 @@ export class SlotTool implements Tool {
       this.c2 = e.world;
       this.c2Snap = e.snap?.key ? e.snap : null;
       this.phase = "radius";
-      ctx.openValueEditor(
-        e.world,
-        `slot width (${ctx.doc.displayUnit})`,
-        (raw) => this.commitByWidth(raw, ctx),
-        () => this.cancel(ctx),
-      );
+      ctx.openTypeToDraw(e.world, [{ placeholder: `Slot width (${ctx.doc.displayUnit})` }], {
+        onCommit: (raws) => this.commitByWidth(raws[0] ?? "", ctx),
+        onCancel: () => this.cancel(ctx),
+      });
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       const r = this.cursorRadius();
       if (r < 1e-6) return;
       this.createSlot(this.c1!, this.c2!, r, ctx);
@@ -89,7 +87,7 @@ export class SlotTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.reset();
     ctx.requestRender();
   }

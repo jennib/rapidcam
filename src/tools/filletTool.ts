@@ -191,12 +191,10 @@ export class FilletTool implements Tool {
     this.reset(ctx);
 
     if (screenDelta < DRAG_THRESHOLD_PX) {
-      // click — open value editor for precise input
-      ctx.openValueEditor(
-        corner.pos,
-        `fillet radius (${ctx.doc.displayUnit})`,
-        (raw) => {
-          const r = parseLength(raw, ctx.doc.displayUnit);
+      // A click rather than a drag — ask for the exact radius (Type to Draw).
+      ctx.openTypeToDraw(corner.pos, [{ placeholder: `Fillet radius (${ctx.doc.displayUnit})` }], {
+        onCommit: (raws) => {
+          const r = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
           if (r === null || r <= 0) return false;
           const dirs = getCornerDirs(corner);
           if (!dirs || !computeGeo(dirs, r)) return false;
@@ -205,8 +203,8 @@ export class FilletTool implements Tool {
           ctx.solve();
           ctx.doc.emitChange();
         },
-        () => {},
-      );
+        onCancel: () => {},
+      });
     } else {
       // drag commit
       const dirs = getCornerDirs(corner);

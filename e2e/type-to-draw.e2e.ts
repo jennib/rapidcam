@@ -79,7 +79,7 @@ test("press L, click once, type 50 and 30 — an exact 50mm line at 30° lands",
   await page.mouse.click(start.x, start.y);
 
   // 1. The pair exists, and it is a PAIR — Length and Angle, in that order.
-  const editor = page.locator(".dim-multi-edit");
+  const editor = page.locator(".type-to-draw");
   await expect(editor).toBeVisible();
   const fields = editor.locator("input");
   await expect(fields).toHaveCount(2);
@@ -124,7 +124,7 @@ test("a length alone follows the cursor's direction", async ({ page }) => {
   await page.keyboard.press("l");
   const start = await toPx(page, [40, 40]);
   await page.mouse.click(start.x, start.y);
-  await expect(page.locator(".dim-multi-edit")).toBeVisible();
+  await expect(page.locator(".type-to-draw")).toBeVisible();
 
   // Point up and to the right at 45°, a short way off, then ask for 80mm. The
   // direction comes from the mouse, the distance from the keyboard.
@@ -149,7 +149,7 @@ test("Circle takes an exact diameter", async ({ page }) => {
   const centre = await toPx(page, [80, 80]);
   await page.mouse.click(centre.x, centre.y);
 
-  const editor = page.locator(".dim-multi-edit");
+  const editor = page.locator(".type-to-draw");
   await expect(editor).toBeVisible();
   // Diameter, not radius — a hole is specified the way it is drilled.
   await expect(editor.locator("input")).toHaveAttribute("placeholder", "Ø (mm)");
@@ -169,6 +169,48 @@ test("Circle takes an exact diameter", async ({ page }) => {
   await expect(editor).toHaveCount(0);
 });
 
+test("Polyline types a whole profile, re-arming after every vertex", async ({ page }) => {
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await newProject(page);
+
+  await page.keyboard.press("p");
+  const start = await toPx(page, [30, 30]);
+  await page.mouse.click(start.x, start.y);
+
+  const editor = page.locator(".type-to-draw");
+  await expect(editor).toBeVisible();
+
+  // Three segments, no mouse at all after the first click.
+  for (const [len, ang] of [
+    ["60", "0"],
+    ["40", "90"],
+    ["60", "180"],
+  ]) {
+    await expect(editor.locator("input").first()).toBeFocused();
+    await page.keyboard.type(len);
+    await page.keyboard.press("Tab");
+    await page.keyboard.type(ang);
+    await page.keyboard.press("Enter");
+  }
+  // Enter on empty fields finishes.
+  await page.keyboard.press("Enter");
+
+  const pts = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __app: { doc: { entities: { id: string; points?: XY[] }[] } };
+        }
+      ).__app.doc.entities.find((e) => Array.isArray(e.points))?.points as XY[],
+  );
+  expect(pts).toHaveLength(4);
+  expect(pts[1].x - pts[0].x).toBeCloseTo(60, 3);
+  expect(pts[2].y - pts[1].y).toBeCloseTo(40, 3);
+  expect(pts[3].x - pts[2].x).toBeCloseTo(-60, 3);
+  await expect(editor).toHaveCount(0);
+});
+
 test("Escape dismisses the fields and draws nothing", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);
@@ -178,7 +220,7 @@ test("Escape dismisses the fields and draws nothing", async ({ page }) => {
   const start = await toPx(page, [70, 70]);
   await page.mouse.click(start.x, start.y);
 
-  const editor = page.locator(".dim-multi-edit");
+  const editor = page.locator(".type-to-draw");
   await expect(editor).toBeVisible();
   await page.keyboard.type("120");
   await page.keyboard.press("Escape");

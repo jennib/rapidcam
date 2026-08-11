@@ -46,18 +46,20 @@ export class LineTool implements Tool {
       this.anchorScreen = e.screen;
       this.cursor = e.world;
       ctx.setHint("Click the end, or type a length and angle · Shift = ortho");
-      ctx.openMultiValueEditor(
+      ctx.openTypeToDraw(
         e.world,
         [{ placeholder: `Length (${ctx.doc.displayUnit})` }, { placeholder: "Angle (°)" }],
-        (raws) => this.commitByText(raws, ctx),
-        () => this.cancel(ctx),
-        (raws) => {
-          this.readTyped(raws, ctx);
-          ctx.requestRender();
+        {
+          onCommit: (raws) => this.commitByText(raws, ctx),
+          onCancel: () => this.cancel(ctx),
+          onChange: (raws) => {
+            this.readTyped(raws, ctx);
+            ctx.requestRender();
+          },
         },
       );
     } else {
-      ctx.closeValueEditor();
+      ctx.closeTypeToDraw();
       // A typed endpoint is already exact: snapping it (ortho or object) would
       // move it off the length or angle that was asked for.
       const typed = this.typedLen !== null || this.typedAngle !== null;
@@ -106,7 +108,7 @@ export class LineTool implements Tool {
   }
 
   cancel(ctx: ToolContext): void {
-    ctx.closeValueEditor();
+    ctx.closeTypeToDraw();
     this.reset(ctx);
     ctx.requestRender();
   }
