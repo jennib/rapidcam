@@ -29,11 +29,29 @@
  * A flat-tip (engraving) bit shifts this: its tip flat of radius `tipDiameter/2`
  * rides the surface, so a point `r` from the wall only drops below the surface
  * once `r` exceeds the flat radius — `depth(r) = max(0, r − tipR) / tan(½·vAngle)`.
- * Insets within the flat radius score at the surface and are dropped.
+ * So the peel *starts* at the flat radius: insets shallower than that would only
+ * score the surface.
  *
  * `maxDepth` clamps the cut: once `depth(r)` reaches it, deeper insets are all
  * cut at `maxDepth`, leaving a flat floor cleared by the (now concentric) inset
  * contours — i.e. wide areas bottom out instead of running the bit ever deeper.
+ *
+ * ## Why the peel step is not simply `stepMM`
+ *
+ * Peeling on a *fixed* pitch is blind to anything thinner than `2·step`: such a
+ * feature is already gone from the very first inset, so no contour ever runs
+ * along it and the bit never visits it — it is not cut shallow, it is not cut at
+ * all. At the 0.4 mm default that silently swallowed whole letters of ~9 mm text
+ * (Roboto "A" bottoms out at r = 0.38 mm) and the crossbars of letters whose
+ * stems survived, while the survivors got a single ring — one constant depth,
+ * i.e. a routed groove rather than a carve.
+ *
+ * So the pitch is capped per region: we first find `rMax`, the largest inset
+ * radius the region survives (its deepest point / medial ridge), and peel with
+ * `min(stepMM, rMax / MIN_PEEL_RINGS)`. `stepMM` stays the ceiling — big regions
+ * peel exactly as before — but a region only 0.4 mm deep is sampled across its
+ * own flank instead of being skipped over. The last ring sits exactly on `rMax`,
+ * so the spine is cut to true depth instead of stopping a whole step short.
  *
  * The result is a list of {@link VCarvePass}es, each a depth + the contours to
  * follow at that depth. The G-code generator and the preview rasterizer both
@@ -138,6 +156,37 @@ function insetRegion(outer: Vec2[], holes: Vec2[][], d: number, miterLimit: numb
   return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
 }
 
+/**
+ * Rings the peel puts across a region's deepest flank when `stepMM` is coarser
+ * than the region can afford. Eight is enough to keep a stroke's walls sloping
+ * (rather than one constant-depth groove) and to guarantee that a feature down
+ * to ~1/4 of the region's deepest point still collects rings of its own.
+ */
+const MIN_PEEL_RINGS = 8;
+
+/** Hard floor on the peel pitch, so a hairline region can't run away in Clipper calls. */
+const MIN_STEP_MM = 0.01;
+
+/**
+ * The largest radius in `(lo, hi]` whose inset still survives — the region's
+ * deepest point. `lo` is known to survive (0 = the un-inset region), `hi` is
+ * known to vanish; bisection pins the collapse to ~1/16000 of the bracket.
+ */
+function deepestInset(
+  outer: Vec2[],
+  holes: Vec2[][],
+  lo: number,
+  hi: number,
+  miterLimit: number,
+): number {
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (insetRegion(outer, holes, mid, miterLimit).length > 0) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** Bounding-box diagonal of a polygon — used to bound the peel iteration count. */
 function diag(pts: Vec2[]): number {
   let minX = Infinity,
@@ -182,21 +231,56 @@ export function vcarveRegion(
   // of the radial distance beyond the flat goes below the surface.
   const tipR = Math.max(0, (params.tipDiameter ?? 0) / 2);
 
-  const passes: VCarvePass[] = [];
+  // Peel on the requested pitch first. This is the answer for any region deep
+  // enough to afford it, and it brackets the collapse for everything else.
   // Inward offset of a bounded region must vanish within ~half the diagonal; cap
   // the loop generously so a degenerate offset can never spin forever.
   const maxIters = Math.ceil(diag(outer) / stepMM) + 4;
-
+  const coarse = new Map<number, Vec2[][]>();
+  let rLast = 0; // deepest radius known to survive
+  let rGone = tipR + stepMM; // shallowest radius known (or assumed) to vanish
   for (let i = 1; i <= maxIters; i++) {
-    const r = i * stepMM;
+    const r = tipR + i * stepMM;
     const loops = insetRegion(outer, holeRings, r, miterLimit);
-    if (loops.length === 0) break; // reached the medial axis — fully carved
-    let depth = Math.max(0, r - tipR) / tanHalf;
-    if (maxDepth > 0 && depth > maxDepth) depth = maxDepth;
-    // With a flat tip the shallowest insets (within the flat radius of the wall)
-    // sit at the surface — skip those zero-depth contours, but keep peeling so
-    // the deeper passes still get cut.
-    if (depth <= 1e-6) continue;
+    if (loops.length === 0) {
+      rGone = r; // the region is consumed somewhere in (rLast, r]
+      break;
+    }
+    coarse.set(r, loops);
+    rLast = r;
+    rGone = r + stepMM;
+  }
+
+  // Where the peel actually bottoms out — the medial ridge, which lies *inside*
+  // the last whole step (and inside the first one for a region thinner than the
+  // pitch, where the loop above never got a single ring).
+  const rMax = deepestInset(outer, holeRings, rLast, rGone, miterLimit);
+  // Only the radius beyond the tip flat cuts below the surface; a region that
+  // bottoms out inside the flat can only be scored, not carved.
+  const flank = rMax - tipR;
+  if (flank <= 1e-9) return [];
+
+  const step = Math.max(MIN_STEP_MM, Math.min(stepMM, flank / MIN_PEEL_RINGS));
+  // Whole rings on the pitch, then one final ring pinned to the ridge itself.
+  // The 1/4-step deadband keeps that last ring from landing on top of its
+  // predecessor when the collapse happens to sit just past a whole step.
+  const wholeRings = Math.max(0, Math.floor((flank - step / 4) / step));
+
+  const passes: VCarvePass[] = [];
+  // Below the floor the rings are clearing a flat bottom, not sampling the V
+  // flank, so they keep the *requested* stepover: a fine flank pitch must not
+  // turn a bottomed-out area into a needlessly dense spiral.
+  let lastFloorR = -Infinity;
+  for (let i = 1; i <= wholeRings + 1; i++) {
+    const ridge = i > wholeRings;
+    const r = ridge ? rMax : tipR + i * step;
+    let depth = (r - tipR) / tanHalf;
+    const clamped = maxDepth > 0 && depth > maxDepth;
+    if (clamped) depth = maxDepth;
+    if (clamped && !ridge && r - lastFloorR < stepMM - 1e-9) continue;
+    const loops = coarse.get(r) ?? insetRegion(outer, holeRings, r, miterLimit);
+    if (loops.length === 0) continue;
+    if (clamped) lastFloorR = r;
     passes.push({ depth: -depth, loops });
   }
   return passes;
