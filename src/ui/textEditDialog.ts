@@ -4,6 +4,7 @@
  */
 
 import { listFonts, defaultFontId, loadFromFile, initBundledFonts } from "../core/fontManager";
+import { showError } from "./errorNotice";
 import { registerModal } from "./modal";
 import { openWebFontDialog } from "./webFontDialog";
 
@@ -104,7 +105,7 @@ export function openTextDialog(
         refreshFonts();
         fontSel.value = id;
         if (!embeddable) {
-          alert(
+          showError(
             `"${name}" loaded — but its license does not permit embedding. ` +
               `Text using it will NOT be saved into the .rcam file, so it may render ` +
               `as a placeholder (and be omitted from G-code) on machines that don't ` +
@@ -112,7 +113,7 @@ export function openTextDialog(
           );
         }
       } catch (e) {
-        alert(`Could not load font: ${(e as Error).message}`);
+        showError(`Could not load font: ${(e as Error).message}`);
       }
     };
     inp.click();
@@ -188,7 +189,7 @@ export function openTextDialog(
       return;
     }
     if (!fontSel.value) {
-      alert("Please select or load a font first.");
+      showError("Please select or load a font first.");
       return;
     }
     close();

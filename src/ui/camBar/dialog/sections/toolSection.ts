@@ -2,6 +2,7 @@
  * Tool section: library load/save, tool type, diameter, feeds/speeds, conditional V-bit/drill fields.
  */
 import type { CADDocument } from "../../../../model/document";
+import { promptDialog } from "../../../modal";
 import {
   type ToolDef,
   type ToolType,
@@ -116,13 +117,16 @@ export function buildToolSection(
     }
   });
 
-  saveLibBtn.addEventListener("click", () => {
-    const name = window.prompt(
-      "Save tool as:",
-      state.toolType === "v-bit"
-        ? `${state.vAngle}° V-Bit ⌀${lenU(state.diameter, doc)}`
-        : `⌀${lenU(state.diameter, doc)} ${TOOL_TYPE_LABELS[state.toolType]}`,
-    );
+  saveLibBtn.addEventListener("click", async () => {
+    const name = await promptDialog({
+      title: "Save Tool to Library",
+      label: "Tool name",
+      initial:
+        state.toolType === "v-bit"
+          ? `${state.vAngle}° V-Bit ⌀${lenU(state.diameter, doc)}`
+          : `⌀${lenU(state.diameter, doc)} ${TOOL_TYPE_LABELS[state.toolType]}`,
+      confirmLabel: "Save",
+    });
     if (!name) return;
     const def: ToolDef = {
       id: `tool-${Date.now()}`,

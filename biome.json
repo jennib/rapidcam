@@ -29,7 +29,8 @@
         "noDescendingSpecificity": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "off",
+        "noAlert": "error"
       },
       "complexity": {
         "noImportantStyles": "off"

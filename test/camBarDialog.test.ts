@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import { CamBar } from "../src/ui/camBar";
 import { CADDocument } from "../src/model/document";
 import { RasterImageEntity, RectEntity } from "../src/model/entities";
@@ -162,6 +162,26 @@ describe("Add-Toolpath dialog: laser material presets", () => {
   const loadBtn = (d: HTMLElement) => d.querySelector(".tp-preset-load") as HTMLButtonElement;
   const saveBtn = (d: HTMLElement) => d.querySelector(".tp-preset-save") as HTMLButtonElement;
 
+  /**
+   * Answer the name prompt the Save button opens. It used to be native
+   * `prompt()`, stubbed with `vi.stubGlobal`; it is now `promptDialog`, a real
+   * dialog in the DOM — so drive it like one. `promptDialog` appends its
+   * backdrop synchronously, so it is already present when this runs; the
+   * trailing await lets the handler's `await` resume before we assert.
+   */
+  async function answerNamePrompt(value: string | null): Promise<void> {
+    const backdrops = document.querySelectorAll<HTMLElement>(".tp-backdrop");
+    const dlg = backdrops[backdrops.length - 1];
+    if (!dlg?.querySelector(".tp-apply-btn")) throw new Error("no name prompt opened");
+    if (value === null) {
+      dlg.querySelectorAll<HTMLButtonElement>(".tp-dialog-footer .btn")[0].click(); // Cancel
+    } else {
+      (dlg.querySelector("input") as HTMLInputElement).value = value;
+      dlg.querySelector<HTMLButtonElement>(".tp-apply-btn")?.click();
+    }
+    await Promise.resolve();
+  }
+
   beforeEach(() => {
     localStorage.clear();
   });
@@ -188,7 +208,7 @@ describe("Add-Toolpath dialog: laser material presets", () => {
     expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(0);
   });
 
-  test("saving a preset then loading it fills the fields back in", () => {
+  test("saving a preset then loading it fills the fields back in", async () => {
     const dialog = openDialog(laserDoc());
 
     // Dial in values the way a user would, then save them.
@@ -199,8 +219,8 @@ describe("Add-Toolpath dialog: laser material presets", () => {
     passes.value = "3";
     passes.dispatchEvent(new Event("change"));
 
-    vi.stubGlobal("prompt", () => "3mm ply");
     saveBtn(dialog).click();
+    await answerNamePrompt("3mm ply");
 
     // A fresh dialog starts back at the defaults...
     document.body.innerHTML = "";
@@ -219,10 +239,10 @@ describe("Add-Toolpath dialog: laser material presets", () => {
     expect((row(fresh, "Passes").querySelector("input") as HTMLInputElement).value).toBe("3");
   });
 
-  test("a cut recipe is never offered on an engrave op", () => {
+  test("a cut recipe is never offered on an engrave op", async () => {
     const dialog = openDialog(laserDoc());
-    vi.stubGlobal("prompt", () => "ply CUT 100%");
     saveBtn(dialog).click(); // default combo is profile-outside -> kind "cut"
+    await answerNamePrompt("ply CUT 100%");
 
     // Positive control: it IS offered on the cut op that saved it.
     loadBtn(dialog).click();
@@ -236,10 +256,14 @@ describe("Add-Toolpath dialog: laser material presets", () => {
     expect(picker(dialog).querySelector(".tp-preset-empty")?.textContent).toMatch(/engrave/);
   });
 
-  test("cancelling the name prompt saves nothing", () => {
+  test("cancelling the name prompt saves nothing", async () => {
     const dialog = openDialog(laserDoc());
-    vi.stubGlobal("prompt", () => null);
     saveBtn(dialog).click();
+    // Positive control first: the prompt really opened, so the "nothing was
+    // saved" assertion below is about Cancel and not about a prompt that never
+    // appeared. (Exactly that made this test pass vacuously mid-conversion.)
+    expect(document.querySelector(".tp-apply-btn"), "no name prompt opened").toBeTruthy();
+    await answerNamePrompt(null);
 
     loadBtn(dialog).click();
     expect(picker(dialog).querySelectorAll(".tp-preset-item")).toHaveLength(0);
