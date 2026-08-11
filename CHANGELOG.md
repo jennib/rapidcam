@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Kumiko asanoha panel generator.** *Insert → Kumiko Panel (Asanoha)* builds
+  the traditional hemp-leaf lattice as geometry you can actually cut: a
+  triangular jigumi with three *ha* (leaves) running from each triangle's centre
+  to its corners — the triakis triangular tiling, where twelve faces meet at
+  every lattice vertex.
+
+  Every face is emitted as a closed opening inset by half the bar width, so
+  `Bar width` is load-bearing geometry rather than a hint: cut the openings as
+  through inside-profiles and the wood left standing *is* the lattice, from a
+  single board. Openings are keyed by lattice coordinate, so a cell keeps its
+  id — and any CAM op or dimension on it — across a pitch change.
+
+  The suggested cutter is sized from a whole interior opening rather than the
+  tightest cell on the panel, because the border clip always leaves scraps and
+  one of those would otherwise drag every opening down to a sub-millimetre bit.
+  Scraps too narrow for that cutter are left as solid wood and reported, which
+  is what a real kumiko border looks like anyway.
+
 ---
 
 ## [1.8.0] — 2026-08-09

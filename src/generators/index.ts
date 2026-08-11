@@ -32,6 +32,7 @@ import { boxJoint } from "./boxJoint";
 import { gear } from "./gear";
 import { box } from "./box";
 import { clamp } from "./clamp";
+import { kumiko } from "./kumiko";
 
 export interface Generator {
   /** Stable id (kebab-case), also the group name prefix. */
@@ -73,6 +74,7 @@ export const GENERATORS: Record<string, Generator> = {
   [gear.id]: gear,
   [box.id]: box,
   [clamp.id]: clamp,
+  [kumiko.id]: kumiko,
 };
 
 /** True when `gen` places itself against the blank rather than being centred. */
