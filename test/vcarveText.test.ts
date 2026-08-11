@@ -75,6 +75,38 @@ describe("v-carve of text", () => {
     for (const z of depths) expect(z).toBeGreaterThanOrEqual(-3 - 1e-6); // clamped at |depth|
   });
 
+  it("carves every glyph of small text, at varying depth", () => {
+    // ~9mm text has strokes under 1mm wide. On the old fixed 0.4mm peel pitch
+    // the first inset wiped them out before a single contour was generated:
+    // "NAME" came out as three part-letters at one constant depth, with the "A"
+    // (which bottoms out at r=0.38) missing altogether.
+    const doc = new CADDocument({ width: 90, height: 50 }, "mm");
+    const t = doc.add(new TextEntity("NAME", fontId, 8.9, { x: 34, y: 19.4 }, 0));
+    const out = generateGCode([vcarveOp([t.id])], doc);
+
+    const depths = cutDepths(out);
+    expect(depths.length).toBeGreaterThan(0);
+    expect(new Set(depths).size).toBeGreaterThan(1); // a carve, not a groove
+
+    // Every letter must be cut. Bucket the cut moves by X against the glyph
+    // columns: the "A" and the "E" crossbars are the parts that used to vanish.
+    const xs = [...out.matchAll(/^G[01] X(-?\d+(?:\.\d+)?)/gm)].map((m) => parseFloat(m[1]));
+    for (const [letter, lo, hi] of [
+      ["N", 34.7, 39.6],
+      ["A", 40.5, 46.2],
+      ["M", 46.9, 53.3],
+      ["E", 54.7, 58.8],
+    ] as const) {
+      const inCol = xs.filter((x) => x >= lo && x <= hi);
+      expect(inCol.length, `no cut moves over "${letter}"`).toBeGreaterThan(0);
+      // ...and across its full width, so a stem alone can't satisfy this.
+      expect(
+        Math.max(...inCol) - Math.min(...inCol),
+        `"${letter}" cut only partly`,
+      ).toBeGreaterThan((hi - lo) * 0.6);
+    }
+  });
+
   it("emits nothing cuttable when the font is missing (no silent miscut)", () => {
     const doc = new CADDocument({ width: 120, height: 60 }, "mm");
     const t = doc.add(new TextEntity("Go", "no-such-font", 24, { x: 10, y: 15 }, 0));
