@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A long Properties section title overlapped the controls under it.** The
+  section title is a faux fieldset legend — absolutely positioned so it sits on
+  the border — so it pushes nothing aside, and the section budgets exactly one
+  line of room for it. A title long enough to wrap laid its second line over the
+  first row: `Feature · Kumiko Panel (Asanoha)` covered the group's Name field
+  by 12px. Titles now stay on one line and ellipsize, with the full text on
+  hover, so any long generator or feature name is safe.
+
 ### Changed
 
 - **The Kumiko panel now reports what it costs to cut.** Its only guard was a

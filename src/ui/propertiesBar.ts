@@ -2043,6 +2043,9 @@ export class PropertiesBar {
     const h = document.createElement("div");
     h.className = "props-section-title";
     h.textContent = title;
+    // The title is clipped to one line (see .props-section-title), so carry the
+    // full text for the cases that overflow — a long generator or feature name.
+    h.title = title;
     sec.appendChild(h);
     return sec;
   }
