@@ -158,17 +158,22 @@ export const kumiko: Generator = {
   name: "Kumiko Panel (Asanoha)",
 
   build(s: Sketch): Handle[] {
-    const width = s.param("width", 200, { min: 20, label: "Width", step: 10 });
-    const height = s.param("height", 160, { min: 20, label: "Height", step: 10 });
-    const pitch = s.param("pitch", 40, { min: 8, label: "Cell pitch (jigumi)", step: 5 });
+    const width = s.param("width", 200, { unit: "len", min: 20, label: "Width", step: 10 });
+    const height = s.param("height", 160, { unit: "len", min: 20, label: "Height", step: 10 });
+    const pitch = s.param("pitch", 40, {
+      unit: "len",
+      min: 8,
+      label: "Cell pitch (jigumi)",
+      step: 5,
+    });
     // 3 mm, not the 6 mm a "sturdy bar" instinct suggests. Twelve bars converge
     // at 30° on every lattice vertex, and uniform-width bars crossing at 30°
     // overlap for (bar/2)/sin 15° — so the SOLID hub is 3.86x the bar width,
     // and the panel's open area collapses with it: 5 mm bars leave it 28% open
     // and visibly chunky, 3 mm leaves 51%, which is the delicate screen asanoha
     // is supposed to be. Real kumiko ha are thinner still, ~1.5-3 mm.
-    const bar = s.param("bar", 3, { min: 0.5, label: "Bar width", step: 0.5 });
-    const frame = s.param("frame", 10, { min: 0, label: "Frame width", step: 1 });
+    const bar = s.param("bar", 3, { unit: "len", min: 0.5, label: "Bar width", step: 0.5 });
+    const frame = s.param("frame", 10, { unit: "len", min: 0, label: "Frame width", step: 1 });
 
     s.key("frame");
     const panel = s.rect({ x: 0, y: 0 }, { w: width, h: height });
@@ -183,7 +188,7 @@ export const kumiko: Generator = {
     // measured at 13.2 mm for a nominal 10 on a 200x160 panel at 40 mm pitch.
     const inset = frame - bar / 2;
     if (inset < 0) {
-      s.note(`Frame width should be at least half the bar width (${(bar / 2).toFixed(1)} mm).`);
+      s.note(`Frame width should be at least half the bar width (${s.len(bar / 2)}).`);
     }
     const pad = Math.max(0, inset);
     const rect: Rect = { x0: pad, y0: pad, x1: width - pad, y1: height - pad };
@@ -201,8 +206,8 @@ export const kumiko: Generator = {
     const tool = Math.min(DEFAULTS.diameter, 2 * cellR * TOOL_FIT);
     if (tool < MIN_TOOL) {
       s.note(
-        `Bar width ${bar} mm closes the lattice solid at a ${pitch} mm pitch — ` +
-          `widen the pitch past ${Math.ceil((bar / 2 + MIN_TOOL / (2 * TOOL_FIT)) / FACE_INRADIUS)} mm ` +
+        `Bar width ${s.len(bar)} closes the lattice solid at a ${s.len(pitch)} pitch — ` +
+          `widen the pitch past ${s.len(Math.ceil((bar / 2 + MIN_TOOL / (2 * TOOL_FIT)) / FACE_INRADIUS))} ` +
           "or thin the bars.",
       );
       return out;
@@ -212,7 +217,7 @@ export const kumiko: Generator = {
     const projected = Math.ceil((6 * area) / (ROW * pitch * pitch));
     if (projected > MAX_CELLS) {
       s.note(
-        `A ${pitch} mm pitch needs about ${projected} openings here (limit ${MAX_CELLS}) — ` +
+        `A ${s.len(pitch)} pitch needs about ${projected} openings here (limit ${MAX_CELLS}) — ` +
           "widen the pitch or shrink the panel.",
       );
       return out;
@@ -284,7 +289,7 @@ export const kumiko: Generator = {
     if (cells.length === 0) {
       s.note(
         scraps > 0
-          ? `A ${pitch} mm pitch is too coarse for this panel — every opening fell on the border. ` +
+          ? `A ${s.len(pitch)} pitch is too coarse for this panel — every opening fell on the border. ` +
               "Reduce the pitch."
           : "No openings survived — check the pitch, bar width and frame width.",
       );
@@ -293,12 +298,12 @@ export const kumiko: Generator = {
     if (scraps > 0) {
       s.note(
         `${scraps} part-opening${scraps === 1 ? "" : "s"} at the border ${scraps === 1 ? "was" : "were"} ` +
-          `too narrow for a ⌀${tool.toFixed(1)} mm cutter and ${scraps === 1 ? "is" : "are"} left solid.`,
+          `too narrow for a ⌀${s.len(tool)} cutter and ${scraps === 1 ? "is" : "are"} left solid.`,
       );
     }
     s.note(
-      `${cells.length} openings; the tightest is ${(2 * minR).toFixed(1)} mm across. ` +
-        `Cut them with a ⌀${tool.toFixed(1)} mm bit or smaller.`,
+      `${cells.length} openings; the tightest is ${s.len(2 * minR)} across. ` +
+        `Cut them with a ⌀${s.len(tool)} bit or smaller.`,
     );
     // Twelve bars converge at 30° on each lattice vertex and overlap for
     // (bar/2)/sin 15°, so the solid hub there is 3.86x the bar width whatever
@@ -308,7 +313,7 @@ export const kumiko: Generator = {
     const hub = bar / Math.sin(Math.PI / 12);
     if (hub > pitch / 3) {
       s.note(
-        `Bars meet in ${hub.toFixed(0)} mm solid hubs at this bar width — ` +
+        `Bars meet in ${s.len(hub, 0)} solid hubs at this bar width — ` +
           "thin the bars to open the pattern up.",
       );
     }

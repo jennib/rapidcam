@@ -12,7 +12,13 @@
  * Worker-safe. See sketch.ts.
  */
 
-import { type CADDocument, type FeatureInstance, type GroupDef, type LayerDef, stockBox } from "../model/document";
+import {
+  type CADDocument,
+  type FeatureInstance,
+  type GroupDef,
+  type LayerDef,
+  stockBox,
+} from "../model/document";
 import type { Bounds, Entity } from "../model/entities";
 import type { CAMOperation } from "../cam/types";
 import { nextId } from "../model/ids";
@@ -215,7 +221,9 @@ export function nudgeOffset(doc: CADDocument, bounds: Bounds, start: Pt): Pt {
  */
 function ensureLayer(doc: CADDocument, hint: LayerHint): string {
   const wantFixture = hint.fixture === true;
-  const existing = doc.layers.find((l) => l.name === hint.name && l.fixture === true === wantFixture);
+  const existing = doc.layers.find(
+    (l) => l.name === hint.name && (l.fixture === true) === wantFixture,
+  );
   if (existing) return existing.id;
   const name = doc.layers.some((l) => l.name === hint.name)
     ? `${hint.name} (${wantFixture ? "workholding" : "geometry"})`
@@ -349,7 +357,12 @@ export function runGenerator(
     createOps?: boolean;
   } = {},
 ): GeneratorResult {
-  const sketch = new Sketch({ params, flatten: opts.flatten, stock: stockDatum(doc) });
+  const sketch = new Sketch({
+    params,
+    flatten: opts.flatten,
+    stock: stockDatum(doc),
+    displayUnit: doc.displayUnit,
+  });
   const handles = gen.build(sketch);
 
   // Generators draw around the origin; place the part in the middle of the work
@@ -427,7 +440,12 @@ export function regenerateFeature(
   if (!group) return null;
 
   const merged = { ...feature.params, ...newParams };
-  const sketch = new Sketch({ params: merged, flatten: opts.flatten, stock: stockDatum(doc) });
+  const sketch = new Sketch({
+    params: merged,
+    flatten: opts.flatten,
+    stock: stockDatum(doc),
+    displayUnit: doc.displayUnit,
+  });
   const handles = gen.build(sketch);
   // Re-apply the feature's stored placement so it rebuilds where it sits — but a
   // stock-placed feature re-derives its position from the CURRENT blank on every
