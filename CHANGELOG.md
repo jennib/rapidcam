@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Kumiko panel now reports what it costs to cut.** Its only guard was a
+  ceiling on how many openings a document can hold, which says nothing about
+  whether the result is machinable: 800 openings sits comfortably under that
+  cap and is still 12.6 m of through-profiling on a ⌀1.2 mm bit.
+
+  The summary note now carries the profile length the machine actually has to
+  run, and a cutter under ⌀2 mm over that distance gets called out as a
+  broken-tool risk — with the fix, which is counter-intuitive: *thinning* the
+  bars widens the openings and lets a bigger cutter in. Reported rather than
+  refused, because how long a job may run is the operator's call.
+
 ### Fixed
 
 - **Generator dialogs ignored the document's units.** Every parameter field read
