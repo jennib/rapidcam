@@ -142,7 +142,8 @@ function panel(w: number, h: number, specs: PanelSpecs): Pt[] {
   const br = { x: w, y: 0 };
   const tr = { x: w, y: h };
   const tl = { x: 0, y: h };
-  const edge = (len: number, spec: CombSpec | undefined) => (spec ? comb(len, spec) : straight(len));
+  const edge = (len: number, spec: CombSpec | undefined) =>
+    spec ? comb(len, spec) : straight(len);
 
   const segs: Pt[][] = [
     place(edge(w, specs.bottom), bl, br, { x: 0, y: -1 }),
@@ -217,14 +218,14 @@ export const box: Generator = {
   id: "finger-box",
   name: "Finger-Joint Box",
   build(s) {
-    const length = s.param("length", 100, { min: 10, label: "Length (X)" });
-    const width = s.param("width", 60, { min: 10, label: "Width (Y)" });
-    const height = s.param("height", 40, { min: 10, label: "Height (Z)" });
-    const t = s.param("thickness", 6, { min: 0.5, label: "Material thickness" });
-    const f = s.param("fingerWidth", 12, { min: 2, label: "Finger width" });
-    const clearance = s.param("clearance", 0, { min: 0, label: "Joint clearance" });
+    const length = s.param("length", 100, { unit: "len", min: 10, label: "Length (X)" });
+    const width = s.param("width", 60, { unit: "len", min: 10, label: "Width (Y)" });
+    const height = s.param("height", 40, { unit: "len", min: 10, label: "Height (Z)" });
+    const t = s.param("thickness", 6, { unit: "len", min: 0.5, label: "Material thickness" });
+    const f = s.param("fingerWidth", 12, { unit: "len", min: 2, label: "Finger width" });
+    const clearance = s.param("clearance", 0, { unit: "len", min: 0, label: "Joint clearance" });
     s.note("Grooves are pockets ≈ thickness/2 deep; the bottom panel drops into them.");
-    if (clearance > 0) s.note(`Clearance adds ~${clearance} mm of gap per mating face.`);
+    if (clearance > 0) s.note(`Clearance adds ~${s.len(clearance)} of gap per mating face.`);
 
     // Vertical corner joints run the FULL height (no inset — the bottom is held
     // by a groove, not a bottom-edge joint, so nothing conflicts at the corners).
@@ -276,8 +277,7 @@ export const box: Generator = {
       yBack = height + g,
       yLeft = 2 * (height + g),
       yRight = 3 * (height + g);
-    const groove = (faceW: number, oy: number) =>
-      shift(grooveOf(faceW), t, oy + grooveOffset);
+    const groove = (faceW: number, oy: number) => shift(grooveOf(faceW), t, oy + grooveOffset);
 
     // Walls + bottom are profile cuts on the default layer. Every entity is
     // KEYED so toolpaths/constraints follow the logical part across regens

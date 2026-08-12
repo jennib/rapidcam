@@ -30,6 +30,7 @@ import {
   TextEntity,
 } from "../model/entities";
 import { makeVariable, type Variable } from "../model/variables";
+import { formatLengthWithUnit, type Unit } from "../core/units";
 import type { Vec2 } from "../core/vec2";
 
 export type Pt = { x: number; y: number };
@@ -53,6 +54,20 @@ export interface ParamSpec {
   int?: boolean;
   /** UI step hint for a numeric input; purely presentational, not enforced here. */
   step?: number;
+  /**
+   * The parameter is a LENGTH in millimetres, so a host editing it must show and
+   * accept the document's display unit rather than raw mm — `"len"` is the same
+   * tag camBar's `paramRow` takes, for the same reason. Absent means the number
+   * is dimensionless (a tooth count, an edge choice) or carries its own unit (a
+   * pressure angle in degrees) and must be shown exactly as stored.
+   *
+   * There is no inferring this from `int`/`choices`: a count and a length are
+   * both plain numbers, and converting a tooth count by 25.4 is a far worse
+   * failure than leaving a length unconverted. See the drift guard in
+   * test/generators.test.ts, which fails when a new param is neither tagged nor
+   * plainly dimensionless.
+   */
+  unit?: "len";
   /**
    * The parameter is a CHOICE from this fixed set, not a measurement — render it
    * as a dropdown, and reject anything not on the list.
@@ -251,6 +266,16 @@ export class Sketch {
    */
   readonly stock: StockDatum;
 
+  /**
+   * The unit the user is reading in, so {@link len} can write a note they can
+   * act on ("cut with a ⌀0.18 in bit", not "⌀4.6 mm" to someone working in
+   * inches). Plain data exactly like {@link stock} — a two-character string is
+   * no more a document reference than a stock width is, so the Sketch stays
+   * pure and Worker-safe. Defaults to mm, so `new Sketch()` in a test behaves
+   * as it always has.
+   */
+  readonly displayUnit: Unit;
+
   private readonly overrides: Map<string, number>;
   private readonly flatten?: TextFlattener;
   private curLayer?: LayerHint;
@@ -258,11 +283,30 @@ export class Sketch {
   private pendingKey?: string;
 
   constructor(
-    opts: { params?: Record<string, number>; flatten?: TextFlattener; stock?: StockDatum } = {},
+    opts: {
+      params?: Record<string, number>;
+      flatten?: TextFlattener;
+      stock?: StockDatum;
+      displayUnit?: Unit;
+    } = {},
   ) {
     this.overrides = new Map(Object.entries(opts.params ?? {}));
     this.flatten = opts.flatten;
     this.stock = opts.stock ?? NO_STOCK;
+    this.displayUnit = opts.displayUnit ?? "mm";
+  }
+
+  /**
+   * Format an internal-mm length for a {@link note}, in the reader's unit and
+   * with its suffix — `s.len(4.6)` is "4.60 mm" or "0.181 in".
+   *
+   * Notes are the one place a generator writes a number a human acts on, so
+   * they are also the one place a hardcoded "mm" is a real defect rather than a
+   * cosmetic one. Pass `precision` where the default reads as false accuracy
+   * (a hub is "12 mm", not "11.55 mm").
+   */
+  len(mm: number, precision?: number): string {
+    return formatLengthWithUnit(mm, this.displayUnit, precision);
   }
 
   /**
@@ -307,6 +351,7 @@ export class Sketch {
       label?: string;
       int?: boolean;
       step?: number;
+      unit?: "len";
       choices?: { value: number; label: string }[];
     } = {},
   ): number {
@@ -327,6 +372,7 @@ export class Sketch {
       label: opts.label,
       int: opts.int,
       step: opts.step,
+      ...(opts.unit ? { unit: opts.unit } : {}),
       ...(opts.choices ? { choices: opts.choices } : {}),
     });
     return value;

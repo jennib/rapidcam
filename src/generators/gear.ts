@@ -20,9 +20,11 @@ export const gear: Generator = {
   name: "Spur Gear",
   build(s) {
     const teeth = s.param("teeth", 20, { min: 6, int: true, label: "Teeth" });
-    const module = s.param("module", 2, { min: 0.1, label: "Module (mm)" });
+    // No "(mm)" in the label: the dialog appends whichever unit the document is
+    // being read in, and a hardcoded suffix would contradict it in an inch doc.
+    const module = s.param("module", 2, { unit: "len", min: 0.1, label: "Module" });
     const paDeg = s.param("pressureAngle", 20, { min: 10, max: 30, label: "Pressure angle (°)" });
-    const bore = s.param("bore", 6, { min: 0, label: "Bore Ø (mm)" });
+    const bore = s.param("bore", 6, { unit: "len", min: 0, label: "Bore Ø" });
     // Below ~17 teeth (for a 20° pressure angle) the involute flank at the base
     // circle undercuts into the root, weakening the tooth root and roughening
     // the profile — a heads-up, not a hard limit (min stays 6, matching before).
@@ -82,7 +84,7 @@ export const gear: Generator = {
     // (2π/teeth − 2·flankOffset(rStart)) radians at the root radius, ~2.2 mm
     // for the default 20T/m2 gear — far under the 6 mm default tool. Clamp the
     // suggested tool to that gap or the profile posts with uncut tooth roots.
-    const rootGap = rRoot * (2 * Math.PI / teeth - 2 * flankOffset(rStart));
+    const rootGap = rRoot * ((2 * Math.PI) / teeth - 2 * flankOffset(rStart));
     if (rootGap < 1) {
       s.note(
         `Tooth spaces are only ~${rootGap.toFixed(2)} mm — consider a larger module or v-carving.`,

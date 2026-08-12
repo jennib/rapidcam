@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generator dialogs ignored the document's units.** Every parameter field read
+  and wrote raw millimetres, so an inch project showed `200` for a 7.874" panel,
+  the range hints beside them were mm, and generator notes quoted mm at a user
+  working in inches — including the ones carrying a number you act on, like the
+  suggested cutter diameter.
+
+  Fields now show and accept the document's unit, with a `(mm)`/`(in)` suffix on
+  the label, and the suffix and fraction forms come free: `10mm` and `1/2"` both
+  work in either kind of document. As everywhere else in the app, a bare number
+  is in display units while bare numbers *inside a formula* are already internal
+  mm, so `stock / 2` keeps meaning what it means.
+
+  A parameter now declares whether it is a length (`ParamSpec.unit`), because
+  nothing else can tell a 20 mm width from 20 teeth, and converting a tooth
+  count by 25.4 would be much worse than the bug being fixed. A test fails if a
+  new parameter is neither tagged nor plainly dimensionless.
+
+  Editing one field also no longer rewrites the others: a field left untouched
+  commits the value it already had, rather than a re-parse of its own rounded
+  display text (160 mm → "6.299" in → 159.9946 mm).
+
 ### Added
 
 - **Kumiko asanoha panel generator.** *Insert → Kumiko Panel (Asanoha)* builds

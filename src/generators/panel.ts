@@ -24,12 +24,16 @@ export const panel: Generator = {
   id: "panel",
   name: "Panel",
   build(s) {
-    const width = s.param("width", 150, { min: 1, label: "Width" });
-    const height = s.param("height", 100, { min: 1, label: "Height" });
+    const width = s.param("width", 150, { unit: "len", min: 1, label: "Width" });
+    const height = s.param("height", 100, { unit: "len", min: 1, label: "Height" });
     // 0 = a plain blank (no inner panel). >0 insets the recessed panel by that
     // margin from every outer edge.
-    const panelInset = s.param("panelInset", 0, { min: 0, label: "Panel inset (0 = none)" });
-    const panelDepth = s.param("panelDepth", 6, { min: 0, label: "Panel depth" });
+    const panelInset = s.param("panelInset", 0, {
+      unit: "len",
+      min: 0,
+      label: "Panel inset (0 = none)",
+    });
+    const panelDepth = s.param("panelDepth", 6, { unit: "len", min: 0, label: "Panel depth" });
 
     // Outer blank: one whole-shape rectangle with its bottom-left at the origin
     // (the runner centres it on the work area). Keyed so a CAM op or constraint

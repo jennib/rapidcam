@@ -29,6 +29,7 @@ import { type ParamSpec, Sketch, type TextFlattener } from "../generators/sketch
 import type { PreviewShape } from "../view/overlay";
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
+import { formatLength, formatLengthWithUnit, parseLength, type Unit } from "../core/units";
 import { registerModal } from "./modal";
 import { toast } from "./toast";
 
@@ -58,8 +59,9 @@ export function dialogWarnings(
   if (specs.some((s) => s.name === "thickness")) {
     const t = params.thickness;
     if (Math.abs(t - doc.stockThickness) > 1e-3) {
+      const shown = formatLengthWithUnit(t, doc.displayUnit);
       warnings.push(
-        `Material thickness (${t}) ≠ stock thickness (${doc.stockThickness} mm) — joints sized for ${t} mm material won't assemble as cut.`,
+        `Material thickness (${shown}) ≠ stock thickness (${formatLengthWithUnit(doc.stockThickness, doc.displayUnit)}) — joints sized for ${shown} material won't assemble as cut.`,
       );
     }
   }
@@ -78,6 +80,65 @@ export function dialogWarnings(
   }
 
   return warnings;
+}
+
+/**
+ * Read one field's text into an internal-mm value, plus the expression to store
+ * when the text is a formula rather than a measurement. Returns null when the
+ * text is neither.
+ *
+ * A LENGTH field tries `parseLength` FIRST — the same order dimEditor.ts uses,
+ * and for the same reason: a bare "24" in an inch project means 609.6 mm, not
+ * 24 mm. It also buys the suffix and fraction forms free, so `10mm` and `1/2"`
+ * work in either document. Anything parseLength can't read falls through to the
+ * expression evaluator, where bare numbers are already internal mm and are NOT
+ * converted — that asymmetry is the repo-wide convention for parametric fields
+ * (camBar's `paramRow` states it outright), not a local invention.
+ *
+ * Both the live re-probe and Apply go through here, so a value previewed on the
+ * canvas and the value committed cannot disagree.
+ */
+function readParam(
+  spec: ParamSpec,
+  text: string,
+  vm: Map<string, number>,
+  unit: Unit,
+  seed?: Seed,
+): { mm: number; expr?: string } | null {
+  // Untouched field → the value it already carried, not a re-parse of its own
+  // rounded display text. See {@link Seed}.
+  if (seed && text === seed.text) return { mm: seed.mm, expr: seed.expr };
+  if (spec.unit === "len") {
+    const len = parseLength(text, unit);
+    if (len !== null) return { mm: len };
+  } else if (isPlainNumber(text)) {
+    return { mm: parseFloat(text) };
+  }
+  const v = evalExpr(text, vm);
+  return v !== null && Number.isFinite(v) ? { mm: v, expr: text } : null;
+}
+
+/** A field's seed text: an expression verbatim, else the value in `unit`. */
+function seedText(spec: ParamSpec, mm: number, expr: string | undefined, unit: Unit): string {
+  if (expr !== undefined) return expr;
+  return spec.unit === "len" ? formatLength(mm, unit) : String(mm);
+}
+
+/**
+ * What a field was seeded with, so an UNTOUCHED field commits the value it
+ * already had instead of a re-parse of its own display text.
+ *
+ * Without this, opening the dialog in an inch project and pressing Insert
+ * rewrites every parameter the user never looked at: 160 mm renders as "6.299"
+ * at inch precision and reads back as 159.9946. The drift is far below anything
+ * machinable and it converges after one round trip rather than compounding —
+ * but it is still a silent edit to a number nobody touched, and "I only changed
+ * the width" should mean exactly that.
+ */
+interface Seed {
+  text: string;
+  mm: number;
+  expr?: string;
 }
 
 export interface GeneratorDialogOptions {
@@ -117,6 +178,7 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
     params: initial,
     flatten: opts.flatten ?? (() => []),
     stock: stockDatum(doc),
+    displayUnit: doc.displayUnit,
   });
   gen.build(probe);
   const specs: ParamSpec[] = probe.params;
@@ -135,18 +197,18 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
   const body = dialog.querySelector(".tp-dialog-body") as HTMLElement;
 
   const inputs = new Map<string, ParamInput>();
+  const seeds = new Map<string, Seed>();
   for (const spec of specs) {
     // Editing always seeds from the stored feature (unchanged). A fresh insert
     // seeds "thickness" from the stock actually in the machine rather than the
     // generator's arbitrary default — it's usually right, and it stops the
     // thickness-vs-stock warning from firing on the untouched default (a
     // warning users would otherwise learn to ignore).
-    const seed = editing
-      ? (editing.paramExprs?.[spec.name] ?? String(spec.value))
-      : spec.name === "thickness"
-        ? String(doc.stockThickness)
-        : String(spec.value);
-    inputs.set(spec.name, addField(body, spec, seed));
+    const expr = editing ? editing.paramExprs?.[spec.name] : undefined;
+    const mm = !editing && spec.name === "thickness" ? doc.stockThickness : spec.value;
+    const text = seedText(spec, mm, expr, doc.displayUnit);
+    seeds.set(spec.name, { text, mm, expr });
+    inputs.set(spec.name, addField(body, spec, text, doc.displayUnit));
   }
 
   // Advisory generator notes (e.g. the gear's undercut warning). Notes depend
@@ -197,8 +259,8 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
     const out: Record<string, number> = {};
     for (const spec of specs) {
       const text = inputs.get(spec.name)!.value.trim();
-      const v = isPlainNumber(text) ? parseFloat(text) : evalExpr(text, vm);
-      out[spec.name] = v !== null && Number.isFinite(v) ? v : spec.def;
+      const read = readParam(spec, text, vm, doc.displayUnit, seeds.get(spec.name));
+      out[spec.name] = read ? read.mm : spec.def;
     }
     return out;
   };
@@ -217,6 +279,7 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
       params,
       flatten: opts.flatten ?? (() => []),
       stock: stockDatum(doc),
+      displayUnit: doc.displayUnit,
     });
     gen.build(p);
     renderNotes(p.notes);
@@ -249,19 +312,14 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
     const paramExprs: Record<string, string> = {};
     for (const spec of specs) {
       const inp = inputs.get(spec.name)!;
-      const text = inp.value.trim();
-      const val = evalExpr(text, vm);
-      if (val === null && !isPlainNumber(text)) {
+      const read = readParam(spec, inp.value.trim(), vm, doc.displayUnit, seeds.get(spec.name));
+      if (read === null) {
         flashInvalid(inp);
         inp.focus();
         return false; // stays open, nothing committed
       }
-      if (isPlainNumber(text)) {
-        params[spec.name] = parseFloat(text);
-      } else {
-        params[spec.name] = val!;
-        paramExprs[spec.name] = text;
-      }
+      params[spec.name] = read.mm;
+      if (read.expr !== undefined) paramExprs[spec.name] = read.expr;
     }
 
     pushHistory();
@@ -363,18 +421,25 @@ function makeDialog(backdrop: HTMLElement, title: string): HTMLElement {
 }
 
 /** "min 2" / "max 30" / "2–30" (both), or null when the spec has neither bound. */
-function rangeHint(spec: ParamSpec): string | null {
-  if (spec.min !== undefined && spec.max !== undefined) return `${spec.min}–${spec.max}`;
-  if (spec.min !== undefined) return `min ${spec.min}`;
-  if (spec.max !== undefined) return `max ${spec.max}`;
+/** The declared range, in the unit the field is being edited in — a "min 0.5"
+ *  hint beside a field showing inches would otherwise be a mm number. */
+function rangeHint(spec: ParamSpec, unit: Unit): string | null {
+  const n = (mm: number): string => (spec.unit === "len" ? formatLength(mm, unit) : String(mm));
+  if (spec.min !== undefined && spec.max !== undefined) return `${n(spec.min)}–${n(spec.max)}`;
+  if (spec.min !== undefined) return `min ${n(spec.min)}`;
+  if (spec.max !== undefined) return `max ${n(spec.max)}`;
   return null;
 }
 
-function addField(body: HTMLElement, spec: ParamSpec, seed: string): ParamInput {
+function addField(body: HTMLElement, spec: ParamSpec, seed: string, unit: Unit): ParamInput {
   const g = document.createElement("div");
   g.className = "tp-field";
   const l = document.createElement("label");
-  l.textContent = spec.label ?? spec.name;
+  // The unit rides on the LABEL rather than being baked into the generator's
+  // text, so one label reads correctly in both kinds of document — and a
+  // generator can no longer hardcode a "(mm)" that an inch project contradicts.
+  const base = spec.label ?? spec.name;
+  l.textContent = spec.unit === "len" ? `${base} (${unit})` : base;
   g.appendChild(l);
 
   // A choice parameter is a dropdown of named values. It takes no expression and
@@ -403,7 +468,7 @@ function addField(body: HTMLElement, spec: ParamSpec, seed: string): ParamInput 
   inp.value = seed;
   inp.style.width = "90px";
   g.appendChild(inp);
-  const hint = rangeHint(spec);
+  const hint = rangeHint(spec, unit);
   if (hint) {
     const span = document.createElement("span");
     span.textContent = hint;

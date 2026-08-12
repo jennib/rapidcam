@@ -15,18 +15,22 @@ export const boxJoint: Generator = {
   id: "box-joint",
   name: "Box Joint Panel",
   build(s) {
-    const width = s.param("width", 120, { min: 1, label: "Width" });
-    const height = s.param("height", 50, { min: 1, label: "Height" });
-    const thickness = s.param("thickness", 6, { min: 0.1, label: "Material thickness" });
+    const width = s.param("width", 120, { unit: "len", min: 1, label: "Width" });
+    const height = s.param("height", 50, { unit: "len", min: 1, label: "Height" });
+    const thickness = s.param("thickness", 6, {
+      unit: "len",
+      min: 0.1,
+      label: "Material thickness",
+    });
     const fingers = s.param("fingers", 6, { min: 1, int: true, label: "Fingers" });
     // Clamped so a boundary can never cross the middle of a run's neighbour —
     // at c = w the two shifts at a boundary (±c/2 each) would meet, degenerating
     // a tab/slot to zero width; 0.9 keeps a visible margin short of that.
-    const clearance = s.param("clearance", 0, { min: 0, label: "Joint clearance" });
+    const clearance = s.param("clearance", 0, { unit: "len", min: 0, label: "Joint clearance" });
 
     const w = width / fingers;
     const c = Math.min(clearance, (w / 2) * 0.9);
-    if (c > 0) s.note(`Clearance adds ~${c} mm of gap per mating face.`);
+    if (c > 0) s.note(`Clearance adds ~${s.len(c)} of gap per mating face.`);
     const top = height;
 
     // Boundary x-positions between runs, nominally k·w. Clearance shifts each
@@ -53,11 +57,7 @@ export const boxJoint: Generator = {
 
     // Closed outline: bottom edge, right edge, combed top (right → left), then
     // the left edge closes back to the origin.
-    const outline = [
-      { x: 0, y: 0 },
-      { x: width, y: 0 },
-      ...topProfile.slice().reverse(),
-    ];
+    const outline = [{ x: 0, y: 0 }, { x: width, y: 0 }, ...topProfile.slice().reverse()];
 
     s.key("panel");
     const panel = s.polyline(outline, { closed: true });
