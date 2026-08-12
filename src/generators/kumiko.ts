@@ -60,8 +60,21 @@ const MIN_TOOL = 0.8;
  * inside-profile op, so an absurd pitch/panel combination would otherwise commit
  * tens of thousands of entities and wedge the app. Refusing with a note beats
  * silently truncating the pattern to a "representative sample".
+ *
+ * This is a DOCUMENT limit and nothing more. It says nothing about whether the
+ * result can be cut: 800 openings is comfortably under it and is still several
+ * hours of through-profiling on a sub-millimetre bit. The machining side is
+ * reported rather than capped — see {@link FRAGILE_TOOL} — because how long a
+ * job may run and how brave the operator feels are not this generator's call.
  */
 const MAX_CELLS = 1200;
+
+/**
+ * Cutter diameter (mm) below which a long through-profile in hardwood is a
+ * broken-tool risk worth mentioning. A rule of thumb, not physics — which is
+ * why it produces a note and not a refusal.
+ */
+const FRAGILE_TOOL = 2;
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
@@ -217,8 +230,8 @@ export const kumiko: Generator = {
     const projected = Math.ceil((6 * area) / (ROW * pitch * pitch));
     if (projected > MAX_CELLS) {
       s.note(
-        `A ${s.len(pitch)} pitch needs about ${projected} openings here (limit ${MAX_CELLS}) — ` +
-          "widen the pitch or shrink the panel.",
+        `A ${s.len(pitch)} pitch needs about ${projected} openings here, past the ` +
+          `${MAX_CELLS} this document can hold — widen the pitch or shrink the panel.`,
       );
       return out;
     }
@@ -232,6 +245,7 @@ export const kumiko: Generator = {
     const cells: Handle[] = [];
     let minR = Number.POSITIVE_INFINITY;
     let scraps = 0;
+    let cutLength = 0;
 
     const v0 = Math.floor((rect.y0 - origin.y) / (pitch * ROW)) - 1;
     const v1 = Math.ceil((rect.y1 - origin.y) / (pitch * ROW)) + 1;
@@ -273,6 +287,13 @@ export const kumiko: Generator = {
               if (r < tool / 2) continue;
               minR = Math.min(minR, r);
               cut = true;
+              // Perimeter now, while the ring is to hand: summed, it is the
+              // length of profile the machine has to run at full depth, which
+              // is the honest measure of what this pattern costs to cut.
+              for (let n = 0; n < cell.length; n++) {
+                const q = cell[(n + 1) % cell.length];
+                cutLength += Math.hypot(q.x - cell[n].x, q.y - cell[n].y);
+              }
               s.key(`cell-${u}-${v}-${tag}-${k}-${i}`);
               cells.push(s.polyline(cell, { closed: true }));
             }
@@ -303,8 +324,20 @@ export const kumiko: Generator = {
     }
     s.note(
       `${cells.length} openings; the tightest is ${s.len(2 * minR)} across. ` +
-        `Cut them with a ⌀${s.len(tool)} bit or smaller.`,
+        `Cut them with a ⌀${s.len(tool)} bit or smaller — ${s.len(cutLength, 0)} of ` +
+        "profile at full depth.",
     );
+    // The cell cap is a document limit and says nothing about machinability, so
+    // the case it misses gets its own note: a fine lattice stays well under
+    // 1200 openings while asking a sub-2 mm bit to run metres of through-cut.
+    // Thinning the bars widens the openings, which is what lets a bigger cutter
+    // in — the opposite of the instinct to "go finer to make it delicate".
+    if (tool < FRAGILE_TOOL) {
+      s.note(
+        `A ⌀${s.len(tool)} bit over ${s.len(cutLength, 0)} of hardwood breaks easily. ` +
+          "Widen the pitch or thin the bars to open the cells up for a bigger cutter.",
+      );
+    }
     // Twelve bars converge at 30° on each lattice vertex and overlap for
     // (bar/2)/sin 15°, so the solid hub there is 3.86x the bar width whatever
     // the pitch. Once those hubs approach a third of the pitch they dominate

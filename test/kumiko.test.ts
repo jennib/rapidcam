@@ -216,8 +216,47 @@ test("openings are keyed by lattice coordinate, so ids survive a pitch change", 
 test("a pitch that would flood the document is refused, not truncated", () => {
   const { s, handles } = build({ pitch: 8, bar: 0.5, width: 400, height: 300 });
   expect(handles).toHaveLength(1); // the frame alone
-  expect(s.notes.some((n) => n.includes("limit"))).toBe(true);
+  expect(s.notes.some((n) => n.includes("this document can hold"))).toBe(true);
   expect(s.opSuggestions.some((o) => o.kind === "profile-inside")).toBe(false);
+});
+
+// --- machining cost ---------------------------------------------------------
+
+test("the summary reports the profile length the machine actually has to run", () => {
+  const { s } = build();
+  const cells = openings(s);
+  let expected = 0;
+  for (const c of cells) {
+    const pts = c.points;
+    for (let i = 0; i < pts.length; i++) {
+      const q = pts[(i + 1) % pts.length];
+      expected += Math.hypot(q.x - pts[i].x, q.y - pts[i].y);
+    }
+  }
+  const summary = s.notes.find((n) => n.includes("profile at full depth"));
+  expect(summary).toBeDefined();
+  // Reported to the nearest mm, so match the rounded figure.
+  expect(summary).toContain(`${expected.toFixed(0)} mm of profile`);
+});
+
+test("a fine lattice warns about the cutter even though it clears the cell cap", () => {
+  // The case the entity cap misses by construction: comfortably under 1200
+  // openings, and still metres of through-cut on a sub-millimetre bit.
+  const { s, handles } = build({ pitch: 15, bar: 2 });
+  expect(handles.length).toBeLessThan(1200);
+  expect(handles.length).toBeGreaterThan(500);
+  const tool = s.opSuggestions.find((o) => o.kind === "profile-inside")?.toolDiameter ?? 0;
+  expect(tool).toBeLessThan(2);
+  expect(s.notes.some((n) => n.includes("breaks easily"))).toBe(true);
+});
+
+test("...and a normal panel does not", () => {
+  // Positive control: the warning must be about THIS pattern being fine, not
+  // fire on everything and train the user to ignore it.
+  const { s } = build();
+  const tool = s.opSuggestions.find((o) => o.kind === "profile-inside")?.toolDiameter ?? 0;
+  expect(tool).toBeGreaterThan(2);
+  expect(s.notes.some((n) => n.includes("breaks easily"))).toBe(false);
 });
 
 test("bars too wide for the pitch close the lattice solid, with a way out", () => {
