@@ -1,15 +1,37 @@
 /**
- * Kumiko asanoha (麻の葉, "hemp leaf") panel — a real cut-out lattice, not an
- * engraved impression of one.
+ * Kumiko panel — a real cut-out lattice, not an engraved impression of one.
  *
- * CONSTRUCTION. Asanoha is the *triakis triangular tiling*: an equilateral
- * triangular lattice — the kumiko *jigumi*, or base grid — with every triangle
- * split into three 30-30-120 obtuse triangles by spokes running from its centre
- * to its corners. Those spokes are the *ha* ("leaves"); in real joinery three of
- * them meet in the middle of each triangle in a mitsu-kude (three-way) joint.
- * Six leaves and six jigumi bars converge at every lattice vertex — twelve faces
- * around one point — and THAT is the hemp-leaf rosette. A bare triangular grid
- * with no leaves is the jigumi alone, i.e. the scaffolding, not the pattern.
+ * CONSTRUCTION. Every pattern here is one *jigumi* (base grid) plus one rule for
+ * dividing its cells, which is how kumiko itself is built: a lattice of half-
+ * lapped bars, then short infill pieces — *ha*, "leaves" — dropped into each
+ * cell. So the generator is a small table of {lattice, division}, not a switch
+ * with a hand-written routine per pattern:
+ *
+ *   - **Asanoha** (麻の葉, "hemp leaf") — triangular jigumi, every triangle split
+ *     into three 30-30-120 faces by spokes from its centre to its corners. Those
+ *     spokes are the ha, meeting three-at-a-time in a mitsu-kude (three-way)
+ *     joint. Six leaves and six jigumi bars converge at every lattice vertex —
+ *     twelve faces around one point — and THAT is the hemp-leaf rosette.
+ *   - **Mitsu-kude** (三つ組手) — the bare triangular jigumi, undivided. Named for
+ *     the three-way joint that forms it, and a finished pattern in its own right
+ *     rather than a half-built asanoha.
+ *
+ * A bare triangular grid presented AS asanoha is the jigumi alone — scaffolding,
+ * not the pattern — and is the specific way this generator has been got wrong
+ * before. test/kumiko.test.ts pins each tiling by its face angles and by how
+ * many faces meet at a lattice vertex, which no wrong-but-plausible drawing
+ * satisfies.
+ *
+ * NOT HERE: **kaku-asanoha** (角麻の葉, "square hemp leaf"). The obvious reading —
+ * the same spoke rule on a square jigumi, i.e. both diagonals of every square —
+ * is WRONG, and attractively so: it produces eight-pointed stars at each vertex
+ * and 45° leaf tips whose 22.5°/67.5° mitres match the angles the woodworking
+ * jigs are set to, so it corroborates itself. But the kits are explicit that a
+ * square takes SEVEN infill pieces of three types, and two diagonals can only
+ * ever be three (one full, two halves). Four pieces per cell are missing, so
+ * that construction is the square jigumi plus its diagonals — scaffolding
+ * again, exactly the error above wearing a different hat. Needs a reference
+ * drawing before it goes in, not another plausible inference.
  *
  * WHAT IS EMITTED. Every face of the tiling, inset by half the bar width, comes
  * out as one closed polyline: the OPENING to cut. The wood left standing between
@@ -20,7 +42,8 @@
  *
  * Faces are keyed by lattice coordinate, so a cell keeps its document id — and
  * any CAM op, dimension or constraint attached to it — across regeneration, even
- * though changing the pitch changes how many cells exist.
+ * though changing the pitch changes how many cells exist. Switching PATTERN is
+ * a different tiling and deliberately does not preserve ids.
  *
  * Uses cam/offset.ts (Clipper2) for the inset and the border clip. That is pure
  * geometry — no document, no DOM, no fonts — so the Sketch stays Worker-safe.
@@ -34,15 +57,6 @@ import type { Handle, Pt, Sketch } from "./sketch";
 
 /** Height of an equilateral triangle of side 1 — the lattice row pitch. */
 const ROW = Math.sqrt(3) / 2;
-
-/**
- * Inradius of one asanoha face as a fraction of the lattice pitch. The face is a
- * 30-30-120 triangle with sides (a, a/√3, a/√3), so r = area/s = a²/(4√3) ÷
- * a(1+2/√3)/2, i.e. a/(4+2√3). Half the bar width comes off that, and what
- * remains is the narrowest point of the opening — which is what decides whether
- * a cutter fits.
- */
-const FACE_INRADIUS = 1 / (4 + 2 * Math.sqrt(3));
 
 /**
  * Fraction of an opening's width the suggested cutter takes up. A tool sized to
@@ -77,6 +91,9 @@ const MAX_CELLS = 1200;
 const FRAGILE_TOOL = 2;
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
+
+/** One opening, collected but not yet emitted (see the sweep in `build`). */
+type Cell = { key: string; poly: Vec2[] };
 
 /** Lattice vertex (u,v) — the basis is u·(a,0) + v·(a/2, a·√3/2). */
 function vertex(u: number, v: number, a: number, o: Pt): Pt {
@@ -130,19 +147,20 @@ function inradius(poly: Vec2[]): number {
   return perim > 0 ? (2 * Math.abs(signedArea(poly))) / perim : 0;
 }
 
-/** True when `tri` lies wholly inside `r` — lets the common case skip Clipper. */
-function inside(tri: Pt[], r: Rect): boolean {
-  return tri.every((p) => p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1);
+/** True when `poly` lies wholly inside `r` — lets the common case skip Clipper. */
+function inside(poly: Pt[], r: Rect): boolean {
+  return poly.every((p) => p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1);
 }
 
-/** True when `tri`'s bounding box misses `r` entirely — a cheap early reject. */
-function misses(tri: Pt[], r: Rect): boolean {
-  return (
-    Math.max(tri[0].x, tri[1].x, tri[2].x) <= r.x0 ||
-    Math.min(tri[0].x, tri[1].x, tri[2].x) >= r.x1 ||
-    Math.max(tri[0].y, tri[1].y, tri[2].y) <= r.y0 ||
-    Math.min(tri[0].y, tri[1].y, tri[2].y) >= r.y1
-  );
+/** True when `poly`'s bounding box misses `r` entirely — a cheap early reject. */
+function misses(poly: Pt[], r: Rect): boolean {
+  let lo = poly[0];
+  let hi = poly[0];
+  for (const p of poly) {
+    if (p.x < lo.x || p.y < lo.y) lo = { x: Math.min(lo.x, p.x), y: Math.min(lo.y, p.y) };
+    if (p.x > hi.x || p.y > hi.y) hi = { x: Math.max(hi.x, p.x), y: Math.max(hi.y, p.y) };
+  }
+  return hi.x <= r.x0 || lo.x >= r.x1 || hi.y <= r.y0 || lo.y >= r.y1;
 }
 
 function rectPoly(r: Rect): Vec2[] {
@@ -155,22 +173,128 @@ function rectPoly(r: Rect): Vec2[] {
 }
 
 /**
- * The three faces of one jigumi triangle: centre to each pair of adjacent
- * corners. Returned in corner order so a face's key is stable across rebuilds.
+ * The *kis* operation: split a cell into one face per edge by running a spoke
+ * from its centre to every corner. This is the whole of what makes a hemp-leaf
+ * pattern — the spokes ARE the `ha` (leaves), joined three-at-a-time in the
+ * middle of each cell by a mitsu-kude in real joinery.
+ *
+ * Applied to a triangular jigumi it gives asanoha: the triakis triangular
+ * tiling, 30-30-120 faces. The same rule on a square jigumi does NOT give
+ * kaku-asanoha, however much it looks like it should — see the module docstring.
+ *
+ * Corner order is preserved so a face's key is stable across rebuilds.
  */
-function faces(tri: Pt[]): Pt[][] {
-  const g = {
-    x: (tri[0].x + tri[1].x + tri[2].x) / 3,
-    y: (tri[0].y + tri[1].y + tri[2].y) / 3,
+function kis(cell: Pt[]): Pt[][] {
+  const n = cell.length;
+  const c = {
+    x: cell.reduce((t, p) => t + p.x, 0) / n,
+    y: cell.reduce((t, p) => t + p.y, 0) / n,
   };
-  return [0, 1, 2].map((k) => [g, tri[k], tri[(k + 1) % 3]]);
+  return cell.map((p, k) => [c, p, cell[(k + 1) % n]]);
 }
 
+/** Receives each jigumi cell with a key unique and stable within the lattice. */
+type CellSink = (key: string, cell: Pt[]) => void;
+
+/**
+ * Equilateral triangles on the basis u·(a,0) + v·(a/2, a·√3/2). Each (u,v)
+ * rhombus splits into an up- and a down-pointing triangle, both wound CCW —
+ * which the bisector inset and the NonZero clip both depend on.
+ */
+function triangularJigumi(rect: Rect, a: number, o: Pt, sink: CellSink): void {
+  const v0 = Math.floor((rect.y0 - o.y) / (a * ROW)) - 1;
+  const v1 = Math.ceil((rect.y1 - o.y) / (a * ROW)) + 1;
+  for (let v = v0; v <= v1; v++) {
+    const u0 = Math.floor((rect.x0 - o.x) / a - v / 2) - 1;
+    const u1 = Math.ceil((rect.x1 - o.x) / a - v / 2) + 1;
+    for (let u = u0; u <= u1; u++) {
+      const p00 = vertex(u, v, a, o);
+      const p10 = vertex(u + 1, v, a, o);
+      const p01 = vertex(u, v + 1, a, o);
+      const p11 = vertex(u + 1, v + 1, a, o);
+      sink(`${u}-${v}-u`, [p00, p10, p01]);
+      sink(`${u}-${v}-d`, [p10, p11, p01]);
+    }
+  }
+}
+
+/**
+ * One kumiko pattern, as a lattice plus a rule for dividing its cells. Every
+ * quantity the rest of the generator needs to reason about tool fit, panel
+ * density and hub size is derived from the tiling and stated here, so adding a
+ * pattern cannot silently leave those computed for the wrong geometry.
+ */
+interface KumikoPattern {
+  /** Persisted `pattern` param value. NEVER renumber — saved files store it. */
+  value: number;
+  label: string;
+  /**
+   * Inradius of one whole face, as a fraction of the pitch. Half the bar width
+   * comes off it, and what remains is the narrowest point of the opening —
+   * which is what decides whether a cutter fits.
+   */
+  faceInradius: number;
+  /** Faces per pitch² of panel — projects the opening count before building. */
+  density: number;
+  /**
+   * Interior angle where faces converge on a lattice vertex. Uniform-width bars
+   * meeting at this angle overlap for (bar/2)/sin(θ/2), which is the solid hub
+   * at each rosette — 3.86x the bar width at asanoha's 30°, but only 2.0x at
+   * mitsu-kude's 60°, so the same bar reads very differently between patterns.
+   */
+  tipAngleDeg: number;
+  jigumi(rect: Rect, a: number, o: Pt, sink: CellSink): void;
+  /** Divide one jigumi cell into the faces to cut. */
+  divide(cell: Pt[]): Pt[][];
+}
+
+/**
+ * Ordered as the dropdown reads. Asanoha is value 0 because it shipped first
+ * and saved features carry no `pattern` at all — they must keep resolving to
+ * the pattern they were drawn with. Values are persisted: never renumber one,
+ * and do not reuse 2, which a withdrawn kaku-asanoha briefly held.
+ */
+const PATTERNS: KumikoPattern[] = [
+  {
+    value: 0,
+    label: "Asanoha",
+    // 30-30-120 face: sides (a, a/√3, a/√3), so r = a/(4+2√3).
+    faceInradius: 1 / (4 + 2 * Math.sqrt(3)),
+    density: 6 / ROW, // 6 faces per rhombus of area ROW·a²
+    tipAngleDeg: 30,
+    jigumi: triangularJigumi,
+    divide: kis,
+  },
+  {
+    value: 1,
+    label: "Mitsu-kude",
+    // The jigumi itself, undivided: an equilateral triangle, r = a/(2√3).
+    faceInradius: 1 / (2 * Math.sqrt(3)),
+    density: 2 / ROW,
+    tipAngleDeg: 60,
+    jigumi: triangularJigumi,
+    divide: (cell) => [cell],
+  },
+];
+
 export const kumiko: Generator = {
+  // The id says "asanoha" because that is the only pattern it built when it
+  // shipped, and .rcam files store `generatorId` verbatim — renaming it would
+  // orphan every saved panel with no error, only a feature that quietly stops
+  // regenerating. A stale-but-stable id is the cheaper half of that trade.
   id: "kumiko-asanoha",
-  name: "Kumiko Panel (Asanoha)",
+  name: "Kumiko Panel",
 
   build(s: Sketch): Handle[] {
+    // Declared first so it heads the dialog. Features saved before this param
+    // existed carry no override and fall to 0 = asanoha, which is what they
+    // were drawn as.
+    const patternValue = s.param("pattern", 0, {
+      label: "Pattern",
+      choices: PATTERNS.map((p) => ({ value: p.value, label: p.label })),
+    });
+    const pattern = PATTERNS.find((p) => p.value === patternValue) ?? PATTERNS[0];
+
     const width = s.param("width", 200, { unit: "len", min: 20, label: "Width", step: 10 });
     const height = s.param("height", 160, { unit: "len", min: 20, label: "Height", step: 10 });
     const pitch = s.param("pitch", 40, {
@@ -210,112 +334,157 @@ export const kumiko: Generator = {
       return out;
     }
 
-    // Size the cutter from a WHOLE interior opening, not from the tightest cell
-    // on the panel: the border clip always leaves a few scraps, and letting one
-    // of those pick the tool drags every opening down to whatever fits the worst
-    // sliver. Scraps that can't accept this tool are dropped below and stay
-    // solid wood — which is what a real kumiko border looks like anyway.
-    const cellR = FACE_INRADIUS * pitch - bar / 2;
-    const tool = Math.min(DEFAULTS.diameter, 2 * cellR * TOOL_FIT);
-    if (tool < MIN_TOOL) {
+    // A lattice vertex sits at the panel centre, so the rosette is centred and
+    // the border crops symmetrically.
+    const origin = { x: width / 2, y: height / 2 };
+    const clip = [rectPoly(rect)];
+    const region = { w: rect.x1 - rect.x0, h: rect.y1 - rect.y0 };
+    const area = region.w * region.h;
+    const project = (p: number): number => Math.ceil((pattern.density * area) / (p * p));
+
+    /**
+     * Cutter for a whole interior opening at pitch `p` — NOT the tightest cell
+     * on the panel. The border clip always leaves a few scraps, and letting one
+     * of those pick the tool drags every opening down to whatever fits the worst
+     * sliver. Scraps that can't accept this tool are dropped in the sweep and
+     * stay solid wood, which is what a real kumiko border looks like anyway.
+     */
+    const toolFor = (p: number): number =>
+      Math.min(DEFAULTS.diameter, 2 * (pattern.faceInradius * p - bar / 2) * TOOL_FIT);
+
+    /** One openings-per-face sweep at `p`. Pure: nothing is emitted until a
+     *  pitch has been settled on, so a hopeless one can simply be re-run. */
+    const sweep = (p: number) => {
+      const tool = toolFor(p);
+      if (tool < MIN_TOOL) return { pitch: p, tool, tooFat: true, cells: [] as Cell[] };
+      const cells: Cell[] = [];
+      let minR = Number.POSITIVE_INFINITY;
+      let scraps = 0;
+      let cutLength = 0;
+      pattern.jigumi(rect, p, origin, (cellKey, jigumiCell) => {
+        if (misses(jigumiCell, rect)) return;
+        for (const [k, face] of pattern.divide(jigumiCell).entries()) {
+          if (misses(face, rect)) continue;
+          let pieces: Vec2[][];
+          if (inside(face, rect)) {
+            const exact = insetConvex(face, bar / 2);
+            pieces = exact ? [exact] : [];
+          } else {
+            const bounded = intersectPolygonSets([face], clip);
+            if (bounded.length === 0) continue;
+            // Miter limit is generous so the sharp leaf tips (30° on asanoha,
+            // 45° on the square variant) stay crisp instead of being truncated
+            // into facets at the default limit of 4.
+            pieces = offsetPolygons(bounded, -bar / 2, { miterLimit: 12 });
+          }
+          let cut = false;
+          for (const [i, poly] of pieces.entries()) {
+            if (poly.length < 3) continue;
+            const r = inradius(poly);
+            if (r < tool / 2) continue;
+            minR = Math.min(minR, r);
+            cut = true;
+            // Perimeter now, while the ring is to hand: summed, it is the
+            // length of profile the machine has to run at full depth, which
+            // is the honest measure of what this pattern costs to cut.
+            for (let n = 0; n < poly.length; n++) {
+              const q = poly[(n + 1) % poly.length];
+              cutLength += Math.hypot(q.x - poly[n].x, q.y - poly[n].y);
+            }
+            // Same shape of key the asanoha-only version emitted, so a panel
+            // saved before this refactor keeps every entity id it had.
+            cells.push({ key: `cell-${cellKey}-${k}-${i}`, poly });
+          }
+          // A face that reaches the lattice but yields nothing cuttable — the
+          // border clipped it to a sliver, or the inset swallowed it whole.
+          // Counted so the panel can say why its edge is bare.
+          if (!cut) scraps++;
+        }
+      });
+      return { pitch: p, tool, tooFat: false, cells, minR, scraps, cutLength };
+    };
+
+    // Bar width is checked before the cell cap, and in that order deliberately:
+    // bars too fat for the pitch is the more actionable of the two complaints,
+    // and a fine pitch usually trips both at once.
+    if (toolFor(pitch) < MIN_TOOL) {
       s.note(
         `Bar width ${s.len(bar)} closes the lattice solid at a ${s.len(pitch)} pitch — ` +
-          `widen the pitch past ${s.len(Math.ceil((bar / 2 + MIN_TOOL / (2 * TOOL_FIT)) / FACE_INRADIUS))} ` +
+          `widen the pitch past ` +
+          `${s.len(Math.ceil((bar / 2 + MIN_TOOL / (2 * TOOL_FIT)) / pattern.faceInradius))} ` +
           "or thin the bars.",
       );
       return out;
     }
-
-    const area = (rect.x1 - rect.x0) * (rect.y1 - rect.y0);
-    const projected = Math.ceil((6 * area) / (ROW * pitch * pitch));
-    if (projected > MAX_CELLS) {
+    if (project(pitch) > MAX_CELLS) {
       s.note(
-        `A ${s.len(pitch)} pitch needs about ${projected} openings here, past the ` +
+        `A ${s.len(pitch)} pitch needs about ${project(pitch)} openings here, past the ` +
           `${MAX_CELLS} this document can hold — widen the pitch or shrink the panel.`,
       );
       return out;
     }
 
-    // A lattice vertex sits at the panel centre, so the rosette is centred and
-    // the border crops symmetrically.
-    const origin = { x: width / 2, y: height / 2 };
-    const clip = [rectPoly(rect)];
+    let run = sweep(pitch);
 
-    s.layer("Kumiko lattice", "#f59e0b");
-    const cells: Handle[] = [];
-    let minR = Number.POSITIVE_INFINITY;
-    let scraps = 0;
-    let cutLength = 0;
-
-    const v0 = Math.floor((rect.y0 - origin.y) / (pitch * ROW)) - 1;
-    const v1 = Math.ceil((rect.y1 - origin.y) / (pitch * ROW)) + 1;
-    for (let v = v0; v <= v1; v++) {
-      const u0 = Math.floor((rect.x0 - origin.x) / pitch - v / 2) - 1;
-      const u1 = Math.ceil((rect.x1 - origin.x) / pitch - v / 2) + 1;
-      for (let u = u0; u <= u1; u++) {
-        const p00 = vertex(u, v, pitch, origin);
-        const p10 = vertex(u + 1, v, pitch, origin);
-        const p01 = vertex(u, v + 1, pitch, origin);
-        const p11 = vertex(u + 1, v + 1, pitch, origin);
-        // The rhombus splits into an up- and a down-pointing jigumi triangle,
-        // both wound CCW — which the bisector inset and the NonZero clip below
-        // each depend on.
-        const tris: [string, Pt[]][] = [
-          ["u", [p00, p10, p01]],
-          ["d", [p10, p11, p01]],
-        ];
-
-        for (const [tag, tri] of tris) {
-          if (misses(tri, rect)) continue;
-          for (const [k, face] of faces(tri).entries()) {
-            if (misses(face, rect)) continue;
-            let pieces: Vec2[][];
-            if (inside(face, rect)) {
-              const exact = insetConvex(face, bar / 2);
-              pieces = exact ? [exact] : [];
-            } else {
-              const bounded = intersectPolygonSets([face], clip);
-              if (bounded.length === 0) continue;
-              // Miter limit is generous so the 30° leaf tips stay sharp instead
-              // of being truncated into facets at the default limit of 4.
-              pieces = offsetPolygons(bounded, -bar / 2, { miterLimit: 12 });
-            }
-            let cut = false;
-            for (const [i, cell] of pieces.entries()) {
-              if (cell.length < 3) continue;
-              const r = inradius(cell);
-              if (r < tool / 2) continue;
-              minR = Math.min(minR, r);
-              cut = true;
-              // Perimeter now, while the ring is to hand: summed, it is the
-              // length of profile the machine has to run at full depth, which
-              // is the honest measure of what this pattern costs to cut.
-              for (let n = 0; n < cell.length; n++) {
-                const q = cell[(n + 1) % cell.length];
-                cutLength += Math.hypot(q.x - cell[n].x, q.y - cell[n].y);
-              }
-              s.key(`cell-${u}-${v}-${tag}-${k}-${i}`);
-              cells.push(s.polyline(cell, { closed: true }));
-            }
-            // A face that reaches the lattice but yields nothing cuttable — the
-            // border clipped it to a sliver, or the inset swallowed it whole.
-            // Counted so the panel can say why its edge is bare.
-            if (!cut) scraps++;
-          }
+    // A pitch too coarse for the room between the frames drops EVERY face on
+    // the border and leaves a bare rectangle — "I changed the height and got a
+    // plain square". Draw it at a pitch that fits instead, the way the clamp
+    // generator clamps its overhang rather than refusing: a parameter briefly
+    // out of range while the user is still typing should not blank the drawing.
+    // The stored `pitch` is left as asked for, exactly as boxJoint keeps the
+    // clearance it was given and builds with the clamped one.
+    //
+    // Searched rather than derived. Whether a face survives is decided by the
+    // border clip AND the tool-fit drop together, so the coarsest workable
+    // pitch is not a closed form — an earlier attempt computed one geometrically
+    // and it was itself too fine to cut, rescuing none of the 92 cases in the
+    // parameter sweep that a smaller pitch does in fact rescue. Coarsest first,
+    // so the result stays as close to the request as it can.
+    if (!run.tooFat && run.cells.length === 0) {
+      // Geometric descent rather than a few round divisors: stepping straight
+      // from 40 to 20 skipped the 25 that eight of the sweep's panels needed.
+      for (let step = 1; step <= 14; step++) {
+        const p = pitch * 0.85 ** step;
+        if (p < 1) break;
+        if (project(p) > MAX_CELLS) continue;
+        const retry = sweep(p);
+        if (!retry.tooFat && retry.cells.length > 0) {
+          s.note(
+            `A ${s.len(pitch)} pitch leaves no whole opening in the ${s.len(region.h)} of ` +
+              `lattice this panel has, so it is drawn at ${s.len(p)}.`,
+          );
+          run = retry;
+          break;
         }
       }
     }
-    s.layer();
 
-    if (cells.length === 0) {
+    if (run.tooFat) {
       s.note(
-        scraps > 0
-          ? `A ${s.len(pitch)} pitch is too coarse for this panel — every opening fell on the border. ` +
-              "Reduce the pitch."
-          : "No openings survived — check the pitch, bar width and frame width.",
+        `Bar width ${s.len(bar)} closes the lattice solid at a ${s.len(run.pitch)} pitch — ` +
+          `widen the pitch past ` +
+          `${s.len(Math.ceil((bar / 2 + MIN_TOOL / (2 * TOOL_FIT)) / pattern.faceInradius))} ` +
+          "or thin the bars.",
       );
       return out;
     }
+    if (run.cells.length === 0) {
+      // Nothing fits at any pitch, so the pitch is not what is wrong: name the
+      // dimension that actually ran out.
+      s.note(
+        `The frame leaves only ${s.len(region.w)} x ${s.len(region.h)} for the lattice — ` +
+          "reduce the frame or bar width, or enlarge the panel.",
+      );
+      return out;
+    }
+
+    const { tool, minR, scraps, cutLength } = run as Required<typeof run>;
+    s.layer("Kumiko lattice", "#f59e0b");
+    const cells: Handle[] = run.cells.map(({ key, poly }) => {
+      s.key(key);
+      return s.polyline(poly, { closed: true });
+    });
+    s.layer();
     if (scraps > 0) {
       s.note(
         `${scraps} part-opening${scraps === 1 ? "" : "s"} at the border ${scraps === 1 ? "was" : "were"} ` +
@@ -338,12 +507,12 @@ export const kumiko: Generator = {
           "Widen the pitch or thin the bars to open the cells up for a bigger cutter.",
       );
     }
-    // Twelve bars converge at 30° on each lattice vertex and overlap for
-    // (bar/2)/sin 15°, so the solid hub there is 3.86x the bar width whatever
-    // the pitch. Once those hubs approach a third of the pitch they dominate
-    // the panel and the lattice stops reading as one — worth saying, because
-    // thinning the bars is the only lever on it.
-    const hub = bar / Math.sin(Math.PI / 12);
+    // Bars converging on a lattice vertex overlap for (bar/2)/sin(θ/2), so the
+    // solid hub there is a fixed multiple of the bar width whatever the pitch —
+    // 3.86x at asanoha's 30° tip, 2.0x at mitsu-kude's 60°. Once those hubs
+    // approach a third of the pitch they dominate the panel and the lattice
+    // stops reading as one; thinning the bars is the only lever on it.
+    const hub = bar / Math.sin((pattern.tipAngleDeg * Math.PI) / 360);
     if (hub > pitch / 3) {
       s.note(
         `Bars meet in ${s.len(hub, 0)} solid hubs at this bar width — ` +

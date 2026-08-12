@@ -8,7 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **A Kumiko pattern picker, and Mitsu-kude.** The generator is now *Kumiko
+  Panel* with a **Pattern** dropdown: **Asanoha**, and **Mitsu-kude** (三つ組手) —
+  the bare triangular jigumi, a finished pattern in its own right rather than a
+  half-built asanoha.
+
+  A pattern is now declared as a lattice plus a cell-division rule rather than a
+  routine of its own, so the quantities that decide tool fit, panel density and
+  hub size are derived per pattern instead of being asanoha's numbers reused.
+  Panels saved before this keep their pattern, their entity ids and their
+  toolpath links.
+
 ### Fixed
+
+- **Shrinking a Kumiko panel no longer blanks the pattern.** A pitch coarser
+  than the room left between the frames dropped every opening on the border and
+  handed back a bare rectangle, and the only way out was editing the pitch by
+  hand. The panel is now drawn at a pitch that fits, and says so; the stored
+  pitch is left as you set it. A panel that fits its pitch is untouched.
+
+  Where there is genuinely no room at any pitch, the note now names the
+  dimension that ran out — "the frame leaves only 13 mm x 8 mm for the lattice"
+  — instead of blaming the pitch, which in that case is the one thing that
+  cannot help.
 
 - **A long Properties section title overlapped the controls under it.** The
   section title is a faux fieldset legend — absolutely positioned so it sits on

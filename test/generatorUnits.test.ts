@@ -115,7 +115,11 @@ test("a length field shows the document unit in its label and its value", () => 
   const dialog = openDialog(inchDoc(), "kumiko-asanoha");
   const width = field(dialog, "Width");
   expect(width.value).toBe("7.874"); // 200 mm
-  const label = dialog.querySelector(".tp-field label") as HTMLElement;
+  // Looked up by name, not by position: this asserted the first label in the
+  // dialog until a Pattern dropdown was added ahead of it.
+  const label = [...dialog.querySelectorAll(".tp-field label")].find((l) =>
+    l.textContent?.startsWith("Width"),
+  ) as HTMLElement;
   expect(label.textContent).toBe("Width (in)");
 });
 

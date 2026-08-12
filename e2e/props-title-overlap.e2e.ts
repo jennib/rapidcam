@@ -18,6 +18,12 @@
  * The guard is written against the geometry rather than against the one title
  * that broke, so any future section title — a long generator name, a freely
  * typed feature name — is covered.
+ *
+ * It also drives an over-long title in by hand rather than relying on a real
+ * one being long enough. The first version pinned that to "Kumiko Panel
+ * (Asanoha)" and went vacuous the moment that generator was renamed to "Kumiko
+ * Panel": the collision check still passed, but nothing in the run wrapped, so
+ * the spec was no longer testing the thing it exists for.
  */
 import { test, expect, waitForApp } from "./appFixture";
 import type { Page } from "@playwright/test";
@@ -79,12 +85,24 @@ test("no properties section title overlaps its own first row", async ({ page }) 
   // section overlapping its Name row by ~13px.
   expect(await collisions(page)).toEqual([]);
 
-  // Positive control: the title really is long enough that it WOULD wrap, so
-  // the clean result above means the fix holds rather than that the case never
-  // arose. (Checked after the collision assertion — as a guard on a guard, it
-  // must not be what fails when the real bug returns.)
+  // Whatever the title is, the full text must stay reachable — the clip is only
+  // acceptable because hovering still gives you the name.
+  await expect(featureTitle).toHaveAttribute("title", /Kumiko Panel/);
+
+  // Now force the case the CSS actually guards. The real title only wraps while
+  // some generator's name happens to be long enough, which is not a property
+  // this spec should depend on: it was originally pinned to "Kumiko Panel
+  // (Asanoha)" and went vacuous the moment that generator was renamed. Driving
+  // an over-long title in directly keeps the guard meaningful no matter what
+  // anything is called.
+  await featureTitle.evaluate((el) => {
+    el.textContent = "Feature · A Preposterously Over-Long Generator Name That Must Not Wrap";
+  });
   const clipped = await featureTitle.evaluate((el) => el.scrollWidth > el.clientWidth);
-  expect(clipped).toBe(true);
-  // ...and the full text stays reachable despite the clip.
-  await expect(featureTitle).toHaveAttribute("title", /Kumiko Panel \(Asanoha\)/);
+  // Collision first, control second — ALWAYS this way round here. Without the
+  // fix the long title wraps rather than clipping, so `clipped` is false too,
+  // and checking it first would fail the spec on the control while saying
+  // nothing about the overlap that actually regressed.
+  expect(await collisions(page)).toEqual([]);
+  expect(clipped).toBe(true); // and the wrap case was genuinely exercised
 });
