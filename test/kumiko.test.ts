@@ -145,7 +145,6 @@ test("twelve faces meet at each lattice vertex, three at each triangle centre", 
 const TILINGS = [
   { value: 0, name: "asanoha", angles: [30, 30, 120], atVertex: 12, atCentre: 3 },
   { value: 1, name: "mitsu-kude", angles: [60, 60, 60], atVertex: 6, atCentre: 0 },
-  { value: 2, name: "kaku-asanoha", angles: [45, 45, 90], atVertex: 8, atCentre: 4 },
 ] as const;
 
 for (const t of TILINGS) {
@@ -215,7 +214,7 @@ for (const t of TILINGS) {
   });
 }
 
-test("the three tilings are genuinely different patterns", () => {
+test("the tilings are genuinely different patterns", () => {
   // Positive control on the table above: if two entries were wired to the same
   // geometry, their per-pattern tests would both pass and mean nothing.
   const counts = TILINGS.map((t) => openings(build({ pattern: t.value }).s).length);

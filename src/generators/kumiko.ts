@@ -15,17 +15,23 @@
  *   - **Mitsu-kude** (三つ組手) — the bare triangular jigumi, undivided. Named for
  *     the three-way joint that forms it, and a finished pattern in its own right
  *     rather than a half-built asanoha.
- *   - **Kaku-asanoha** (角麻の葉, "square hemp leaf") — the same spoke rule on a
- *     SQUARE jigumi, giving 45-45-90 faces and an eight-pointed star at each
- *     vertex. The woodworking sources cut its pieces at 22.5°/67.5°, which are
- *     exactly the mitres a 45° leaf tip needs — an independent check that this
- *     is the right construction rather than a plausible-looking one.
  *
  * A bare triangular grid presented AS asanoha is the jigumi alone — scaffolding,
  * not the pattern — and is the specific way this generator has been got wrong
  * before. test/kumiko.test.ts pins each tiling by its face angles and by how
  * many faces meet at a lattice vertex, which no wrong-but-plausible drawing
  * satisfies.
+ *
+ * NOT HERE: **kaku-asanoha** (角麻の葉, "square hemp leaf"). The obvious reading —
+ * the same spoke rule on a square jigumi, i.e. both diagonals of every square —
+ * is WRONG, and attractively so: it produces eight-pointed stars at each vertex
+ * and 45° leaf tips whose 22.5°/67.5° mitres match the angles the woodworking
+ * jigs are set to, so it corroborates itself. But the kits are explicit that a
+ * square takes SEVEN infill pieces of three types, and two diagonals can only
+ * ever be three (one full, two halves). Four pieces per cell are missing, so
+ * that construction is the square jigumi plus its diagonals — scaffolding
+ * again, exactly the error above wearing a different hat. Needs a reference
+ * drawing before it goes in, not another plausible inference.
  *
  * WHAT IS EMITTED. Every face of the tiling, inset by half the bar width, comes
  * out as one closed polyline: the OPENING to cut. The wood left standing between
@@ -172,12 +178,9 @@ function rectPoly(r: Rect): Vec2[] {
  * pattern — the spokes ARE the `ha` (leaves), joined three-at-a-time in the
  * middle of each cell by a mitsu-kude in real joinery.
  *
- * Applied to a triangular jigumi it gives asanoha (the triakis triangular
- * tiling, 30-30-120 faces); to a square jigumi it gives kaku-asanoha, "square
- * hemp leaf" (the tetrakis square tiling, 45-45-90 faces). Same rule, different
- * lattice — which is exactly how the woodworking sources describe the pair, and
- * it is why the square variant's pieces are cut at 22.5°/67.5°: those are the
- * mitres a 45° leaf tip needs, where asanoha's 30° tip takes 15°.
+ * Applied to a triangular jigumi it gives asanoha: the triakis triangular
+ * tiling, 30-30-120 faces. The same rule on a square jigumi does NOT give
+ * kaku-asanoha, however much it looks like it should — see the module docstring.
  *
  * Corner order is preserved so a face's key is stable across rebuilds.
  */
@@ -215,26 +218,6 @@ function triangularJigumi(rect: Rect, a: number, o: Pt, sink: CellSink): void {
   }
 }
 
-/** Squares of side `a`, wound CCW, aligned so a lattice vertex sits on `o`. */
-function squareJigumi(rect: Rect, a: number, o: Pt, sink: CellSink): void {
-  const j0 = Math.floor((rect.y0 - o.y) / a) - 1;
-  const j1 = Math.ceil((rect.y1 - o.y) / a) + 1;
-  const i0 = Math.floor((rect.x0 - o.x) / a) - 1;
-  const i1 = Math.ceil((rect.x1 - o.x) / a) + 1;
-  for (let j = j0; j <= j1; j++) {
-    for (let i = i0; i <= i1; i++) {
-      const x = o.x + i * a;
-      const y = o.y + j * a;
-      sink(`${i}-${j}-s`, [
-        { x, y },
-        { x: x + a, y },
-        { x: x + a, y: y + a },
-        { x, y: y + a },
-      ]);
-    }
-  }
-}
-
 /**
  * One kumiko pattern, as a lattice plus a rule for dividing its cells. Every
  * quantity the rest of the generator needs to reason about tool fit, panel
@@ -268,7 +251,8 @@ interface KumikoPattern {
 /**
  * Ordered as the dropdown reads. Asanoha is value 0 because it shipped first
  * and saved features carry no `pattern` at all — they must keep resolving to
- * the pattern they were drawn with.
+ * the pattern they were drawn with. Values are persisted: never renumber one,
+ * and do not reuse 2, which a withdrawn kaku-asanoha briefly held.
  */
 const PATTERNS: KumikoPattern[] = [
   {
@@ -290,16 +274,6 @@ const PATTERNS: KumikoPattern[] = [
     tipAngleDeg: 60,
     jigumi: triangularJigumi,
     divide: (cell) => [cell],
-  },
-  {
-    value: 2,
-    label: "Kaku-asanoha",
-    // 45-45-90 face with hypotenuse a: r = a(√2-1)/2.
-    faceInradius: (Math.SQRT2 - 1) / 2,
-    density: 4,
-    tipAngleDeg: 45,
-    jigumi: squareJigumi,
-    divide: kis,
   },
 ];
 

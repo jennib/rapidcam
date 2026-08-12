@@ -10,16 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Two more Kumiko patterns.** The generator is now *Kumiko Panel* with a
-  **Pattern** dropdown: **Asanoha**, **Mitsu-kude** (三つ組手, the bare triangular
-  jigumi — a finished pattern in its own right, not a half-built asanoha) and
-  **Kaku-asanoha** (角麻の葉, "square hemp leaf").
-
-  Kaku-asanoha is the same rule as asanoha on a square grid rather than a
-  triangular one — spokes from each cell's centre to its corners — which yields
-  45-45-90 openings and an eight-pointed star at every lattice vertex. The
-  woodworking references cut its pieces at 22.5°/67.5°, exactly the mitres a 45°
-  leaf tip needs, which is an independent check on the construction.
+- **A Kumiko pattern picker, and Mitsu-kude.** The generator is now *Kumiko
+  Panel* with a **Pattern** dropdown: **Asanoha**, and **Mitsu-kude** (三つ組手) —
+  the bare triangular jigumi, a finished pattern in its own right rather than a
+  half-built asanoha.
 
   A pattern is now declared as a lattice plus a cell-division rule rather than a
   routine of its own, so the quantities that decide tool fit, panel density and
