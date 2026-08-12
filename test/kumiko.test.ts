@@ -325,6 +325,47 @@ test("a pitch that would flood the document is refused, not truncated", () => {
   expect(s.opSuggestions.some((o) => o.kind === "profile-inside")).toBe(false);
 });
 
+// --- a panel too short for its pitch still draws ----------------------------
+
+test("shrinking the panel does not blank the lattice down to a bare rectangle", () => {
+  // Reported from use: change the height and the pattern vanishes, leaving just
+  // the frame, until the pitch is edited by hand. A pitch coarser than the room
+  // between the frames drops every face on the border.
+  const { s, handles } = build({ width: 200, height: 25, pitch: 40 });
+  expect(openings(s).length).toBeGreaterThan(0);
+  expect(handles.length).toBeGreaterThan(1);
+  expect(s.notes.some((n) => n.includes("so it is drawn at"))).toBe(true);
+});
+
+test("a panel that fits its pitch is left exactly as asked", () => {
+  // Positive control: the rescue must be a fallback, not something that quietly
+  // re-pitches every panel.
+  const { s } = build({ width: 200, height: 160, pitch: 40 });
+  expect(s.notes.some((n) => n.includes("so it is drawn at"))).toBe(false);
+  expect(openings(s).length).toBe(108);
+});
+
+test("the substituted pitch is the coarsest that works, not the smallest", () => {
+  // Staying close to the request matters: a rescue that jumped straight to a
+  // hair-fine lattice would "work" and be useless.
+  const { s } = build({ width: 200, height: 25, pitch: 40 });
+  const note = s.notes.find((n) => n.includes("so it is drawn at"));
+  const drawn = Number(/drawn at ([\d.]+)/.exec(note ?? "")?.[1]);
+  expect(drawn).toBeGreaterThan(0);
+  expect(drawn).toBeLessThan(40);
+  // Anything coarser than what was chosen must genuinely yield nothing.
+  const coarser = build({ width: 200, height: 25, pitch: drawn / 0.85 });
+  expect(openings(coarser.s).length).toBeGreaterThan(0); // it rescued too...
+  expect(coarser.s.notes.some((n) => n.includes("so it is drawn at"))).toBe(true);
+});
+
+test("a panel with no room at any pitch blames the frame, not the pitch", () => {
+  const { s, handles } = build({ width: 200, height: 20, pitch: 40, frame: 10 });
+  expect(handles).toHaveLength(1);
+  expect(s.notes.some((n) => n.includes("no room"))).toBe(true);
+  expect(s.notes.some((n) => n.includes("so it is drawn at"))).toBe(false);
+});
+
 // --- machining cost ---------------------------------------------------------
 
 test("the summary reports the profile length the machine actually has to run", () => {
@@ -376,9 +417,16 @@ test("a frame wider than the panel is refused", () => {
   expect(s.notes.some((n) => n.includes("no room"))).toBe(true);
 });
 
-test("a pitch coarser than the panel says so", () => {
+test("a panel with no room names the dimension that ran out", () => {
+  // Was "a pitch coarser than the panel says so". A coarse pitch is no longer
+  // a dead end — it gets re-fitted — so the only way to reach an empty lattice
+  // now is genuinely having no room, and the note must say which room. Blaming
+  // the pitch here would send the user to tune the one thing that cannot help.
   const { s } = build({ width: 30, height: 25, pitch: 40 });
-  expect(s.notes.some((n) => n.includes("too coarse"))).toBe(true);
+  const note = s.notes.find((n) => n.includes("leaves only"));
+  expect(note).toBeDefined();
+  expect(note).toContain("13.00 mm x 8.00 mm"); // the actual lattice region
+  expect(s.notes.some((n) => n.includes("so it is drawn at"))).toBe(false);
 });
 
 test("border scraps are reported rather than emitted as uncuttable slivers", () => {
