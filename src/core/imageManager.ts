@@ -12,6 +12,7 @@
  */
 
 import type { RasterGrid } from "../cam/rasterEngrave";
+import { newBoxAccumulator, boxAccumulate, boxMeanBytes } from "./resample";
 
 /** Longest-edge pixel cap applied on import. Engrave resolution is bounded by the
  *  dot pitch, so a photo larger than this carries no usable extra detail — and it
@@ -160,26 +161,68 @@ export function adjustGrey(gray: Uint8Array, adj: ToneAdjust): Uint8Array {
   return out;
 }
 
-/** Decode + downscale a picked file to raw greyscale without registering it, so
- *  the caller can offer an import-time adjustment before baking the final buffer. */
+/**
+ * Longest edge of one decode tile, in source pixels.
+ *
+ * The source is read a tile at a time rather than in one go because a large photo
+ * cannot be held at full size: a 24MP image is a ~96MB backing store plus another
+ * ~96MB for the `ImageData` copy, and Safari refuses to back a canvas past roughly
+ * 16.7M pixels at all — silently handing back blanks rather than throwing. At 2048
+ * a tile is ~4.2M pixels (~17MB), comfortable everywhere, and even a 24MP source
+ * is only six tiles.
+ */
+const DECODE_TILE = 2048;
+
+/**
+ * Decode + downscale a picked file to raw greyscale without registering it, so
+ * the caller can offer an import-time adjustment before baking the final buffer.
+ *
+ * The downscale is a **box average we perform ourselves**, not a scaled
+ * `drawImage`. Canvas scaling obeys `imageSmoothingQuality`, which defaults to
+ * `"low"` — bilinear, a 2×2 neighbourhood — so reducing a 6000px photo to 1000px
+ * reads about four source pixels in every thirty-six and discards the rest. That
+ * aliases exactly the fine detail an engrave or relief carve is meant to
+ * reproduce, and because the filter is implementation-defined the same file could
+ * yield a different toolpath in a different browser. Blitting each tile 1:1 puts
+ * no filter in the path at all, and {@link boxAccumulate} then averages every
+ * source pixel into its output cell.
+ */
 export async function decodeImageFile(file: File): Promise<DecodedImage> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * scale));
-  const h = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close?.();
-  const rgba = ctx.getImageData(0, 0, w, h).data;
-  return {
-    name: file.name.replace(/\.[^.]+$/, ""),
-    width: w,
-    height: h,
-    gray: toGreyscale(rgba, w, h),
-  };
+  try {
+    const sw = bitmap.width;
+    const sh = bitmap.height;
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * scale));
+    const h = Math.max(1, Math.round(sh * scale));
+    const acc = newBoxAccumulator(sw, sh, w, h);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    for (let ty = 0; ty < sh; ty += DECODE_TILE) {
+      const th = Math.min(DECODE_TILE, sh - ty);
+      for (let tx = 0; tx < sw; tx += DECODE_TILE) {
+        const tw = Math.min(DECODE_TILE, sw - tx);
+        if (canvas.width !== tw || canvas.height !== th) {
+          canvas.width = tw; // Resizing also clears; only clear explicitly when it doesn't.
+          canvas.height = th;
+        } else {
+          // Transparent pixels of this tile must not composite over the last one.
+          ctx.clearRect(0, 0, tw, th);
+        }
+        ctx.drawImage(bitmap, tx, ty, tw, th, 0, 0, tw, th); // 1:1 — no scaling, no filter.
+        const rgba = ctx.getImageData(0, 0, tw, th).data;
+        boxAccumulate(acc, toGreyscale(rgba, tw, th), { x: tx, y: ty, w: tw, h: th });
+      }
+    }
+    return {
+      name: file.name.replace(/\.[^.]+$/, ""),
+      width: w,
+      height: h,
+      gray: boxMeanBytes(acc),
+    };
+  } finally {
+    bitmap.close?.();
+  }
 }
 
 /** An embedded image as it appears in a .rcam file (base64 greyscale buffer). */

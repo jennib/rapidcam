@@ -28,6 +28,7 @@
  */
 
 import { dither, type DitherMode } from "./dither";
+import { newBoxAccumulator, boxAccumulate } from "../core/resample";
 
 /** A greyscale image as a row-major grid. `data[y*width + x]` ∈ [0,1], 0 = black. */
 export interface RasterGrid {
@@ -134,17 +135,12 @@ export function resampleGrid(
 ): Float32Array {
   const { width: sw, height: sh, data } = grid;
   const out = new Float32Array(outW * outH);
-  const sum = new Float64Array(outW * outH);
-  const cnt = new Uint32Array(outW * outH);
-  for (let py = 0; py < sh; py++) {
-    const oy = Math.min(outH - 1, Math.floor((py * outH) / sh));
-    for (let px = 0; px < sw; px++) {
-      const ox = Math.min(outW - 1, Math.floor((px * outW) / sw));
-      const i = oy * outW + ox;
-      sum[i] += clamp01(data[py * sw + px]);
-      cnt[i]++;
-    }
-  }
+  // Box-average via the shared core kernel, so this and the import-time decode
+  // can never disagree about what "downscaled" means. Clamping to 0..1 per pixel
+  // reproduces the local clamp01 this loop used to apply inline.
+  const acc = newBoxAccumulator(sw, sh, outW, outH);
+  boxAccumulate(acc, data, { x: 0, y: 0, w: sw, h: sh }, { min: 0, max: 1 });
+  const { sum, cnt } = acc;
   for (let oy = 0; oy < outH; oy++) {
     for (let ox = 0; ox < outW; ox++) {
       const i = oy * outW + ox;
