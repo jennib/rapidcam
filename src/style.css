@@ -799,10 +799,29 @@ button.cbtn.solve {
   border-radius: 4px;
 }
 
+/**
+ * Sits ON the section's border like a fieldset legend, which is why it is
+ * absolutely positioned — and therefore out of flow, so `.props-section`'s
+ * 10px top padding budgets for exactly ONE line of it. A title long enough to
+ * wrap drops its second line straight down onto the first row instead of
+ * pushing anything aside; "Feature · Kumiko Panel (Asanoha)" was the first one
+ * long enough to do it, over the group's Name field.
+ *
+ * So it is pinned to one line and ellipsized rather than given room for two:
+ * a legend that reflows the border notch to two lines looks broken in its own
+ * right, and the sections are a fixed-width panel where any title can get long
+ * once a feature or generator is named freely. The full text stays reachable —
+ * createSection sets it as the `title` attribute.
+ */
 .props-section-title {
   position: absolute;
   top: -8px;
   left: 8px;
+  max-width: calc(100% - 20px);
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 4px;
   background: var(--panel);
   font-size: 11px;
