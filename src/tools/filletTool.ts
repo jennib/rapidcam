@@ -30,7 +30,9 @@ import {
   findCorner,
   getCornerDirs,
   joinCornerEnds,
+  refreshCorner,
   reportDropped,
+  shapeCorners,
   spliceCornerVertices,
   trimCornerLegs,
 } from "./corner";
@@ -149,6 +151,67 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): number |
   return 0;
 }
 
+/**
+ * Round EVERY corner of the shape this corner belongs to, at one radius.
+ *
+ * AutoCAD's `FILLET → Polyline` and Illustrator's corner widgets both do the
+ * whole shape in one action; doing a rectangle one corner at a time was the
+ * reported friction.
+ *
+ * Corners are walked highest-index-first (see `shapeCorners`) so each splice
+ * only disturbs indices already dealt with, and each one is re-read from the
+ * live document because a rect turns INTO a polyline on its first fillet.
+ *
+ * A corner the radius does not fit is skipped rather than abandoning the rest —
+ * a tight corner on one side of a shape should not stop the other three
+ * rounding. The count of skips is reported so a partial result never looks like
+ * a complete one.
+ */
+function applyFilletAll(
+  corner: Corner,
+  radius: number,
+  doc: CADDocument,
+): { dropped: number; skipped: number } {
+  let dropped = 0;
+  let skipped = 0;
+  for (const c of shapeCorners(corner, doc)) {
+    const live = refreshCorner(c, doc);
+    if (!live) {
+      skipped++;
+      continue;
+    }
+    const n = applyFillet(live, radius, doc);
+    if (n === null) skipped++;
+    else dropped += n;
+  }
+  return { dropped, skipped };
+}
+
+/** One corner or the whole shape, reporting whatever could not be carried. */
+function commit(
+  corner: Corner,
+  radius: number,
+  all: boolean,
+  ctx: ToolContext,
+): void {
+  if (!all) {
+    reportDropped(applyFillet(corner, radius, ctx.doc), ctx);
+    return;
+  }
+  const { dropped, skipped } = applyFilletAll(corner, radius, ctx.doc);
+  reportDropped(dropped, ctx);
+  if (skipped > 0) {
+    // Say it: a shape that came back with three of four corners rounded, with
+    // no message, reads as the tool half-working rather than as a radius that
+    // does not fit the fourth.
+    ctx.notify(
+      skipped === 1
+        ? "1 corner was too tight for that radius and was left square."
+        : `${skipped} corners were too tight for that radius and were left square.`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
@@ -196,6 +259,10 @@ export class FilletTool implements Tool {
   onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
     if (this.phase !== "dragging" || !this.activeCorner) return;
     const corner = this.activeCorner;
+    // Read Shift at RELEASE, not at press: the decision is "what did this
+    // gesture mean", and the user may reach for the modifier while dragging —
+    // which is also when the preview tells them it is available.
+    const all = e.shiftKey;
     const screenDelta = dist(e.screen, this.downScreen);
     this.reset(ctx);
 
@@ -208,7 +275,7 @@ export class FilletTool implements Tool {
           const dirs = getCornerDirs(corner);
           if (!dirs || !computeGeo(dirs, r)) return false;
           ctx.pushHistory();
-          reportDropped(applyFillet(corner, r, ctx.doc), ctx);
+          commit(corner, r, all, ctx);
           ctx.solve();
           ctx.doc.emitChange();
         },
@@ -219,7 +286,7 @@ export class FilletTool implements Tool {
       const dirs = getCornerDirs(corner);
       if (dirs && computeGeo(dirs, this.currentValue)) {
         ctx.pushHistory();
-        reportDropped(applyFillet(corner, this.currentValue, ctx.doc), ctx);
+        commit(corner, this.currentValue, all, ctx);
         ctx.solve();
         ctx.doc.emitChange();
       }

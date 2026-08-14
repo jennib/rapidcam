@@ -41,6 +41,66 @@ export function reportDropped(
   );
 }
 
+/**
+ * Every corner of the shape `corner` belongs to, HIGHEST INDEX FIRST.
+ *
+ * AutoCAD's `FILLET → Polyline` rounds every vertex of a polyline in one go, and
+ * Illustrator's corner widgets round all corners together; doing a rectangle one
+ * corner at a time is the friction that was reported. This is the corner list
+ * that operation walks.
+ *
+ * **Descending order is load-bearing, not tidiness.** Each fillet replaces one
+ * corner with several vertices, so every index above it shifts. Walking down
+ * means the indices still to come are all below the splice and therefore
+ * untouched — no re-derivation, no bookkeeping.
+ *
+ * It also survives the rect → polyline conversion mid-walk: the replacement is
+ * built from `corners()`, so corner *i* becomes vertex *i*, and the corners
+ * still to come keep the indices they already had.
+ *
+ * A line-line corner has no enclosing shape, so it yields only itself.
+ */
+export function shapeCorners(corner: Corner, doc: CADDocument): Corner[] {
+  if (corner.kind === "line") return [corner];
+  const id = corner.entity.id;
+  const live = doc.entities.find((e) => e.id === id);
+  const out: Corner[] = [];
+  if (live instanceof RectEntity) {
+    const c = live.corners();
+    for (let i = 3; i >= 0; i--) out.push({ kind: "rect", entity: live, index: i, pos: c[i] });
+  } else if (live instanceof PolylineEntity) {
+    const n = live.points.length;
+    for (let i = n - 1; i >= 0; i--) {
+      // An open polyline's ends are not corners — nothing on the far side.
+      if (!live.closed && (i === 0 || i === n - 1)) continue;
+      out.push({ kind: "poly", entity: live, index: i, pos: live.points[i] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Re-read the corner at `index` from the live document.
+ *
+ * Needed because a rect BECOMES a polyline on its first fillet: the descriptors
+ * from {@link shapeCorners} still point at the old RectEntity object, which is no
+ * longer in the document. The id survives the swap, so it is what we look up by.
+ */
+export function refreshCorner(corner: Corner, doc: CADDocument): Corner | null {
+  if (corner.kind === "line") return corner;
+  const live = doc.entities.find((e) => e.id === corner.entity.id);
+  if (live instanceof RectEntity) {
+    const c = live.corners();
+    if (corner.index > 3) return null;
+    return { kind: "rect", entity: live, index: corner.index, pos: c[corner.index] };
+  }
+  if (live instanceof PolylineEntity) {
+    if (corner.index >= live.points.length) return null;
+    return { kind: "poly", entity: live, index: corner.index, pos: live.points[corner.index] };
+  }
+  return null;
+}
+
 /** Two points closer than this are the same corner. */
 export const CORNER_EPS = 1e-4;
 /** Corner pick radius, in SCREEN pixels — divided by the view scale to get world units. */
