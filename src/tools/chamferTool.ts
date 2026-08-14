@@ -24,6 +24,7 @@ import {
   findCorner,
   getCornerDirs,
   joinCornerEnds,
+  reportDropped,
   spliceCornerVertices,
   trimCornerLegs,
 } from "./corner";
@@ -68,11 +69,19 @@ function buildPreviews(corner: Corner, value: number, unit: Unit): PreviewShape[
 // Apply
 // ---------------------------------------------------------------------------
 
-function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boolean {
+/**
+ * Apply the corner operation.
+ *
+ * Returns the number of references that could NOT be carried across the rect ->
+ * polyline conversion (see corner.ts spliceCornerVertices), or null when the
+ * corner is not workable at all. The count matters because silently losing a
+ * constraint is the bug this return value exists to stop.
+ */
+function applyChamfer(corner: Corner, distance: number, doc: CADDocument): number | null {
   const dirs = getCornerDirs(corner);
-  if (!dirs) return false;
+  if (!dirs) return null;
   const geo = computeGeo(dirs, distance);
-  if (!geo) return false;
+  if (!geo) return null;
 
   if (corner.kind === "line") {
     trimCornerLegs(corner, geo.T1, geo.T2);
@@ -83,10 +92,10 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boole
     joinCornerEnds(doc, corner, chamfer.id, "a", "b", "chamfer");
   } else {
     // poly or rect — splice the two chamfer points in
-    spliceCornerVertices(corner, doc, [geo.T1, geo.T2]);
+    return spliceCornerVertices(corner, doc, [geo.T1, geo.T2]);
   }
 
-  return true;
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +160,7 @@ export class ChamferTool implements Tool {
             const dirs = getCornerDirs(corner);
             if (!dirs || !computeGeo(dirs, d)) return false;
             ctx.pushHistory();
-            applyChamfer(corner, d, ctx.doc);
+            reportDropped(applyChamfer(corner, d, ctx.doc), ctx);
             ctx.solve();
             ctx.doc.emitChange();
           },
@@ -163,7 +172,7 @@ export class ChamferTool implements Tool {
       const dirs = getCornerDirs(corner);
       if (dirs && computeGeo(dirs, this.currentValue)) {
         ctx.pushHistory();
-        applyChamfer(corner, this.currentValue, ctx.doc);
+        reportDropped(applyChamfer(corner, this.currentValue, ctx.doc), ctx);
         ctx.solve();
         ctx.doc.emitChange();
       }

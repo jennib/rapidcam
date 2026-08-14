@@ -105,7 +105,8 @@ export const TOOLS: Record<string, ToolReference> = {
   fillet: {
     key: "f",
     label: "Fillet",
-    hint: "Click two lines that meet (or a polyline corner) to round · drag or type the radius",
+    hint:
+      "Click two lines that meet (or a polyline corner) to round · drag or type the radius · Shift = every corner of the shape",
     typeToDraw: true,
   },
   // No key: "c" is Circle. Chamfer lives on the toolbar and the context menu.
