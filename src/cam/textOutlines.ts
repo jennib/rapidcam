@@ -4,6 +4,7 @@
  */
 
 import { getFont, textPath } from "../core/fontManager";
+import { unionPolygons } from "./offset";
 import type { Vec2 } from "../core/vec2";
 import type { TextEntity } from "../model/entities";
 
@@ -77,13 +78,35 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
   }
   if (current.length > 1) contours.push({ points: current, closed: true });
 
+  // Merge the glyph's sub-paths before anyone cuts them.
+  //
+  // A modern font builds a glyph from several OVERLAPPING sub-paths — Inter's
+  // 'e' is the reported case. opentype hands them over as-is, and until this
+  // existed they went straight out as separate contours, so the overlap seams
+  // were cut as real strokes: stray lines through the counter of an 'e'.
+  //
+  // NonZero is what makes the union right rather than merely tidy: a font winds
+  // a counter opposite to its outer contour, so the same rule that fuses two
+  // overlapping same-wound sub-paths also leaves the hole in an 'e' open. See
+  // unionPolygons.
+  //
+  // Every consumer of this function benefits at once — gcode, lasergcode, loops,
+  // stockRasterizer, flip, dxfExport and the CAM geometry section — because the
+  // overlap was never anything any of them wanted.
+  const merged = unionPolygons(contours.map((c) => c.points));
+  // Clipper drops degenerate input; if it returns nothing (a glyph that is all
+  // zero-area seams, or a font that flattened to slivers) keep the raw contours
+  // rather than silently engraving a blank.
+  const out: TextContour[] =
+    merged.length > 0 ? merged.map((points) => ({ points, closed: true })) : contours;
+
   // Double-sided: reflect the finished world-space contours about the flip axis
   // so bottom-face text engraves as a true mirror image (angle-correct, since we
   // reflect the final geometry, not the glyphs' local frame). Reversing each
   // contour keeps its winding consistent after the reflection.
   if (ent.mirror) {
     const { axis, c } = ent.mirror;
-    for (const contour of contours) {
+    for (const contour of out) {
       for (const p of contour.points) {
         if (axis === "h") p.x = 2 * c - p.x;
         else p.y = 2 * c - p.y;
@@ -92,7 +115,7 @@ export function textToContours(ent: TextEntity, toleranceMM = 0.05): TextContour
     }
   }
 
-  return contours;
+  return out;
 }
 
 function flattenCubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, out: Vec2[], tol: number): void {
