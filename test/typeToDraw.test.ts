@@ -54,6 +54,7 @@ function makeCtx(doc: CADDocument): Spy {
       spy.fields = fields.map((f) => f.placeholder);
       spy.opened = true;
     },
+    activateTool() {},
     closeTypeToDraw() {
       spy.fields = [];
     },

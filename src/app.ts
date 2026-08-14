@@ -267,6 +267,9 @@ export class App {
         snap: this.snapEngine,
         solve: (pins) => this.runSolve(pins),
         pushHistory: this.project.pushHistory,
+        // Deferred through the arrow so `this.tools` is assigned by call time —
+        // this object literal is an argument to its own constructor.
+        activateTool: (id) => this.tools.activate(id),
         openDimEditor: (dim) => setTimeout(() => this.openDimEditor(dim), 0),
         openTypeToDraw: (worldPos, fields, handlers) => {
           this.typeToDrawGen++;
@@ -856,11 +859,35 @@ export class App {
   }
 
   private toolEvent(ev: PointerEvent | MouseEvent, screen: Vec2): ToolPointerEvent {
+    // Ctrl suppresses snapping. SelectTool has honoured this while DRAGGING
+    // existing geometry for a while — and the Object-snap tooltip promises it —
+    // but nothing honoured it while DRAWING, so holding Ctrl on a rectangle's
+    // second corner did nothing and the point still jumped to a snap. This is
+    // the one place every tool gets its snapped position, so applying it here
+    // makes the modifier mean the same thing everywhere.
+    //
+    // Ctrl, not Alt: Alt already means "from centre" in rectTool (and rotate in
+    // SelectTool), and Shift is ortho. Ctrl+click in SelectTool picks points,
+    // which reads worldRaw and so is unaffected.
+    const raw = this.view.screenToWorld(screen);
+    if (ev.ctrlKey) {
+      this.currentSnap = null;
+      return {
+        world: raw,
+        worldRaw: raw,
+        screen,
+        snap: null,
+        button: ev.button,
+        shiftKey: ev.shiftKey,
+        ctrlKey: true,
+        altKey: ev.altKey,
+      };
+    }
     const snap = this.snapEngine.resolve(screen, this.view, this.doc);
     this.currentSnap = snap.snap;
     return {
       world: snap.world,
-      worldRaw: this.view.screenToWorld(screen),
+      worldRaw: raw,
       screen,
       snap: snap.snap,
       button: ev.button,

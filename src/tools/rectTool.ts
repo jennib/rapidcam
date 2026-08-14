@@ -18,6 +18,18 @@
  * become line endpoints you can constrain freely).
  */
 
+/**
+ * The status-bar hints, named because each was written out four and one times
+ * respectively — the same sentence duplicated across `onActivate`, `cancel` and
+ * both commit paths, with nothing keeping the copies in agreement. Adding the
+ * Ctrl modifier to only three of the four is exactly how they would drift.
+ *
+ * `Alt` is this tool's own modifier (from centre); `Ctrl` suppresses snapping
+ * app-wide and is resolved in `App.toolEvent`, not here.
+ */
+const HINT_START = "Click two corners, or drag (Alt = from centre, Ctrl = no snap).";
+const HINT_SECOND = "Click the opposite corner, or drag (Alt = centred, Ctrl = no snap).";
+
 import type { Vec2 } from "../core/vec2";
 import { parseLength } from "../core/units";
 import { RectEntity } from "../model/entities";
@@ -39,7 +51,7 @@ export class RectTool implements Tool {
   private isCenter: boolean = false;
 
   onActivate(ctx: ToolContext): void {
-    ctx.setHint("Click two corners, or drag (Alt = from centre).");
+    ctx.setHint(HINT_START);
   }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
@@ -48,7 +60,7 @@ export class RectTool implements Tool {
     if (!this.start) {
       this.start = e.world;
       this.anchorScreen = e.screen;
-      ctx.setHint("Click the opposite corner, or drag (Alt = centred).");
+      ctx.setHint(HINT_SECOND);
       ctx.openTypeToDraw(
         e.world,
         [
@@ -85,7 +97,7 @@ export class RectTool implements Tool {
       this.anchorScreen = null;
       this.typedW = null;
       this.typedH = null;
-      ctx.setHint("Click two corners, or drag (Alt = from centre).");
+      ctx.setHint(HINT_START);
     }
   }
 
@@ -157,7 +169,7 @@ export class RectTool implements Tool {
     this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click two corners, or drag (Alt = from centre).");
+    ctx.setHint(HINT_START);
     ctx.requestRender();
   }
 
@@ -188,7 +200,7 @@ export class RectTool implements Tool {
     this.anchorScreen = null;
     this.typedW = null;
     this.typedH = null;
-    ctx.setHint("Click two corners, or drag (Alt = from centre).");
+    ctx.setHint(HINT_START);
     return true;
   }
 
