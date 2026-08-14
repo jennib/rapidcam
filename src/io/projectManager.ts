@@ -57,6 +57,8 @@ export class ProjectManager {
   isDirty = false;
 
   private autosaveTimeout: number | null = null;
+  /** Latches once autosave loses its file grant, so the warning is said once. */
+  private autosaveToFileFailed = false;
 
   constructor(
     private doc: CADDocument,
@@ -284,6 +286,16 @@ export class ProjectManager {
         return;
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
+        // Anything else used to fall through to the Firefox/Safari branch below,
+        // silently swapping a save-to-file for a browser download — the user was
+        // told nothing and their handle was quietly abandoned. Say so and stop;
+        // a save that did not happen must never look like one that did.
+        console.error("Save failed:", e);
+        showError(
+          `Could not save “${this.currentFileName}”: ${(e as Error).message}. ` +
+            "Try File → Save As.",
+        );
+        return;
       }
     }
 
@@ -450,7 +462,50 @@ export class ProjectManager {
     );
   }
 
-  async writeToHandle(handle: FileSystemFileHandle): Promise<RcamFile> {
+  /**
+   * Whether we may still write through `handle`, re-prompting if we may not.
+   *
+   * A File System Access grant is per-handle and NOT permanent: it lapses when
+   * the page reloads, and the user can revoke it from the omnibox at any time.
+   * Until this existed, nothing ever re-checked — `createWritable()` simply threw
+   * `NotAllowedError`, `fileSave` swallowed it and silently fell through to a
+   * different save mechanism, and `performAutosave` swallowed it into
+   * `console.error`. Both look, from the outside, exactly like "save stopped
+   * working", which is what was reported.
+   *
+   * `requestPermission` needs transient user activation, so it can only succeed
+   * on a user-initiated save. `interactive: false` from the autosave path asks
+   * the question but never opens a prompt the user did not ask for.
+   */
+  private async canWriteTo(
+    handle: FileSystemFileHandle,
+    interactive: boolean,
+  ): Promise<boolean> {
+    // Not in every browser that has showSaveFilePicker; absent means unrestricted.
+    const h = handle as FileSystemFileHandle & {
+      queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
+      requestPermission?: (d: { mode: string }) => Promise<PermissionState>;
+    };
+    if (!h.queryPermission) return true;
+    try {
+      if ((await h.queryPermission({ mode: "readwrite" })) === "granted") return true;
+      if (!interactive || !h.requestPermission) return false;
+      return (await h.requestPermission({ mode: "readwrite" })) === "granted";
+    } catch {
+      // Older implementations throw on the descriptor — let the write itself decide.
+      return true;
+    }
+  }
+
+  /**
+   * Write the document through `handle`. Throws if the grant is gone and either
+   * could not be renewed or `interactive` forbade asking — callers must handle
+   * that rather than treating a failed write as a no-op.
+   */
+  async writeToHandle(handle: FileSystemFileHandle, interactive = true): Promise<RcamFile> {
+    if (!(await this.canWriteTo(handle, interactive))) {
+      throw new DOMException("Write permission for this file was not granted", "NotAllowedError");
+    }
     const data = serializeDoc(this.doc, this.currentFileName);
     const writable = await handle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
@@ -535,11 +590,28 @@ export class ProjectManager {
 
     if (this.currentFileHandle) {
       try {
-        const data = await this.writeToHandle(this.currentFileHandle);
+        // interactive: false — autosave runs off a timer, and a permission
+        // prompt the user did not ask for, appearing 2s after they stopped
+        // typing, is worse than falling back to the draft. The renewal happens
+        // on the next real Save, which HAS the user gesture it needs.
+        const data = await this.writeToHandle(this.currentFileHandle, false);
         await saveDraft(this.currentFileName, data);
+        this.autosaveToFileFailed = false;
         return;
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
+        // Say it ONCE. This runs every 2s, so a repeated toast would be its own
+        // bug — but staying completely silent is what made "save stopped
+        // working" undiagnosable in the first place. The draft below still
+        // captures the work, so this is a warning, not a data-loss event.
+        if (!this.autosaveToFileFailed) {
+          this.autosaveToFileFailed = true;
+          toast(
+            `Autosave can no longer write to “${this.currentFileName}” — ` +
+              "your work is still being kept in the browser. Use File → Save to restore it.",
+            10000,
+          );
+        }
       }
     }
 
