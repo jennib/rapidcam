@@ -87,6 +87,18 @@ export function resetCatalogueCache(): void {
  * "Baloo Bhaijaan Robot". An empty query returns the head of the list, which is
  * alphabetical.
  */
+/**
+ * Families matching `query`, best first: name-prefix matches, then name/category
+ * substring matches.
+ *
+ * `limit` stops the scan early, but the result stays a stable PREFIX as the
+ * limit grows: the early break only fires once `starts` alone fills the limit,
+ * and `starts`/`contains` both accumulate in catalogue order, so the first N
+ * entries are the same for any limit ≥ N. Pagination by re-querying would
+ * therefore be safe. `webFontDialog` still asks once with `Infinity` and slices
+ * locally — not for correctness, but because it needs the true total to show
+ * "60 of 2022", and one pass over 2,022 entries is nothing.
+ */
 export function searchFamilies(
   cat: FontCatalogue,
   query: string,
