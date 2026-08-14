@@ -30,6 +30,7 @@ import {
   findCorner,
   getCornerDirs,
   joinCornerEnds,
+  reportDropped,
   spliceCornerVertices,
   trimCornerLegs,
 } from "./corner";
@@ -103,11 +104,19 @@ function buildPreviews(corner: Corner, radius: number, unit: Unit): PreviewShape
 // Apply
 // ---------------------------------------------------------------------------
 
-function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean {
+/**
+ * Apply the corner operation.
+ *
+ * Returns the number of references that could NOT be carried across the rect ->
+ * polyline conversion (see corner.ts spliceCornerVertices), or null when the
+ * corner is not workable at all. The count matters because silently losing a
+ * constraint is the bug this return value exists to stop.
+ */
+function applyFillet(corner: Corner, radius: number, doc: CADDocument): number | null {
   const dirs = getCornerDirs(corner);
-  if (!dirs) return false;
+  if (!dirs) return null;
   const geo = computeGeo(dirs, radius);
-  if (!geo) return false;
+  if (!geo) return null;
 
   if (corner.kind === "line") {
     // Determine arc winding (CCW from startAngle to endAngle)
@@ -134,10 +143,10 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
       const a = geo.a1 + (span * k) / steps;
       arcPts.push({ x: geo.C.x + radius * Math.cos(a), y: geo.C.y + radius * Math.sin(a) });
     }
-    spliceCornerVertices(corner, doc, arcPts);
+    return spliceCornerVertices(corner, doc, arcPts);
   }
 
-  return true;
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +208,7 @@ export class FilletTool implements Tool {
           const dirs = getCornerDirs(corner);
           if (!dirs || !computeGeo(dirs, r)) return false;
           ctx.pushHistory();
-          applyFillet(corner, r, ctx.doc);
+          reportDropped(applyFillet(corner, r, ctx.doc), ctx);
           ctx.solve();
           ctx.doc.emitChange();
         },
@@ -210,7 +219,7 @@ export class FilletTool implements Tool {
       const dirs = getCornerDirs(corner);
       if (dirs && computeGeo(dirs, this.currentValue)) {
         ctx.pushHistory();
-        applyFillet(corner, this.currentValue, ctx.doc);
+        reportDropped(applyFillet(corner, this.currentValue, ctx.doc), ctx);
         ctx.solve();
         ctx.doc.emitChange();
       }

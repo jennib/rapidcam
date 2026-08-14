@@ -14,8 +14,32 @@
  */
 
 import { type Vec2, dist } from "../core/vec2";
+import { SEGMENT_SEP } from "../model/constraints";
 import type { CADDocument } from "../model/document";
 import { LineEntity, PolylineEntity, RectEntity } from "../model/entities";
+
+/**
+ * Say when a corner operation had to abandon a reference.
+ *
+ * Rounding a corner away legitimately destroys anything constrained to it —
+ * one corner becomes several vertices, so there is no single successor. What
+ * was wrong was doing it in silence: a rectangle pinned to the blank lost its
+ * pin and looked, from the outside, like "fillet is broken on the stock edge".
+ *
+ * Takes the `number | null` the apply functions return so both tools report the
+ * same way and neither has to remember to.
+ */
+export function reportDropped(
+  dropped: number | null,
+  ctx: { notify(msg: string): void },
+): void {
+  if (!dropped) return;
+  ctx.notify(
+    dropped === 1
+      ? "1 constraint was removed — the corner it held has been rounded away."
+      : `${dropped} constraints were removed — the corner they held has been rounded away.`,
+  );
+}
 
 /** Two points closer than this are the same corner. */
 export const CORNER_EPS = 1e-4;
@@ -235,25 +259,121 @@ export function joinCornerEnds(
  * an equivalent closed polyline and swapped into the document; a polyline is
  * edited where it stands, which keeps it a single offsettable entity.
  */
+/**
+ * Where each of a rect's named points ends up on the polyline that replaces it.
+ *
+ * The replacement is built from `corners()`, which returns
+ * `[bl, br, tr, tl]` — so corner *i* becomes vertex *i*, and the edge leaving
+ * corner *i* becomes the segment whose START vertex is *i* (which is how a
+ * polyline segment is named; see `pickablePoints`).
+ *
+ * MUST be called before splicing: splicing renumbers everything after the
+ * corner being cut.
+ *
+ * `center` has no polyline equivalent and is deliberately absent.
+ */
+function rectKeyMap(pl: PolylineEntity): Map<string, string> {
+  const [v0, v1, v2, v3] = pl.vertexIds;
+  return new Map([
+    ["bl", `v${v0}`],
+    ["br", `v${v1}`],
+    ["tr", `v${v2}`],
+    ["tl", `v${v3}`],
+    ["mid_b", `mid_${v0}`],
+    ["mid_r", `mid_${v1}`],
+    ["mid_t", `mid_${v2}`],
+    ["mid_l", `mid_${v3}`],
+  ]);
+}
+
+/**
+ * Swap `rect` for `pl` IN PLACE, keeping the id, and carry every reference over.
+ *
+ * The old code did `doc.remove(rect)` then `doc.add(pl)`. `remove` calls
+ * `pruneReferences`, so every constraint naming the rect was silently deleted:
+ * fillet one corner of a rectangle pinned to the stock edge and the pin was
+ * simply gone, with nothing said. That was the reported "fillet fails when a
+ * corner coincides with the stock boundary".
+ *
+ * Keeping the id is necessary but NOT sufficient — a constraint would then name
+ * a live entity with a key it no longer has, since `"bl"` means nothing on a
+ * polyline. So the point keys are remapped too.
+ *
+ * Returns how many references could not be carried, for the caller to report.
+ * Two cases genuinely cannot: the corner being filleted (it becomes several
+ * vertices, so there is no single successor) and `center` (polylines have none).
+ * Dropping those is right; dropping them SILENTLY was the bug.
+ */
+function replaceRectInPlace(
+  doc: CADDocument,
+  rect: RectEntity,
+  pl: PolylineEntity,
+  keyMap: Map<string, string>,
+): number {
+  const id = rect.id;
+  // The one sanctioned id reuse outside replaceInstanceEntity: references are
+  // keyed by id, and this IS the same shape to the user — they filleted a
+  // corner, they did not replace their rectangle.
+  (pl as { id: string }).id = id;
+  const idx = doc.entities.findIndex((e) => e.id === id);
+  if (idx === -1) return 0;
+  doc.entities[idx] = pl;
+
+  let dropped = 0;
+  doc.constraints = doc.constraints.filter((c) => {
+    let ok = true;
+    for (const p of c.points) {
+      if (p.entityId !== id) continue;
+      const next = keyMap.get(p.key);
+      if (next === undefined) ok = false;
+      else p.key = next;
+    }
+    // Segment references are `<id>#<edgeKey>`; the edge keys remap the same way.
+    c.entities = c.entities.map((ref) => {
+      if (!ref.startsWith(`${id}${SEGMENT_SEP}`)) return ref;
+      const edge = ref.slice(id.length + SEGMENT_SEP.length);
+      const next = keyMap.get(edge);
+      if (next === undefined) {
+        ok = false;
+        return ref;
+      }
+      return `${id}${SEGMENT_SEP}${next.replace(/^mid_/, "")}`;
+    });
+    if (!ok) dropped++;
+    return ok;
+  });
+  return dropped;
+}
+
+/**
+ * Cut `pts` into the corner. Returns how many references had to be dropped —
+ * see {@link replaceRectInPlace}; the caller tells the user.
+ */
 export function spliceCornerVertices(
   corner: PolyCorner | RectCorner,
   doc: CADDocument,
   pts: Vec2[],
-): void {
-  let pl: PolylineEntity;
+): number {
   if (corner.kind === "poly") {
-    pl = corner.entity;
-  } else {
-    pl = new PolylineEntity(
-      corner.entity.corners().map((p) => ({ ...p })),
-      true,
-    );
-    pl.layerId = corner.entity.layerId;
-    pl.selected = corner.entity.selected;
+    // Spliced in place: the entity, its id and every reference to it survive
+    // untouched. Only the rect path has ever needed rescuing.
+    corner.entity.spliceVertices(corner.index, 1, ...pts);
+    return 0;
+  }
+  const pl = new PolylineEntity(
+    corner.entity.corners().map((p) => ({ ...p })),
+    true,
+  );
+  pl.layerId = corner.entity.layerId;
+  pl.selected = corner.entity.selected;
+  // Before the splice renumbers anything.
+  const keyMap = rectKeyMap(pl);
+  // The corner being cut becomes several vertices, so it has no single
+  // successor — drop its entries from the map rather than aiming them at a
+  // vertex that is only approximately where the old corner was.
+  for (const [k, v] of [...keyMap]) {
+    if (v === `v${pl.vertexIds[corner.index]}`) keyMap.delete(k);
   }
   pl.spliceVertices(corner.index, 1, ...pts);
-  if (corner.kind === "rect") {
-    doc.remove(corner.entity);
-    doc.add(pl);
-  }
+  return replaceRectInPlace(doc, corner.entity, pl, keyMap);
 }
