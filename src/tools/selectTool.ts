@@ -8,6 +8,7 @@ import {
   constraintAnchors,
   type PointRef,
   pointRefKey,
+  seedConstraintPoints,
   type SegmentRef,
 } from "../model/constraints";
 import {
@@ -32,11 +33,12 @@ import {
   type SnapPoint,
   TextEntity,
 } from "../model/entities";
-import type { PinMap } from "../solver/solver";
+import { constraintJacobianRankChange, type PinMap } from "../solver/solver";
 import { buildConstraintsFor } from "../ui/constraintBar";
 import { openTextDialog } from "../ui/textEditDialog";
 import type { TransformBox, TransformHandle } from "../view/overlay";
 import type { Viewport } from "../view/viewport";
+import { constraintsForSnap } from "./lineTool";
 import { ICONS } from "./icons";
 import type { Tool, ToolContext, ToolOverlay, ToolPointerEvent } from "./tool";
 
@@ -72,6 +74,8 @@ export class SelectTool implements Tool {
   private downScreen: Vec2 = { x: 0, y: 0 };
   private dragStartWorld: Vec2 = { x: 0, y: 0 };
   private dragPoint: PointRef | null = null;
+  /** What the dragged point was hovering over at the last move — see `tryJoinDroppedPoint`. */
+  private dropSnap: SnapPoint | null = null;
   private marqueeStart: Vec2 = { x: 0, y: 0 };
   private marqueeEnd: Vec2 = { x: 0, y: 0 };
 
@@ -451,6 +455,11 @@ export class SelectTool implements Tool {
           ctx.solve(pinsForSelected(ctx.doc));
         }
       } else {
+        // Remember what the point is hovering over, so the RELEASE can turn a
+        // visual coincidence into a real constraint. Without this the point
+        // merely lands on the same coordinates and drifts apart again the
+        // moment anything else moves.
+        this.dropSnap = e.snap;
         const pins: PinMap = new Map([[pointRefKey(this.dragPoint), e.world]]);
         ctx.solve(pins);
       }
@@ -707,6 +716,9 @@ export class SelectTool implements Tool {
   }
 
   onPointerUp(e: ToolPointerEvent, ctx: ToolContext): void {
+    if (this.mode === "dragPoint" && this.dragPoint) {
+      this.tryJoinDroppedPoint(ctx);
+    }
     if (this.mode === "marquee") {
       this.applyMarquee(ctx);
     } else if (this.mode === "maybeDragPoint" && this.dragPoint) {
@@ -746,6 +758,7 @@ export class SelectTool implements Tool {
 
     this.mode = "idle";
     this.dragPoint = null;
+    this.dropSnap = null;
     this.dragSnapshot = null;
     this.originalBounds = null;
     this.activeHandleId = null;
@@ -786,6 +799,7 @@ export class SelectTool implements Tool {
     if (this.mode === "dragEntity") ctx.setHint(null);
     this.mode = "idle";
     this.dragPoint = null;
+    this.dropSnap = null;
     this.dragSnapshot = null;
     this.originalBounds = null;
     this.activeHandleId = null;
@@ -810,6 +824,57 @@ export class SelectTool implements Tool {
     ctx.pushHistory();
     for (const c of result.constraints) ctx.doc.addConstraint(c);
     ctx.doc.clearSelection();
+    ctx.solve();
+  }
+
+  /**
+   * Turn "I dropped this endpoint on that one" into a real constraint.
+   *
+   * Dragging a point already LANDS it on the snapped coordinates — `dragPoint`
+   * pins to `e.world`, which is the snapped position — so the two look joined.
+   * Nothing held them there, though: the next solve, drag or dimension edit
+   * pulled them apart again, which is what "points close together don't merge"
+   * meant.
+   *
+   * The constraint comes from `constraintsForSnap`, the same builder the drawing
+   * tools use through `autoJoin`, so a snap means the same thing whether you drew
+   * onto it or dragged onto it.
+   *
+   * Unlike drawing, this can over-constrain: the point being dragged already
+   * exists and may be fully tied down. So it goes through the SAME rank check
+   * the constraint bar uses rather than a second, disagreeing copy —
+   * `rankIncrease === 0` means the join is already implied (adding it would just
+   * clutter the constraint list), and more rank than free DOF means it would
+   * over-constrain. Both are refused, and the over-constrained case says so:
+   * a silent refusal here reads as "the app ignored me".
+   */
+  private tryJoinDroppedPoint(ctx: ToolContext): void {
+    const ref = this.dragPoint;
+    const snap = this.dropSnap;
+    if (!ref || !snap) return;
+    // Ctrl suppressed the snap for the whole drag (App.toolEvent), so there is
+    // nothing to join to — that is the deliberate escape hatch.
+    // A point cannot be constrained to its own entity: coincident against
+    // itself is degenerate, and it is usually the drag's own start point.
+    if (snap.entityId === ref.entityId) return;
+
+    const constraints = constraintsForSnap(ctx, ref.entityId, ref.key, snap);
+    if (constraints.length === 0) return;
+
+    seedConstraintPoints(ctx.doc, constraints);
+    const { variables, rankWithout, rankWith } = constraintJacobianRankChange(
+      ctx.doc,
+      constraints,
+    );
+    const rankIncrease = rankWith - rankWithout;
+    if (rankIncrease === 0) return; // already held there; nothing to add
+    if (rankIncrease > variables - rankWithout) {
+      ctx.notify("Points touch but aren't joined — that would over-constrain the sketch.");
+      return;
+    }
+
+    for (const c of constraints) ctx.doc.addConstraint(c);
+    ctx.notify(constraints.length === 1 ? "Joined" : `Joined (${constraints.length} constraints)`);
     ctx.solve();
   }
 
