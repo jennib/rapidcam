@@ -158,30 +158,30 @@ export class SelectTool implements Tool {
       return;
     }
 
-    // 1) Hit test transform handles first
-    if (ctx.doc.selected.length > 0) {
-      const box = this.getTransformBox(ctx);
-      if (box) {
-        let hitHandle: TransformHandle | null = null;
-        for (const h of box.handles) {
-          if (dist(e.screen, ctx.view.worldToScreen(h.pos)) <= 10) {
-            hitHandle = h;
-            break;
-          }
-        }
-        if (hitHandle) {
-          ctx.pushHistory();
-          this.dragSnapshot = ctx.doc.snapshot();
-          this.originalBounds = box.bounds;
-          this.activeHandleId = hitHandle.id;
-          this.mode = hitHandle.type === "scale" ? "dragScale" : "dragRotate";
-          return;
-        }
-      }
-    }
-
-    // 1) Point / constraint handles — only for already-selected entities so that
-    //    coincident points on unselected entities don't shadow body hit-tests.
+    // 1) DOF points BEFORE transform handles.
+    //
+    //    These frequently sit in the same place: the transform box's scale
+    //    handles are on the selection's bounding-box corners, and for a single
+    //    selected line the bbox corners ARE its two endpoints — measured at
+    //    0.0px apart. Handles used to be tested first, so pressing a line's
+    //    endpoint started a SCALE drag and the point drag was unreachable. You
+    //    could not drag a line endpoint at all unless something else was also
+    //    selected to push the bbox off it.
+    //
+    //    Points win because this is a parametric constraint sketcher, not an
+    //    Illustrator-style bounding-box editor. Every CAD in that tradition —
+    //    AutoCAD grips, Fusion / SolidWorks / Onshape sketch mode — drags the
+    //    point directly and makes scaling an explicit command; RapidCAM already
+    //    has ScaleTool and RotateTool for that. (Illustrator and LightBurn keep
+    //    both, but separate them with a node-edit MODE rather than by silently
+    //    ranking one over the other, which is the thing that was wrong here.)
+    //
+    //    Only entity types that expose a dofPoint at a bbox corner change
+    //    behaviour: lines, polylines and rects. RectEntity exposes `bl`/`tr`, so
+    //    a corner drag still resizes it — through the solver rather than
+    //    applyScale, which is what keeps its constraints honoured. Text and
+    //    images expose no corner DOF points, so their handles are untouched. The
+    //    rotate handle sits off the box entirely and is never shadowed.
     let hitPoint: PointRef | null = null;
     let hitDist = Infinity;
     for (const ent of ctx.doc.entities) {
@@ -206,6 +206,28 @@ export class SelectTool implements Tool {
       this.mode = "maybeDragPoint";
       this.dragPoint = hitPoint;
       return;
+    }
+
+    // 2) Transform handles — reached only where no DOF point claimed the press.
+    if (ctx.doc.selected.length > 0) {
+      const box = this.getTransformBox(ctx);
+      if (box) {
+        let hitHandle: TransformHandle | null = null;
+        for (const h of box.handles) {
+          if (dist(e.screen, ctx.view.worldToScreen(h.pos)) <= 10) {
+            hitHandle = h;
+            break;
+          }
+        }
+        if (hitHandle) {
+          ctx.pushHistory();
+          this.dragSnapshot = ctx.doc.snapshot();
+          this.originalBounds = box.bounds;
+          this.activeHandleId = hitHandle.id;
+          this.mode = hitHandle.type === "scale" ? "dragScale" : "dragRotate";
+          return;
+        }
+      }
     }
 
     // Constraints & Dimensions

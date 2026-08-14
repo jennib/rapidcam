@@ -916,18 +916,23 @@ export class App {
     const screen = this.lastScreen;
     if (!screen) return "default";
 
+    // DOF points before transform handles, in the SAME order SelectTool hit-tests
+    // them (see its onPointerDown). The two sit on top of each other constantly —
+    // a selected line's endpoints are its bbox corners — so testing them in
+    // opposite orders would show a resize cursor over a press that drags a point.
+    // A cursor that names the wrong action is worse than no cursor at all.
+    for (const ent of this.doc.entities) {
+      if (!ent.selected || ent.locked || this.doc.groupOf(ent.id)) continue;
+      for (const p of ent.dofPoints()) {
+        if (dist(screen, this.view.worldToScreen(p.pos)) < 10) return "pointer";
+      }
+    }
     const box = computeTransformBox(this.doc, this.view);
     if (box) {
       for (const h of box.handles) {
         if (dist(screen, this.view.worldToScreen(h.pos)) <= 10) {
           return h.type === "rotate" ? ROTATE_CURSOR : (RESIZE_CURSORS[h.id] ?? "default");
         }
-      }
-    }
-    for (const ent of this.doc.entities) {
-      if (!ent.selected || this.doc.groupOf(ent.id)) continue;
-      for (const p of ent.dofPoints()) {
-        if (dist(screen, this.view.worldToScreen(p.pos)) < 10) return "pointer";
       }
     }
 
