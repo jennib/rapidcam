@@ -619,10 +619,18 @@ export class SelectTool implements Tool {
     // Double-click on TextEntity → open inline editor
     const hitEnt = ctx.doc.entities.find((x) => x.id === hitEntId);
     if (hitEnt instanceof TextEntity) {
-      openTextDialog(
-        { text: hitEnt.text, fontId: hitEnt.fontId, sizeMM: hitEnt.sizeMM, angle: hitEnt.angle },
-        "Apply",
-        (p) => {
+      openTextDialog({
+        initial: {
+          text: hitEnt.text,
+          fontId: hitEnt.fontId,
+          sizeMM: hitEnt.sizeMM,
+          angle: hitEnt.angle,
+        },
+        applyLabel: "Apply",
+        title: "Edit Text",
+        // Editing keeps the conventional dismiss: clicking away from an edit
+        // abandons it, and nothing here tells the user to click the canvas.
+        onApply: (p) => {
           ctx.pushHistory();
           hitEnt.text = p.text;
           hitEnt.fontId = p.fontId;
@@ -633,7 +641,7 @@ export class SelectTool implements Tool {
           ctx.solve();
           ctx.doc.emitChange();
         },
-      );
+      });
       return;
     }
 
