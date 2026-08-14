@@ -468,6 +468,68 @@ export class ProjectManager {
     }, 2000);
   }
 
+  /**
+   * Run the pending autosave NOW instead of at the end of its 2s debounce.
+   *
+   * Called when the page is being hidden or closed. There is deliberately no
+   * synchronous variant: `performAutosave` writes to IndexedDB (and possibly a
+   * file handle), both async, and neither can be awaited from `beforeunload`.
+   * See {@link installLifecycleGuards} for what actually protects the work.
+   */
+  async flushAutosave(): Promise<void> {
+    if (this.autosaveTimeout !== null) {
+      clearTimeout(this.autosaveTimeout);
+      this.autosaveTimeout = null;
+    }
+    await this.performAutosave();
+  }
+
+  /**
+   * Guard unsaved work against the tab being closed. Returns a disposer.
+   *
+   * Two listeners, doing different jobs:
+   *
+   *  - **`beforeunload`** asks the browser to show its native "Leave site?"
+   *    confirm, but ONLY while the document is dirty — an unconditional prompt
+   *    trains people to dismiss it, and then it is not there when it matters.
+   *    This is the part that actually saves the work: it hands the user back a
+   *    tab they can save from. The message is not ours to write; every current
+   *    browser shows its own text and ignores any string we supply.
+   *
+   *  - **`visibilitychange` → hidden** flushes the pending autosave. The tab is
+   *    still alive at that point, so the async IndexedDB write has real time to
+   *    land — which closes the up-to-2s window the debounce leaves open. It also
+   *    fires on tab-switch, which is free insurance.
+   *
+   * NOT DONE, on purpose: a synchronous full-document dump to localStorage on
+   * unload. A draft here runs to several MB with embedded images, so it would
+   * have to be stripped to fit the ~5 MB origin quota — and a cache stripped to
+   * fit a quota must never be the thing you restore FROM. That exact bug has bit
+   * this project twice (the pre-IndexedDB draft, then recents): the design came
+   * back with its image gone and looked like corruption. `draftStore.ts` moved
+   * the payload to IndexedDB precisely to stop doing that, and an "emergency
+   * backup" in localStorage would walk it straight back in. A prompt the user
+   * can act on beats a backup that silently loses their picture.
+   */
+  installLifecycleGuards(): () => void {
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      if (!this.isDirty) return;
+      e.preventDefault();
+      // Legacy browsers gate the prompt on returnValue being set, not on
+      // preventDefault. Harmless where it is ignored.
+      e.returnValue = "";
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden" && this.isDirty) void this.flushAutosave();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }
+
   async performAutosave(): Promise<void> {
     if (this.isDocumentLoading) return;
 
