@@ -226,9 +226,14 @@ export class PropertiesBar {
       this.buildCreateGroupSection();
     }
 
-    // Entity-specific properties (single selection only)
+    // Entity-specific properties. Single selection gets the full panel; a
+    // homogeneous multi-selection of TEXT gets the batch font/size/angle editor,
+    // because restyling several labels together is the common case and doing it
+    // one at a time is the friction that was reported.
     if (selected.length === 1) {
       this.buildEntityPropertiesSection(selected[0]);
+    } else if (selected.length >= 2 && selected.every((e) => e instanceof TextEntity)) {
+      this.buildMultiTextProperties(selected as TextEntity[]);
     }
 
     // Layer
@@ -1159,6 +1164,161 @@ export class PropertiesBar {
     );
 
     this.constructionRow(sec, entity);
+    this.content.appendChild(sec);
+  }
+
+  /**
+   * Font / size / angle across several selected texts at once.
+   *
+   * Follows the Layer section's idiom for a mixed selection: a value they all
+   * share is shown, a value they differ on reads "Mixed", and committing writes
+   * to every one of them.
+   *
+   * Deliberately NOT here:
+   *
+   *  - **The text content.** Setting N labels to one string destroys N-1
+   *    distinct strings for the one case where you wanted them identical, and
+   *    the inspectors this imitates (Illustrator, LightBurn) don't offer it
+   *    either. Edit the string with one text selected.
+   *  - **Formulas.** `bindingRow` binds an expression to ONE entity's scalar;
+   *    across a multi-selection there is no single owner for the binding. These
+   *    fields therefore take literals only. Select a single text to drive its
+   *    size from a variable — which is why the row title says so.
+   *
+   * A blank field commits nothing, so a mixed Size can be left alone while the
+   * Angle is set.
+   */
+  private buildMultiTextProperties(texts: TextEntity[]): void {
+    const sec = this.createSection(`TEXT · ${texts.length} items`);
+    const du = this.doc.displayUnit;
+
+    /** The value they all share, or null when they differ. */
+    const common = <T>(pick: (t: TextEntity) => T): T | null => {
+      const first = pick(texts[0]);
+      return texts.every((t) => pick(t) === first) ? first : null;
+    };
+
+    // --- Font ---------------------------------------------------------------
+    const fontRow = document.createElement("div");
+    fontRow.className = "props-row";
+    const fontLbl = document.createElement("span");
+    fontLbl.textContent = "Font";
+    const fontSel = document.createElement("select");
+    fontSel.className = "dim";
+    fontSel.style.flex = "1";
+
+    const commonFont = common((t) => t.fontId);
+    const MIXED = " mixed";
+    if (commonFont === null) {
+      const opt = document.createElement("option");
+      opt.value = MIXED;
+      opt.textContent = "Mixed";
+      opt.disabled = true;
+      opt.selected = true;
+      fontSel.appendChild(opt);
+    }
+    const known = listFonts();
+    if (commonFont !== null && !known.some((f) => f.id === commonFont)) {
+      const opt = document.createElement("option");
+      opt.value = commonFont;
+      opt.textContent = `⚠ missing: ${commonFont}`;
+      opt.selected = true;
+      fontSel.appendChild(opt);
+    }
+    for (const f of known) {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.name;
+      if (f.id === commonFont) opt.selected = true;
+      fontSel.appendChild(opt);
+    }
+    const ADD_WEB = " add-web-font";
+    const addOpt = document.createElement("option");
+    addOpt.value = ADD_WEB;
+    addOpt.textContent = "Add a font from the web…";
+    fontSel.appendChild(addOpt);
+
+    fontSel.addEventListener("change", () => {
+      if (fontSel.value === MIXED) return;
+      if (fontSel.value === ADD_WEB) {
+        // Restore first: dismissing the dialog must leave the fonts as they were.
+        fontSel.value = commonFont ?? MIXED;
+        openWebFontDialog((fontId) => {
+          this.applyEdit(() => {
+            for (const t of texts) t.fontId = fontId;
+          });
+        });
+        return;
+      }
+      const id = fontSel.value;
+      this.applyEdit(() => {
+        for (const t of texts) t.fontId = id;
+      });
+    });
+    fontRow.append(fontLbl, fontSel);
+    sec.appendChild(fontRow);
+
+    // --- Height and Angle ---------------------------------------------------
+    const literalRow = (
+      label: string,
+      shown: string | null,
+      parse: (raw: string) => number | null,
+      apply: (t: TextEntity, v: number) => void,
+    ) => {
+      const row = document.createElement("div");
+      row.className = "props-row";
+      const lbl = document.createElement("span");
+      lbl.textContent = label;
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.style.flex = "1";
+      inp.value = shown ?? "";
+      inp.placeholder = shown === null ? "Mixed" : "";
+      inp.title = "Applies to every selected text. Select one to drive it from a variable.";
+      inp.addEventListener("change", () => {
+        const raw = inp.value.trim();
+        // Belt and braces, not load-bearing: both parsers below already reject
+        // "" (parseLength returns null, parseFloat gives NaN), so removing this
+        // changes nothing today — verified by mutation. It stays because the
+        // failure it guards is silent and total: a parser that ever treated
+        // blank as 0 would set EVERY selected text to 0 the moment someone
+        // tabbed through an untouched Mixed field.
+        if (raw === "") return;
+        const v = parse(raw);
+        if (v === null) {
+          inp.value = shown ?? "";
+          return;
+        }
+        this.applyEdit(() => {
+          for (const t of texts) apply(t, v);
+        });
+      });
+      row.append(lbl, inp);
+      sec.appendChild(row);
+    };
+
+    const commonSize = common((t) => t.sizeMM);
+    literalRow(
+      `Height (${du})`,
+      commonSize === null ? null : formatLength(commonSize, du, 3),
+      (raw) => {
+        const mm = parseLength(raw, du);
+        return mm !== null && mm >= 0.5 ? mm : null;
+      },
+      (t, mm) => t.setScalar("size", mm),
+    );
+
+    const commonAngle = common((t) => t.angle);
+    literalRow(
+      "Angle (°)",
+      commonAngle === null ? null : ((commonAngle * 180) / Math.PI).toFixed(1),
+      (raw) => {
+        const deg = Number.parseFloat(raw);
+        return Number.isFinite(deg) ? deg : null;
+      },
+      (t, deg) => t.setScalar("angle", (deg * Math.PI) / 180),
+    );
+
     this.content.appendChild(sec);
   }
 
