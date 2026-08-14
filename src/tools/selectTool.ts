@@ -767,8 +767,18 @@ export class SelectTool implements Tool {
       // like an empty-space click and clear the selection.
       ctx.doc.clearSelection();
       ctx.doc.emitChange();
-    } else if (this.mode === "dragScale" || this.mode === "dragRotate") {
-      ctx.doc.emitChange(); // Ensure properties panel updates at end of drag
+    } else if (
+      this.mode === "dragScale" ||
+      this.mode === "dragRotate" ||
+      this.mode === "dragPoint"
+    ) {
+      // Ensure the properties panel and design tree update at the end of a drag.
+      // dragPoint belongs here for the same reason the other two do, and used to
+      // be missing: it moves geometry through `solve(pins)`, and
+      // SolveCoordinator.run does not emitChange. That went unnoticed while a
+      // shape's corners were unreachable as points — the transform handle
+      // shadowed them, so every corner drag was a dragScale.
+      ctx.doc.emitChange();
     }
 
     if (this.mode === "dragEntity") {
@@ -819,6 +829,14 @@ export class SelectTool implements Tool {
 
   cancel(ctx: ToolContext): void {
     if (this.mode === "dragEntity") ctx.setHint(null);
+    // A drag that is abandoned mid-gesture KEEPS whatever it last applied (the
+    // app's convention for an interrupted drag), so the panels have to be told
+    // the document moved. Nothing else tells them: a point drag mutates geometry
+    // through `solve(pins)`, and SolveCoordinator.run does not emitChange —
+    // only the variable/regen paths do. Without this the design tree, which
+    // suspends its rebuilds for the gesture, resumes with nothing marked dirty
+    // and goes on showing the pre-drag sizes.
+    const wasDragging = this.mode !== "idle";
     this.mode = "idle";
     this.dragPoint = null;
     this.dropSnap = null;
@@ -831,6 +849,7 @@ export class SelectTool implements Tool {
     this.dragExclude.clear();
     this.dragSnapTarget = null;
     this.dragResisted = false;
+    if (wasDragging) ctx.doc.emitChange();
     ctx.requestRender();
   }
 
