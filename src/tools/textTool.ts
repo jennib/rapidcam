@@ -19,15 +19,24 @@ export class TextTool implements Tool {
 
   onActivate(ctx: ToolContext): void {
     this.hoverPos = null;
-    this.closeDialog = openTextDialog(
-      {
+    this.closeDialog = openTextDialog({
+      initial: {
         text: this.pendingText,
         fontId: this.pendingFontId || defaultFontId(),
         sizeMM: this.pendingSizeMM,
         angle: this.pendingAngle,
       },
-      "Stamp (click canvas)",
-      (p) => {
+      // NOT "Stamp (click canvas)". That named an action this button cannot
+      // perform — the dialog's own backdrop is over the canvas — and a user who
+      // followed it clicked the backdrop, which discarded everything they had
+      // typed with no message. The button arms the tool; the status-bar hint
+      // (tools/shortcuts.ts) says what to do next, and the ghost preview shows it.
+      applyLabel: "Place",
+      title: "Place Text",
+      // So the canvas click that the old label invited keeps the text instead of
+      // destroying it.
+      backdropAction: "apply",
+      onApply: (p) => {
         this.pendingText = p.text;
         this.pendingFontId = p.fontId;
         this.pendingSizeMM = p.sizeMM;
@@ -35,12 +44,14 @@ export class TextTool implements Tool {
         this.closeDialog = null;
         ctx.requestRender();
       },
-      () => {
+      // Only a deliberate abort reaches here now (Cancel or Escape), so it is
+      // still right for it to drop the pending text.
+      onCancel: () => {
         this.pendingText = "";
         this.closeDialog = null;
         ctx.requestRender();
       },
-    );
+    });
   }
 
   onDeactivate(_ctx: ToolContext): void {

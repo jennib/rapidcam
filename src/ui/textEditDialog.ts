@@ -15,12 +15,28 @@ export interface TextParams {
   angle: number; // radians
 }
 
-export function openTextDialog(
-  initial: Partial<TextParams>,
-  applyLabel: string,
-  onApply: (p: TextParams) => void,
-  onCancel?: () => void,
-): () => void {
+export interface TextDialogOptions {
+  initial: Partial<TextParams>;
+  /** Footer button text. */
+  applyLabel: string;
+  /**
+   * Dialog heading. Explicit, because it used to be inferred by comparing
+   * `applyLabel` against one exact string — so retitling the dialog was a side
+   * effect of editing a button, and rewording the button silently retitled it.
+   */
+  title: string;
+  /**
+   * What a click on the backdrop means. Defaults to "cancel", the usual
+   * dismiss. The placement flow needs "apply": its whole instruction is to
+   * click the canvas, and the backdrop is what the canvas is wearing.
+   */
+  backdropAction?: "cancel" | "apply";
+  onApply: (p: TextParams) => void;
+  onCancel?: () => void;
+}
+
+export function openTextDialog(opts: TextDialogOptions): () => void {
+  const { initial, applyLabel, title, backdropAction = "cancel", onApply, onCancel } = opts;
   const backdrop = document.createElement("div");
   backdrop.className = "tp-backdrop";
 
@@ -33,7 +49,7 @@ export function openTextDialog(
   const hdr = document.createElement("div");
   hdr.className = "tp-dialog-header";
   const h3 = document.createElement("h3");
-  h3.textContent = applyLabel === "Stamp (click canvas)" ? "Place Text" : "Edit Text";
+  h3.textContent = title;
   hdr.appendChild(h3);
   dialog.appendChild(hdr);
 
@@ -179,10 +195,10 @@ export function openTextDialog(
   cancelBtn.textContent = "Cancel";
   cancelBtn.addEventListener("click", () => cancel());
 
-  const applyBtn = document.createElement("button");
-  applyBtn.className = "btn tp-apply-btn";
-  applyBtn.textContent = applyLabel;
-  applyBtn.addEventListener("click", () => {
+  /** True when the fields hold enough to commit — i.e. Apply would succeed. */
+  const complete = (): boolean => textInp.value.trim() !== "" && fontSel.value !== "";
+
+  const apply = (): void => {
     const text = textInp.value.trim();
     if (!text) {
       textInp.focus();
@@ -199,7 +215,12 @@ export function openTextDialog(
       sizeMM: Math.max(0.5, parseFloat(sizeInp.value) || 10),
       angle: ((parseFloat(angleInp.value) || 0) * Math.PI) / 180,
     });
-  });
+  };
+
+  const applyBtn = document.createElement("button");
+  applyBtn.className = "btn tp-apply-btn";
+  applyBtn.textContent = applyLabel;
+  applyBtn.addEventListener("click", () => apply());
 
   // Allow Enter to apply (Escape is handled globally by the modal manager,
   // which invokes the registered `cancel`).
@@ -208,7 +229,16 @@ export function openTextDialog(
   });
 
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) cancel();
+    if (e.target !== backdrop) return;
+    // For the placement flow this click IS the user following the instruction
+    // to click the canvas — the backdrop just happens to be in front of it. It
+    // must keep what they typed rather than throw it away. With nothing typed
+    // there is nothing to keep, so it falls through to an ordinary dismiss.
+    if (backdropAction === "apply" && complete()) {
+      apply();
+      return;
+    }
+    cancel();
   });
 
   ftr.appendChild(cancelBtn);

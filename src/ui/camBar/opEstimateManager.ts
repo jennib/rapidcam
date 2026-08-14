@@ -6,9 +6,26 @@ import type { CADDocument } from "../../model/document";
 import type { CAMOperation } from "../../cam/types";
 import { estimateGCodeTime, formatDuration } from "../../cam/timeEstimate";
 import { generateGCode, type GCodeOptions } from "../../cam/gcode";
+import { measure } from "../../core/longTasks";
 
 export class OpEstimateManager {
   public static readonly OP_EST_CHUNK = 3;
+
+  /**
+   * Targets a chunk may take on before it stops accepting more ops.
+   *
+   * Chunking by op COUNT alone assumes ops cost about the same, and they do not:
+   * estimating one op means generating its whole G-code, so a generator-made op
+   * carrying one target per opening (kumiko emits up to 1236) costs ~120ms on
+   * its own — three of those in a turn is a third of a second with no repaint.
+   * Budgeting by targets keeps small ops batching three-at-a-time and drops a
+   * heavy one into a turn of its own.
+   *
+   * It cannot bound a SINGLE op: that one `generateGCode` call is atomic, and
+   * capping the turn does not make it shorter. Fixing that needs the estimate
+   * off the main thread, which is a bigger change than this one.
+   */
+  private static readonly OP_EST_TARGET_BUDGET = 400;
 
   private opTimeCache = new Map<string, number>();
   private opEstEls = new Map<string, HTMLElement>();
@@ -59,15 +76,36 @@ export class OpEstimateManager {
     }
   }
 
+  /**
+   * How many of `pending` this turn should take: up to OP_EST_CHUNK ops, and
+   * stopping early once the target budget is spent. Always takes at least one,
+   * so an op bigger than the whole budget still makes progress instead of
+   * stalling the queue behind itself.
+   */
+  public static chunkSize(pending: CAMOperation[]): number {
+    let targets = 0;
+    for (let i = 0; i < Math.min(pending.length, OpEstimateManager.OP_EST_CHUNK); i++) {
+      targets += pending[i].entityIds.length + (pending[i].regions?.length ?? 0);
+      if (targets >= OpEstimateManager.OP_EST_TARGET_BUDGET) return i + 1;
+    }
+    return Math.min(pending.length, OpEstimateManager.OP_EST_CHUNK);
+  }
+
   private runOpEstimateChunk(pending: CAMOperation[]): void {
-    const chunk = pending.slice(0, OpEstimateManager.OP_EST_CHUNK);
-    const rest = pending.slice(OpEstimateManager.OP_EST_CHUNK);
+    const take = OpEstimateManager.chunkSize(pending);
+    const chunk = pending.slice(0, take);
+    const rest = pending.slice(take);
     for (const op of chunk) {
       const key = this.opTimeKey(op);
       let secs = this.opTimeCache.get(key);
       if (secs === undefined) {
         try {
-          secs = estimateGCodeTime(generateGCode([op], this.doc, this.getGcodeOpts())).seconds;
+          // Chunking is per OP, which buys nothing when a single op is the
+          // expensive one — kumiko's inside-profile carries one target per
+          // opening. Labelled by kind and target count so the record says which.
+          secs = measure(`cam:estimate:${op.type}:${op.entityIds.length}`, () =>
+            estimateGCodeTime(generateGCode([op], this.doc, this.getGcodeOpts())).seconds,
+          );
         } catch {
           secs = 0; // a bad/empty op shouldn't break the list
         }

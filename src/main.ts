@@ -1,12 +1,15 @@
 import "./style.css";
 import { installErrorCapture, showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
+import { installLongTaskWatch, longTasks } from "./core/longTasks";
 import { syncColorsFromTheme } from "./view/colors";
 
 declare global {
   interface Window {
     /** Dev-only inspection hook for automated UI verification (absent in prod builds). */
     __app?: App;
+    /** Dev-only: blocks over 200ms this session, worst first. See core/longTasks.ts. */
+    __longTasks?: typeof longTasks;
   }
 }
 
@@ -117,6 +120,7 @@ function bootApp(): void {
   // Dev-only inspection hook for automated UI verification (stripped from prod builds).
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     window.__app = app;
+    window.__longTasks = longTasks;
   }
 }
 
@@ -124,5 +128,8 @@ function bootApp(): void {
 // reported too. Consent-gated internally — installing early captures nothing on
 // its own.
 installErrorCapture();
+// Likewise early: boot and document restore are themselves candidates for the
+// blocks this watches for.
+installLongTaskWatch();
 
 if (!showMobileWarning()) bootApp();
