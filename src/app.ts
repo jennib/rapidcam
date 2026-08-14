@@ -25,6 +25,7 @@ import { rasterizeStock } from "./cam/stockRasterizer";
 import { type CAMOperation, getAssociatedOperations } from "./cam/types";
 import { WebGLPreview } from "./cam/webglPreview";
 import { initBundledFonts } from "./core/fontManager";
+import { measure } from "./core/longTasks";
 import { placePasteClones, PASTE_OFFSET_MM } from "./core/paste";
 import { dist, type Vec2 } from "./core/vec2";
 import { SnapEngine, type SnapResult } from "./input/snapping";
@@ -783,7 +784,7 @@ export class App {
       stitchPreview: this.stitchPreview,
       flipPreview: this.flipPreview,
     };
-    this.renderer.render(this.doc, this.view, overlay);
+    measure("render", () => this.renderer.render(this.doc, this.view, overlay));
     this.statusBar.setZoom(this.view.scale);
   }
 

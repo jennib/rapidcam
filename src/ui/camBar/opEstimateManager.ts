@@ -6,6 +6,7 @@ import type { CADDocument } from "../../model/document";
 import type { CAMOperation } from "../../cam/types";
 import { estimateGCodeTime, formatDuration } from "../../cam/timeEstimate";
 import { generateGCode, type GCodeOptions } from "../../cam/gcode";
+import { measure } from "../../core/longTasks";
 
 export class OpEstimateManager {
   public static readonly OP_EST_CHUNK = 3;
@@ -67,7 +68,12 @@ export class OpEstimateManager {
       let secs = this.opTimeCache.get(key);
       if (secs === undefined) {
         try {
-          secs = estimateGCodeTime(generateGCode([op], this.doc, this.getGcodeOpts())).seconds;
+          // Chunking is per OP, which buys nothing when a single op is the
+          // expensive one — kumiko's inside-profile carries one target per
+          // opening. Labelled by kind and target count so the record says which.
+          secs = measure(`cam:estimate:${op.type}:${op.entityIds.length}`, () =>
+            estimateGCodeTime(generateGCode([op], this.doc, this.getGcodeOpts())).seconds,
+          );
         } catch {
           secs = 0; // a bad/empty op shouldn't break the list
         }

@@ -29,6 +29,7 @@ import { type ParamSpec, Sketch, type TextFlattener } from "../generators/sketch
 import type { PreviewShape } from "../view/overlay";
 import { varMap } from "../model/variables";
 import { evalExpr } from "../core/expr";
+import { measure } from "../core/longTasks";
 import { formatLength, formatLengthWithUnit, parseLength, type Unit } from "../core/units";
 import { registerModal } from "./modal";
 import { toast } from "./toast";
@@ -281,7 +282,9 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
       stock: stockDatum(doc),
       displayUnit: doc.displayUnit,
     });
-    gen.build(p);
+    // Synchronous, and re-run on every debounced edit — so if a generator is
+    // what freezes the tab while its options are being changed, this names it.
+    measure(`generator:reprobe:${gen.id}`, () => gen.build(p));
     renderNotes(p.notes);
     renderWarnings(dialogWarnings(specs, params, doc));
     if (opts.onPreview) {
@@ -331,18 +334,22 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
           .filter((op) => op.entityIds.length > 0 || (op.regions?.length ?? 0) > 0)
           .map((op) => op.id),
       );
-      regenerateFeature(doc, editing.id, params, { flatten: opts.flatten, paramExprs });
+      measure(`generator:update:${gen.id}`, () =>
+        regenerateFeature(doc, editing.id, params, { flatten: opts.flatten, paramExprs }),
+      );
       for (const op of doc.operations) {
         if (hadGeometry.has(op.id) && op.entityIds.length === 0 && !(op.regions?.length ?? 0)) {
           toast(`"${op.name}" lost its geometry — reassign or delete it.`);
         }
       }
     } else {
-      runGenerator(doc, gen, params, {
-        flatten: opts.flatten,
-        paramExprs,
-        createOps: opsCheck?.checked ?? false,
-      });
+      measure(`generator:insert:${gen.id}`, () =>
+        runGenerator(doc, gen, params, {
+          flatten: opts.flatten,
+          paramExprs,
+          createOps: opsCheck?.checked ?? false,
+        }),
+      );
       onInserted?.();
     }
     return true;
