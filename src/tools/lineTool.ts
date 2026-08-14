@@ -18,7 +18,12 @@
 import { type Vec2, distSq } from "../core/vec2";
 import { parseAngle, parseLength } from "../core/units";
 import { ArcEntity, CircleEntity, LineEntity, type SnapPoint } from "../model/entities";
-import { lineRefEntityId, makeConstraint, SEGMENT_SEP } from "../model/constraints";
+import {
+  type Constraint,
+  lineRefEntityId,
+  makeConstraint,
+  SEGMENT_SEP,
+} from "../model/constraints";
 import type { Tool, ToolContext, ToolPointerEvent, ToolOverlay } from "./tool";
 import { ICONS } from "./icons";
 import { isDragRelease } from "./dragDraw";
@@ -192,12 +197,46 @@ export class LineTool implements Tool {
   }
 }
 
-/** If `snap` has a point key or is on a line, add the appropriate constraint. */
+/**
+ * If `snap` has a point key or is on a line, add the appropriate constraint.
+ *
+ * A thin wrapper over {@link constraintsForSnap} so the DRAWING tools keep their
+ * unconditional behaviour: a brand-new entity has full freedom, so its join
+ * cannot over-constrain anything. Dragging an EXISTING point onto a snap can, so
+ * SelectTool builds the same constraints and rank-checks them before adding —
+ * see `tryJoinDroppedPoint` there. Both paths must derive the constraint from
+ * one place or they will disagree about what a snap means.
+ */
 export function autoJoin(
   ctx: ToolContext,
   newEntityId: string,
   newKey: string,
   snap: SnapPoint | null,
+): void {
+  for (const c of constraintsForSnap(ctx, newEntityId, newKey, snap)) {
+    ctx.doc.addConstraint(c);
+  }
+}
+
+/** The constraints a snap implies for `(entityId, key)`, without adding them. */
+export function constraintsForSnap(
+  ctx: ToolContext,
+  newEntityId: string,
+  newKey: string,
+  snap: SnapPoint | null,
+): Constraint[] {
+  const out: Constraint[] = [];
+  const add = (c: Constraint) => out.push(c);
+  buildForSnap(ctx, newEntityId, newKey, snap, add);
+  return out;
+}
+
+function buildForSnap(
+  ctx: ToolContext,
+  newEntityId: string,
+  newKey: string,
+  snap: SnapPoint | null,
+  emit: (c: Constraint) => void,
 ): void {
   if (!snap) return;
   if (snap.kind === "intersection" && snap.crossIds) {
@@ -223,7 +262,7 @@ export function autoJoin(
       // flattened bezier, a text outline — is skipped rather than given an
       // inert constraint.
       if (!type) continue;
-      ctx.doc.addConstraint(
+      emit(
         makeConstraint(type, {
           points: [{ entityId: newEntityId, key: newKey }],
           entities: [ref],
@@ -233,7 +272,7 @@ export function autoJoin(
     return;
   }
   if (snap.key && snap.entityId) {
-    ctx.doc.addConstraint(
+    emit(
       makeConstraint("coincident", {
         points: [
           { entityId: newEntityId, key: newKey },
@@ -246,7 +285,7 @@ export function autoJoin(
     // LINE, so a bare rect id resolved to nothing and the constraint silently
     // held the point nowhere. Qualify it with the edge that was snapped to.
     const target = snap.edgeKey ? `${snap.entityId}${SEGMENT_SEP}${snap.edgeKey}` : snap.entityId;
-    ctx.doc.addConstraint(
+    emit(
       makeConstraint("pointOnLine", {
         points: [{ entityId: newEntityId, key: newKey }],
         entities: [target],

@@ -143,7 +143,7 @@ export class StatusBar {
         this.refreshToggles();
         this.onToggle();
       },
-      "Endpoints, midpoints and centres attract the cursor and moved geometry — hold Ctrl during a drag to skip once",
+      "Endpoints, midpoints and centres attract the cursor and moved geometry — hold Ctrl to skip snapping, while drawing or dragging",
     );
     this.host.appendChild(this.gridToggle);
     this.host.appendChild(this.osnapToggle);

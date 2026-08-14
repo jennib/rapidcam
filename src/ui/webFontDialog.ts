@@ -25,8 +25,24 @@ import {
 import { registerModal } from "./modal";
 import { toast } from "./toast";
 
-/** How many families a search shows. Enough to browse, few enough to preview. */
+/**
+ * Families appended per batch as the list is scrolled.
+ *
+ * This used to be the TOTAL the dialog would ever show, which is why browsing
+ * alphabetically stopped in the "A"s with 2,022 families in the catalogue: the
+ * search box was the only way past it, so you had to already know the name of
+ * the font you wanted. Now it is a page size — scrolling loads the next batch.
+ *
+ * It stays a batch rather than "render everything" because each rendered family
+ * is previewed in its own face, and the preview stylesheet names every family in
+ * the batch. Rendering all 2,022 at once would ask Google for 2,022 families in
+ * one request. Batching keeps the download proportional to what has actually
+ * been looked at.
+ */
 const PAGE = 60;
+
+/** Distance from the bottom of the list, in px, that triggers the next batch. */
+const LOAD_AHEAD_PX = 240;
 
 /** Debounce before re-rendering: each render costs a preview stylesheet fetch. */
 const SEARCH_DEBOUNCE_MS = 180;
@@ -95,23 +111,27 @@ export function openWebFontDialog(onAdded: (fontId: string) => void): void {
   document.body.appendChild(backdrop);
 
   // --- preview stylesheets -------------------------------------------------
-  // One <link> per rendered page, replaced as the search changes and removed on
-  // close, so browsing doesn't leave a trail of stylesheets in <head>.
-  let previewLink: HTMLLinkElement | null = null;
-  const setPreviewFonts = (families: string[]) => {
-    previewLink?.remove();
-    previewLink = null;
+  // One <link> per BATCH, accumulated as the list is scrolled — an earlier
+  // batch's link has to stay, or the rows already on screen lose their preview
+  // face the moment the next batch loads. All of them are dropped when the
+  // search changes or the dialog closes, so browsing leaves no trail in <head>.
+  let previewLinks: HTMLLinkElement[] = [];
+  const clearPreviewFonts = () => {
+    for (const l of previewLinks) l.remove();
+    previewLinks = [];
+  };
+  const addPreviewFonts = (families: string[]) => {
     if (families.length === 0) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = previewCssUrl(families);
     document.head.appendChild(link);
-    previewLink = link;
+    previewLinks.push(link);
   };
 
   let unregister: () => void = () => {};
   const close = () => {
-    previewLink?.remove();
+    clearPreviewFonts();
     clearTimeout(searchTimer);
     unregister();
     backdrop.remove();
@@ -153,27 +173,67 @@ export function openWebFontDialog(onAdded: (fontId: string) => void): void {
     list.appendChild(d);
   };
 
-  const renderFamilies = (cat: FontCatalogue, families: CatalogueFamily[]) => {
-    list.replaceChildren();
-    if (families.length === 0) {
-      message("No families match that search.");
-      setPreviewFonts([]);
-      return;
-    }
-    for (const fam of families) {
-      list.appendChild(familyRow(cat, fam, add));
-    }
-    setPreviewFonts(families.map((f) => f.n));
-  };
-
   // --- catalogue -----------------------------------------------------------
   let catalogue: FontCatalogue | null = null;
   let searchTimer: ReturnType<typeof setTimeout>;
+  /** Every family matching the current query, ranked. Sliced for display. */
+  let matches: CatalogueFamily[] = [];
+  /** How many of `matches` are currently in the list. */
+  let shown = 0;
+
+  /** Footer line inside the list: how far in you are, or that you're at the end. */
+  const tail = document.createElement("div");
+  tail.style.cssText = "padding:10px 16px;font-size:11px;opacity:0.65;text-align:center;";
+
+  const appendBatch = () => {
+    if (!catalogue || shown >= matches.length) return;
+    const batch = matches.slice(shown, shown + PAGE);
+    tail.remove(); // keep it last
+    for (const fam of batch) list.appendChild(familyRow(catalogue, fam, add));
+    shown += batch.length;
+    addPreviewFonts(batch.map((f) => f.n));
+    tail.textContent =
+      shown >= matches.length
+        ? `${matches.length} ${matches.length === 1 ? "family" : "families"}`
+        : `${shown} of ${matches.length} — scroll for more`;
+    list.appendChild(tail);
+  };
 
   const rerender = () => {
     if (!catalogue) return;
-    renderFamilies(catalogue, searchFamilies(catalogue, search.value, PAGE));
+    clearPreviewFonts();
+    list.replaceChildren();
+    shown = 0;
+    // Infinity, then slice locally. Re-querying with a growing limit would also
+    // be correct — `searchFamilies` returns a stable prefix — but the true total
+    // is what lets the footer say "60 of 2022" instead of "60 of at least 60",
+    // and one pass over 2,022 entries costs nothing.
+    matches = searchFamilies(catalogue, search.value, Number.POSITIVE_INFINITY);
+    if (matches.length === 0) {
+      message("No families match that search.");
+      return;
+    }
+    appendBatch();
+    // A short list may not fill the box, so nothing would ever scroll — keep
+    // going until it does, or until everything is shown.
+    fillViewport();
   };
+
+  /** Append batches until the list actually overflows, so scrolling can start. */
+  const fillViewport = () => {
+    let guard = 0;
+    while (
+      shown < matches.length &&
+      list.scrollHeight <= list.clientHeight &&
+      guard++ < 40 // never spin: happy-dom and a zero-height box both report 0
+    ) {
+      appendBatch();
+    }
+  };
+
+  list.addEventListener("scroll", () => {
+    if (list.scrollTop + list.clientHeight >= list.scrollHeight - LOAD_AHEAD_PX) appendBatch();
+  });
 
   search.addEventListener("input", () => {
     clearTimeout(searchTimer);

@@ -46,6 +46,15 @@ export interface ToolContext {
   ): void;
   /** Close the Type to Draw fields without committing. */
   closeTypeToDraw(): void;
+  /**
+   * Hand control to another tool — for a tool whose gesture is *finished*, not
+   * merely paused (the Text tool places one text and is done).
+   *
+   * MUST NOT be called from `cancel()`. `ToolManager.activate` calls the
+   * outgoing tool's `cancel` before switching, so a `cancel` that switches tools
+   * recurses forever.
+   */
+  activateTool(id: string): void;
 }
 
 export interface TypeToDrawField {

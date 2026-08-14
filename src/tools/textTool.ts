@@ -79,6 +79,23 @@ export class TextTool implements Tool {
     );
     ctx.doc.addSelected(ent);
     ctx.requestRender();
+    // Placing text is a FINISHED gesture, so hand back to Select — which also
+    // leaves the new text selected and ready to move, align or edit.
+    //
+    // The tool used to stay armed, stamping another copy on every subsequent
+    // click. That is not what any other CAD does, and it turned an accidental
+    // click into a duplicate the user had to notice and delete. Repeat placement
+    // is what copy/paste is for. `activate` calls this tool's own `cancel` on
+    // the way out, which clears the pending text.
+    ctx.activateTool("select");
+  }
+
+  onKeyDown(e: KeyboardEvent, ctx: ToolContext): void {
+    // Escape while armed would otherwise leave the Text tool active with nothing
+    // pending — a dead state where clicking does nothing and the only way out is
+    // the palette. Hand back to Select instead. `cancel` still runs, via
+    // `activate`; doing this from `cancel` itself would recurse.
+    if (e.key === "Escape" && this.pendingText) ctx.activateTool("select");
   }
 
   cancel(ctx: ToolContext): void {

@@ -58,6 +58,7 @@ function makeCtx(doc: CADDocument, scale = 1): Harness {
       openTypeToDraw(_pos, _fields, handlers) {
         onCommit = handlers.onCommit;
       },
+      activateTool() {},
       closeTypeToDraw() {
         onCommit = null;
       },
