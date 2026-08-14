@@ -33,6 +33,7 @@ export class TextTool implements Tool {
       // (tools/shortcuts.ts) says what to do next, and the ghost preview shows it.
       applyLabel: "Place",
       title: "Place Text",
+      displayUnit: ctx.doc.displayUnit,
       // So the canvas click that the old label invited keeps the text instead of
       // destroying it.
       backdropAction: "apply",

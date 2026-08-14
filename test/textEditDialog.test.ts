@@ -61,6 +61,7 @@ test("placement: clicking the backdrop keeps the typed text", () => {
     initial: {},
     applyLabel: "Place",
     title: "Place Text",
+    displayUnit: "mm",
     backdropAction: "apply",
     onApply,
     onCancel,
@@ -84,6 +85,7 @@ test("editing: clicking the backdrop still abandons the edit", () => {
     initial: { text: "before" },
     applyLabel: "Apply",
     title: "Edit Text",
+    displayUnit: "mm",
     onApply,
     onCancel,
   });
@@ -103,6 +105,7 @@ test("placement: an empty dialog dismissed by backdrop cancels, and does not err
     initial: {},
     applyLabel: "Place",
     title: "Place Text",
+    displayUnit: "mm",
     backdropAction: "apply",
     onApply,
     onCancel,
@@ -121,6 +124,7 @@ test("the heading is the title given, not one inferred from the button", () => {
     initial: {},
     applyLabel: "Place",
     title: "Place Text",
+    displayUnit: "mm",
     onApply: () => {},
   });
   expect(document.querySelector(".tp-dialog h3")?.textContent).toBe("Place Text");
@@ -133,7 +137,78 @@ test("the heading is the title given, not one inferred from the button", () => {
     initial: {},
     applyLabel: "Apply",
     title: "Place Text",
+    displayUnit: "mm",
     onApply: () => {},
   });
   expect(document.querySelector(".tp-dialog h3")?.textContent).toBe("Place Text");
+});
+
+/**
+ * The height field is a LENGTH, so it must read and write in the document's
+ * unit. It was hardcoded `"Height (mm)"` showing raw `sizeMM`, so an inch
+ * project displayed 25.4 where its Properties panel said 1.000 in.
+ */
+
+test("an inch document shows inches, and commits millimetres", () => {
+  const onApply = vi.fn<(p: TextParams) => void>();
+  openTextDialog({
+    initial: { sizeMM: 25.4 },
+    applyLabel: "Place",
+    title: "Place Text",
+    displayUnit: "in",
+    onApply,
+  });
+  seedFont();
+
+  const labels = [...document.querySelectorAll(".tp-dialog label")].map((l) => l.textContent);
+  expect(labels).toContain("Height (in)");
+  expect(labels).not.toContain("Height (mm)");
+
+  // 25.4mm reads back as 1 inch, not as 25.4.
+  const size = [...document.querySelectorAll<HTMLInputElement>(".tp-dialog input")].find(
+    (i) => i.value === "1" || i.value === "1.000",
+  );
+  expect(size).toBeDefined();
+
+  typeText("HELLO");
+  document.querySelector<HTMLElement>(".tp-apply-btn")!.click();
+  // Committed value is always mm internally, whatever the field displayed.
+  expect(onApply.mock.calls[0][0].sizeMM).toBeCloseTo(25.4, 6);
+});
+
+test("a suffix or fraction overrides the document unit", () => {
+  const onApply = vi.fn<(p: TextParams) => void>();
+  openTextDialog({
+    initial: { sizeMM: 10 },
+    applyLabel: "Place",
+    title: "Place Text",
+    displayUnit: "mm",
+    onApply,
+  });
+  seedFont();
+  typeText("HELLO");
+
+  const size = [...document.querySelectorAll<HTMLInputElement>(".tp-dialog input")][1];
+  size.value = '1/2"';
+  document.querySelector<HTMLElement>(".tp-apply-btn")!.click();
+  expect(onApply.mock.calls[0][0].sizeMM).toBeCloseTo(12.7, 6);
+});
+
+test("an unreadable height keeps the size it opened with", () => {
+  const onApply = vi.fn<(p: TextParams) => void>();
+  openTextDialog({
+    initial: { sizeMM: 42 },
+    applyLabel: "Place",
+    title: "Place Text",
+    displayUnit: "mm",
+    onApply,
+  });
+  seedFont();
+  typeText("HELLO");
+
+  const size = [...document.querySelectorAll<HTMLInputElement>(".tp-dialog input")][1];
+  size.value = "not a number";
+  document.querySelector<HTMLElement>(".tp-apply-btn")!.click();
+  // Not the 10mm hardcoded default the old `|| 10` fell back to.
+  expect(onApply.mock.calls[0][0].sizeMM).toBe(42);
 });

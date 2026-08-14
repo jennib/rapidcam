@@ -4,6 +4,7 @@
  */
 
 import { listFonts, defaultFontId, loadFromFile, initBundledFonts } from "../core/fontManager";
+import { formatLength, parseLength, type Unit } from "../core/units";
 import { showError } from "./errorNotice";
 import { registerModal } from "./modal";
 import { openWebFontDialog } from "./webFontDialog";
@@ -26,6 +27,12 @@ export interface TextDialogOptions {
    */
   title: string;
   /**
+   * The document's display unit. The height field is a length, so it must read
+   * and write in whatever the document is set to — not the mm this dialog
+   * happens to store internally.
+   */
+  displayUnit: Unit;
+  /**
    * What a click on the backdrop means. Defaults to "cancel", the usual
    * dismiss. The placement flow needs "apply": its whole instruction is to
    * click the canvas, and the backdrop is what the canvas is wearing.
@@ -36,7 +43,15 @@ export interface TextDialogOptions {
 }
 
 export function openTextDialog(opts: TextDialogOptions): () => void {
-  const { initial, applyLabel, title, backdropAction = "cancel", onApply, onCancel } = opts;
+  const {
+    initial,
+    applyLabel,
+    title,
+    displayUnit,
+    backdropAction = "cancel",
+    onApply,
+    onCancel,
+  } = opts;
   const backdrop = document.createElement("div");
   backdrop.className = "tp-backdrop";
 
@@ -155,13 +170,19 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
   webRow.appendChild(webBtn);
   body.appendChild(webRow);
 
-  // Size
-  const sizeInp = addField(body, "Height (mm)", (inp) => {
-    inp.type = "number";
+  // Size. A LENGTH field, so it follows the document's unit and goes through the
+  // same parseLength round trip as the generator dialog and dimEditor — which
+  // buys the suffix and fraction forms free, so "10mm" and '1/2"' work in either
+  // document. It was a hardcoded "Height (mm)" showing raw mm, so an inch project
+  // read 25.4 where its Properties panel said 1.000 in.
+  //
+  // Deliberately a TEXT input, not a number one: `type="number"` rejects '1/2"'
+  // and every other form parseLength understands. The stepper arrows are the
+  // price, and they are worth less than the units being right.
+  const sizeInp = addField(body, `Height (${displayUnit})`, (inp) => {
+    inp.type = "text";
     inp.className = "dim";
-    inp.value = (initial.sizeMM ?? 10).toString();
-    inp.step = "0.5";
-    inp.min = "0.5";
+    inp.value = formatLength(initial.sizeMM ?? 10, displayUnit);
     inp.style.width = "90px";
   });
 
@@ -208,11 +229,15 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
       showError("Please select or load a font first.");
       return;
     }
+    // parseLength returns mm whatever the field was typed in. A value it can't
+    // read keeps the size the dialog opened with rather than silently resetting
+    // to a 10mm default the user never chose.
+    const parsed = parseLength(sizeInp.value, displayUnit);
     close();
     onApply({
       text,
       fontId: fontSel.value,
-      sizeMM: Math.max(0.5, parseFloat(sizeInp.value) || 10),
+      sizeMM: Math.max(0.5, parsed ?? initial.sizeMM ?? 10),
       angle: ((parseFloat(angleInp.value) || 0) * Math.PI) / 180,
     });
   };

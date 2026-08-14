@@ -1,5 +1,13 @@
 import type { Vec2 } from "../core/vec2";
-import { inflatePathsD, intersectD, JoinType, EndType, differenceD, FillRule } from "clipper2-ts";
+import {
+  inflatePathsD,
+  intersectD,
+  JoinType,
+  EndType,
+  differenceD,
+  unionD,
+  FillRule,
+} from "clipper2-ts";
 
 /**
  * Re-start a closed path at the midpoint of its longest edge, so a profile's
@@ -123,6 +131,22 @@ export function subtractPolygonSets(subject: Vec2[][], clips: Vec2[][]): Vec2[][
   if (subject.length === 0) return [];
   if (clips.length === 0) return subject;
   const result = differenceD(subject, clips, FillRule.NonZero);
+  return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
+}
+
+/**
+ * Self-union a path set, merging overlaps and resolving holes (NonZero).
+ *
+ * NonZero is what makes this correct for glyphs: a font winds a counter (the
+ * hole in an 'e' or 'o') opposite to its outer contour, so the same rule that
+ * merges two overlapping same-wound subpaths also keeps the counter open.
+ * An EvenOdd union would too, but it would turn any genuine self-overlap into a
+ * hole, which is exactly the artefact this exists to remove.
+ */
+export function unionPolygons(paths: Vec2[][]): Vec2[][] {
+  const closed = paths.filter((p) => p.length >= 3);
+  if (closed.length === 0) return [];
+  const result = unionD(closed, FillRule.NonZero);
   return result.map((path) => path.map((pt) => ({ x: pt.x, y: pt.y })));
 }
 

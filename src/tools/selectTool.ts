@@ -628,6 +628,7 @@ export class SelectTool implements Tool {
         },
         applyLabel: "Apply",
         title: "Edit Text",
+        displayUnit: ctx.doc.displayUnit,
         // Editing keeps the conventional dismiss: clicking away from an edit
         // abandons it, and nothing here tells the user to click the canvas.
         onApply: (p) => {

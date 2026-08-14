@@ -254,6 +254,10 @@ export class App {
         this.requestRender();
       },
     });
+    // Warn on close while dirty, and flush the debounced autosave when the tab
+    // is hidden. The app lives for the page's lifetime, so the disposer is
+    // deliberately dropped.
+    this.project.installLifecycleGuards();
 
     this.tools = new ToolManager(
       {

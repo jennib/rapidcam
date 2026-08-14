@@ -57,6 +57,8 @@ export class ProjectManager {
   isDirty = false;
 
   private autosaveTimeout: number | null = null;
+  /** Latches once autosave loses its file grant, so the warning is said once. */
+  private autosaveToFileFailed = false;
 
   constructor(
     private doc: CADDocument,
@@ -284,6 +286,16 @@ export class ProjectManager {
         return;
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
+        // Anything else used to fall through to the Firefox/Safari branch below,
+        // silently swapping a save-to-file for a browser download — the user was
+        // told nothing and their handle was quietly abandoned. Say so and stop;
+        // a save that did not happen must never look like one that did.
+        console.error("Save failed:", e);
+        showError(
+          `Could not save “${this.currentFileName}”: ${(e as Error).message}. ` +
+            "Try File → Save As.",
+        );
+        return;
       }
     }
 
@@ -450,7 +462,50 @@ export class ProjectManager {
     );
   }
 
-  async writeToHandle(handle: FileSystemFileHandle): Promise<RcamFile> {
+  /**
+   * Whether we may still write through `handle`, re-prompting if we may not.
+   *
+   * A File System Access grant is per-handle and NOT permanent: it lapses when
+   * the page reloads, and the user can revoke it from the omnibox at any time.
+   * Until this existed, nothing ever re-checked — `createWritable()` simply threw
+   * `NotAllowedError`, `fileSave` swallowed it and silently fell through to a
+   * different save mechanism, and `performAutosave` swallowed it into
+   * `console.error`. Both look, from the outside, exactly like "save stopped
+   * working", which is what was reported.
+   *
+   * `requestPermission` needs transient user activation, so it can only succeed
+   * on a user-initiated save. `interactive: false` from the autosave path asks
+   * the question but never opens a prompt the user did not ask for.
+   */
+  private async canWriteTo(
+    handle: FileSystemFileHandle,
+    interactive: boolean,
+  ): Promise<boolean> {
+    // Not in every browser that has showSaveFilePicker; absent means unrestricted.
+    const h = handle as FileSystemFileHandle & {
+      queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
+      requestPermission?: (d: { mode: string }) => Promise<PermissionState>;
+    };
+    if (!h.queryPermission) return true;
+    try {
+      if ((await h.queryPermission({ mode: "readwrite" })) === "granted") return true;
+      if (!interactive || !h.requestPermission) return false;
+      return (await h.requestPermission({ mode: "readwrite" })) === "granted";
+    } catch {
+      // Older implementations throw on the descriptor — let the write itself decide.
+      return true;
+    }
+  }
+
+  /**
+   * Write the document through `handle`. Throws if the grant is gone and either
+   * could not be renewed or `interactive` forbade asking — callers must handle
+   * that rather than treating a failed write as a no-op.
+   */
+  async writeToHandle(handle: FileSystemFileHandle, interactive = true): Promise<RcamFile> {
+    if (!(await this.canWriteTo(handle, interactive))) {
+      throw new DOMException("Write permission for this file was not granted", "NotAllowedError");
+    }
     const data = serializeDoc(this.doc, this.currentFileName);
     const writable = await handle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
@@ -468,16 +523,95 @@ export class ProjectManager {
     }, 2000);
   }
 
+  /**
+   * Run the pending autosave NOW instead of at the end of its 2s debounce.
+   *
+   * Called when the page is being hidden or closed. There is deliberately no
+   * synchronous variant: `performAutosave` writes to IndexedDB (and possibly a
+   * file handle), both async, and neither can be awaited from `beforeunload`.
+   * See {@link installLifecycleGuards} for what actually protects the work.
+   */
+  async flushAutosave(): Promise<void> {
+    if (this.autosaveTimeout !== null) {
+      clearTimeout(this.autosaveTimeout);
+      this.autosaveTimeout = null;
+    }
+    await this.performAutosave();
+  }
+
+  /**
+   * Guard unsaved work against the tab being closed. Returns a disposer.
+   *
+   * Two listeners, doing different jobs:
+   *
+   *  - **`beforeunload`** asks the browser to show its native "Leave site?"
+   *    confirm, but ONLY while the document is dirty — an unconditional prompt
+   *    trains people to dismiss it, and then it is not there when it matters.
+   *    This is the part that actually saves the work: it hands the user back a
+   *    tab they can save from. The message is not ours to write; every current
+   *    browser shows its own text and ignores any string we supply.
+   *
+   *  - **`visibilitychange` → hidden** flushes the pending autosave. The tab is
+   *    still alive at that point, so the async IndexedDB write has real time to
+   *    land — which closes the up-to-2s window the debounce leaves open. It also
+   *    fires on tab-switch, which is free insurance.
+   *
+   * NOT DONE, on purpose: a synchronous full-document dump to localStorage on
+   * unload. A draft here runs to several MB with embedded images, so it would
+   * have to be stripped to fit the ~5 MB origin quota — and a cache stripped to
+   * fit a quota must never be the thing you restore FROM. That exact bug has bit
+   * this project twice (the pre-IndexedDB draft, then recents): the design came
+   * back with its image gone and looked like corruption. `draftStore.ts` moved
+   * the payload to IndexedDB precisely to stop doing that, and an "emergency
+   * backup" in localStorage would walk it straight back in. A prompt the user
+   * can act on beats a backup that silently loses their picture.
+   */
+  installLifecycleGuards(): () => void {
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      if (!this.isDirty) return;
+      e.preventDefault();
+      // Legacy browsers gate the prompt on returnValue being set, not on
+      // preventDefault. Harmless where it is ignored.
+      e.returnValue = "";
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden" && this.isDirty) void this.flushAutosave();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }
+
   async performAutosave(): Promise<void> {
     if (this.isDocumentLoading) return;
 
     if (this.currentFileHandle) {
       try {
-        const data = await this.writeToHandle(this.currentFileHandle);
+        // interactive: false — autosave runs off a timer, and a permission
+        // prompt the user did not ask for, appearing 2s after they stopped
+        // typing, is worse than falling back to the draft. The renewal happens
+        // on the next real Save, which HAS the user gesture it needs.
+        const data = await this.writeToHandle(this.currentFileHandle, false);
         await saveDraft(this.currentFileName, data);
+        this.autosaveToFileFailed = false;
         return;
       } catch (e) {
         console.error("Autosave to file handle failed:", e);
+        // Say it ONCE. This runs every 2s, so a repeated toast would be its own
+        // bug — but staying completely silent is what made "save stopped
+        // working" undiagnosable in the first place. The draft below still
+        // captures the work, so this is a warning, not a data-loss event.
+        if (!this.autosaveToFileFailed) {
+          this.autosaveToFileFailed = true;
+          toast(
+            `Autosave can no longer write to “${this.currentFileName}” — ` +
+              "your work is still being kept in the browser. Use File → Save to restore it.",
+            10000,
+          );
+        }
       }
     }
 
