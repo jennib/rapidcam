@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { LineEntity, PolylineEntity, RectEntity } from "../src/model/entities";
-import { findCorner, refreshCorner, shapeCorners } from "../src/tools/corner";
+import { findCorner, refreshCorner, setRectCorner, shapeCorners } from "../src/tools/corner";
 
 /**
  * Rounding every corner of a shape in one action.
@@ -10,12 +10,13 @@ import { findCorner, refreshCorner, shapeCorners } from "../src/tools/corner";
  * whole shape at once; rounding a rectangle one corner at a time was the
  * reported friction.
  *
- * The order is the load-bearing part. Each fillet replaces one corner with
- * several vertices, so every index ABOVE it shifts. Walking highest-first means
- * the corners still to come are all below the splice and keep their indices —
- * walking lowest-first would aim later fillets at the middle of the arc it just
- * inserted. These pin the order and the re-read that survives the rect →
- * polyline swap.
+ * The order is the load-bearing part for a POLYLINE. Each fillet replaces one
+ * vertex with several, so every index ABOVE it shifts. Walking highest-first
+ * means the corners still to come are all below the splice and keep their
+ * indices — walking lowest-first would aim later fillets at the middle of the
+ * arc it just inserted. A rectangle's four corners cannot shift (its corners are
+ * a radius per corner now, not spliced geometry), so the order is merely
+ * harmless there; these pin the order and the re-read it depends on.
  */
 
 function rectDoc() {
@@ -81,23 +82,39 @@ test("a line-line corner has no enclosing shape, so it yields only itself", () =
   expect(shapeCorners(corner, doc)).toHaveLength(1);
 });
 
-test("refreshCorner survives the rect turning into a polyline mid-walk", () => {
+test("refreshCorner re-reads by id, not through the object it was handed", () => {
   const { doc, rect } = rectDoc();
   const corner = findCorner({ x: 0, y: 0 }, doc, 1)!;
   if (corner.kind !== "rect") throw new Error("expected a rect corner");
 
-  // Stand in for the first fillet: replace the rect with a polyline of the same
-  // id, exactly as spliceCornerVertices does.
-  const pl = new PolylineEntity(rect.corners().map((p) => ({ ...p })), true);
+  // Any edit that swaps an entity for another of the same id (Explode → Join,
+  // a rotation turning a rect into a polyline, a generator regenerating) leaves
+  // the descriptor naming a dead object. The lookup must go by id.
+  const pl = new PolylineEntity(
+    rect.corners().map((p) => ({ ...p })),
+    true,
+  );
   (pl as { id: string }).id = rect.id;
   doc.entities[doc.entities.findIndex((e) => e.id === rect.id)] = pl;
 
-  // The descriptor still names the dead RectEntity object; refreshing must find
-  // the live polyline by id rather than returning null.
   const live = refreshCorner(corner, doc);
   expect(live).not.toBeNull();
   expect(live?.kind).toBe("poly");
   expect(live?.pos).toEqual({ x: 0, y: 0 });
+});
+
+test("a rectangle stays a rectangle through a whole-shape fillet", () => {
+  // Every corner of a rect used to be walked descending BECAUSE the first
+  // fillet turned it into a polyline. Nothing is replaced now — which is what
+  // makes all four radii independently editable afterwards.
+  const { doc, rect } = rectDoc();
+  const corner = findCorner({ x: 0, y: 0 }, doc, 1)!;
+  for (const c of shapeCorners(corner, doc)) {
+    const live = refreshCorner(c, doc);
+    if (live?.kind === "rect") setRectCorner(live, 5, "round");
+  }
+  expect(rect.cornerRadii).toEqual([5, 5, 5, 5]);
+  expect(doc.entities.filter((e) => e instanceof PolylineEntity)).toHaveLength(0);
 });
 
 test("refreshCorner returns null once an index no longer exists", () => {

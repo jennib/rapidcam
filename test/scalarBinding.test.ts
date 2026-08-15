@@ -109,3 +109,40 @@ test("bindings round-trip through save/load", () => {
   applyFile(doc2, serializeDoc(doc, "b"));
   expect(doc2.bindings).toEqual([{ id: "b1", entityId: c.id, scalarKey: "r", expr: "plateW/2" }]);
 });
+
+/**
+ * `stock` is an implicit variable — the stock thickness — and every formula
+ * surface in the app offers it: the properties fields validate what you type
+ * against `varMap(variables, stockThickness)`, so `stock/2` is accepted into a
+ * Radius box and stored as a binding.
+ *
+ * The SOLVER built its own variable map straight from `doc.variables`, without
+ * it. So the formula evaluated to null forever, contributed no residual, and the
+ * geometry silently never followed the field — the worst shape a parametric bug
+ * can take, because the document looks driven and is not.
+ *
+ * Found while adding the rectangle corner radius (its whole point is corners
+ * that follow the material), but it was never specific to that: this is a
+ * circle, and it was broken the same way.
+ */
+test("a binding can be driven by the implicit `stock` variable", () => {
+  const doc = new CADDocument({ width: 200, height: 200 });
+  doc.stockThickness = 12;
+  const c = doc.add(new CircleEntity({ x: 100, y: 100 }, 3));
+  doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "stock / 2" });
+
+  resolve(doc);
+  expect(c.radius).toBeCloseTo(6, 4);
+
+  // And it re-drives when the material changes — that is what it is FOR.
+  doc.stockThickness = 25;
+  resolve(doc);
+  expect(c.radius).toBeCloseTo(12.5, 4);
+
+  // Positive control: an ordinary variable still works, so the above is about
+  // `stock` reaching the solver and not about bindings in general.
+  doc.bindings[0].expr = "plate";
+  doc.variables.push(makeVariable("plate", "9", "mm"));
+  resolve(doc);
+  expect(c.radius).toBeCloseTo(9, 4);
+});

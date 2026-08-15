@@ -20,11 +20,13 @@ import {
   type Corner,
   type CornerDirs,
   cornerAngle,
+  cornerValueFits,
   dropCornerJoin,
   findCorner,
   getCornerDirs,
   joinCornerEnds,
-  reportDropped,
+  reportRetype,
+  setRectCorner,
   spliceCornerVertices,
   trimCornerLegs,
 } from "./corner";
@@ -54,6 +56,8 @@ function computeGeo(dirs: CornerDirs, d: number): ChamferGeo | null {
 function buildPreviews(corner: Corner, value: number, unit: Unit): PreviewShape[] {
   const base: PreviewShape = { kind: "point", pos: corner.pos };
   if (value <= 0) return [base];
+  // A rectangle's neighbouring corner can veto a setback its own legs allow.
+  if (!cornerValueFits(corner, value)) return [base];
   const dirs = getCornerDirs(corner);
   if (!dirs) return [base];
   const geo = computeGeo(dirs, value);
@@ -70,18 +74,18 @@ function buildPreviews(corner: Corner, value: number, unit: Unit): PreviewShape[
 // ---------------------------------------------------------------------------
 
 /**
- * Apply the corner operation.
- *
- * Returns the number of references that could NOT be carried across the rect ->
- * polyline conversion (see corner.ts spliceCornerVertices), or null when the
- * corner is not workable at all. The count matters because silently losing a
- * constraint is the bug this return value exists to stop.
+ * Bevel one corner. Returns false when the corner cannot take this setback, so
+ * the caller can say so rather than appearing to do nothing.
  */
-function applyChamfer(corner: Corner, distance: number, doc: CADDocument): number | null {
+function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boolean {
+  // A rectangle keeps its corners as a property — nothing is cut or replaced,
+  // and the setback stays editable in Properties afterwards.
+  if (corner.kind === "rect") return setRectCorner(corner, distance, "chamfer");
+
   const dirs = getCornerDirs(corner);
-  if (!dirs) return null;
+  if (!dirs) return false;
   const geo = computeGeo(dirs, distance);
-  if (!geo) return null;
+  if (!geo) return false;
 
   if (corner.kind === "line") {
     trimCornerLegs(corner, geo.T1, geo.T2);
@@ -91,11 +95,28 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): numbe
     doc.add(chamfer);
     joinCornerEnds(doc, corner, chamfer.id, "a", "b", "chamfer");
   } else {
-    // poly or rect — splice the two chamfer points in
-    return spliceCornerVertices(corner, doc, [geo.T1, geo.T2]);
+    spliceCornerVertices(corner, [geo.T1, geo.T2]);
   }
 
-  return 0;
+  return true;
+}
+
+/**
+ * Whether this setback can be committed here — the same test the preview draws
+ * from, so what is shown and what is accepted cannot disagree.
+ */
+function workable(corner: Corner, distance: number): boolean {
+  if (distance <= 0 || !cornerValueFits(corner, distance)) return false;
+  const dirs = getCornerDirs(corner);
+  return !!dirs && !!computeGeo(dirs, distance);
+}
+
+/** Bevel the corner, saying so when it could not take the setback. */
+function commit(corner: Corner, distance: number, ctx: ToolContext): void {
+  // Said BEFORE applying, while the rectangle still holds the old type.
+  reportRetype(corner, "chamfer", ctx);
+  if (!applyChamfer(corner, distance, ctx.doc))
+    ctx.notify("That distance is too big for this corner.");
 }
 
 // ---------------------------------------------------------------------------
@@ -157,10 +178,9 @@ export class ChamferTool implements Tool {
           onCommit: (raws) => {
             const d = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
             if (d === null || d <= 0) return false;
-            const dirs = getCornerDirs(corner);
-            if (!dirs || !computeGeo(dirs, d)) return false;
+            if (!workable(corner, d)) return false;
             ctx.pushHistory();
-            reportDropped(applyChamfer(corner, d, ctx.doc), ctx);
+            commit(corner, d, ctx);
             ctx.solve();
             ctx.doc.emitChange();
           },
@@ -169,10 +189,9 @@ export class ChamferTool implements Tool {
       );
     } else {
       // drag commit
-      const dirs = getCornerDirs(corner);
-      if (dirs && computeGeo(dirs, this.currentValue)) {
+      if (workable(corner, this.currentValue)) {
         ctx.pushHistory();
-        reportDropped(applyChamfer(corner, this.currentValue, ctx.doc), ctx);
+        commit(corner, this.currentValue, ctx);
         ctx.solve();
         ctx.doc.emitChange();
       }

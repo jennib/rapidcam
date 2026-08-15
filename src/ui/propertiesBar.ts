@@ -21,6 +21,9 @@ import {
   type EntityId,
   type Bounds,
   CircleEntity,
+  CORNER_TYPE_LABELS,
+  CORNER_TYPES,
+  type CornerType,
   type Entity,
   LineEntity,
   PolylineEntity,
@@ -610,7 +613,13 @@ export class PropertiesBar {
     sec.appendChild(row);
   }
 
-  /** A "Label [input] unit" row whose input commits a parsed number on change. */
+  /**
+   * A "Label [input] unit" row whose input commits a parsed number on change.
+   *
+   * `placeholder` shows greyed text in an EMPTY field instead of a value — for
+   * a row whose subject has several different values (a multi-corner radius),
+   * where displaying any one of them would misreport the other.
+   */
   private numRow(
     parent: HTMLElement,
     label: string,
@@ -618,6 +627,7 @@ export class PropertiesBar {
     unit: string | null,
     onCommit: (v: number) => void,
     decimals = 3,
+    placeholder?: string,
   ): void {
     const row = document.createElement("div");
     row.className = "props-row";
@@ -627,10 +637,12 @@ export class PropertiesBar {
     // unit (formatLength/parseLength); other units (counts, °) pass through.
     const du = this.doc.displayUnit;
     const isLen = unit === "mm";
-    const fmt = (v: number) => (isLen ? formatLength(v, du, decimals) : v.toFixed(decimals));
+    const fmt = (v: number) =>
+      placeholder ? "" : isLen ? formatLength(v, du, decimals) : v.toFixed(decimals);
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
+    if (placeholder) inp.placeholder = placeholder;
     inp.value = fmt(value);
     inp.addEventListener("change", () => {
       const v = isLen ? parseLength(inp.value, du) : parseFloat(inp.value);
@@ -758,6 +770,10 @@ export class PropertiesBar {
     // committed value and raw expr (undefined for a literal). Images use it to
     // propagate an aspect-locked edit to the paired dimension.
     onAfterCommit?: (value: number, expr: string | undefined) => void,
+    // Greyed text for an EMPTY field, when the scalar has no single current
+    // value to show (a rectangle whose four corner radii differ). Ignored once a
+    // binding exists — a formula is one value by construction.
+    placeholder?: string,
   ): void {
     const binding = findBinding(this.doc.bindings, entityId, scalarKey);
     // A field declared in "mm" is a length: show and read its literal in the
@@ -773,7 +789,8 @@ export class PropertiesBar {
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
-    inp.value = binding ? binding.expr : fmtLit(currentValue);
+    if (placeholder && !binding) inp.placeholder = placeholder;
+    inp.value = binding ? binding.expr : placeholder ? "" : fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     this.attachVarAutocomplete(inp, row);
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
@@ -782,7 +799,7 @@ export class PropertiesBar {
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
-      inp.value = b ? b.expr : fmtLit(currentValue);
+      inp.value = b ? b.expr : placeholder ? "" : fmtLit(currentValue);
     };
 
     const badge = this.fxBadge({
@@ -1521,8 +1538,78 @@ export class PropertiesBar {
       entity.p0 = { x: m.x, y: m.y };
       entity.p1 = { x: m.x + w, y: m.y + v };
     });
+    this.cornerRows(sec, entity);
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
+  }
+
+  /**
+   * `Corner Type` + its radius — the pair Vectric puts on its rectangle form,
+   * in that order, because the type decides what the number below it means.
+   *
+   * The field sets all four corners, which is what the control implies and what
+   * every CAD app with a rounded-rectangle primitive does. Per-corner radii
+   * still exist (the Fillet tool writes one at a time), so the field reads
+   * `mixed` when they differ rather than picking one to display and quietly
+   * flattening the other three the moment it is committed.
+   *
+   * A value larger than the rectangle can hold is clamped on commit and shown
+   * clamped, rather than stored and drawn smaller: the panel must not report a
+   * radius the shape does not have.
+   */
+  private cornerRows(sec: HTMLElement, entity: RectEntity): void {
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span");
+    lbl.textContent = "Corner";
+    lbl.title =
+      "How the corners are cut. Round: a fillet tangent to both edges. " +
+      "Inverted: a concave cove bitten out of the corner. Chamfer: a straight bevel.";
+    const sel = document.createElement("select");
+    sel.className = "dim";
+    sel.style.flex = "1";
+    for (const t of CORNER_TYPES) {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = CORNER_TYPE_LABELS[t];
+      if (t === entity.cornerType) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => {
+      this.applyEdit(() => {
+        entity.cornerType = sel.value as CornerType;
+      });
+    });
+    row.append(lbl, sel);
+    sec.appendChild(row);
+
+    const radii = entity.cornerRadii;
+    const uniform = radii.every((r) => r === radii[0]);
+    // A binding row, not a plain number: the corner radius is a scalar DOF
+    // (`cr`), so it takes a formula over variables exactly as a circle's radius
+    // does — `thickness * 2`, and the corners follow the material. A formula is
+    // inherently whole-shape, which is why binding one collapses `mixed`.
+    //
+    // Vectric labels the field for what it means under the selected type; the
+    // distance is the same either way, but "Radius" on a bevel reads wrong.
+    this.bindingRow(
+      sec,
+      entity.cornerType === "chamfer" ? "Chamfer" : "Radius",
+      entity.id,
+      "cr",
+      uniform ? radii[0] : 0,
+      "mm",
+      (v) => {
+        if (v < 0) return;
+        // Clamped so the panel cannot report a radius the shape does not have.
+        const r = Math.min(v, entity.maxUniformCornerRadius());
+        entity.cornerRadii = [r, r, r, r];
+      },
+      3,
+      1,
+      undefined,
+      uniform ? undefined : "mixed",
+    );
   }
 
   private buildPolylineProperties(entity: PolylineEntity): void {

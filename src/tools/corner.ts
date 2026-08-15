@@ -14,31 +14,72 @@
  */
 
 import { type Vec2, dist } from "../core/vec2";
-import { SEGMENT_SEP } from "../model/constraints";
 import type { CADDocument } from "../model/document";
-import { LineEntity, PolylineEntity, RectEntity } from "../model/entities";
+import {
+  CORNER_TYPE_LABELS,
+  type CornerType,
+  LineEntity,
+  PolylineEntity,
+  RectEntity,
+} from "../model/entities";
 
 /**
- * Say when a corner operation had to abandon a reference.
+ * Shape a rectangle's corner by setting its radius, rather than by cutting the
+ * geometry up.
  *
- * Rounding a corner away legitimately destroys anything constrained to it —
- * one corner becomes several vertices, so there is no single successor. What
- * was wrong was doing it in silence: a rectangle pinned to the blank lost its
- * pin and looked, from the outside, like "fillet is broken on the stock edge".
+ * This is what retired a whole bug class. A rectangle used to be REPLACED by a
+ * polyline on its first fillet, which is why "you can't edit a fillet — it
+ * becomes a polyline", and why a rectangle pinned to the stock edge lost its pin
+ * (#53 kept the id and remapped the keys, but the corner's own references still
+ * had nowhere to go — one corner became forty-nine vertices). Now nothing is
+ * replaced: the entity, its id, its `bl`/`br`/`tr`/`tl` keys and every
+ * constraint naming them are untouched, and the radius stays editable in
+ * Properties afterwards.
  *
- * Takes the `number | null` the apply functions return so both tools report the
- * same way and neither has to remember to.
+ * Returns false when the radius will not fit beside its neighbour's — two
+ * corners share an edge, so 30mm and 40mm corners cannot both sit on a 60mm
+ * side. The caller says so rather than letting the clamp quietly draw something
+ * smaller than was asked for.
  */
-export function reportDropped(
-  dropped: number | null,
+export function setRectCorner(corner: RectCorner, value: number, type: CornerType): boolean {
+  const rect = corner.entity;
+  if (!(value > 0) || !rect.fitsCornerRadius(corner.index, value)) return false;
+  rect.cornerType = type;
+  rect.cornerRadii[corner.index] = value;
+  return true;
+}
+
+/**
+ * Tell the user when shaping one corner re-typed the others.
+ *
+ * A rectangle has ONE corner type (as in Vectric), so filleting a corner of an
+ * already-chamfered rectangle rounds all four. That is the right model — the
+ * alternative is a preview that draws an arc and a tool that cuts a bevel — but
+ * it is not guessable, so it is said out loud, and only when other corners were
+ * actually shaped and therefore actually changed.
+ */
+export function reportRetype(
+  corner: Corner,
+  type: CornerType,
   ctx: { notify(msg: string): void },
 ): void {
-  if (!dropped) return;
-  ctx.notify(
-    dropped === 1
-      ? "1 constraint was removed — the corner it held has been rounded away."
-      : `${dropped} constraints were removed — the corner they held has been rounded away.`,
-  );
+  if (corner.kind !== "rect") return;
+  const rect = corner.entity;
+  if (rect.cornerType === type) return;
+  if (!rect.cornerRadii.some((r, i) => i !== corner.index && r > 0)) return;
+  ctx.notify(`All corners are now ${CORNER_TYPE_LABELS[type]} — a rectangle has one corner type.`);
+}
+
+/**
+ * Whether `value` can be applied at this corner.
+ *
+ * Only rectangles can refuse: their two corners share an edge, so a radius that
+ * is fine against its own legs still has to leave room for its neighbour. Used
+ * by the previews as well as the commit, so a drag that has gone too far stops
+ * drawing an arc that will not be created.
+ */
+export function cornerValueFits(corner: Corner, value: number): boolean {
+  return corner.kind !== "rect" || corner.entity.fitsCornerRadius(corner.index, value);
 }
 
 /**
@@ -49,14 +90,11 @@ export function reportDropped(
  * corner at a time is the friction that was reported. This is the corner list
  * that operation walks.
  *
- * **Descending order is load-bearing, not tidiness.** Each fillet replaces one
- * corner with several vertices, so every index above it shifts. Walking down
+ * **Descending order is load-bearing for a polyline, not tidiness.** Each fillet
+ * replaces one vertex with several, so every index above it shifts. Walking down
  * means the indices still to come are all below the splice and therefore
- * untouched — no re-derivation, no bookkeeping.
- *
- * It also survives the rect → polyline conversion mid-walk: the replacement is
- * built from `corners()`, so corner *i* becomes vertex *i*, and the corners
- * still to come keep the indices they already had.
+ * untouched — no re-derivation, no bookkeeping. A rectangle's four corners are
+ * fixed and cannot shift, so the order is merely harmless there.
  *
  * A line-line corner has no enclosing shape, so it yields only itself.
  */
@@ -82,9 +120,11 @@ export function shapeCorners(corner: Corner, doc: CADDocument): Corner[] {
 /**
  * Re-read the corner at `index` from the live document.
  *
- * Needed because a rect BECOMES a polyline on its first fillet: the descriptors
- * from {@link shapeCorners} still point at the old RectEntity object, which is no
- * longer in the document. The id survives the swap, so it is what we look up by.
+ * A descriptor from {@link shapeCorners} carries a position, and shaping one
+ * corner of a polyline moves the indices (and therefore the positions) of the
+ * ones after it. Re-reading by id keeps a whole-shape walk honest, and returns
+ * null for an index that no longer exists so the caller can report a skip
+ * rather than working on a stale point.
  */
 export function refreshCorner(corner: Corner, doc: CADDocument): Corner | null {
   if (corner.kind === "line") return corner;
@@ -313,127 +353,17 @@ export function joinCornerEnds(
 }
 
 /**
- * Replace a polyline or rectangle corner with `pts`, in place.
+ * Cut `pts` into a polyline corner, in place.
  *
- * A rectangle cannot hold a rounded or bevelled corner, so it is converted to
- * an equivalent closed polyline and swapped into the document; a polyline is
- * edited where it stands, which keeps it a single offsettable entity.
+ * The entity, its id and every reference to it survive untouched — a polyline's
+ * vertices carry stable ids, so the constraints on the vertices either side of
+ * the splice keep pointing at the same physical corners.
+ *
+ * Rectangles no longer come through here. They used to: a rectangle was
+ * converted to a polyline and swapped into the document, which cost it its
+ * editability and (before #53) its constraints. A rectangle corner is now a
+ * radius on the entity — see {@link setRectCorner}.
  */
-/**
- * Where each of a rect's named points ends up on the polyline that replaces it.
- *
- * The replacement is built from `corners()`, which returns
- * `[bl, br, tr, tl]` — so corner *i* becomes vertex *i*, and the edge leaving
- * corner *i* becomes the segment whose START vertex is *i* (which is how a
- * polyline segment is named; see `pickablePoints`).
- *
- * MUST be called before splicing: splicing renumbers everything after the
- * corner being cut.
- *
- * `center` has no polyline equivalent and is deliberately absent.
- */
-function rectKeyMap(pl: PolylineEntity): Map<string, string> {
-  const [v0, v1, v2, v3] = pl.vertexIds;
-  return new Map([
-    ["bl", `v${v0}`],
-    ["br", `v${v1}`],
-    ["tr", `v${v2}`],
-    ["tl", `v${v3}`],
-    ["mid_b", `mid_${v0}`],
-    ["mid_r", `mid_${v1}`],
-    ["mid_t", `mid_${v2}`],
-    ["mid_l", `mid_${v3}`],
-  ]);
-}
-
-/**
- * Swap `rect` for `pl` IN PLACE, keeping the id, and carry every reference over.
- *
- * The old code did `doc.remove(rect)` then `doc.add(pl)`. `remove` calls
- * `pruneReferences`, so every constraint naming the rect was silently deleted:
- * fillet one corner of a rectangle pinned to the stock edge and the pin was
- * simply gone, with nothing said. That was the reported "fillet fails when a
- * corner coincides with the stock boundary".
- *
- * Keeping the id is necessary but NOT sufficient — a constraint would then name
- * a live entity with a key it no longer has, since `"bl"` means nothing on a
- * polyline. So the point keys are remapped too.
- *
- * Returns how many references could not be carried, for the caller to report.
- * Two cases genuinely cannot: the corner being filleted (it becomes several
- * vertices, so there is no single successor) and `center` (polylines have none).
- * Dropping those is right; dropping them SILENTLY was the bug.
- */
-function replaceRectInPlace(
-  doc: CADDocument,
-  rect: RectEntity,
-  pl: PolylineEntity,
-  keyMap: Map<string, string>,
-): number {
-  const id = rect.id;
-  // The one sanctioned id reuse outside replaceInstanceEntity: references are
-  // keyed by id, and this IS the same shape to the user — they filleted a
-  // corner, they did not replace their rectangle.
-  (pl as { id: string }).id = id;
-  const idx = doc.entities.findIndex((e) => e.id === id);
-  if (idx === -1) return 0;
-  doc.entities[idx] = pl;
-
-  let dropped = 0;
-  doc.constraints = doc.constraints.filter((c) => {
-    let ok = true;
-    for (const p of c.points) {
-      if (p.entityId !== id) continue;
-      const next = keyMap.get(p.key);
-      if (next === undefined) ok = false;
-      else p.key = next;
-    }
-    // Segment references are `<id>#<edgeKey>`; the edge keys remap the same way.
-    c.entities = c.entities.map((ref) => {
-      if (!ref.startsWith(`${id}${SEGMENT_SEP}`)) return ref;
-      const edge = ref.slice(id.length + SEGMENT_SEP.length);
-      const next = keyMap.get(edge);
-      if (next === undefined) {
-        ok = false;
-        return ref;
-      }
-      return `${id}${SEGMENT_SEP}${next.replace(/^mid_/, "")}`;
-    });
-    if (!ok) dropped++;
-    return ok;
-  });
-  return dropped;
-}
-
-/**
- * Cut `pts` into the corner. Returns how many references had to be dropped —
- * see {@link replaceRectInPlace}; the caller tells the user.
- */
-export function spliceCornerVertices(
-  corner: PolyCorner | RectCorner,
-  doc: CADDocument,
-  pts: Vec2[],
-): number {
-  if (corner.kind === "poly") {
-    // Spliced in place: the entity, its id and every reference to it survive
-    // untouched. Only the rect path has ever needed rescuing.
-    corner.entity.spliceVertices(corner.index, 1, ...pts);
-    return 0;
-  }
-  const pl = new PolylineEntity(
-    corner.entity.corners().map((p) => ({ ...p })),
-    true,
-  );
-  pl.layerId = corner.entity.layerId;
-  pl.selected = corner.entity.selected;
-  // Before the splice renumbers anything.
-  const keyMap = rectKeyMap(pl);
-  // The corner being cut becomes several vertices, so it has no single
-  // successor — drop its entries from the map rather than aiming them at a
-  // vertex that is only approximately where the old corner was.
-  for (const [k, v] of [...keyMap]) {
-    if (v === `v${pl.vertexIds[corner.index]}`) keyMap.delete(k);
-  }
-  pl.spliceVertices(corner.index, 1, ...pts);
-  return replaceRectInPlace(doc, corner.entity, pl, keyMap);
+export function spliceCornerVertices(corner: PolyCorner, pts: Vec2[]): void {
+  corner.entity.spliceVertices(corner.index, 1, ...pts);
 }

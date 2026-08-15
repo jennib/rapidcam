@@ -17,6 +17,7 @@
 import type { Vec2 } from "../core/vec2";
 import {
   type Entity,
+  ArcEntity,
   LineEntity,
   PolylineEntity,
   BezierEntity,
@@ -100,6 +101,114 @@ function computeScale(svgEl: Element): SvgScale {
 
 function absXY(x: number, y: number, sc: SvgScale): Vec2 {
   return { x: x * sc.scaleX, y: sc.H - y * sc.scaleY };
+}
+
+/** World (Y-up mm) → SVG user units (Y-down); the inverse of {@link absXY}. */
+function toSvgXY(p: Vec2, sc: SvgScale): Vec2 {
+  return { x: p.x / (sc.scaleX || 1), y: (sc.H - p.y) / (sc.scaleY || 1) };
+}
+
+/**
+ * One SVG elliptical-arc segment, in world coordinates.
+ *
+ * A true circle becomes an ArcEntity; anything this model cannot hold — an
+ * ellipse, or a circle squashed by a non-uniform viewBox — comes back as points
+ * for the caller to fold into its polyline run. Returning null means the
+ * segment is degenerate and the spec calls for a straight line.
+ *
+ * The maths is SVG 1.1 appendix F.6.5 (endpoint → centre parameterisation),
+ * done in SVG space and then mapped out, because that is the space rx/ry and
+ * the rotation are expressed in. The Y-flip on the way out reverses the sweep,
+ * which is why the sign work below is worth doing rather than eyeballing.
+ */
+function svgArcToWorld(
+  fromWorld: Vec2,
+  toWorld: Vec2,
+  rxIn: number,
+  ryIn: number,
+  xRotDeg: number,
+  largeArc: boolean,
+  sweep: boolean,
+  sc: SvgScale,
+):
+  | { kind: "arc"; center: Vec2; radius: number; startAngle: number; endAngle: number }
+  | { kind: "points"; points: Vec2[] }
+  | null {
+  const p1 = toSvgXY(fromWorld, sc);
+  const p2 = toSvgXY(toWorld, sc);
+  let rx = Math.abs(rxIn);
+  let ry = Math.abs(ryIn);
+  if (rx < 1e-12 || ry < 1e-12) return null;
+  if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 1e-12) return null;
+
+  const phi = ((xRotDeg % 360) * Math.PI) / 180;
+  const cosP = Math.cos(phi);
+  const sinP = Math.sin(phi);
+  const dx = (p1.x - p2.x) / 2;
+  const dy = (p1.y - p2.y) / 2;
+  const x1p = cosP * dx + sinP * dy;
+  const y1p = -sinP * dx + cosP * dy;
+
+  // Radii too small to span the endpoints are scaled up, per the spec.
+  const lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+  if (lambda > 1) {
+    const s = Math.sqrt(lambda);
+    rx *= s;
+    ry *= s;
+  }
+
+  const num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
+  const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+  const coef = (largeArc === sweep ? -1 : 1) * Math.sqrt(Math.max(0, num / den));
+  const cxp = (coef * (rx * y1p)) / ry;
+  const cyp = (coef * -(ry * x1p)) / rx;
+  const cx = cosP * cxp - sinP * cyp + (p1.x + p2.x) / 2;
+  const cy = sinP * cxp + cosP * cyp + (p1.y + p2.y) / 2;
+
+  const ang = (ux: number, uy: number, vx: number, vy: number): number => {
+    const dot = ux * vx + uy * vy;
+    const len = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+    const a = Math.acos(Math.max(-1, Math.min(1, len === 0 ? 1 : dot / len)));
+    return ux * vy - uy * vx < 0 ? -a : a;
+  };
+  const ux = (x1p - cxp) / rx;
+  const uy = (y1p - cyp) / ry;
+  const vx = (-x1p - cxp) / rx;
+  const vy = (-y1p - cyp) / ry;
+  const theta1 = ang(1, 0, ux, uy);
+  let delta = ang(ux, uy, vx, vy) % (Math.PI * 2);
+  if (!sweep && delta > 0) delta -= Math.PI * 2;
+  if (sweep && delta < 0) delta += Math.PI * 2;
+
+  const uniform = Math.abs(Math.abs(sc.scaleX) - Math.abs(sc.scaleY)) < 1e-9;
+  const circular = Math.abs(rx - ry) < 1e-9 * Math.max(rx, ry, 1);
+  if (uniform && circular) {
+    // A circle in SVG space is a circle in world space. Flipping Y negates
+    // every angle, so a clockwise SVG sweep is a counter-clockwise world one.
+    const start = -theta1;
+    const end = -(theta1 + delta); // = start + the world sweep, un-normalised
+    // ArcEntity is stored CCW from start to end and is undirected as geometry,
+    // so a clockwise world sweep is the same arc with its ends swapped. Because
+    // `end` is `start` plus the signed sweep (never renormalised), min/max is
+    // exactly that swap — and never silently selects the other arc.
+    return {
+      kind: "arc",
+      center: absXY(cx, cy, sc),
+      radius: rx * Math.abs(sc.scaleX),
+      startAngle: Math.min(start, end),
+      endAngle: Math.max(start, end),
+    };
+  }
+
+  const steps = Math.max(8, Math.ceil((Math.abs(delta) / (Math.PI * 2)) * 64));
+  const points: Vec2[] = [];
+  for (let k = 1; k <= steps; k++) {
+    const t = theta1 + (delta * k) / steps;
+    const ct = Math.cos(t);
+    const st = Math.sin(t);
+    points.push(absXY(cx + rx * ct * cosP - ry * st * sinP, cy + rx * ct * sinP + ry * st * cosP, sc));
+  }
+  return { kind: "points", points };
 }
 
 // Apply an absolute SVG X onto a known CAM point (used for H command).
@@ -314,13 +423,30 @@ export function parsePath(d: string, sc: SvgScale): Entity[] {
           break;
         }
         case "A": {
-          // Arc: skip the 7 parameters but advance cur to the endpoint.
+          // Elliptical arc. Used to be dropped on the floor — the segment was
+          // skipped and the path silently closed straight across it, which is
+          // how a rounded rectangle exported by this app came back square.
           const ns = take(7);
           if (ns.length < 7) break;
-          console.warn("[svgImport] Arc command (A) is not supported — segment skipped");
-          cur = rel
+          const from = { ...cur };
+          const to = rel
             ? { x: cur.x + ns[5] * sc.scaleX, y: cur.y - ns[6] * sc.scaleY }
             : absXY(ns[5], ns[6], sc);
+          const arc = svgArcToWorld(from, to, ns[0], ns[1], ns[2], ns[3] !== 0, ns[4] !== 0, sc);
+          if (arc?.kind === "arc") {
+            flushPoly(false);
+            entities.push(new ArcEntity(arc.center, arc.radius, arc.startAngle, arc.endAngle));
+          } else {
+            // Either an ellipse — nothing in this model can hold one, so it
+            // joins the polyline run rather than vanishing — or a degenerate
+            // arc, which the spec says to treat as a straight line.
+            // Seeded from `from`, NOT from cur: cur is the far end by now, and
+            // starting the run there would drop the segment it is meant to keep.
+            if (polyPts.length === 0) polyPts.push({ ...from });
+            if (arc) for (const p of arc.points) polyPts.push(p);
+            else polyPts.push({ ...to });
+          }
+          cur = to;
           lastCubicCtrl = null;
           lastQuadCtrl = null;
           break;

@@ -26,12 +26,14 @@ import {
   type Corner,
   type CornerDirs,
   cornerAngle,
+  cornerValueFits,
   dropCornerJoin,
   findCorner,
   getCornerDirs,
   joinCornerEnds,
   refreshCorner,
-  reportDropped,
+  reportRetype,
+  setRectCorner,
   shapeCorners,
   spliceCornerVertices,
   trimCornerLegs,
@@ -90,6 +92,9 @@ function shortArcAngles(a1: number, a2: number): { startAngle: number; endAngle:
 function buildPreviews(corner: Corner, radius: number, unit: Unit): PreviewShape[] {
   const base: PreviewShape = { kind: "point", pos: corner.pos };
   if (radius <= 0) return [base];
+  // A rectangle's neighbouring corner can veto a radius its own legs allow;
+  // drawing the arc anyway would promise a corner that will not be created.
+  if (!cornerValueFits(corner, radius)) return [base];
   const dirs = getCornerDirs(corner);
   if (!dirs) return [base];
   const geo = computeGeo(dirs, radius);
@@ -107,18 +112,19 @@ function buildPreviews(corner: Corner, radius: number, unit: Unit): PreviewShape
 // ---------------------------------------------------------------------------
 
 /**
- * Apply the corner operation.
- *
- * Returns the number of references that could NOT be carried across the rect ->
- * polyline conversion (see corner.ts spliceCornerVertices), or null when the
- * corner is not workable at all. The count matters because silently losing a
- * constraint is the bug this return value exists to stop.
+ * Round one corner. Returns false when the corner cannot take this radius, so
+ * the caller can say so — a whole-shape fillet skipping a corner in silence
+ * reads as the tool half-working.
  */
-function applyFillet(corner: Corner, radius: number, doc: CADDocument): number | null {
+function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean {
+  // A rectangle keeps its corners as a property: no geometry is cut, nothing is
+  // replaced, and the radius stays editable in Properties afterwards.
+  if (corner.kind === "rect") return setRectCorner(corner, radius, "round");
+
   const dirs = getCornerDirs(corner);
-  if (!dirs) return null;
+  if (!dirs) return false;
   const geo = computeGeo(dirs, radius);
-  if (!geo) return null;
+  if (!geo) return false;
 
   if (corner.kind === "line") {
     // Determine arc winding (CCW from startAngle to endAngle)
@@ -136,7 +142,8 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): number |
     doc.add(arc);
     joinCornerEnds(doc, corner, arc.id, arcStartKey, arcEndKey, "fillet");
   } else {
-    // poly or rect — tessellate the short arc into the polyline
+    // A polyline is a vertex list, so its corner really is tessellated in —
+    // ~2° per step — which keeps the result one offsettable entity.
     let span = (((geo.a2 - geo.a1) % TAU) + TAU) % TAU;
     if (span > Math.PI) span -= TAU;
     const steps = Math.max(2, Math.ceil(Math.abs(span) / (Math.PI / 90)));
@@ -145,10 +152,10 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): number |
       const a = geo.a1 + (span * k) / steps;
       arcPts.push({ x: geo.C.x + radius * Math.cos(a), y: geo.C.y + radius * Math.sin(a) });
     }
-    return spliceCornerVertices(corner, doc, arcPts);
+    spliceCornerVertices(corner, arcPts);
   }
 
-  return 0;
+  return true;
 }
 
 /**
@@ -158,48 +165,44 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): number |
  * whole shape in one action; doing a rectangle one corner at a time was the
  * reported friction.
  *
- * Corners are walked highest-index-first (see `shapeCorners`) so each splice
- * only disturbs indices already dealt with, and each one is re-read from the
- * live document because a rect turns INTO a polyline on its first fillet.
+ * Corners are walked highest-index-first (see `shapeCorners`) so each polyline
+ * splice only disturbs indices already dealt with, and each one is re-read from
+ * the live document.
  *
  * A corner the radius does not fit is skipped rather than abandoning the rest —
  * a tight corner on one side of a shape should not stop the other three
  * rounding. The count of skips is reported so a partial result never looks like
  * a complete one.
  */
-function applyFilletAll(
-  corner: Corner,
-  radius: number,
-  doc: CADDocument,
-): { dropped: number; skipped: number } {
-  let dropped = 0;
+function applyFilletAll(corner: Corner, radius: number, doc: CADDocument): number {
   let skipped = 0;
   for (const c of shapeCorners(corner, doc)) {
     const live = refreshCorner(c, doc);
-    if (!live) {
-      skipped++;
-      continue;
-    }
-    const n = applyFillet(live, radius, doc);
-    if (n === null) skipped++;
-    else dropped += n;
+    if (!live || !applyFillet(live, radius, doc)) skipped++;
   }
-  return { dropped, skipped };
+  return skipped;
 }
 
-/** One corner or the whole shape, reporting whatever could not be carried. */
-function commit(
-  corner: Corner,
-  radius: number,
-  all: boolean,
-  ctx: ToolContext,
-): void {
+/**
+ * Whether this radius can be committed here at all — the same test the preview
+ * draws from, so what is shown and what is accepted cannot disagree.
+ */
+function workable(corner: Corner, radius: number): boolean {
+  if (radius <= 0 || !cornerValueFits(corner, radius)) return false;
+  const dirs = getCornerDirs(corner);
+  return !!dirs && !!computeGeo(dirs, radius);
+}
+
+/** One corner or the whole shape, saying so when a corner could not take it. */
+function commit(corner: Corner, radius: number, all: boolean, ctx: ToolContext): void {
   if (!all) {
-    reportDropped(applyFillet(corner, radius, ctx.doc), ctx);
+    // Said BEFORE applying, while the rectangle still holds the old type.
+    reportRetype(corner, "round", ctx);
+    if (!applyFillet(corner, radius, ctx.doc))
+      ctx.notify("That radius is too big for this corner.");
     return;
   }
-  const { dropped, skipped } = applyFilletAll(corner, radius, ctx.doc);
-  reportDropped(dropped, ctx);
+  const skipped = applyFilletAll(corner, radius, ctx.doc);
   if (skipped > 0) {
     // Say it: a shape that came back with three of four corners rounded, with
     // no message, reads as the tool half-working rather than as a radius that
@@ -272,8 +275,7 @@ export class FilletTool implements Tool {
         onCommit: (raws) => {
           const r = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
           if (r === null || r <= 0) return false;
-          const dirs = getCornerDirs(corner);
-          if (!dirs || !computeGeo(dirs, r)) return false;
+          if (!workable(corner, r)) return false;
           ctx.pushHistory();
           commit(corner, r, all, ctx);
           ctx.solve();
@@ -283,8 +285,7 @@ export class FilletTool implements Tool {
       });
     } else {
       // drag commit
-      const dirs = getCornerDirs(corner);
-      if (dirs && computeGeo(dirs, this.currentValue)) {
+      if (workable(corner, this.currentValue)) {
         ctx.pushHistory();
         commit(corner, this.currentValue, all, ctx);
         ctx.solve();

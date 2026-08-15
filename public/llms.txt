@@ -93,6 +93,13 @@ integration guide, inlined as one plain-text document.
   the file's `displayUnit`. The world frame is Y-up.
 - You do not need exact coordinates: emit rough positions plus constraints and
   dimensions, and RapidCAM's parametric solver snaps the geometry exact.
+- A **rounded, coved or chamfered rectangle is still a `rectangle`** — give it
+  `cornerRadii` (one radius per corner, `bl` `br` `tr` `tl`) and `cornerType`
+  (`"round"` | `"inverted"` | `"chamfer"`). Do not tessellate one into a
+  polyline: as a rectangle it keeps its `W`/`H` fields, its corner point keys,
+  and an editable radius, and the arcs reach the toolpath as true arcs. The
+  radius is also the scalar DOF `cr`, so a `bindings[]` entry can drive it from
+  a formula (`{"scalarKey": "cr", "expr": "stock * 2"}`), all four corners at once.
 - Declare `"version": 3` and validate your output against the schema before
   presenting it to a user.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;

@@ -34,12 +34,15 @@ interface Harness {
   type(raw: string): boolean | undefined;
   editorOpen(): boolean;
   solves: number;
+  /** Everything the tool said in the status bar. */
+  notices: string[];
 }
 
 function makeCtx(doc: CADDocument, scale = 1): Harness {
   let onCommit: ((raws: string[]) => boolean | undefined) | null = null;
   const h: Harness = {
     solves: 0,
+    notices: [],
     editorOpen: () => onCommit !== null,
     type(raw) {
       if (!onCommit) throw new Error("no Type to Draw field is open");
@@ -62,7 +65,9 @@ function makeCtx(doc: CADDocument, scale = 1): Harness {
       closeTypeToDraw() {
         onCommit = null;
       },
-      notify() {},
+      notify(msg: string) {
+        h.notices.push(msg);
+      },
       setHint() {},
       snap: new SnapEngine(),
     },
@@ -165,19 +170,49 @@ describe("Fillet", () => {
     expect(ofType(doc, ArcEntity)).toHaveLength(0);
   });
 
-  it("turns a filleted rectangle into a polyline with a tessellated corner", () => {
+  it("keeps a filleted rectangle a RECTANGLE, with the radius on the corner it was applied to", () => {
+    // This is the "can't edit a fillet — it becomes a polyline" ticket. The
+    // rectangle used to be consumed and replaced by a 49-vertex polyline.
     const doc = new CADDocument({ width: 400, height: 300 });
-    doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
     const h = makeCtx(doc);
     clickCorner(new FilletTool(), h, { x: 0, y: 0 });
     h.type("8");
 
-    expect(ofType(doc, RectEntity), "the rect is consumed").toHaveLength(0);
-    const pls = ofType(doc, PolylineEntity);
-    expect(pls).toHaveLength(1);
-    expect(pls[0].closed).toBe(true);
-    // 4 corners, one replaced by an arc's worth of points.
-    expect(pls[0].points.length).toBeGreaterThan(4);
+    expect(ofType(doc, RectEntity), "still a rectangle").toHaveLength(1);
+    expect(ofType(doc, PolylineEntity)).toHaveLength(0);
+    expect(rect.cornerRadii).toEqual([8, 0, 0, 0]); // bl only
+    expect(rect.cornerType).toBe("round");
+    // And it is really rounded, not merely flagged: the corner point is no
+    // longer on the boundary.
+    expect(rect.outlinePoints()).not.toContainEqual({ x: 0, y: 0 });
+  });
+
+  it("Shift rounds every corner of a rectangle at once", () => {
+    const doc = new CADDocument({ width: 400, height: 300 });
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
+    const h = makeCtx(doc);
+    const tool = new FilletTool();
+    tool.onPointerDown?.(evt({ x: 0, y: 0 }), h.ctx);
+    tool.onPointerUp?.({ ...evt({ x: 0, y: 0 }), shiftKey: true }, h.ctx);
+    h.type("6");
+
+    expect(rect.cornerRadii).toEqual([6, 6, 6, 6]);
+  });
+
+  it("refuses a rectangle radius that leaves no room for its neighbour", () => {
+    const doc = new CADDocument({ width: 400, height: 300 });
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
+    rect.cornerRadii = [0, 80, 0, 0]; // 80mm already on the far end of a 100mm edge
+    const h = makeCtx(doc);
+    clickCorner(new FilletTool(), h, { x: 0, y: 0 });
+
+    // 30 + 80 > 100. The legs alone would allow it — only the neighbour does not.
+    expect(h.type("30")).toBe(false);
+    expect(rect.cornerRadii[0]).toBe(0);
+    // Positive control: a radius that does fit beside 80mm is accepted.
+    expect(h.type("15")).not.toBe(false);
+    expect(rect.cornerRadii[0]).toBe(15);
   });
 
   it("splices an arc into a closed polyline vertex in place", () => {
@@ -237,18 +272,43 @@ describe("Chamfer", () => {
     expect(ofType(doc, LineEntity)).toHaveLength(2); // still just the two legs
   });
 
-  it("splices two points into a rectangle corner, becoming a polyline", () => {
+  it("sets a rectangle's corner type and setback instead of cutting it up", () => {
+    const doc = new CADDocument({ width: 400, height: 300 });
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
+    const h = makeCtx(doc);
+    clickCorner(new ChamferTool(), h, { x: 100, y: 60 }); // tr
+
+    h.type("8");
+    expect(ofType(doc, RectEntity)).toHaveLength(1);
+    expect(ofType(doc, PolylineEntity)).toHaveLength(0);
+    expect(rect.cornerRadii).toEqual([0, 0, 8, 0]);
+    expect(rect.cornerType).toBe("chamfer");
+    // 4 corners, one traded for two bevel ends.
+    expect(rect.outlinePoints()).toHaveLength(5);
+  });
+
+  it("says so when shaping one corner re-types the others", () => {
+    // A rectangle has ONE corner type, so filleting a chamfered rectangle
+    // rounds all four. Not guessable, so it is said out loud.
+    const doc = new CADDocument({ width: 400, height: 300 });
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
+    rect.cornerRadii = [0, 0, 5, 0];
+    rect.cornerType = "chamfer";
+    const h = makeCtx(doc);
+    clickCorner(new FilletTool(), h, { x: 0, y: 0 });
+    h.type("6");
+
+    expect(rect.cornerType).toBe("round");
+    expect(h.notices.join(" ")).toMatch(/one corner type/i);
+  });
+
+  it("stays quiet when nothing else was shaped to re-type", () => {
     const doc = new CADDocument({ width: 400, height: 300 });
     doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 60 }));
     const h = makeCtx(doc);
-    clickCorner(new ChamferTool(), h, { x: 100, y: 60 });
-    h.type("8");
-
-    expect(ofType(doc, RectEntity)).toHaveLength(0);
-    const pls = ofType(doc, PolylineEntity);
-    expect(pls).toHaveLength(1);
-    // One corner replaced by exactly two points: 4 - 1 + 2 = 5.
-    expect(pls[0].points).toHaveLength(5);
+    clickCorner(new ChamferTool(), h, { x: 0, y: 0 });
+    h.type("6");
+    expect(h.notices).toEqual([]);
   });
 });
 

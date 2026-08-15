@@ -13,15 +13,13 @@ function oneRect(): string {
 /**
  * Shift-drag rounds EVERY corner in one gesture.
  *
- * The unit specs pin the corner ORDER (highest index first, because each fillet
- * shifts every index above it). They cannot show that the real gesture reaches
- * that code, or that the four splices compose — walking the wrong way would
- * still produce a polyline, just one with arcs cut into arcs.
+ * The unit specs pin the corner walk. They cannot show that the real gesture
+ * reaches it — a drag that never commits, or a Shift read at press instead of
+ * release, looks identical to them.
  *
- * A 90 degree corner tessellates at ~2 degrees per step, so each rounded corner
- * contributes ~46 vertices. One corner would leave ~49; four leave ~187. The
- * count is therefore the cheapest honest discriminator between "it rounded one"
- * and "it rounded all four".
+ * The rectangle must still BE a rectangle afterwards, with four radii on it.
+ * It used to come back as a ~187-vertex polyline, which is the "can't edit a
+ * fillet" ticket: nothing about that shape could be adjusted again.
  */
 test("Shift-drag rounds every corner of the rectangle", async ({ page }) => {
   await openDoc(page, oneRect());
@@ -50,10 +48,19 @@ test("Shift-drag rounds every corner of the rectangle", async ({ page }) => {
   const out = await page.evaluate(() => {
     const doc = (window as any).__app.doc;
     const e = doc.entities.find((x: any) => x.type === "polyline" || x.type === "rectangle");
-    return { type: e.type, n: e.points ? e.points.length : 4 };
+    return {
+      type: e.type,
+      radii: e.cornerRadii ?? null,
+      cornerType: e.cornerType ?? null,
+      // The boundary the renderer and every toolpath actually read.
+      outline: e.outlinePoints ? e.outlinePoints().length : 4,
+    };
   });
   console.log("RESULT:", JSON.stringify(out));
-  expect(out.type).toBe("polyline");
-  // Four arcs, not one: a single rounded corner would land near 49.
-  expect(out.n).toBeGreaterThan(150);
+  expect(out.type).toBe("rectangle");
+  expect(out.cornerType).toBe("round");
+  // All four, not just the one under the cursor.
+  expect(out.radii.filter((r: number) => r > 0)).toHaveLength(4);
+  // And really rounded: four tessellated corners, not four corner points.
+  expect(out.outline).toBeGreaterThan(4);
 });

@@ -277,6 +277,8 @@ import {
   LineEntity,
   CircleEntity,
   RectEntity,
+  type CornerType,
+  CORNER_TYPES,
   PolylineEntity,
   type PolygonParams,
   ArcEntity,
@@ -591,7 +593,10 @@ type EntitySnapshot = EntitySnapshotCommon &
   (
     | { type: "line"; a: Vec2; b: Vec2 }
     | { type: "circle"; center: Vec2; radius: number }
-    | { type: "rectangle"; p0: Vec2; p1: Vec2 }
+    // cornerRadii/cornerType are written only when a corner is actually shaped,
+    // so a plain rectangle — every rectangle in every existing file — serialises
+    // byte-for-byte as it always did.
+    | { type: "rectangle"; p0: Vec2; p1: Vec2; cornerRadii?: number[]; cornerType?: CornerType }
     | {
         type: "polyline";
         points: Vec2[];
@@ -1479,6 +1484,12 @@ export class CADDocument {
               type: "rectangle",
               p0: { ...e.p0 },
               p1: { ...e.p1 },
+              // The ASKED-FOR radii, not the clamped ones: a rectangle that is
+              // momentarily too small for its corners must reopen with them
+              // intact (see RectEntity.effectiveCornerRadii).
+              ...(e.cornerRadii.some((r) => r > 0)
+                ? { cornerRadii: [...e.cornerRadii], cornerType: e.cornerType }
+                : {}),
               ...entityCommon(e),
             };
           if (e instanceof ArcEntity)
@@ -1612,7 +1623,18 @@ export class CADDocument {
           break;
         }
         case "rectangle": {
-          e = new RectEntity({ ...es.p0 }, { ...es.p1 }, es.id);
+          const rect = new RectEntity({ ...es.p0 }, { ...es.p1 }, es.id);
+          // Tolerant of a hand-authored file: the schema says four numbers, but
+          // a short, long or junk-filled array loads as far as it makes sense
+          // rather than throwing or producing NaN geometry.
+          if (es.cornerRadii) {
+            rect.cornerRadii = [0, 1, 2, 3].map((i) => {
+              const v = es.cornerRadii?.[i];
+              return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
+            }) as [number, number, number, number];
+          }
+          if (es.cornerType && CORNER_TYPES.includes(es.cornerType)) rect.cornerType = es.cornerType;
+          e = rect;
           break;
         }
         case "polyline": {

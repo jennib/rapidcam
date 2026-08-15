@@ -105,14 +105,16 @@ export const TOOLS: Record<string, ToolReference> = {
   fillet: {
     key: "f",
     label: "Fillet",
-    hint:
-      "Click two lines that meet (or a polyline corner) to round · drag or type the radius · Shift = every corner of the shape",
+    // "corner" rather than "two lines that meet": a rectangle corner is one of
+    // the three things this works on, and on a rectangle it sets an editable
+    // radius rather than cutting the shape up.
+    hint: "Click a corner to round it · drag or type the radius · Shift = every corner of the shape",
     typeToDraw: true,
   },
   // No key: "c" is Circle. Chamfer lives on the toolbar and the context menu.
   chamfer: {
     label: "Chamfer",
-    hint: "Click two lines that meet (or a polyline corner) to bevel · drag or type the distance",
+    hint: "Click a corner to bevel it · drag or type the distance",
     typeToDraw: true,
   },
   trim: { key: "t", label: "Trim", hint: "Click the segment you want removed" },
