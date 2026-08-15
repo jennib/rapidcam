@@ -1823,7 +1823,7 @@ function toolpathBody(
       } else if (e instanceof RectEntity) {
         islands.push(e.outlinePoints());
       } else if (e instanceof PolylineEntity && e.closed) {
-        islands.push(e.points);
+        islands.push(e.outlinePoints());
       }
     }
     // Also chain any line segments in the island set into closed polygons.
@@ -1919,7 +1919,7 @@ function toolpathBody(
     if (op.type === "vcarve") {
       let outer: Vec2[] | null = null;
       if (ent instanceof RectEntity) outer = ent.outlinePoints();
-      else if (ent instanceof PolylineEntity && ent.closed) outer = ent.points;
+      else if (ent instanceof PolylineEntity && ent.closed) outer = ent.outlinePoints();
       else if (ent instanceof CircleEntity) {
         const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
         outer = Array.from({ length: nSegs }, (_, i) => {
@@ -1945,9 +1945,9 @@ function toolpathBody(
       else if (ent instanceof RectEntity)
         lines.push(...chamferPolygon(ent.outlinePoints(), op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...chamferPolygon(ent.points, op, ox, oy, zOff));
+        lines.push(...chamferPolygon(ent.outlinePoints(), op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
-        lines.push(...engravePoints(ent.points, false, cop, ox, oy, zOff)); // open edge, centred
+        lines.push(...engravePoints(ent.outlinePoints(), false, cop, ox, oy, zOff)); // open edge, centred
       else if (ent instanceof LineEntity)
         lines.push(...engravePoints([ent.a, ent.b], false, cop, ox, oy, zOff));
       else if (ent instanceof ArcEntity) lines.push(...engraveArc(ent, cop, ox, oy, zOff));
@@ -1979,7 +1979,7 @@ function toolpathBody(
       else if (ent instanceof RectEntity)
         lines.push(...engravePoints(ent.outlinePoints(), true, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
-        lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
+        lines.push(...engravePoints(ent.outlinePoints(), ent.closed, op, ox, oy, zOff));
       else if (ent instanceof ArcEntity) lines.push(...engraveArc(ent, op, ox, oy, zOff));
       else if (ent instanceof BezierEntity)
         lines.push(...pp.engraveBezier(ent.p0, ent.p1, ent.p2, ent.p3, op, ox, oy, zOff));
@@ -1995,7 +1995,7 @@ function toolpathBody(
       else if (ent instanceof RectEntity)
         lines.push(...pocketPolygon(ent.outlinePoints(), islands, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...pocketPolygon(ent.points, islands, op, ox, oy, zOff));
+        lines.push(...pocketPolygon(ent.outlinePoints(), islands, op, ox, oy, zOff));
       else if (ent instanceof ArcEntity)
         lines.push(
           `; NOTE: arc (${ent.id}) skipped — pocket requires a closed region (use a closed loop or region pick)`,
@@ -2006,7 +2006,7 @@ function toolpathBody(
       else if (ent instanceof RectEntity)
         lines.push(...profilePolygon(ent.outlinePoints(), op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity && ent.closed)
-        lines.push(...profilePolygon(ent.points, op, ox, oy, zOff, doc.stockThickness));
+        lines.push(...profilePolygon(ent.outlinePoints(), op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity)
         lines.push(`; NOTE: open polyline (${ent.id}) skipped — profile requires closed geometry`);
       else if (ent instanceof LineEntity)

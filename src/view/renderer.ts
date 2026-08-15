@@ -539,9 +539,12 @@ export class Renderer {
       }
       case "polyline": {
         const pl = e as PolylineEntity;
-        if (pl.points.length > 0) {
-          this.moveTo(pl.points[0], view);
-          for (let i = 1; i < pl.points.length; i++) this.lineTo(pl.points[i], view);
+        // outlinePoints, not points: this draws the BOUNDARY, so it has to
+        // follow the shaped corners rather than the vertices they cut off.
+        const pts = pl.outlinePoints(view.toWorldLen(0.5));
+        if (pts.length > 0) {
+          this.moveTo(pts[0], view);
+          for (let i = 1; i < pts.length; i++) this.lineTo(pts[i], view);
           if (pl.closed) ctx.closePath();
         }
         break;

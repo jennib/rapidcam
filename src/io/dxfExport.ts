@@ -161,7 +161,7 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
         );
       }
     } else if (e instanceof PolylineEntity) {
-      if (e.points.length >= 2) lwpolyline(e.points, e.closed, layer);
+      if (e.points.length >= 2) lwpolyline(e.outlinePoints(), e.closed, layer);
     } else if (e instanceof BezierEntity) {
       // A cubic Bézier is exactly a degree-3 NURBS with clamped knots.
       tag(0, "SPLINE");

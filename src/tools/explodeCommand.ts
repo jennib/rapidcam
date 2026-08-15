@@ -88,11 +88,15 @@ function explodeRectangle(rect: RectEntity): { lines: Entity[]; constraints: Con
 
 /** Plain (unconstrained) segments of an open or closed polyline. */
 function explodePolyline(pl: PolylineEntity): LineEntity[] {
+  // The boundary, not the vertex list: exploding is meant to hand back what the
+  // shape actually IS, which is how the rectangle branch above treats a shaped
+  // corner (lines plus a true arc, as AutoCAD explodes a polyline with bulges).
+  const pts = pl.outlinePoints();
   const out: LineEntity[] = [];
-  const n = pl.points.length;
+  const n = pts.length;
   const count = pl.closed ? n : n - 1;
   for (let i = 0; i < count; i++) {
-    out.push(new LineEntity(pl.points[i], pl.points[(i + 1) % n]));
+    out.push(new LineEntity(pts[i], pts[(i + 1) % n]));
   }
   return out;
 }

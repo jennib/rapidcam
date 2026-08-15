@@ -970,6 +970,42 @@ export class PolylineEntity extends Entity {
     this.vertexIds.reverse();
   }
 
+  /**
+   * The boundary as an ordered list of points, in vertex order.
+   *
+   * THE SEAM, the polyline twin of {@link RectEntity.outlinePoints}: the one
+   * place a polyline becomes a boundary. Today it is the vertices themselves,
+   * so this is inert — but it is the single method a per-vertex corner radius
+   * has to change to reach every toolpath, export and pixel at once, instead of
+   * thirty call sites each rebuilding the shape out of the vertex list.
+   *
+   * WHICH USES BELONG HERE. `points` is read two ways and only the call site
+   * says which, so the rule is what the code is ASKING FOR, not what it does
+   * with it:
+   *
+   *  - **The boundary** — what gets cut, drawn, offset, filled or exported.
+   *    Those come here. A shaped corner has to appear in all of them together;
+   *    one that reads the vertex list instead cuts a square corner while the
+   *    canvas draws a round one, which is the worst failure this app has.
+   *  - **The vertices** — the DOF the solver moves, the ids constraints and
+   *    dimensions name (`v<id>`, `mid_<id>`), and the things that edit them:
+   *    transforms writing positions back, `intersect` handing out segments
+   *    tagged with `vertexIds`, trim/extend's named targets, Join's chaining,
+   *    vertex pickers. Those stay on `points`, exactly as the four NAMED
+   *    corners of a rectangle stayed on `corners()`. That naming IS the
+   *    constraint vocabulary, and a tessellated ring has none of it.
+   *
+   * The tell is whether the answer would have to change if a corner were
+   * rounded. "Where do I cut?" — yes. "Which vertex is v3?" — no.
+   *
+   * `toleranceMM` is the maximum chord deviation once there are arcs to
+   * flatten; it matches the rectangle's signature so both ends of the seam can
+   * be called the same way.
+   */
+  outlinePoints(_toleranceMM = 0.05): Vec2[] {
+    return this.points.map(clone);
+  }
+
   /** Number of drawn segments (accounts for the closing segment). */
   segmentCount(): number {
     const n = this.points.length;
