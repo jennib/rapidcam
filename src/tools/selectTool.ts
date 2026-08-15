@@ -28,6 +28,7 @@ import {
 } from "../model/document";
 import {
   type Bounds,
+  type Entity,
   type LineEntity,
   PolylineEntity,
   type SnapPoint,
@@ -934,7 +935,18 @@ export class SelectTool implements Tool {
       // locked layers, and the WCS origin marker with it.
       if (ent.id === ORIGIN_ENTITY_ID || !ctx.doc.isPickable(ent)) continue;
       const eb = ent.bounds();
-      const inside = crossing ? boundsIntersect(eb, rect) : boundsContainsBounds(rect, eb);
+      // Window (left-to-right) stays a bounds test and is exact: if the box is
+      // contained, the geometry inside it is too.
+      //
+      // Crossing (right-to-left) must test the GEOMETRY. Comparing bounding
+      // boxes meant a marquee that never came near a shape still caught it by
+      // clipping the empty corner of its box — worst for a circle, whose bbox
+      // corner sits 0.41r off the curve, and worst of all for exactly the round
+      // things people box-select around. The bounds check stays as the cheap
+      // reject in front of it.
+      const inside = crossing
+        ? boundsIntersect(eb, rect) && crossesGeometry(ent, rect)
+        : boundsContainsBounds(rect, eb);
       if (inside) {
         const group = ctx.doc.groupOf(ent.id);
         if (group) {
@@ -1075,6 +1087,57 @@ function pinsForSelected(doc: CADDocument): PinMap {
 
 function arraysEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Does `rect` actually touch this entity, rather than merely its bounding box?
+ *
+ * Only asked for a CROSSING marquee, and only after the cheap bounds test has
+ * already passed, so this runs on a handful of candidates rather than the whole
+ * document.
+ *
+ * Two ways to touch: the rectangle's own edges cross the entity, or the
+ * rectangle swallows it whole (in which case no edge crosses anything). The
+ * second case is why containment is checked as well — otherwise dragging a
+ * crossing box right over a small circle would miss it.
+ *
+ * The per-entity work is delegated to `distanceTo`, which every entity already
+ * implements for hit-testing, sampled along the rectangle's border. That reuses
+ * one definition of "on this shape" rather than adding a second one per type —
+ * the alternative was a shape × shape intersection table, which is the drift
+ * this codebase keeps paying for.
+ */
+function crossesGeometry(ent: Entity, rect: Bounds): boolean {
+  const eb = ent.bounds();
+  // Swallowed whole — no edge crosses it, but it is plainly selected.
+  if (boundsContainsBounds(rect, eb)) return true;
+
+  // Walk the rectangle's border and ask the entity how far away it is. The step
+  // is a fraction of the smaller side so a thin marquee is still sampled finely,
+  // and the hit radius is that same step, so samples cannot fall between a
+  // curve and the border and miss a genuine crossing.
+  const w = rect.max.x - rect.min.x;
+  const h = rect.max.y - rect.min.y;
+  const step = Math.max(Math.min(w, h) / 24, 1e-6);
+  const near = step;
+  const corners: Vec2[] = [
+    { x: rect.min.x, y: rect.min.y },
+    { x: rect.max.x, y: rect.min.y },
+    { x: rect.max.x, y: rect.max.y },
+    { x: rect.min.x, y: rect.max.y },
+  ];
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % 4];
+    const len = dist(a, b);
+    const n = Math.max(1, Math.ceil(len / step));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      if (ent.distanceTo(p) <= near) return true;
+    }
+  }
+  return false;
 }
 
 function boundsIntersect(a: Bounds, b: Bounds): boolean {
