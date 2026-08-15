@@ -276,7 +276,7 @@ export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
         ids: [e.id],
       });
     } else if (e instanceof RectEntity) {
-      loops.push({ verts: [...e.corners()], ids: [e.id] });
+      loops.push({ verts: e.outlinePoints(), ids: [e.id] });
     } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
       loops.push({ verts: e.points, ids: [e.id] });
     } else if (e instanceof TextEntity) {

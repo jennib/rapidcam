@@ -527,9 +527,13 @@ export class Renderer {
       }
       case "rectangle": {
         const r = e as RectEntity;
-        const c = r.corners().map((p) => view.worldToScreen(p));
+        // outlinePoints, not corners: this draws the BOUNDARY, so it has to
+        // follow whatever shape the corners are. `c.length` for the same reason
+        // — hardcoding 4 is what would leave the canvas drawing square corners
+        // after a radius exists.
+        const c = r.outlinePoints(view.toWorldLen(0.5)).map((p) => view.worldToScreen(p));
         ctx.moveTo(c[0].x, c[0].y);
-        for (let i = 1; i < 4; i++) ctx.lineTo(c[i].x, c[i].y);
+        for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y);
         ctx.closePath();
         break;
       }

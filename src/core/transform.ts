@@ -166,8 +166,10 @@ export function applyRotate(
         e.p0 = { x: minX, y: minY };
         e.p1 = { x: maxX, y: maxY };
       } else {
-        // Convert rotated rectangle into a PolylineEntity
-        const corners = e.corners();
+        // Convert rotated rectangle into a PolylineEntity.
+        // outlinePoints so a rounded rectangle rotates into a rounded polyline
+        // rather than losing its corners on the way through.
+        const corners = e.outlinePoints();
         corners.forEach(rotPt);
         const poly = new PolylineEntity(corners, true, e.id);
         poly.selected = e.selected;

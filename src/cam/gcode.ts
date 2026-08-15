@@ -1821,7 +1821,7 @@ function toolpathBody(
           }),
         );
       } else if (e instanceof RectEntity) {
-        islands.push([...e.corners()]);
+        islands.push(e.outlinePoints());
       } else if (e instanceof PolylineEntity && e.closed) {
         islands.push(e.points);
       }
@@ -1918,7 +1918,7 @@ function toolpathBody(
     // regions with counters go through the region block above.)
     if (op.type === "vcarve") {
       let outer: Vec2[] | null = null;
-      if (ent instanceof RectEntity) outer = [...ent.corners()];
+      if (ent instanceof RectEntity) outer = ent.outlinePoints();
       else if (ent instanceof PolylineEntity && ent.closed) outer = ent.points;
       else if (ent instanceof CircleEntity) {
         const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
@@ -1943,7 +1943,7 @@ function toolpathBody(
       if (ent instanceof CircleEntity)
         lines.push(...chamferCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
       else if (ent instanceof RectEntity)
-        lines.push(...chamferPolygon([...ent.corners()], op, ox, oy, zOff));
+        lines.push(...chamferPolygon(ent.outlinePoints(), op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
         lines.push(...chamferPolygon(ent.points, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
@@ -1977,7 +1977,7 @@ function toolpathBody(
       else if (ent instanceof CircleEntity)
         lines.push(...engraveCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
       else if (ent instanceof RectEntity)
-        lines.push(...engravePoints([...ent.corners()], true, op, ox, oy, zOff));
+        lines.push(...engravePoints(ent.outlinePoints(), true, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity)
         lines.push(...engravePoints(ent.points, ent.closed, op, ox, oy, zOff));
       else if (ent instanceof ArcEntity) lines.push(...engraveArc(ent, op, ox, oy, zOff));
@@ -1993,7 +1993,7 @@ function toolpathBody(
           ...pocketCircle(ent.center.x, ent.center.y, ent.radius, islands, op, ox, oy, zOff),
         );
       else if (ent instanceof RectEntity)
-        lines.push(...pocketPolygon([...ent.corners()], islands, op, ox, oy, zOff));
+        lines.push(...pocketPolygon(ent.outlinePoints(), islands, op, ox, oy, zOff));
       else if (ent instanceof PolylineEntity && ent.closed)
         lines.push(...pocketPolygon(ent.points, islands, op, ox, oy, zOff));
       else if (ent instanceof ArcEntity)
@@ -2004,7 +2004,7 @@ function toolpathBody(
       if (ent instanceof CircleEntity)
         lines.push(...profileCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
       else if (ent instanceof RectEntity)
-        lines.push(...profilePolygon([...ent.corners()], op, ox, oy, zOff, doc.stockThickness));
+        lines.push(...profilePolygon(ent.outlinePoints(), op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity && ent.closed)
         lines.push(...profilePolygon(ent.points, op, ox, oy, zOff, doc.stockThickness));
       else if (ent instanceof PolylineEntity)

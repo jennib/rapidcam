@@ -109,7 +109,11 @@ function computeSignedOffset(entity: Entity, cursor: Vec2): number | null {
     }
     case "rectangle": {
       const r = entity as RectEntity;
-      const corners = r.corners();
+      // The offset distance is measured to the BOUNDARY, so it follows the
+      // corner shape. The inside test below stays a bounding-box test, which is
+      // exact today and will be very slightly generous inside a rounded corner —
+      // it only picks the sign of a cursor-following preview, so that is fine.
+      const corners = r.outlinePoints();
       const inside =
         cursor.x >= r.minPt.x &&
         cursor.x <= r.maxPt.x &&
