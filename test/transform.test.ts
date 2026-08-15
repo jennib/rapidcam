@@ -6,6 +6,7 @@ import {
   PolylineEntity,
   ArcEntity,
 } from "../src/model/entities";
+import type { Vec2 } from "../src/core/vec2";
 import {
   selectionBounds,
   applyScale,
@@ -150,5 +151,147 @@ describe("transform.ts", () => {
     // -135 to -45
     expect(arc.startAngle).toBeCloseTo((-3 * Math.PI) / 4);
     expect(arc.endAngle).toBeCloseTo(-Math.PI / 4);
+  });
+});
+
+/**
+ * A transform moves a shape; anything indexed BY a part of that shape has to
+ * move with it. Two families of that were unhandled, and both failed silently:
+ * a polyline's vertex ids were left behind by the winding reversal, and a
+ * rectangle's corner treatments were left behind by every transform.
+ *
+ * These assert the INVARIANT ("the radius is still on the same physical
+ * corner", "v1 is still the same physical vertex") rather than an index table,
+ * so a permutation that is wrong in a way the table happens to agree with still
+ * fails.
+ */
+describe("transforms carry what is indexed by the shape", () => {
+  /** Where the one rounded corner physically is, in world coordinates. */
+  const roundedCornerOf = (rect: RectEntity): Vec2 => {
+    const i = rect.cornerRadii.findIndex((r) => r > 0);
+    expect(i).toBeGreaterThanOrEqual(0); // positive control: a radius survived at all
+    return rect.corners()[i];
+  };
+
+  it("applyFlipH keeps polyline vertex ids on their own vertices", () => {
+    const pl = new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 10 },
+        { x: 0, y: 10 },
+      ],
+      true,
+    );
+    const before = pl.getPoint("v1"); // (10, 0)
+    applyFlipH([pl], 5);
+    // v1 must be where v1 went — the mirror of (10,0) is (0,0). Before the fix
+    // it landed on (0,10): points reversed, ids did not, so every constraint
+    // and dimension on this shape quietly changed which vertex it held.
+    expect(pl.getPoint("v1")).toEqual({ x: 10 - before.x, y: before.y });
+    expect(pl.points.length).toBe(pl.vertexIds.length);
+  });
+
+  it("applyFlipV keeps polyline vertex ids on their own vertices", () => {
+    const pl = new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 8 },
+      ],
+      false,
+    );
+    const before = pl.getPoint("v2");
+    applyFlipV([pl], 4);
+    expect(pl.getPoint("v2")).toEqual({ x: before.x, y: 8 - before.y });
+  });
+
+  it("winding still reverses, so CAM keeps its orientation", () => {
+    const pl = new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 10 },
+      ],
+      true,
+    );
+    const area = (p: PolylineEntity) => {
+      let a = 0;
+      for (let i = 0; i < p.points.length; i++) {
+        const q = p.points[i],
+          r = p.points[(i + 1) % p.points.length];
+        a += q.x * r.y - r.x * q.y;
+      }
+      return a / 2;
+    };
+    const before = area(pl);
+    applyFlipH([pl], 0);
+    // Mirroring alone would negate the signed area; the reversal puts it back.
+    expect(Math.sign(area(pl))).toBe(Math.sign(before));
+  });
+
+  it("applyScale scales a rectangle's corner radii with the rectangle", () => {
+    const rect = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 100 });
+    rect.cornerRadii = [10, 10, 10, 10];
+    applyScale([rect], 0, 0, 2, 2);
+    expect(rect.width).toBe(200);
+    // A 10mm corner on a 100mm side stays a 10% corner on the 200mm side.
+    expect(rect.cornerRadii).toEqual([20, 20, 20, 20]);
+  });
+
+  it("counts a shaped rectangle as uniform-only, an unshaped one not", () => {
+    const shaped = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 100 });
+    shaped.cornerRadii = [10, 0, 0, 0];
+    const plain = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 100 });
+    // A corner is round, never elliptical — it can only take one factor.
+    expect(applyScale([shaped], 0, 0, 2, 0.5).uniformOnly).toBe(1);
+    expect(applyScale([plain], 0, 0, 2, 0.5).uniformOnly).toBe(0);
+  });
+
+  it("applyFlipH moves a rectangle's corner treatment to the mirrored corner", () => {
+    const rect = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 50 });
+    rect.cornerRadii = [10, 0, 0, 0]; // bottom-left
+    const at = roundedCornerOf(rect);
+    applyFlipH([rect], 50);
+    expect(roundedCornerOf(rect)).toEqual({ x: 100 - at.x, y: at.y });
+  });
+
+  it("applyFlipV moves a rectangle's corner treatment to the mirrored corner", () => {
+    const rect = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 50 });
+    rect.cornerRadii = [0, 0, 10, 0]; // top-right
+    const at = roundedCornerOf(rect);
+    applyFlipV([rect], 25);
+    expect(roundedCornerOf(rect)).toEqual({ x: at.x, y: 50 - at.y });
+  });
+
+  it("applyRotate turns a rectangle's corner treatments with the rectangle", () => {
+    for (const turns of [1, 2, 3, -1]) {
+      const rect = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 50 });
+      rect.cornerRadii = [10, 0, 0, 0];
+      const at = roundedCornerOf(rect);
+      const a = (turns * Math.PI) / 2;
+      applyRotate([rect], 50, 25, a);
+      const want = {
+        x: 50 + (at.x - 50) * Math.cos(a) - (at.y - 25) * Math.sin(a),
+        y: 25 + (at.x - 50) * Math.sin(a) + (at.y - 25) * Math.cos(a),
+      };
+      const got = roundedCornerOf(rect);
+      expect(got.x).toBeCloseTo(want.x);
+      expect(got.y).toBeCloseTo(want.y);
+    }
+  });
+
+  it("two flips and four quarter-turns are the identity on corner treatments", () => {
+    const radii: [number, number, number, number] = [1, 2, 3, 4];
+    const a = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 50 });
+    a.cornerRadii = [...radii];
+    applyFlipH([a], 50);
+    applyFlipH([a], 50);
+    expect(a.cornerRadii).toEqual(radii);
+
+    const b = new RectEntity({ x: 0, y: 0 }, { x: 100, y: 50 });
+    b.cornerRadii = [...radii];
+    for (let i = 0; i < 4; i++) applyRotate([b], 50, 25, Math.PI / 2);
+    expect(b.cornerRadii).toEqual(radii);
   });
 });
