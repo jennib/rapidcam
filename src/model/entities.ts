@@ -419,6 +419,28 @@ export class RectEntity extends Entity {
     ];
   }
 
+  /**
+   * The boundary as one closed ring of points, CCW from the bottom-left.
+   *
+   * THE SEAM for parametric corners. Today this is exactly `corners()`, which is
+   * the point: every consumer can move onto it with provably zero behaviour
+   * change, and when a corner radius arrives it tessellates the arcs here — once
+   * — instead of in each of the fifteen places that currently rebuild a
+   * rectangle out of four straight segments. Without this, adding a radius would
+   * leave the toolpath cutting square corners while the drawing showed round
+   * ones, which is the worst failure this app has available to it.
+   *
+   * Use this wherever a rectangle is treated as an OUTLINE (CAM, offsetting,
+   * export, rendering). Keep using {@link corners} where the four *named*
+   * corners are the subject — picking, explode, corner snaps — since those stay
+   * four corners however they are shaped.
+   *
+   * `toleranceMM` is the arc-flattening tolerance, unused until radii exist.
+   */
+  outlinePoints(_toleranceMM = 0.05): Vec2[] {
+    return this.corners();
+  }
+
   override bounds(): Bounds {
     return { min: this.minPt, max: this.maxPt };
   }

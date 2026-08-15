@@ -206,7 +206,7 @@ function profileCircleRadius(r: number, op: CAMOperation, post: LaserPost): numb
 /** Closed contour rings of an entity for area fill, or null if it isn't closed. */
 function fillableContours(ent: Entity): Vec2[][] | null {
   if (ent instanceof CircleEntity) return [circlePolyline(ent.center.x, ent.center.y, ent.radius)];
-  if (ent instanceof RectEntity) return [[...ent.corners()]];
+  if (ent instanceof RectEntity) return [ent.outlinePoints()];
   if (ent instanceof PolylineEntity) return ent.closed ? [ent.points] : null;
   if (ent instanceof TextEntity) {
     const cs = textToContours(ent)
@@ -444,7 +444,7 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       continue;
     }
     if (ent instanceof RectEntity) {
-      const base = [...ent.corners()];
+      const base = ent.outlinePoints();
       if (profile) pushClosedProfile(items, base, op, post);
       else items.push({ kind: "poly", pts: base, closed: true });
       continue;

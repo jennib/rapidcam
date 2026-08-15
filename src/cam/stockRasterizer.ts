@@ -249,7 +249,7 @@ function rasterizeOp(
           }),
         );
       } else if (e instanceof RectEntity) {
-        islands.push([...e.corners()]);
+        islands.push(e.outlinePoints());
       } else if (e instanceof PolylineEntity && e.closed) {
         islands.push(e.points);
       }
@@ -331,7 +331,7 @@ function rasterizeOp(
           stepR,
         );
       else if (ent instanceof RectEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, [...ent.corners()], true, stamp, stepR);
+        sweepPolyline(op, data, gridW, gridH, stockT, ent.outlinePoints(), true, stamp, stepR);
       else if (ent instanceof PolylineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, ent.points, ent.closed, stamp, stepR);
       else if (ent instanceof ArcEntity)
@@ -377,7 +377,7 @@ function rasterizeOp(
           stepR,
         );
       else if (ent instanceof RectEntity)
-        rasPocketPolygon([...ent.corners()], islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon(ent.outlinePoints(), islands, op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
         rasPocketPolygon(ent.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
     } else {
@@ -396,7 +396,7 @@ function rasterizeOp(
           stepR,
         );
       else if (ent instanceof RectEntity)
-        rasProfilePolygon([...ent.corners()], op, data, gridW, gridH, stockT, stamp, stepR);
+        rasProfilePolygon(ent.outlinePoints(), op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
         rasProfilePolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
     }
@@ -483,7 +483,7 @@ function rasChamfer(
             : ent.radius;
       sweepCircle(cop, data, gridW, gridH, stockT, ent.center.x, ent.center.y, r, stamp, stepR);
     } else if (ent instanceof RectEntity) {
-      closed([...ent.corners()]);
+      closed(ent.outlinePoints());
     } else if (ent instanceof PolylineEntity && ent.closed) {
       closed(ent.points);
     } else if (ent instanceof PolylineEntity) {
@@ -583,7 +583,7 @@ function rasVcarve(
       for (const region of groupContoursIntoRegions(textToContours(ent).map((c) => c.points)))
         carve(region);
     } else if (ent instanceof RectEntity) {
-      carve({ outer: [...ent.corners()], holes: [] });
+      carve({ outer: ent.outlinePoints(), holes: [] });
     } else if (ent instanceof PolylineEntity && ent.closed) {
       carve({ outer: ent.points, holes: [] });
     } else if (ent instanceof CircleEntity) {
