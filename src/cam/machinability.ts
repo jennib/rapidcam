@@ -40,6 +40,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import type { CADDocument } from "../model/document";
+import { type CornerType, RectEntity } from "../model/entities";
 import { type CAMOperation, resolveOpTool } from "./types";
 import { collectClosedLoops, pointInPolygon } from "./loops";
 import { resolveRegion } from "./regions";
@@ -140,12 +141,84 @@ function nominalSets(doc: CADDocument, op: CAMOperation): NominalSet[] {
 }
 
 /**
+ * A rectangle corner whose DECLARED radius the tool cannot produce.
+ *
+ * The morphology check below deliberately tolerates concave-corner rounding:
+ * an internal corner coming out radiused is normal milling, which is what
+ * dogbone relief exists for, and treating every one as a defect is precisely
+ * the false-positive class its dual-join intersection was built to cancel.
+ *
+ * A shaped rectangle corner is a different statement. The user did not draw a
+ * sharp corner and accept what the cutter leaves — they asked for a 2 mm cove,
+ * and a 8 mm cutter can only ever leave a 4 mm one. The part comes out the
+ * wrong shape and the program posts clean. So this is checked by NUMBER, not by
+ * morphology: an arc the tool must run *inside of* needs a radius at least the
+ * tool's, and comparing the two cannot false-positive the way an area gate can.
+ *
+ * Which corners those are depends on the side being cut:
+ * - an **outside** cut enters an INVERTED corner (the cove is a pocket in the
+ *   material), so its radius is the constraint;
+ * - an **inside** cut (or a pocket) runs inside a ROUND corner, which is
+ *   concave from the tool's side, so that radius is the constraint.
+ *
+ * A chamfer is left alone: its ends are sharp internal corners, which is the
+ * ordinary "internal corners get radiused" convention dogbone already covers,
+ * not a dimension anybody declared.
+ */
+function checkDeclaredCornerRadii(doc: CADDocument): LintFinding[] {
+  const findings: LintFinding[] = [];
+  for (const op of doc.operations) {
+    if (op.type !== "profile" && op.type !== "pocket") continue;
+    const eff = resolveOpTool(op, doc.tools);
+    const toolR = eff.diameter / 2;
+    if (!(toolR > 0)) continue;
+    const inward = op.type === "pocket" || op.side === "inside";
+    // The corner treatment the tool has to reach INTO on this side.
+    const tight: CornerType = inward ? "round" : "inverted";
+
+    const tooTight: { id: string; radius: number }[] = [];
+    for (const id of op.entityIds) {
+      const ent = doc.entities.find((e) => e.id === id);
+      if (!(ent instanceof RectEntity) || ent.cornerType !== tight) continue;
+      // The radii as they will be DRAWN, so a corner already clamped away by a
+      // small rectangle isn't reported as a corner that cannot be cut.
+      const worst = ent
+        .effectiveCornerRadii()
+        .filter((r) => r > CORNER_RADIUS_EPS)
+        .sort((a, b) => a - b)[0];
+      if (worst !== undefined && worst < toolR - CORNER_RADIUS_EPS)
+        tooTight.push({ id, radius: worst });
+    }
+    if (tooTight.length === 0) continue;
+
+    const smallest = Math.min(...tooTight.map((t) => t.radius));
+    const noun = tight === "inverted" ? "inverted corner" : "corner";
+    findings.push({
+      code: "corner-tighter-than-tool",
+      severity: "warning",
+      message:
+        `"${op.name}": ${tooTight.length === 1 ? "a rectangle has an" : `${tooTight.length} rectangles have`} ` +
+        `${noun}${tooTight.length === 1 ? "" : "s"} of R${+smallest.toFixed(3)} mm, which a ⌀${eff.diameter} mm ` +
+        `tool cannot cut — it will leave R${+toolR.toFixed(3)} mm there and the part will be the wrong shape. ` +
+        `Use a tool of ⌀${+(smallest * 2).toFixed(3)} mm or smaller, or open the corner out.`,
+      entityIds: tooTight.map((t) => t.id),
+    });
+  }
+  return findings;
+}
+
+/** Below this a radius difference is rounding noise, not a real misfit (µm). */
+const CORNER_RADIUS_EPS = 1e-6;
+
+/**
  * Findings for every mill profile/pocket op whose tool cannot reach part (or
- * any) of its geometry. Non-blocking warnings; surfaced via Apollo pre-flight.
+ * any) of its geometry, plus any declared corner radius it cannot produce
+ * ({@link checkDeclaredCornerRadii}). Non-blocking warnings; surfaced via
+ * Apollo pre-flight.
  */
 export function checkMachinability(doc: CADDocument): LintFinding[] {
   if (doc.isLaser) return [];
-  const findings: LintFinding[] = [];
+  const findings: LintFinding[] = checkDeclaredCornerRadii(doc);
 
   for (const op of doc.operations) {
     if (op.type !== "profile" && op.type !== "pocket") continue;
