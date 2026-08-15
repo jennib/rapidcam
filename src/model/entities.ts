@@ -659,8 +659,12 @@ export class RectEntity extends Entity {
    *
    * Use this wherever a rectangle is treated as an OUTLINE (CAM, offsetting,
    * export, rendering). Keep using {@link corners} where the four *named*
-   * corners are the subject — picking, corner snaps, the DOF points constraints
-   * address — since those stay four corners however they are shaped.
+   * corners or edges are the subject — picking, corner snaps, the DOF points
+   * constraints address, and the `mid_b`/`mid_r`/`mid_t`/`mid_l` edges that
+   * snapping, trim/extend and intersection name. Those stay four corners and
+   * four edges however they are shaped, and that naming IS the constraint
+   * vocabulary: a tessellated ring has no `mid_b` to offer, so moving those
+   * call sites onto this would break the references it exists to protect.
    *
    * `toleranceMM` is the maximum chord deviation when flattening the arcs; the
    * 0.05mm default is the usual CAM arc tolerance, and the renderer passes half

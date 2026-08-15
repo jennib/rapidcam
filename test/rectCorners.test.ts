@@ -242,3 +242,15 @@ test("the four NAMED corners stay where they are, whatever shape they are cut", 
   expect(r.getPoint("bl")).toEqual(before[0]);
   expect(r.snapPoints().find((s) => s.key === "tr")?.pos).toEqual(before[2]);
 });
+
+test("a patterned copy carries its corners", () => {
+  // Pattern instances are built with duplicate(); a copy that came out square
+  // would show up as a row of rectangles where only the first is rounded.
+  const r = rect();
+  r.cornerRadii = [3, 3, 3, 3];
+  r.cornerType = "inverted";
+  const copy = r.duplicate();
+  copy.translate({ x: 100, y: 0 });
+  expect(copy.outlinePoints().length).toBe(r.outlinePoints().length);
+  expect(copy.cornerType).toBe("inverted");
+});
