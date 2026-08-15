@@ -665,6 +665,12 @@ function parametricDoc(): CADDocument {
   const c = doc.add(new CircleEntity({ x: 50, y: 50 }, 10));
   doc.bindings.push({ id: "b1", entityId: c.id, scalarKey: "r", expr: "plateW/2", scale: 1 });
 
+  // A corner radius driven by a formula — the rectangle's `cr` scalar DOF, the
+  // same binding channel as a circle's radius.
+  const plate = doc.add(new RectEntity({ x: 100, y: 100 }, { x: 180, y: 150 }));
+  plate.cornerRadii = [6, 6, 6, 6];
+  doc.bindings.push({ id: "b-cr", entityId: plate.id, scalarKey: "cr", expr: "margin / 2" });
+
   const l = doc.add(new LineEntity({ x: 0, y: 0 }, { x: 50, y: 0 }));
   doc.dimensions.push(
     makeDimension("distance", {

@@ -3,6 +3,8 @@ import { beforeEach, expect, test } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { RectEntity } from "../src/model/entities";
 import { PropertiesBar } from "../src/ui/propertiesBar";
+import { makeVariable } from "../src/model/variables";
+import { solve } from "../src/solver/solver";
 
 /**
  * The rectangle's `Corner` type + radius rows.
@@ -137,4 +139,44 @@ test("the field respects the document's display unit", () => {
   const host = mount(doc);
   commit(host, "Radius", "0.5");
   expect(rect.cornerRadii[0]).toBeCloseTo(12.7, 6);
+});
+
+test("a formula in the radius field parks a binding on `cr`", () => {
+  // The field is a bindingRow, like a circle's Radius: a number is a literal, a
+  // formula becomes a ScalarBinding the solver drives.
+  doc.variables.push(makeVariable("edge", "4", "mm"));
+  const host = mount(doc);
+  commit(host, "Radius", "edge * 2");
+
+  const b = doc.bindings.find((x) => x.entityId === rect.id && x.scalarKey === "cr");
+  expect(b, "a formula must create a binding, not be swallowed as 0").toBeDefined();
+  expect(b!.expr).toBe("edge * 2");
+
+  // …and it reaches the geometry through a real solve.
+  solve(doc);
+  expect(rect.cornerRadii[0]).toBeCloseTo(8, 4);
+});
+
+test("a bound field shows the formula, and unbinding leaves the resolved number", () => {
+  doc.variables.push(makeVariable("edge", "4", "mm"));
+  doc.bindings.push({ id: "b1", entityId: rect.id, scalarKey: "cr", expr: "edge * 2" });
+  solve(doc);
+
+  const host = mount(doc);
+  const inp = row(host, "Radius").querySelector("input") as HTMLInputElement;
+  expect(inp.value).toBe("edge * 2");
+
+  // Typing a plain number clears the binding — the literal path.
+  commit(host, "Radius", "5");
+  expect(doc.bindings.filter((b) => b.scalarKey === "cr")).toHaveLength(0);
+  expect(rect.cornerRadii).toEqual([5, 5, 5, 5]);
+});
+
+test("a formula wins over `mixed` — it is whole-shape by nature", () => {
+  rect.cornerRadii = [5, 0, 0, 0];
+  doc.variables.push(makeVariable("edge", "3", "mm"));
+  const host = mount(doc);
+  commit(host, "Radius", "edge");
+  solve(doc);
+  expect(rect.cornerRadii.every((r) => Math.abs(r - 3) < 1e-4)).toBe(true);
 });

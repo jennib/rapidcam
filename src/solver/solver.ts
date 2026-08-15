@@ -24,7 +24,14 @@ import {
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
-import { ArcEntity, type Entity, RasterImageEntity, TextEntity } from "../model/entities";
+import {
+  ArcEntity,
+  type Entity,
+  RasterImageEntity,
+  RectEntity,
+  TextEntity,
+} from "../model/entities";
+import { varMap } from "../model/variables";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
 export interface SolveResult {
@@ -126,7 +133,13 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   const geo: Geo = (id) => (id === STOCK_ENTITY_ID ? stockRefEntity(doc) : byId.get(id));
   // Binding targets are constant during a solve (they depend only on variables,
   // which are fixed here) — evaluate each once, up front, out of the FD loop.
-  const bindingVars = new Map(doc.variables.map((v) => [v.name, v.value]));
+  //
+  // varMap, NOT a bare map of doc.variables: `stock` is an implicit variable
+  // every other formula surface accepts (the properties fields validate against
+  // it, so `stock/2` is offered and accepted). Building the map without it left
+  // any binding naming `stock` evaluating to null forever — no residual, so the
+  // field showed a formula the geometry silently never followed.
+  const bindingVars = varMap(doc.variables, doc.stockThickness);
   const bindingTargets = doc.bindings.map((b) => bindingTarget(b, bindingVars));
 
   const fixed = new Set<string>();
@@ -146,7 +159,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidBodyScalars(doc, fixed);
+  fixUndrivenScalars(doc, fixed);
 
   // Drag pins are SOFT goals, not hard fixes: the dragged point is pulled toward
   // the cursor by a weak residual, so hard constraints win in a conflict while a
@@ -657,21 +670,41 @@ export function freeImageScalars(ent: RasterImageEntity): string[] {
 }
 
 /**
- * Pin the scalars of the entities that are RIGID bodies — images and text.
+ * Which of an entity's scalars are genuine solver freedoms, or `null` when they
+ * all are.
  *
- * An image releases what {@link freeImageScalars} allows; text releases nothing,
- * having no equivalent opt-in. Everything else is fixed, so a constraint
- * translates the object rather than stretching or spinning it to satisfy itself,
- * and a sketch's DOF count doesn't grow by two for every label on it.
+ * A circle's `r` and an arc's `sa`/`ea` are geometry that constraints act on —
+ * tangent, equal, radius — so the solver owns them. These are the exceptions:
  *
- * A scalar driven by a formula binding is always free regardless — that is the
- * channel the parametric fields use, and it must keep working on a rigid body.
+ * - **Images and text are rigid bodies.** An image releases what
+ *   {@link freeImageScalars} allows; text releases nothing, having no equivalent
+ *   opt-in. So a constraint translates the object rather than stretching or
+ *   spinning it to satisfy itself, and a sketch's DOF count doesn't grow by two
+ *   for every label on it.
+ * - **A rectangle's `cr`** (corner radius) is a parameter, not a freedom: no
+ *   constraint type reads a corner radius, so leaving it free would add a
+ *   variable per rectangle that the solver could only ever hold still.
  */
-function fixRigidBodyScalars(doc: CADDocument, fixed: Set<string>): void {
+function freeScalarKeys(ent: Entity): string[] | null {
+  if (ent instanceof RasterImageEntity) return freeImageScalars(ent);
+  if (ent instanceof TextEntity) return [];
+  if (ent instanceof RectEntity) return [];
+  return null;
+}
+
+/**
+ * Fix every scalar that nothing drives — see {@link freeScalarKeys}.
+ *
+ * A scalar driven by a formula binding is always free regardless: that is the
+ * channel the parametric property fields use, and it has to keep working on a
+ * rigid body and on a corner radius alike. Which is also why the DOF count
+ * doesn't move when a radius is bound — the binding adds one variable and one
+ * residual together.
+ */
+function fixUndrivenScalars(doc: CADDocument, fixed: Set<string>): void {
   for (const ent of doc.entities) {
-    const isImage = ent instanceof RasterImageEntity;
-    if (!isImage && !(ent instanceof TextEntity)) continue;
-    const free = isImage ? freeImageScalars(ent) : [];
+    const free = freeScalarKeys(ent);
+    if (free === null) continue;
     for (const s of ent.dofScalars())
       if (
         !free.includes(s.key) &&
@@ -821,7 +854,7 @@ export function computeEntityDofStatus(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidBodyScalars(doc, fixed);
+  fixUndrivenScalars(doc, fixed);
 
   // Build variable list with per-variable entity tracking
   const vars: Variable[] = [];
@@ -872,7 +905,7 @@ export function computeEntityDofStatus(
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const bTargets = doc.bindings.map((b) =>
-    bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))),
+    bindingTarget(b, varMap(doc.variables, doc.stockThickness)),
   );
 
   // Same partition the solver uses, for the same reason: this pass builds a
@@ -1002,7 +1035,7 @@ export function constraintJacobianRankChange(
   if (originEnt) {
     for (const p of originEnt.dofPoints()) fixed.add(`${ORIGIN_ENTITY_ID}:${p.key}`);
   }
-  fixRigidBodyScalars(doc, fixed);
+  fixUndrivenScalars(doc, fixed);
 
   // Build variable list
   const vars: Variable[] = [];
@@ -1024,7 +1057,7 @@ export function constraintJacobianRankChange(
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const extraActive = extras.filter((c) => c.type !== "fixed");
   const bTargets = doc.bindings.map((b) =>
-    bindingTarget(b, new Map(doc.variables.map((v) => [v.name, v.value]))),
+    bindingTarget(b, varMap(doc.variables, doc.stockThickness)),
   );
 
   const buildEvalR =

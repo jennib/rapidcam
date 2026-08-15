@@ -770,6 +770,10 @@ export class PropertiesBar {
     // committed value and raw expr (undefined for a literal). Images use it to
     // propagate an aspect-locked edit to the paired dimension.
     onAfterCommit?: (value: number, expr: string | undefined) => void,
+    // Greyed text for an EMPTY field, when the scalar has no single current
+    // value to show (a rectangle whose four corner radii differ). Ignored once a
+    // binding exists — a formula is one value by construction.
+    placeholder?: string,
   ): void {
     const binding = findBinding(this.doc.bindings, entityId, scalarKey);
     // A field declared in "mm" is a length: show and read its literal in the
@@ -785,7 +789,8 @@ export class PropertiesBar {
     const inp = document.createElement("input");
     inp.type = "text";
     inp.style.flex = "1";
-    inp.value = binding ? binding.expr : fmtLit(currentValue);
+    if (placeholder && !binding) inp.placeholder = placeholder;
+    inp.value = binding ? binding.expr : placeholder ? "" : fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     this.attachVarAutocomplete(inp, row);
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
@@ -794,7 +799,7 @@ export class PropertiesBar {
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
-      inp.value = b ? b.expr : fmtLit(currentValue);
+      inp.value = b ? b.expr : placeholder ? "" : fmtLit(currentValue);
     };
 
     const badge = this.fxBadge({
@@ -1580,21 +1585,29 @@ export class PropertiesBar {
 
     const radii = entity.cornerRadii;
     const uniform = radii.every((r) => r === radii[0]);
+    // A binding row, not a plain number: the corner radius is a scalar DOF
+    // (`cr`), so it takes a formula over variables exactly as a circle's radius
+    // does — `thickness * 2`, and the corners follow the material. A formula is
+    // inherently whole-shape, which is why binding one collapses `mixed`.
+    //
     // Vectric labels the field for what it means under the selected type; the
     // distance is the same either way, but "Radius" on a bevel reads wrong.
-    this.numRow(
+    this.bindingRow(
       sec,
       entity.cornerType === "chamfer" ? "Chamfer" : "Radius",
+      entity.id,
+      "cr",
       uniform ? radii[0] : 0,
       "mm",
       (v) => {
         if (v < 0) return;
+        // Clamped so the panel cannot report a radius the shape does not have.
         const r = Math.min(v, entity.maxUniformCornerRadius());
-        this.applyEdit(() => {
-          entity.cornerRadii = [r, r, r, r];
-        });
+        entity.cornerRadii = [r, r, r, r];
       },
       3,
+      1,
+      undefined,
       uniform ? undefined : "mixed",
     );
   }

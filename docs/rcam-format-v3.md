@@ -291,7 +291,7 @@ these right is the single most important thing when authoring constraints.
 |--------|-----------------|------------------------------------------|-------------|
 | `line` | `a`, `b` (Vec2) | `a`, `b` endpoints; `mid` (derived, pickable) | — |
 | `circle` | `center` (Vec2), `radius` | `c` center | `r` radius |
-| `rectangle` | `p0`, `p1` (opposite corners), `cornerRadii` (number[4], optional), `cornerType` (optional) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | — |
+| `rectangle` | `p0`, `p1` (opposite corners), `cornerRadii` (number[4], optional), `cornerType` (optional) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | `cr` corner radius |
 | `polyline` | `points` (Vec2[]), `vertexIds` (string[], optional), `closed` (bool) | vertices `v<id>`; segment mids `mid_<id>` (id of the segment's start vertex) | — |
 | `arc` | `center`, `radius`, `startAngle`, `endAngle` (rad, CCW) | `c` center; `start`, `end` (derived) | `r`, `sa`, `ea` |
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
@@ -323,6 +323,15 @@ Notes:
   A radius bigger than the edge it shares with its neighbour is **scaled to fit
   when the outline is built, not on load**: the stored value is what was asked
   for, so a rectangle temporarily too small for its corners reopens with them.
+
+  The corner radius is also a **scalar DOF, `cr`**, so it can be driven by a
+  formula through an ordinary `bindings[]` entry — `{"scalarKey": "cr", "expr":
+  "stock * 2"}` — the same channel a circle's radius uses. One binding drives all
+  four corners (a formula is whole-shape by nature); `cornerRadii` still holds
+  the last resolved values, so a file never needs an expression evaluated to
+  load. Unlike a circle's `r`, `cr` is **not** a solver freedom: no constraint
+  type reads a corner radius, so it is held fixed unless a binding drives it, and
+  a rectangle's DOF count is the same either way.
 - A **polyline vertex carries a stable id.** `vertexIds[i]` is the id of `points[i]`;
   point keys are `v<id>` and `mid_<id>` (the midpoint of the segment that *starts*
   at vertex `<id>`). The id is decoupled from the array position so a constraint or

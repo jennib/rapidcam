@@ -791,6 +791,32 @@ export class RectEntity extends Entity {
       { key: "tr", axis: "y" },
     ];
   }
+  /**
+   * The whole-shape corner radius, as one scalar DOF — what makes a corner
+   * radius drivable by a formula (`Radius = thickness * 2`), the same channel a
+   * circle's radius uses.
+   *
+   * `cr` is deliberately NOT a solver freedom: unlike a circle's `r`, which
+   * tangent/equal/radius constraints act on, no constraint type reads a corner
+   * radius, so a free variable here is one the solver could only hold still.
+   * The solver therefore fixes it unless a binding drives it (see
+   * `fixUndrivenScalars`), which keeps an ordinary rectangle costing exactly
+   * what it always did.
+   *
+   * One scalar for four corners, matching the properties panel's whole-shape
+   * control: a formula on the radius means "every corner follows this". When the
+   * four differ it reports the largest — there is no single answer, and a bound
+   * radius is about to make them equal anyway.
+   */
+  override dofScalars(): DofScalar[] {
+    return [{ key: "cr", value: Math.max(...this.cornerRadii.map((r) => (r > 0 ? r : 0))) }];
+  }
+  override setScalar(key: string, v: number): void {
+    if (key !== "cr") return;
+    const r = Number.isFinite(v) && v > 0 ? v : 0;
+    this.cornerRadii = [r, r, r, r];
+  }
+
   override setPoint(key: string, v: Vec2): void {
     if (key === "bl") this.p0 = clone(v);
     else if (key === "tr") this.p1 = clone(v);
