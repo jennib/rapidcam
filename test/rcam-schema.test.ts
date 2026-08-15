@@ -289,6 +289,107 @@ describe("rcam v3 schema — serialized real document", () => {
 });
 
 /**
+ * Corner radii are the first field added to an entity since the format was
+ * published, so they get their own round trip: old files must still open, new
+ * ones must come back identical, and a square rectangle must serialise exactly
+ * as it always did (otherwise every existing file gains a diff on next save).
+ */
+describe("rectangle corner radii round-trip", () => {
+  function reopen(doc: CADDocument): CADDocument {
+    const file = JSON.parse(JSON.stringify(serializeDoc(doc, "corners")));
+    const fresh = new CADDocument({ width: 100, height: 100 });
+    applyFile(fresh, file);
+    return fresh;
+  }
+
+  it("a square rectangle serialises with no corner fields at all", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    doc.add(new RectEntity({ x: 0, y: 0 }, { x: 50, y: 30 }));
+    const data = serializeDoc(doc, "square") as { entities: Record<string, unknown>[] };
+    const rect = data.entities.find((e) => e.type === "rectangle")!;
+    expect(Object.keys(rect)).not.toContain("cornerRadii");
+    expect(Object.keys(rect)).not.toContain("cornerType");
+  });
+
+  it("shaped corners survive a save/open cycle", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const r = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 50, y: 30 }));
+    r.cornerRadii = [5, 0, 2.5, 8];
+    r.cornerType = "chamfer";
+
+    const back = reopen(doc).entities.find((e): e is RectEntity => e instanceof RectEntity)!;
+    expect(back.cornerRadii).toEqual([5, 0, 2.5, 8]);
+    expect(back.cornerType).toBe("chamfer");
+    // The boundary is what actually gets cut — compare that, not just the fields.
+    expect(back.outlinePoints()).toEqual(r.outlinePoints());
+  });
+
+  it("keeps the radius a shrunken rectangle cannot currently draw", () => {
+    // effectiveCornerRadii clamps for drawing; the FILE must hold the asked-for
+    // value, or saving while temporarily small would destroy the corner.
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const r = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 6, y: 6 }));
+    r.cornerRadii = [8, 8, 8, 8];
+    expect(r.effectiveCornerRadii()[0]).toBeCloseTo(3, 9);
+
+    const back = reopen(doc).entities.find((e): e is RectEntity => e instanceof RectEntity)!;
+    expect(back.cornerRadii).toEqual([8, 8, 8, 8]);
+  });
+
+  it("a file written before corner radii existed loads square", () => {
+    const file = minimalDoc();
+    file.entities = [{ type: "rectangle", id: "r1", p0: { x: 0, y: 0 }, p1: { x: 10, y: 10 } }];
+    expect(validate(file)).toBe(true);
+    const doc = new CADDocument({ width: 100, height: 100 });
+    applyFile(doc, file);
+    const rect = doc.entities.find((e): e is RectEntity => e instanceof RectEntity)!;
+    expect(rect.cornerRadii).toEqual([0, 0, 0, 0]);
+    expect(rect.cornerType).toBe("round");
+    expect(rect.outlinePoints()).toEqual(rect.corners());
+  });
+
+  it("survives a hand-authored file with a malformed cornerRadii array", () => {
+    // The schema demands four numbers; the LOADER must not produce NaN geometry
+    // when it gets something else, because a file that loads wrong is worse
+    // than one that is rejected.
+    const file = minimalDoc();
+    file.entities = [
+      {
+        type: "rectangle",
+        id: "r1",
+        p0: { x: 0, y: 0 },
+        p1: { x: 10, y: 10 },
+        cornerRadii: [2, "x", -3],
+        cornerType: "bogus",
+      },
+    ];
+    expect(validate(file), "the schema still rejects it").toBe(false);
+    const doc = new CADDocument({ width: 100, height: 100 });
+    applyFile(doc, file);
+    const rect = doc.entities.find((e): e is RectEntity => e instanceof RectEntity)!;
+    expect(rect.cornerRadii).toEqual([2, 0, 0, 0]);
+    expect(rect.cornerType).toBe("round");
+    for (const p of rect.outlinePoints()) {
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  it("the schema rejects a negative radius and an unknown corner type", () => {
+    const bad = (extra: Record<string, unknown>) => {
+      const file = minimalDoc();
+      file.entities = [
+        { type: "rectangle", id: "r1", p0: { x: 0, y: 0 }, p1: { x: 10, y: 10 }, ...extra },
+      ];
+      return validate(file);
+    };
+    expect(bad({ cornerRadii: [1, 2, 3, 4] })).toBe(true); // positive control
+    expect(bad({ cornerRadii: [-1, 0, 0, 0] })).toBe(false);
+    expect(bad({ cornerRadii: [1, 2, 3] })).toBe(false);
+    expect(bad({ cornerType: "rounded" })).toBe(false);
+  });
+});
+
+/**
  * The schema relaxation is only safe if the real loader matches it: a file whose
  * constraints/dimensions omit the unused operand array must load without throwing
  * (restore() reads points/entities directly).
@@ -521,7 +622,12 @@ function allEntityTypesDoc(): CADDocument {
   line.isConstruction = true;
   line.layerId = "layer-1";
   doc.add(new CircleEntity({ x: 40, y: 40 }, 6));
-  doc.add(new RectEntity({ x: 60, y: 60 }, { x: 90, y: 85 }));
+  // Shaped corners: per-corner radii AND a non-default corner type. Both are
+  // omitted from a square rectangle's output, so they only reach the
+  // additionalProperties:false guard if something here sets them.
+  const rounded = doc.add(new RectEntity({ x: 60, y: 60 }, { x: 90, y: 85 }));
+  rounded.cornerRadii = [4, 0, 2.5, 4];
+  rounded.cornerType = "inverted";
   const clamp = doc.add(new RectEntity({ x: 0, y: 200 }, { x: 60, y: 240 }));
   clamp.layerId = "layer-clamps";
   clamp.fixtureHeight = 12;

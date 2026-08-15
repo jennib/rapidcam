@@ -383,11 +383,112 @@ export class CircleEntity extends Entity {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Unit direction from `from` toward `to` along one axis-aligned edge. Returns a
+ * zero vector for a degenerate edge rather than NaN.
+ */
+function unitStep(from: Vec2, to: Vec2): Vec2 {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  return len < CORNER_R_EPS ? { x: 0, y: 0 } : { x: dx / len, y: dy / len };
+}
+
+/** Signed angular sweep of an outline arc, following its traversal direction. */
+function arcSweep(p: { startAngle: number; endAngle: number; ccw: boolean }): number {
+  const d = (((p.endAngle - p.startAngle) % TAU) + TAU) % TAU; // [0, TAU)
+  return p.ccw ? d : d - TAU;
+}
+
+/**
+ * Segments needed to flatten an arc within `toleranceMM` of chord deviation.
+ * The sagitta of a step θ is r(1 − cos(θ/2)), so the largest step inside the
+ * tolerance is 2·acos(1 − tol/r).
+ */
+function arcSteps(radius: number, absSpan: number, toleranceMM: number): number {
+  if (!(toleranceMM > 0) || toleranceMM >= radius) return 2;
+  const maxStep = 2 * Math.acos(1 - toleranceMM / radius);
+  return Math.min(256, Math.max(2, Math.ceil(absSpan / maxStep)));
+}
+
+/**
+ * How a rectangle's shaped corners are cut. One type per rectangle, which is
+ * how Vectric presents it (`Corner Type: Round | Inverted | Chamfer`) — the
+ * radius is per corner, the *shape* is a property of the whole rectangle.
+ *
+ * - `round` — a convex fillet, tangent to both edges. The ordinary rounded corner.
+ * - `inverted` — a concave cove: a quarter circle bitten OUT of the corner,
+ *   centred on the corner itself, so it meets both edges square rather than
+ *   tangentially. (A tangent concave arc is not constructible at a convex
+ *   corner: its tangent points fall on the far side of the corner point.)
+ *   This is a SHAPE, unrelated to a dogbone — a dogbone is a machining relief
+ *   applied at toolpath time (`cam/dogbone.ts`), so a part can seat in a
+ *   square-cornered pocket cut by a round tool.
+ * - `chamfer` — a straight bevel across both edges.
+ *
+ * All three consume the same distance along each edge, so one radius field
+ * means the same thing whichever is selected — again as Vectric does.
+ */
+export type CornerType = "round" | "inverted" | "chamfer";
+
+/** Every {@link CornerType}, in the order the properties panel offers them. */
+export const CORNER_TYPES: readonly CornerType[] = ["round", "inverted", "chamfer"];
+
+/** Human labels for {@link CornerType} — UI and tool messages share one table. */
+export const CORNER_TYPE_LABELS: Record<CornerType, string> = {
+  round: "Round",
+  inverted: "Inverted",
+  chamfer: "Chamfer",
+};
+
+/**
+ * One piece of a rectangle's boundary: a straight run, or a corner's arc.
+ *
+ * `startAngle`/`endAngle` are the arc's endpoints in TRAVERSAL order, and `ccw`
+ * says which way round it is walked between them — a rounded corner runs CCW,
+ * an inverted one CW, on a ring that is itself CCW. Consumers that must
+ * reproduce the arc exactly (DXF bulges, SVG arc flags, Explode) need that
+ * direction; consumers that only want points use {@link RectEntity.outlinePoints}.
+ */
+export type OutlinePart =
+  | { kind: "line"; a: Vec2; b: Vec2 }
+  | {
+      kind: "arc";
+      center: Vec2;
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      ccw: boolean;
+    };
+
+/** Below this a corner radius is treated as absent (square). */
+const CORNER_R_EPS = 1e-9;
+
 /** Axis-aligned rectangle defined by two opposite corners. */
 export class RectEntity extends Entity {
   readonly type = "rectangle" as const;
   p0: Vec2;
   p1: Vec2;
+  /**
+   * Corner radius per corner, in `corners()` order — bl, br, tr, tl. `0` is a
+   * square corner, and `[0,0,0,0]` (the default) is the plain rectangle every
+   * older file holds.
+   *
+   * This is what makes a filleted rectangle stay a RECTANGLE. Rounding a corner
+   * used to replace the entity with a polyline, which is why "you can't edit a
+   * fillet" and why constraints on it needed rescuing (#53). A radius here is
+   * an editable property: change it, zero it, or switch its
+   * {@link cornerType} — the entity, its id and every constraint naming its
+   * corners are untouched.
+   *
+   * Stored as asked for, not as drawn: a radius too big for the current size is
+   * clamped when the boundary is built ({@link effectiveCornerRadii}), so
+   * shrinking a rectangle and growing it back restores the corner rather than
+   * quietly destroying it.
+   */
+  cornerRadii: [number, number, number, number] = [0, 0, 0, 0];
+  /** How the non-zero corners are cut. See {@link CornerType}. */
+  cornerType: CornerType = "round";
 
   constructor(p0: Vec2, p1: Vec2, id?: EntityId) {
     super(id);
@@ -420,35 +521,198 @@ export class RectEntity extends Entity {
   }
 
   /**
+   * The radii as they can actually be drawn: each clamped so two corners sharing
+   * an edge cannot overrun it.
+   *
+   * The clamp lives here rather than on assignment so a radius survives a
+   * temporary shrink — drag a 60mm-wide rectangle down to 8mm with 5mm corners
+   * and back, and the corners come back too. Clamping on the way in would have
+   * destroyed them at 8mm, silently and permanently.
+   *
+   * Each corner is scaled by the tighter of its two edges' fit factors, so a big
+   * radius on one corner only pulls in the corners that share an edge with it —
+   * a single global factor would shrink the far side of the shape for no reason.
+   */
+  effectiveCornerRadii(): [number, number, number, number] {
+    const r = this.cornerRadii.map((v) => (Number.isFinite(v) && v > CORNER_R_EPS ? v : 0));
+    // Edge i runs from corner i to corner i+1: bottom, right, top, left.
+    const edge = [this.width, this.height, this.width, this.height];
+    const fit = [0, 1, 2, 3].map((i) => {
+      const pair = r[i] + r[(i + 1) % 4];
+      return pair > edge[i] ? edge[i] / pair : 1;
+    });
+    // Corner i is bounded by edge i (toward the next corner) and edge i-1.
+    return r.map((v, i) => v * Math.min(fit[i], fit[(i + 3) % 4])) as [
+      number,
+      number,
+      number,
+      number,
+    ];
+  }
+
+  /** True when at least one corner is actually shaped (a drawable radius). */
+  hasShapedCorners(): boolean {
+    return this.effectiveCornerRadii().some((r) => r > CORNER_R_EPS);
+  }
+
+  /**
+   * Whether radius `r` fits at corner `index` beside its neighbours' radii.
+   *
+   * A rectangle corner is the one case where a value can be geometrically fine
+   * on its own and still not fit: two corners share an edge, so 30mm and 40mm
+   * corners cannot both sit on a 60mm side. The tools ask this before committing
+   * so an impossible radius is refused out loud instead of being silently
+   * clamped down by {@link effectiveCornerRadii}.
+   */
+  fitsCornerRadius(index: number, r: number): boolean {
+    if (!(r > CORNER_R_EPS)) return true; // square always fits
+    const edge = [this.width, this.height, this.width, this.height];
+    const other = this.cornerRadii;
+    const next = r + Math.max(0, other[(index + 1) % 4]);
+    const prev = r + Math.max(0, other[(index + 3) % 4]);
+    return next <= edge[index] + CORNER_R_EPS && prev <= edge[(index + 3) % 4] + CORNER_R_EPS;
+  }
+
+  /** The largest radius every corner could carry at once, at the current size. */
+  maxUniformCornerRadius(): number {
+    return Math.min(this.width, this.height) / 2;
+  }
+
+  /**
+   * The boundary as an ordered ring of straight runs and corner arcs, CCW from
+   * the bottom-left.
+   *
+   * This is where a rectangle becomes a boundary — {@link outlinePoints} is this
+   * flattened. Use it when the arcs must be reproduced exactly rather than
+   * approximated: DXF bulges, SVG arc commands, Explode.
+   */
+  outlineParts(): OutlinePart[] {
+    const c = this.corners();
+    const r = this.effectiveCornerRadii();
+    // Where each corner's own geometry starts and ends. Both are the corner
+    // point itself while it is square, which is what makes an unshaped
+    // rectangle come out as exactly the four straight edges it always was.
+    const ends: { in: Vec2; out: Vec2 }[] = [];
+    const cut: (OutlinePart | null)[] = [];
+
+    for (let i = 0; i < 4; i++) {
+      const P = c[i];
+      if (r[i] <= CORNER_R_EPS) {
+        ends.push({ in: P, out: P });
+        cut.push(null);
+        continue;
+      }
+      // Unit directions toward the previous and next corner. Exact ±1/0 here:
+      // the rectangle is axis-aligned, and a non-zero radius guarantees both
+      // edges have length (a zero-width rectangle clamps every radius to 0).
+      const dPrev = unitStep(P, c[(i + 3) % 4]);
+      const dNext = unitStep(P, c[(i + 1) % 4]);
+      const T1 = { x: P.x + r[i] * dPrev.x, y: P.y + r[i] * dPrev.y };
+      const T2 = { x: P.x + r[i] * dNext.x, y: P.y + r[i] * dNext.y };
+      ends.push({ in: T1, out: T2 });
+
+      if (this.cornerType === "chamfer") {
+        cut.push({ kind: "line", a: T1, b: T2 });
+        continue;
+      }
+      // Round: centre pushed inward along both edges, so the arc is tangent to
+      // each. Inverted: centred ON the corner, so the arc bulges away from it —
+      // the concave cove — and meets both edges square.
+      const centre =
+        this.cornerType === "round"
+          ? { x: P.x + r[i] * (dPrev.x + dNext.x), y: P.y + r[i] * (dPrev.y + dNext.y) }
+          : P;
+      cut.push({
+        kind: "arc",
+        center: centre,
+        radius: r[i],
+        startAngle: Math.atan2(T1.y - centre.y, T1.x - centre.x),
+        endAngle: Math.atan2(T2.y - centre.y, T2.x - centre.x),
+        // A convex corner rounds CCW on a CCW ring; the cove goes the other way.
+        ccw: this.cornerType === "round",
+      });
+    }
+
+    const parts: OutlinePart[] = [];
+    for (let i = 0; i < 4; i++) {
+      const cp = cut[i];
+      if (cp) parts.push(cp);
+      const a = ends[i].out;
+      const b = ends[(i + 1) % 4].in;
+      // Two corners can eat a whole edge between them; there is then no run.
+      if (Math.abs(a.x - b.x) > CORNER_R_EPS || Math.abs(a.y - b.y) > CORNER_R_EPS)
+        parts.push({ kind: "line", a, b });
+    }
+    return parts;
+  }
+
+  /**
    * The boundary as one closed ring of points, CCW from the bottom-left.
    *
-   * THE SEAM for parametric corners. Today this is exactly `corners()`, which is
-   * the point: every consumer can move onto it with provably zero behaviour
-   * change, and when a corner radius arrives it tessellates the arcs here — once
-   * — instead of in each of the fifteen places that currently rebuild a
-   * rectangle out of four straight segments. Without this, adding a radius would
-   * leave the toolpath cutting square corners while the drawing showed round
-   * ones, which is the worst failure this app has available to it.
+   * THE SEAM for parametric corners: the one place a rectangle becomes a
+   * boundary, so a corner radius reaches every toolpath, export and pixel at
+   * once. Before it existed, fifteen CAM call sites each rebuilt a rectangle out
+   * of `corners()` as four straight segments — adding a radius would have left
+   * all fifteen cutting square corners while the canvas drew round ones, the
+   * drawing and the program disagreeing, which is the worst failure this app has
+   * available to it.
    *
    * Use this wherever a rectangle is treated as an OUTLINE (CAM, offsetting,
    * export, rendering). Keep using {@link corners} where the four *named*
-   * corners are the subject — picking, explode, corner snaps — since those stay
-   * four corners however they are shaped.
+   * corners are the subject — picking, corner snaps, the DOF points constraints
+   * address — since those stay four corners however they are shaped.
    *
-   * `toleranceMM` is the arc-flattening tolerance, unused until radii exist.
+   * `toleranceMM` is the maximum chord deviation when flattening the arcs; the
+   * 0.05mm default is the usual CAM arc tolerance, and the renderer passes half
+   * a screen pixel.
    */
-  outlinePoints(_toleranceMM = 0.05): Vec2[] {
-    return this.corners();
+  outlinePoints(toleranceMM = 0.05): Vec2[] {
+    const parts = this.outlineParts();
+    const pts: Vec2[] = [];
+    for (const p of parts) {
+      // Each part contributes its start; the next part's start closes it, and
+      // the ring closes onto pts[0]. So an unshaped rectangle yields exactly
+      // its four corners, unchanged, which is what let every consumer migrate.
+      if (p.kind === "line") {
+        pts.push({ ...p.a });
+        continue;
+      }
+      const span = arcSweep(p);
+      const steps = arcSteps(p.radius, Math.abs(span), toleranceMM);
+      for (let k = 0; k < steps; k++) {
+        const a = p.startAngle + (span * k) / steps;
+        pts.push({ x: p.center.x + p.radius * Math.cos(a), y: p.center.y + p.radius * Math.sin(a) });
+      }
+    }
+    return pts;
   }
 
   override bounds(): Bounds {
+    // Unaffected by corner radii: every corner treatment cuts INTO the corner,
+    // so the extremes are still the two defining points.
     return { min: this.minPt, max: this.maxPt };
   }
   override distanceTo(p: Vec2): number {
-    const c = this.corners();
+    if (!this.hasShapedCorners()) {
+      const c = this.corners();
+      let d = Infinity;
+      for (let i = 0; i < 4; i++) {
+        d = Math.min(d, distToSegment(p, c[i], c[(i + 1) % 4]));
+      }
+      return d;
+    }
+    // Exact against the arcs, not the flattened ring: picking a shaped corner
+    // should not depend on how finely it happens to be tessellated.
     let d = Infinity;
-    for (let i = 0; i < 4; i++) {
-      d = Math.min(d, distToSegment(p, c[i], c[(i + 1) % 4]));
+    for (const part of this.outlineParts()) {
+      d = Math.min(
+        d,
+        part.kind === "line"
+          ? distToSegment(p, part.a, part.b)
+          : part.ccw
+            ? distToArc(p, part.center, part.radius, part.startAngle, part.endAngle)
+            : distToArc(p, part.center, part.radius, part.endAngle, part.startAngle),
+      );
     }
     return d;
   }
@@ -479,6 +743,8 @@ export class RectEntity extends Entity {
   }
   override duplicate(): RectEntity {
     const e = new RectEntity(this.p0, this.p1);
+    e.cornerRadii = [...this.cornerRadii];
+    e.cornerType = this.cornerType;
     this.copyCommonTo(e);
     return e;
   }

@@ -326,12 +326,23 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "p0", "p1"],
-      "description": "Axis-aligned. p0/p1 are opposite corners (stored normalised to min/max). Point DOF keys: bl, br, tr, tl (corners); mid_b, mid_r, mid_t, mid_l (edge midpoints); center.",
+      "description": "Axis-aligned. p0/p1 are opposite corners (stored normalised to min/max). Point DOF keys: bl, br, tr, tl (corners); mid_b, mid_r, mid_t, mid_l (edge midpoints); center. Corners may be rounded, coved or chamfered via cornerRadii + cornerType — the point keys are unaffected, so a shaped rectangle is constrained and dimensioned exactly like a square one.",
       "properties": {
         "type": { "const": "rectangle" },
         "id": { "type": "string", "minLength": 1 },
         "p0": { "$ref": "#/$defs/vec2" },
         "p1": { "$ref": "#/$defs/vec2" },
+        "cornerRadii": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Corner radius per corner, mm, in the order bl, br, tr, tl (the same order as the corner point keys). 0 = a square corner; omitted = all four square. The value is what was asked for, not necessarily what is drawn: two corners sharing an edge are scaled down to fit it when the outline is built, so shrinking a rectangle below its corner size and growing it back restores the corners. All three cornerTypes consume this same distance along each edge, so for \"chamfer\" it is the bevel's setback."
+        },
+        "cornerType": {
+          "enum": ["round", "inverted", "chamfer"],
+          "description": "How every non-zero corner is cut — one type per rectangle, as in Vectric's Corner Type control. \"round\": a convex fillet tangent to both edges. \"inverted\": a concave cove, a quarter circle centred ON the corner and bitten out of it, meeting both edges square (a shape — unrelated to a dogbone, which is a machining relief applied at toolpath time). \"chamfer\": a straight bevel. Default \"round\"; meaningless without cornerRadii."
+        },
         "isConstruction": { "type": "boolean" },
         "name": { "type": "string" },
         "visible": { "type": "boolean" },

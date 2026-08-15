@@ -291,7 +291,7 @@ these right is the single most important thing when authoring constraints.
 |--------|-----------------|------------------------------------------|-------------|
 | `line` | `a`, `b` (Vec2) | `a`, `b` endpoints; `mid` (derived, pickable) | — |
 | `circle` | `center` (Vec2), `radius` | `c` center | `r` radius |
-| `rectangle` | `p0`, `p1` (opposite corners) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | — |
+| `rectangle` | `p0`, `p1` (opposite corners), `cornerRadii` (number[4], optional), `cornerType` (optional) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | — |
 | `polyline` | `points` (Vec2[]), `vertexIds` (string[], optional), `closed` (bool) | vertices `v<id>`; segment mids `mid_<id>` (id of the segment's start vertex) | — |
 | `arc` | `center`, `radius`, `startAngle`, `endAngle` (rad, CCW) | `c` center; `start`, `end` (derived) | `r`, `sa`, `ea` |
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
@@ -302,6 +302,27 @@ these right is the single most important thing when authoring constraints.
 Notes:
 - A **Vec2** is `{ "x": number, "y": number }` in mm.
 - `rectangle` is axis-aligned; `p0`/`p1` are normalised to min/max corners on load.
+- A **rectangle's corners can be shaped** without it ceasing to be a rectangle.
+  `cornerRadii` is one radius per corner in mm, ordered `bl`, `br`, `tr`, `tl` —
+  the same order as the corner point keys — and `cornerType` says how each
+  non-zero one is cut:
+  - `"round"` (default) — a convex fillet, tangent to both edges.
+  - `"inverted"` — a concave cove: a quarter circle centred *on* the corner and
+    bitten out of it, so it meets both edges square. This is a shape, not a
+    dogbone; a dogbone is a machining relief added at toolpath time (`cornerStyle`
+    on an operation) so a square-cornered part seats in a pocket cut by a round tool.
+  - `"chamfer"` — a straight bevel. `cornerRadii` is its setback along each edge,
+    which is why all three types share one field.
+
+  There is one type per rectangle, matching the `Corner Type` control in the
+  properties panel (and Vectric's). Both fields are optional: omit them for a
+  square rectangle, which is how every file written before they existed reads.
+  The **point keys are unchanged** — `bl` is still the theoretical corner even
+  when it is rounded away — so constraints and dimensions on a shaped rectangle
+  behave exactly as on a square one, and adding a radius never disturbs them.
+  A radius bigger than the edge it shares with its neighbour is **scaled to fit
+  when the outline is built, not on load**: the stored value is what was asked
+  for, so a rectangle temporarily too small for its corners reopens with them.
 - A **polyline vertex carries a stable id.** `vertexIds[i]` is the id of `points[i]`;
   point keys are `v<id>` and `mid_<id>` (the midpoint of the segment that *starts*
   at vertex `<id>`). The id is decoupled from the array position so a constraint or
