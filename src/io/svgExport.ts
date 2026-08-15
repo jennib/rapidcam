@@ -176,7 +176,7 @@ export function exportSvg(doc: CADDocument): string {
         }
       } else if (e instanceof PolylineEntity) {
         if (e.points.length < 2) return;
-        const pts = ptList(e.points, H);
+        const pts = ptList(e.outlinePoints(), H);
         if (e.closed) {
           lines.push(`${indent}<polygon points="${pts}" />`);
         } else {

@@ -179,7 +179,7 @@ function openSegOf(e: Entity): OpenSeg | null {
     return { id: e.id, a: pts[0], b: pts[pts.length - 1], pts };
   }
   if (e instanceof PolylineEntity && !e.closed && e.points.length >= 2) {
-    const pts = e.points.map((p) => ({ ...p }));
+    const pts = e.outlinePoints();
     return { id: e.id, a: pts[0], b: pts[pts.length - 1], pts };
   }
   return null;
@@ -278,7 +278,7 @@ export function collectClosedLoops(entities: Iterable<Entity>): RegionLoop[] {
     } else if (e instanceof RectEntity) {
       loops.push({ verts: e.outlinePoints(), ids: [e.id] });
     } else if (e instanceof PolylineEntity && e.closed && e.points.length >= 3) {
-      loops.push({ verts: e.points, ids: [e.id] });
+      loops.push({ verts: e.outlinePoints(), ids: [e.id] });
     } else if (e instanceof TextEntity) {
       for (const c of textToContours(e)) {
         if (c.closed && c.points.length >= 3) loops.push({ verts: c.points, ids: [e.id] });

@@ -613,7 +613,7 @@ function erasePreview(ent: Entity): PreviewShape | null {
       endAngle: ent.endAngle,
     };
   if (ent instanceof PolylineEntity)
-    return { kind: "polyline", points: ent.points, closed: ent.closed };
+    return { kind: "polyline", points: ent.outlinePoints(), closed: ent.closed };
   if (ent instanceof RectEntity) return { kind: "rect", p0: ent.minPt, p1: ent.maxPt };
   if (ent instanceof BezierEntity)
     return { kind: "bezier", p0: ent.p0, p1: ent.p1, p2: ent.p2, p3: ent.p3 };
@@ -668,9 +668,9 @@ export class TrimTool implements Tool {
       return { kind: "arc", ent, clickOff, ixs };
     }
     if (ent instanceof PolylineEntity || ent instanceof RectEntity) {
-      // outlinePoints, not corners: trimming follows the boundary as drawn, so
-      // a cut across a rounded corner lands on the round.
-      const points = ent instanceof RectEntity ? ent.outlinePoints() : ent.points;
+      // outlinePoints, not the vertex/corner list: trimming follows the
+      // boundary as drawn, so a cut across a rounded corner lands on the round.
+      const points = ent.outlinePoints();
       const closed = ent instanceof RectEntity ? true : ent.closed;
       const crossings = polylinePathIntersections(points, closed, ent.id, doc);
       if (crossings.length === 0) return { kind: "erase", ent };

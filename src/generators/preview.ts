@@ -40,7 +40,7 @@ export function sketchPreviews(sketch: Sketch, offset: Pt): PreviewShape[] {
       const b = e.bounds();
       shapes.push({ kind: "rect", p0: add(b.min), p1: add(b.max) });
     } else if (e instanceof PolylineEntity) {
-      shapes.push({ kind: "polyline", points: e.points.map(add), closed: e.closed });
+      shapes.push({ kind: "polyline", points: e.outlinePoints().map(add), closed: e.closed });
     } else if (e instanceof PointEntity) {
       shapes.push({ kind: "point", pos: add(e.getPoint("p")) });
     }

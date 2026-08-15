@@ -251,7 +251,7 @@ function rasterizeOp(
       } else if (e instanceof RectEntity) {
         islands.push(e.outlinePoints());
       } else if (e instanceof PolylineEntity && e.closed) {
-        islands.push(e.points);
+        islands.push(e.outlinePoints());
       }
     }
     // Also chain any open curves in the island set into closed polygons.
@@ -333,7 +333,7 @@ function rasterizeOp(
       else if (ent instanceof RectEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, ent.outlinePoints(), true, stamp, stepR);
       else if (ent instanceof PolylineEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, ent.points, ent.closed, stamp, stepR);
+        sweepPolyline(op, data, gridW, gridH, stockT, ent.outlinePoints(), ent.closed, stamp, stepR);
       else if (ent instanceof ArcEntity)
         sweepArc(
           op,
@@ -379,7 +379,7 @@ function rasterizeOp(
       else if (ent instanceof RectEntity)
         rasPocketPolygon(ent.outlinePoints(), islands, op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
-        rasPocketPolygon(ent.points, islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon(ent.outlinePoints(), islands, op, data, gridW, gridH, stockT, stamp, stepR);
     } else {
       // profile
       if (ent instanceof CircleEntity)
@@ -398,7 +398,7 @@ function rasterizeOp(
       else if (ent instanceof RectEntity)
         rasProfilePolygon(ent.outlinePoints(), op, data, gridW, gridH, stockT, stamp, stepR);
       else if (ent instanceof PolylineEntity && ent.closed)
-        rasProfilePolygon(ent.points, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasProfilePolygon(ent.outlinePoints(), op, data, gridW, gridH, stockT, stamp, stepR);
     }
   }
 }
@@ -485,9 +485,9 @@ function rasChamfer(
     } else if (ent instanceof RectEntity) {
       closed(ent.outlinePoints());
     } else if (ent instanceof PolylineEntity && ent.closed) {
-      closed(ent.points);
+      closed(ent.outlinePoints());
     } else if (ent instanceof PolylineEntity) {
-      sweepPolyline(cop, data, gridW, gridH, stockT, ent.points, false, stamp, stepR);
+      sweepPolyline(cop, data, gridW, gridH, stockT, ent.outlinePoints(), false, stamp, stepR);
     } else if (ent instanceof LineEntity) {
       sweepPolyline(cop, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
     } else if (ent instanceof ArcEntity) {
@@ -585,7 +585,7 @@ function rasVcarve(
     } else if (ent instanceof RectEntity) {
       carve({ outer: ent.outlinePoints(), holes: [] });
     } else if (ent instanceof PolylineEntity && ent.closed) {
-      carve({ outer: ent.points, holes: [] });
+      carve({ outer: ent.outlinePoints(), holes: [] });
     } else if (ent instanceof CircleEntity) {
       const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
       const outer = Array.from({ length: nSegs }, (_, i) => {
