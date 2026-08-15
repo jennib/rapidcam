@@ -668,7 +668,9 @@ export class TrimTool implements Tool {
       return { kind: "arc", ent, clickOff, ixs };
     }
     if (ent instanceof PolylineEntity || ent instanceof RectEntity) {
-      const points = ent instanceof RectEntity ? ent.corners().map((p) => ({ ...p })) : ent.points;
+      // outlinePoints, not corners: trimming follows the boundary as drawn, so
+      // a cut across a rounded corner lands on the round.
+      const points = ent instanceof RectEntity ? ent.outlinePoints() : ent.points;
       const closed = ent instanceof RectEntity ? true : ent.closed;
       const crossings = polylinePathIntersections(points, closed, ent.id, doc);
       if (crossings.length === 0) return { kind: "erase", ent };

@@ -1,30 +1,23 @@
 import { expect, test } from "vitest";
 import { CADDocument, STOCK_ENTITY_ID } from "../src/model/document";
 import { PolylineEntity, RectEntity } from "../src/model/entities";
-import { makeConstraint } from "../src/model/constraints";
-import { findCorner, spliceCornerVertices } from "../src/tools/corner";
+import { makeConstraint, SEGMENT_SEP } from "../src/model/constraints";
+import { findCorner, setRectCorner, spliceCornerVertices } from "../src/tools/corner";
 
 /**
  * Filleting a rectangle that other things are constrained to.
  *
  * Reported as "fillet fails when a corner coincides with the stock boundary".
  * Corner PICKING was innocent — `findCorner` only walks `doc.entities` and never
- * sees the stock. The damage was downstream: a `RectEntity` has four corners, not
- * a vertex list, so it cannot be spliced. The old code built a replacement
- * polyline, `doc.remove()`d the rect and `doc.add()`ed the polyline under a NEW
- * id — and `remove()` calls `pruneReferences()`, so every constraint naming the
- * rect was silently deleted. Pin a rectangle to the blank, round one corner, and
- * the pin was simply gone with nothing said.
+ * sees the stock. The damage was downstream: a rectangle was REPLACED by a
+ * polyline, which cost it every constraint naming it (#53 kept the id and
+ * remapped the keys, but the filleted corner's own references still had nowhere
+ * to go — one corner became forty-nine vertices).
  *
- * The rect is now swapped in place, keeping its id, and point keys are remapped
- * (`"bl"` means nothing on a polyline, so keeping the id alone would leave a
- * constraint naming a live entity and a dead key — a quieter bug than the one
- * being fixed).
- *
- * Two references genuinely cannot survive and are still dropped: the corner
- * being filleted (it becomes several vertices, so there is no single successor)
- * and `center`. Dropping those is correct; dropping them SILENTLY was the bug,
- * so the count comes back for the caller to report.
+ * The conversion is gone. A rectangle corner is a radius on the entity, so
+ * there is nothing to carry across and nothing to drop: these assert the
+ * stronger property that replaced the guard. The bug class is retired rather
+ * than watched.
  */
 
 function docWithRect() {
@@ -39,19 +32,16 @@ function pinToStock(doc: CADDocument, entityId: string, key: string) {
   doc.addConstraint(
     makeConstraint("pointOnLine", {
       points: [{ entityId, key }],
-      entities: [`${STOCK_ENTITY_ID}#mid_b`],
+      entities: [`${STOCK_ENTITY_ID}${SEGMENT_SEP}mid_b`],
     }),
   );
 }
 
-/** Fillet the bottom-left corner (index 0). */
-function filletBL(doc: CADDocument): number {
+/** Round the bottom-left corner (index 0) through the shared corner code. */
+function filletBL(doc: CADDocument, r = 5): boolean {
   const corner = findCorner({ x: 0, y: 0 }, doc, 1);
   if (corner?.kind !== "rect") throw new Error("expected a rect corner");
-  return spliceCornerVertices(corner, doc, [
-    { x: 5, y: 0 },
-    { x: 0, y: 5 },
-  ]);
+  return setRectCorner(corner, r, "round");
 }
 
 test("the corner is found even when it sits on the stock boundary", () => {
@@ -60,76 +50,92 @@ test("the corner is found even when it sits on the stock boundary", () => {
   expect(corner?.kind).toBe("rect");
 });
 
-test("the rectangle keeps its id through the fillet", () => {
+test("the rectangle stays a rectangle, under its own id", () => {
   const { doc, rect } = docWithRect();
   const idBefore = rect.id;
-  filletBL(doc);
+  expect(filletBL(doc)).toBe(true);
 
   const after = doc.entities.find((e) => e.id === idBefore);
-  expect(after, "the entity id must survive — references are keyed by it").toBeDefined();
-  expect(after).toBeInstanceOf(PolylineEntity);
+  expect(after).toBeInstanceOf(RectEntity);
+  expect(doc.entities.some((e) => e instanceof PolylineEntity)).toBe(false);
 });
 
-test("a constraint on an UNTOUCHED corner survives, remapped to a live key", () => {
+test("a constraint on an untouched corner survives, on the SAME key", () => {
   const { doc, rect } = docWithRect();
-  pinToStock(doc, rect.id, "tr"); // the far corner — nothing to do with the fillet
-  const dropped = filletBL(doc);
+  pinToStock(doc, rect.id, "tr");
+  filletBL(doc);
 
-  expect(dropped).toBe(0);
   expect(doc.constraints).toHaveLength(1);
-
   const ref = doc.constraints[0].points[0];
   expect(ref.entityId).toBe(rect.id);
-  expect(ref.key).not.toBe("tr"); // "tr" is meaningless on a polyline
-  // And the remapped key must actually RESOLVE — a key that merely differs would
-  // be a quieter version of the same bug.
-  const poly = doc.entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
-  expect(poly.dofPoints().map((p) => p.key)).toContain(ref.key);
-  // It still names the same physical corner: top-right of a 60x40 rect.
-  expect(poly.getPoint(ref.key)).toEqual({ x: 60, y: 40 });
+  expect(ref.key).toBe("tr"); // no remapping needed — nothing was replaced
+  expect(rect.getPoint("tr")).toEqual({ x: 60, y: 40 });
 });
 
-test("a constraint on the FILLETED corner is dropped, and reported", () => {
+test("a constraint on the FILLETED corner survives too — the old unavoidable loss", () => {
+  // This is the case #53 could only report, not save: the corner became several
+  // vertices, so there was no single successor. As a radius, the corner point is
+  // still there and still addressable; only the geometry between it and its
+  // neighbours changed.
   const { doc, rect } = docWithRect();
-  pinToStock(doc, rect.id, "bl"); // the corner being rounded away
-  const dropped = filletBL(doc);
+  pinToStock(doc, rect.id, "bl");
+  filletBL(doc);
 
-  // Correct to drop — one corner becomes two vertices, so there is no single
-  // successor. The point is that the caller is TOLD.
-  expect(dropped).toBe(1);
-  expect(doc.constraints).toHaveLength(0);
+  expect(doc.constraints).toHaveLength(1);
+  expect(doc.constraints[0].points[0].key).toBe("bl");
+  expect(rect.getPoint("bl")).toEqual({ x: 0, y: 0 });
+  // The corner is genuinely rounded, so this is not "nothing happened".
+  expect(rect.outlinePoints()).not.toContainEqual({ x: 0, y: 0 });
 });
 
-test("an edge reference is carried over too", () => {
+test("an edge reference survives unchanged", () => {
   const { doc, rect } = docWithRect();
-  // The right-hand edge, named the way a segment constraint names it.
   doc.addConstraint(
     makeConstraint("pointOnLine", {
       points: [{ entityId: STOCK_ENTITY_ID, key: "bl" }],
-      entities: [`${rect.id}#mid_r`],
+      entities: [`${rect.id}${SEGMENT_SEP}mid_r`],
     }),
   );
-  const dropped = filletBL(doc);
+  filletBL(doc);
 
-  expect(dropped).toBe(0);
   expect(doc.constraints).toHaveLength(1);
-  expect(doc.constraints[0].entities[0]).toMatch(new RegExp(`^${rect.id}#`));
-  expect(doc.constraints[0].entities[0]).not.toBe(`${rect.id}#mid_r`);
+  expect(doc.constraints[0].entities[0]).toBe(`${rect.id}${SEGMENT_SEP}mid_r`);
 });
 
-test("a polyline corner is spliced in place and loses nothing", () => {
+test("a dimension anchored to a filleted corner keeps measuring it", () => {
+  const { doc, rect } = docWithRect();
+  const before = rect.getPoint("bl");
+  filletBL(doc, 12);
+  // The named corners are the dimension vocabulary; a radius must not move them.
+  expect(rect.getPoint("bl")).toEqual(before);
+  expect(rect.width).toBe(60);
+  expect(rect.height).toBe(40);
+});
+
+test("a polyline corner is still spliced in place and loses nothing", () => {
+  // Polylines keep the splice path — they are a vertex list, so a corner really
+  // is cut into them. Their stable vertex ids are what carries the references.
   const { doc } = docWithRect();
-  filletBL(doc); // rect -> polyline, same id
-  const poly = doc.entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
-  pinToStock(doc, poly.id, `v${poly.vertexIds[2]}`);
+  const pl = doc.add(
+    new PolylineEntity(
+      [
+        { x: 100, y: 0 },
+        { x: 160, y: 0 },
+        { x: 160, y: 40 },
+        { x: 100, y: 40 },
+      ],
+      true,
+    ),
+  ) as PolylineEntity;
+  pinToStock(doc, pl.id, `v${pl.vertexIds[2]}`);
 
-  const c2 = findCorner(poly.points[2], doc, 1);
-  if (c2?.kind !== "poly") throw new Error("expected a poly corner");
-  const dropped = spliceCornerVertices(c2, doc, [{ x: 58, y: 40 }]);
+  const c = findCorner({ x: 100, y: 0 }, doc, 1);
+  if (c?.kind !== "poly") throw new Error("expected a poly corner");
+  spliceCornerVertices(c, [
+    { x: 105, y: 0 },
+    { x: 100, y: 5 },
+  ]);
 
-  // Positive control on the whole mechanism: filleting a DIFFERENT vertex of the
-  // same polyline drops nothing, so the drops above are about the corner that
-  // was cut and not about splicing in general.
-  expect(dropped).toBe(0);
   expect(doc.constraints).toHaveLength(1);
+  expect(pl.points).toHaveLength(5);
 });

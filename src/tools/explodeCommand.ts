@@ -15,7 +15,14 @@
  * implied parallelism). Arcs/circles/beziers are left untouched.
  */
 
-import { type EntityId, LineEntity, type RectEntity, type PolylineEntity } from "../model/entities";
+import {
+  ArcEntity,
+  type Entity,
+  type EntityId,
+  LineEntity,
+  type PolylineEntity,
+  type RectEntity,
+} from "../model/entities";
 import { type Constraint, makeConstraint } from "../model/constraints";
 import type { CADDocument } from "../model/document";
 
@@ -29,7 +36,30 @@ import type { CADDocument } from "../model/document";
  * plus bottom∥top, left∥right, bottom⊥left. Together: 4 lines with 5 DOF
  * (position + width + height + rotation), the same as a hand-drawn rectangle.
  */
-function explodeRectangle(rect: RectEntity): { lines: LineEntity[]; constraints: Constraint[] } {
+function explodeRectangle(rect: RectEntity): { lines: Entity[]; constraints: Constraint[] } {
+  // A shaped rectangle explodes into what it actually IS — straight runs plus a
+  // true arc per rounded corner (a chamfer is already a straight run). It cannot
+  // take the rigid-rectangle constraint set: those four lines no longer meet,
+  // and a corner cut off is not a corner to make coincident. AutoCAD explodes a
+  // polyline with bulges the same way, into lines and arcs.
+  if (rect.hasShapedCorners()) {
+    return {
+      lines: rect.outlineParts().map((p) =>
+        p.kind === "line"
+          ? new LineEntity(p.a, p.b)
+          : // ArcEntity is always CCW from start to end, so a cove — walked
+            // clockwise round the ring — is stored with its ends swapped.
+            new ArcEntity(
+              p.center,
+              p.radius,
+              p.ccw ? p.startAngle : p.endAngle,
+              p.ccw ? p.endAngle : p.startAngle,
+            ),
+      ),
+      constraints: [],
+    };
+  }
+
   const [bl, br, tr, tl] = rect.corners();
   const bottom = new LineEntity(bl, br);
   const right = new LineEntity(br, tr);
@@ -76,11 +106,11 @@ function explodePolyline(pl: PolylineEntity): LineEntity[] {
 export function explodeSelected(doc: CADDocument): boolean {
   const selected = doc.entities.filter((e) => e.selected);
   const toRemove: EntityId[] = [];
-  const toAdd: LineEntity[] = [];
+  const toAdd: Entity[] = [];
   const constraints: Constraint[] = [];
 
   for (const e of selected) {
-    let lines: LineEntity[];
+    let lines: Entity[];
     if (e.type === "rectangle") {
       const r = explodeRectangle(e as RectEntity);
       lines = r.lines;

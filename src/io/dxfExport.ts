@@ -34,6 +34,7 @@ import {
   PointEntity,
   RasterImageEntity,
 } from "../model/entities";
+import { TAU } from "../core/geom";
 import { textToContours } from "../cam/textOutlines";
 import { isFontResolvable } from "../core/fontManager";
 
@@ -76,7 +77,15 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
   const visible = new Set(doc.layers.filter((l) => l.visible).map((l) => l.id));
   let skippedImages = 0;
 
-  const lwpolyline = (pts: { x: number; y: number }[], closed: boolean, layer: string) => {
+  // `bulge` (group 42) belongs to the vertex the curved segment STARTS at:
+  // tan(θ/4) of the segment's included angle, positive CCW. It is how a
+  // polyline carries an arc, and what lets a rounded rectangle export as one
+  // closed profile rather than as a tessellated approximation of itself.
+  const lwpolyline = (
+    pts: { x: number; y: number; bulge?: number }[],
+    closed: boolean,
+    layer: string,
+  ) => {
     tag(0, "LWPOLYLINE");
     tag(8, layer);
     tag(90, pts.length);
@@ -84,6 +93,7 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
     for (const p of pts) {
       tag(10, nv(p.x));
       tag(20, nv(p.y));
+      if (p.bulge) tag(42, nv(p.bulge));
     }
   };
 
@@ -121,17 +131,35 @@ export function exportDxf(doc: CADDocument): DxfExportResult {
       tag(10, nv(e.pos.x));
       tag(20, nv(e.pos.y));
     } else if (e instanceof RectEntity) {
-      const { minPt, maxPt } = e;
-      lwpolyline(
-        [
-          { x: minPt.x, y: minPt.y },
-          { x: maxPt.x, y: minPt.y },
-          { x: maxPt.x, y: maxPt.y },
-          { x: minPt.x, y: maxPt.y },
-        ],
-        true,
-        layer,
-      );
+      if (e.hasShapedCorners()) {
+        // One vertex per outline part, each carrying the bulge of the segment
+        // leaving it — so the corners arrive in CAD as true arcs.
+        lwpolyline(
+          e.outlineParts().map((p) => {
+            if (p.kind === "line") return { x: p.a.x, y: p.a.y };
+            const span = ((((p.endAngle - p.startAngle) % TAU) + TAU) % TAU) - (p.ccw ? 0 : TAU);
+            return {
+              x: p.center.x + p.radius * Math.cos(p.startAngle),
+              y: p.center.y + p.radius * Math.sin(p.startAngle),
+              bulge: Math.tan(span / 4),
+            };
+          }),
+          true,
+          layer,
+        );
+      } else {
+        const { minPt, maxPt } = e;
+        lwpolyline(
+          [
+            { x: minPt.x, y: minPt.y },
+            { x: maxPt.x, y: minPt.y },
+            { x: maxPt.x, y: maxPt.y },
+            { x: minPt.x, y: maxPt.y },
+          ],
+          true,
+          layer,
+        );
+      }
     } else if (e instanceof PolylineEntity) {
       if (e.points.length >= 2) lwpolyline(e.points, e.closed, layer);
     } else if (e instanceof BezierEntity) {

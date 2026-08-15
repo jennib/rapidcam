@@ -80,7 +80,9 @@ export function mirrorEntity(ent: Entity, A: Vec2, B: Vec2): Entity | null {
   }
   if (ent instanceof RectEntity) {
     // RectEntity is axis-aligned; reflected result is a closed polyline.
-    const pts = [...ent.corners()].reverse().map(r);
+    // outlinePoints, not corners: a mirrored rounded rectangle must come back
+    // rounded, not squared off.
+    const pts = [...ent.outlinePoints()].reverse().map(r);
     const e = new PolylineEntity(pts, true);
     e.isConstruction = ent.isConstruction;
     return e;

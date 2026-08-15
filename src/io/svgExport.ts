@@ -72,6 +72,41 @@ function arcPath(
 }
 
 /**
+ * A rectangle with shaped corners as SVG path data.
+ *
+ * Built from `outlineParts()` — the same description the toolpath is built from
+ * — so the exported file cannot disagree with what was cut. Every corner spans
+ * 90°, so large-arc is always 0; the sweep flag flips with the Y-flip, exactly
+ * as {@link arcPath} explains, and an inverted corner (walked clockwise round a
+ * CCW ring) flips again.
+ */
+function rectPathData(rect: RectEntity, H: number): string {
+  const parts = rect.outlineParts();
+  if (parts.length === 0) return "";
+  const at = (x: number, y: number) => `${sv(x)} ${sv(fy(y, H))}`;
+  const first = parts[0];
+  const start =
+    first.kind === "line"
+      ? at(first.a.x, first.a.y)
+      : at(
+          first.center.x + first.radius * Math.cos(first.startAngle),
+          first.center.y + first.radius * Math.sin(first.startAngle),
+        );
+
+  let d = `M ${start}`;
+  for (const p of parts) {
+    if (p.kind === "line") {
+      d += ` L ${at(p.b.x, p.b.y)}`;
+      continue;
+    }
+    const ex = p.center.x + p.radius * Math.cos(p.endAngle);
+    const ey = p.center.y + p.radius * Math.sin(p.endAngle);
+    d += ` A ${sv(p.radius)} ${sv(p.radius)} 0 0 ${p.ccw ? 0 : 1} ${at(ex, ey)}`;
+  }
+  return `${d} Z`;
+}
+
+/**
  * Export the document as an SVG string.
  * Construction entities are skipped — they are drafting aids, not geometry.
  */
@@ -126,11 +161,19 @@ export function exportSvg(doc: CADDocument): string {
           `${indent}<circle cx="${sv(e.center.x)}" cy="${sv(fy(e.center.y, H))}" r="${sv(e.radius)}" />`,
         );
       } else if (e instanceof RectEntity) {
-        // In Y-up, minPt is bottom-left and maxPt is top-right.
-        // In SVG (Y-down), the rect's top edge corresponds to maxPt.y in Y-up.
-        lines.push(
-          `${indent}<rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}" width="${sv(e.width)}" height="${sv(e.height)}" />`,
-        );
+        if (e.hasShapedCorners()) {
+          // A shaped rectangle is a path, with its corners as real arcs — SVG's
+          // rx/ry can only express one uniform round, not per-corner radii, a
+          // cove or a bevel. Exporting the bounding rect instead would hand
+          // downstream CAM a shape that is not the one on screen.
+          lines.push(`${indent}<path d="${rectPathData(e, H)}" />`);
+        } else {
+          // In Y-up, minPt is bottom-left and maxPt is top-right.
+          // In SVG (Y-down), the rect's top edge corresponds to maxPt.y in Y-up.
+          lines.push(
+            `${indent}<rect x="${sv(e.minPt.x)}" y="${sv(fy(e.maxPt.y, H))}" width="${sv(e.width)}" height="${sv(e.height)}" />`,
+          );
+        }
       } else if (e instanceof PolylineEntity) {
         if (e.points.length < 2) return;
         const pts = ptList(e.points, H);
