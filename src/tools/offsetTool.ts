@@ -100,12 +100,13 @@ function computeSignedOffset(entity: Entity, cursor: Vec2): number | null {
     case "polyline": {
       const pl = entity as PolylineEntity;
       if (pl.points.length < 2) return null;
+      const pts = pl.outlinePoints();
       if (pl.closed) {
-        const inside = pointInPolygon(cursor, pl.points);
-        const d = distToEdges(cursor, pl.points, true);
+        const inside = pointInPolygon(cursor, pts);
+        const d = distToEdges(cursor, pts, true);
         return inside ? -d : d;
       }
-      return signedDistToOpenPolyline(cursor, pl.points);
+      return signedDistToOpenPolyline(cursor, pts);
     }
     case "rectangle": {
       const r = entity as RectEntity;
@@ -215,13 +216,15 @@ function buildPreviews(entity: Entity, d: number): PreviewShape[] {
     case "polyline": {
       const pl = entity as PolylineEntity;
       if (pl.closed) {
-        return offsetPolygon(pl.points, d).map((pts) => ({
+        return offsetPolygon(pl.outlinePoints(), d).map((pts) => ({
           kind: "polyline" as const,
           points: pts,
           closed: true,
         }));
       }
-      return [{ kind: "polyline", points: offsetOpenPolyline(pl.points, d), closed: false }];
+      return [
+        { kind: "polyline", points: offsetOpenPolyline(pl.outlinePoints(), d), closed: false },
+      ];
     }
     case "rectangle": {
       const r = entity as RectEntity;
@@ -448,13 +451,13 @@ export function commitOffset(entity: Entity, d: number, ctx: ToolContext): void 
     case "polyline": {
       const pl = entity as PolylineEntity;
       if (pl.closed) {
-        for (const pts of offsetPolygon(pl.points, d)) {
+        for (const pts of offsetPolygon(pl.outlinePoints(), d)) {
           const e = new PolylineEntity(pts, true);
           e.selected = true;
           ctx.doc.add(e);
         }
       } else {
-        const pts = offsetOpenPolyline(pl.points, d);
+        const pts = offsetOpenPolyline(pl.outlinePoints(), d);
         const e = new PolylineEntity(pts, false);
         e.selected = true;
         ctx.doc.add(e);

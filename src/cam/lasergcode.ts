@@ -207,7 +207,7 @@ function profileCircleRadius(r: number, op: CAMOperation, post: LaserPost): numb
 function fillableContours(ent: Entity): Vec2[][] | null {
   if (ent instanceof CircleEntity) return [circlePolyline(ent.center.x, ent.center.y, ent.radius)];
   if (ent instanceof RectEntity) return [ent.outlinePoints()];
-  if (ent instanceof PolylineEntity) return ent.closed ? [ent.points] : null;
+  if (ent instanceof PolylineEntity) return ent.closed ? [ent.outlinePoints()] : null;
   if (ent instanceof TextEntity) {
     const cs = textToContours(ent)
       .filter((c) => c.closed)
@@ -450,16 +450,17 @@ function laserOpItems(op: CAMOperation, doc: CADDocument, post: LaserPost): Lase
       continue;
     }
     if (ent instanceof PolylineEntity) {
+      const base = ent.outlinePoints();
       if (ent.closed) {
-        if (profile) pushClosedProfile(items, ent.points, op, post);
-        else items.push({ kind: "poly", pts: ent.points, closed: true });
+        if (profile) pushClosedProfile(items, base, op, post);
+        else items.push({ kind: "poly", pts: base, closed: true });
       } else if (profile) {
         items.push({
           kind: "note",
           text: `open polyline (${ent.id}) skipped — profile requires closed geometry`,
         });
       } else {
-        items.push({ kind: "poly", pts: ent.points, closed: false });
+        items.push({ kind: "poly", pts: base, closed: false });
       }
       continue;
     }
