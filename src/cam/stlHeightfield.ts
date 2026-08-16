@@ -182,28 +182,49 @@ export interface Heightfield {
  * the outermost crossings has no opinion about winding and fills such cavities in,
  * which is what carving them solid does anyway.
  *
- * ## Why 5%, measured rather than picked
+ * ## Why 10%: an operating point, and NOT a gap
  *
- * Across 22 real STLs (printed parts, CNC fixtures, relief wall art) and 9
- * synthetic shapes with closed-form answers, `scripts/stl-relief-probe.ts` found
- * a clear empty band:
+ * This threshold was first set to 5% on a 31-model corpus that appeared to have a
+ * clean empty band between 3.8% and 8.8%. **That band was an artifact of the
+ * sample size.** Re-measured over **929 real objects** — every STL and every mesh
+ * inside every 3MF in a working maker's download folder — the distribution is
+ * continuous, and there is no gap anywhere to hide a threshold in:
  *
- * - Genuine reliefs top out at **0.9%** — `last_supper_remix` 0.0, `dragon_wall_art`
- *   0.0, `resurgence-2` 0.1, `atenea_v1` (facing the tool) 0.3, `lion5-1` 0.9.
- * - Parts lying flat, where the carve does reproduce the top form, reach **3.8%**
- *   (`SonicKnifePCB`; `plasticbox` 2.4, `Quinn-PushStick` 2.5).
- * - The first model that genuinely misleads is at **8.8%** (a hex-head screw),
- *   then 12.2 (torus), 15.1, 20.0 (sphere, exact), 40.2, 56.8, 65.6, 71.8.
+ *     0–0.5%  695 | 1–2%  17 | 3–4%   9 | 5–6%  12 | 8–10%  11 | 15–20%  16
+ *     0.5–1%   14 | 2–3%  18 | 4–5%   9 | 6–8%   8 | 10–15%  36 | 20%+    84
  *
- * 5% sits in the 3.8–8.8 gap: no false positive and no false negative on any of
- * the 31, with 5.5× margin over the worst genuine relief. It errs low on purpose —
- * an unwanted warning is an annoyance, a missed one is a ruined blank.
+ * The clearest evidence is a natural experiment the corpus supplies for free:
+ * `Imperial_Setup_Blocks_Case` is one part at fourteen thicknesses, and it reads
+ * 4.0, 4.2, 4.4, 4.7, 4.8, 4.9, 5.1, 5.2, 5.3, 5.3, 5.4, 5.4, 5.5%. The same
+ * design, equally carveable at every size, drifting straight across a 5% line.
+ *
+ * So the number is a judgement about cost, and it is chosen from what the corpus
+ * says about each class:
+ *
+ * - **Reliefs** — the must-not-warn class — run 0.0 (`last_supper_remix`,
+ *   `dragon_wall_art`, `BuddhaRelief`), 0.1 (`resurgence-2`), 0.3 (`atenea_v1`
+ *   facing the tool), 0.9 (`lion5-1`), 2.4 and up to **4.7%**
+ *   (`mother-day-gift-elegoo`, a framed decorative panel — rendered and looked at,
+ *   not guessed from its filename).
+ * - **Solid 3-D forms** — the must-warn class — start at 12.4% (`apolo_v1` seen
+ *   from above) and 15.1%, with the mildest textbook case, a sphere, at exactly
+ *   20.0%. Then 22.3, 25.9, 40.2, 56.8, 61.0, 65.6, 71.8.
+ *
+ * 10% is a little over 2× the highest relief measured and comfortably under every
+ * object anyone would call a solid 3-D form. It fires on ~15% of a real printed
+ * corpus, which keeps it meaningful — a warning that greets one model in three
+ * becomes wallpaper, and the cost of that is the ruined blank it stops being read
+ * in time to prevent.
+ *
+ * Between 5% and 10% sit setup blocks, hand clamps, a glue roller and gridfinity
+ * bins: printed parts that lie flat, where a pass from above does reproduce the
+ * top form. Staying quiet on those is right, not a concession.
  *
  * Orientation matters and the number follows it, which is the useful part:
- * `atenea_v1` reads 56.8% carved from her back, 5.8% from above and **0.3%** from
- * the front, so the warning clears when the user picks the face they meant.
+ * `apolo_v1` reads 61.0% carved from the back, 12.4% from above and **0.4%** from
+ * the face, so the warning clears when the user picks the face they meant.
  */
-export const PLINTH_WARN = 0.05;
+export const PLINTH_WARN = 0.1;
 
 /**
  * Rasterise a parsed STL into a heightfield.

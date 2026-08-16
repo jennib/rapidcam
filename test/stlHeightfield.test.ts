@@ -173,6 +173,16 @@ describe("plinthRatio: is the model relief-shaped?", () => {
     expect(large.plinthRatio).toBeCloseTo(small.plinthRatio, 2);
   });
 
+  test("the threshold keeps its measured margins on both sides", () => {
+    // The threshold is an operating point on a CONTINUOUS distribution (929 real
+    // objects, no gap), so it is pinned from both directions rather than left to
+    // drift: the highest relief measured was 4.7% and the mildest solid 3-D form
+    // is a sphere at exactly 20%. Anything that moves it outside those loses a
+    // class, and this is what says so.
+    expect(PLINTH_WARN).toBeGreaterThan(0.047 * 1.5); // clear of the worst relief
+    expect(PLINTH_WARN).toBeLessThan(0.2); // still catches a plain sphere
+  });
+
   test("a degenerate mesh reports zero rather than NaN", () => {
     // 0/0 here would render as "NaN% of what gets carved" in the import dialog.
     expect(field([]).plinthRatio).toBe(0);

@@ -274,9 +274,23 @@ above can never reach:
     plinthRatio = 1 − Σ(zTop − zBottom) / Σ(zTop − zMin)
 
 One extra `Float32Array` in the existing raster loop, bounded in [0,1] by construction.
-Threshold **5%**, in a measured empty band: genuine reliefs top out at 0.9%, parts lying
-flat at 3.8%, and the first genuinely misleading model is 8.8%. Zero false positives and
-zero false negatives across 22 real STLs and 9 synthetics — `scripts/stl-relief-probe.ts`.
+
+**Threshold 10%, and the first attempt at it was wrong.** It was initially set to 5% on a
+31-model corpus that looked like it had a clean empty band from 3.8% to 8.8%. Re-measured
+over **929 real objects** — every STL plus every mesh inside every 3MF in a working
+maker's download folder — *that band does not exist*; the distribution is continuous. The
+corpus even supplies the disproof for free: `Imperial_Setup_Blocks_Case` is one part at
+fourteen thicknesses and reads 4.0, 4.2, 4.4, 4.7, 4.8, 4.9, 5.1, 5.2, 5.3, 5.3, 5.4, 5.4,
+5.5% — the same design, equally carveable at every size, drifting straight across a 5% line.
+
+So it is an operating point, not a discovered boundary, and it is pinned by the two classes:
+reliefs run 0.0–**4.7%** (the top one being `mother-day-gift-elegoo`, a framed decorative
+panel — rendered and looked at, not guessed from its name), while solid 3-D forms start at
+12.4% with the mildest textbook case, a sphere, at exactly 20.0%. 10% is a little over 2×
+the worst relief and well under every solid form, and fires on ~15% of the corpus, which
+keeps it from becoming wallpaper. Between 5% and 10% sit setup blocks, hand clamps and
+gridfinity bins — printed parts that lie flat, where a pass from above does reproduce the
+top form. `scripts/stl-relief-probe.ts` reproduces all of it (it reads 3MF too).
 
 **Taking the model's volume from the facet winding was tried and rejected.** It is the
 more obvious formulation and it is wrong on real files: `resurgence-2.stl` and
@@ -294,9 +308,18 @@ carves perfectly — so it is a bad warning signal, and it costs a two-pass cros
 right tool for Phase 2's steep/shallow split, not for this.
 
 **The warning follows the up axis, which turned out to be the most useful part.**
-`atenea_v1.stl` reads 56.8% carved from her back, 5.8% from above and 0.3% from her face,
+`apolo_v1.stl` reads 61.0% carved from the back, 12.4% from above and 0.4% from the face,
 so the warning doubles as a guide to the correct orientation: change the axis and it
-clears as the preview snaps into a relief.
+clears as the preview snaps into a relief. (`atenea_v1` behaves the same way but peaks at
+5.8% seen from above, so at a 10% threshold that one orientation goes unwarned — the
+preview showing the top of her head is what has to carry it there.)
+
+**One more defect worth recording: an open mesh read 100%.** A relief face exported
+without a back — scanned and sculpted reliefs routinely are — has `zTop == zBottom`, so the
+span collapses and it read as pure plinth: the loudest possible warning on the most
+relief-shaped input there is. Both sums now skip cells with no measurable thickness. The
+test suite missed it because its only open fixture, `sliverPlate`, is perfectly flat and
+exits down the zero-range path, passing for the wrong reason.
 
 Undercuts need no user option: keeping the max Z *is* treating them as vertical walls, and
 there is no second mode to switch to. The standing note says so instead.

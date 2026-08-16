@@ -314,7 +314,11 @@ function measure(label: string, raw: STLMesh, scale: number, expect: string): Ro
   const modelMM3 = mv.volume * scale ** 3;
   const carvedMM3 = carvedVolume(hf);
   const wasted = carvedMM3 > 0 ? 1 - modelMM3 / carvedMM3 : 0;
-  const rs = rayStats(mesh, hf, scale);
+  // The crossing-list pass is the expensive one; off unless asked for, so a
+  // few-hundred-object sweep stays quick.
+  const rs = process.env.RAYS
+    ? rayStats(mesh, hf, scale)
+    : { undercut: Number.NaN, spanMM3: Number.NaN };
   return {
     label,
     tris: mesh.count,
@@ -534,13 +538,92 @@ function slab(size: number, thick: number): Tri[] {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Load the meshes out of a 3MF's `3D/3dmodel.model` XML, one `STLMesh` per
+ * object.
+ *
+ * Probe-only. 3MF is the container every consumer slicer writes, so it is where
+ * real printed parts actually live — the calibration corpus is far too small
+ * without it, and a threshold measured on a handful of files is barely measured
+ * at all. Objects are kept SEPARATE rather than merged: a plate holding six
+ * parts is six things somebody might carve, not one six-part model.
+ *
+ * Regex rather than a parser because the two element shapes involved are fixed
+ * by the spec and this reads 126 MB of XML.
+ */
+function load3MF(path: string): { name: string; mesh: STLMesh }[] {
+  const xml = readFileSync(path, "utf8");
+  const out: { name: string; mesh: STLMesh }[] = [];
+  const OBJ = /<object\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/object>/g;
+  let om: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the exec-loop idiom
+  while ((om = OBJ.exec(xml)) !== null) {
+    const body = om[2];
+    const vBlock = /<vertices>([\s\S]*?)<\/vertices>/.exec(body)?.[1];
+    const tBlock = /<triangles>([\s\S]*?)<\/triangles>/.exec(body)?.[1];
+    if (!vBlock || !tBlock) continue; // a components-only object, no mesh of its own
+    const xs: number[] = [];
+    const V = /<vertex\s+x="([^"]+)"\s+y="([^"]+)"\s+z="([^"]+)"/g;
+    let vm: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: the exec-loop idiom
+    while ((vm = V.exec(vBlock)) !== null) xs.push(+vm[1], +vm[2], +vm[3]);
+    const T = /<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"/g;
+    const tri: number[] = [];
+    let tm: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: the exec-loop idiom
+    while ((tm = T.exec(tBlock)) !== null) tri.push(+tm[1], +tm[2], +tm[3]);
+    if (tri.length === 0) continue;
+    const verts = new Float32Array(tri.length * 3);
+    let mnx = Infinity, mny = Infinity, mnz = Infinity;
+    let mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
+    for (let i = 0; i < tri.length; i++) {
+      const o = tri[i] * 3;
+      const x = xs[o], y = xs[o + 1], z = xs[o + 2];
+      verts[i * 3] = x;
+      verts[i * 3 + 1] = y;
+      verts[i * 3 + 2] = z;
+      if (x < mnx) mnx = x;
+      if (y < mny) mny = y;
+      if (z < mnz) mnz = z;
+      if (x > mxx) mxx = x;
+      if (y > mxy) mxy = y;
+      if (z > mxz) mxz = z;
+    }
+    out.push({
+      name: `${basename(path, ".model")}#${om[1]}`,
+      mesh: {
+        vertices: verts,
+        count: tri.length / 3,
+        min: { x: mnx, y: mny, z: mnz },
+        max: { x: mxx, y: mxy, z: mxz },
+        format: "binary",
+        name: "",
+        dropped: 0,
+      },
+    });
+  }
+  return out;
+}
+
+/** Every carveable object in a file, whichever container it arrived in. */
+function loadAny(f: string): { name: string; mesh: STLMesh }[] {
+  if (/\.model$/i.test(f)) return load3MF(f);
+  const buf = readFileSync(f);
+  return [
+    {
+      name: basename(f),
+      mesh: parseSTL(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer),
+    },
+  ];
+}
+
 function collect(paths: string[]): string[] {
   const out: string[] = [];
   for (const p of paths) {
     if (!statSync(p, { throwIfNoEntry: false })) continue;
     if (statSync(p).isDirectory())
       for (const f of readdirSync(p)) {
-        if (/\.stl$/i.test(f)) out.push(join(p, f));
+        if (/\.(stl|model)$/i.test(f)) out.push(join(p, f));
       }
     else out.push(p);
   }
@@ -574,29 +657,52 @@ if (args.length > 0) {
   const real: Row[] = [];
   for (const f of collect(args)) {
     try {
-      const buf = readFileSync(f);
-      const mesh = parseSTL(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-      if (mesh.count === 0) {
-        console.log(`  (skipped, no triangles) ${basename(f)}`);
-        continue;
+      for (const { name, mesh } of loadAny(f)) {
+        // Tiny objects on a plate are print helpers (brims, calibration cubes),
+        // not something anyone would carve; they only add noise to the corpus.
+        if (mesh.count < 100) continue;
+        const t0 = performance.now();
+        const r = measure(name + (UP === "+Z" ? "" : ` [${UP}]`), mesh, suggestUnitScale(mesh).scale, "");
+        r.note = `${(performance.now() - t0).toFixed(0)}ms`;
+        real.push(r);
       }
-      const t0 = performance.now();
-      const r = measure(basename(f) + (UP === "+Z" ? "" : ` [${UP}]`), mesh, suggestUnitScale(mesh).scale, "");
-      r.note = `${(performance.now() - t0).toFixed(0)}ms`;
-      real.push(r);
     } catch (e) {
       console.log(`  (failed) ${basename(f)}: ${(e as Error).message}`);
     }
   }
-  real.sort((a, b) => a.wastedPct - b.wastedPct);
-  printTable(real);
+  real.sort((a, b) => a.shipPct - b.shipPct);
+  if (process.env.TABLE) printTable(real);
+
+  // ---- distribution -------------------------------------------------------
+  // The threshold's whole justification is a GAP in this distribution, so the
+  // distribution is what has to be looked at — not a handful of chosen rows.
+  const buckets = [0.5, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 50, 101];
+  console.log(`\n=== plinth% distribution over ${real.length} real objects ===`);
+  let lo = 0;
+  for (const hi of buckets) {
+    const n = real.filter((r) => r.shipPct >= lo && r.shipPct < hi).length;
+    console.log(
+      `  ${`${lo}–${hi}%`.padStart(10)} ${String(n).padStart(4)} ${"█".repeat(Math.min(70, n))}` +
+        (lo >= 5 ? "   (warns)" : ""),
+    );
+    lo = hi;
+  }
+
+  const band = real.filter((r) => r.shipPct >= 1 && r.shipPct < 8);
+  console.log(`\n=== the band the threshold sits in: ${band.length} objects between 1% and 8% ===`);
+  for (const r of band)
+    console.log(`  ${r.shipPct.toFixed(1).padStart(5)}%  ${r.mm.padStart(14)}  ${r.label}`);
+  console.log(
+    `\nwarns: ${real.filter((r) => r.shipPct >= PLINTH_WARN * 100).length}/${real.length} ` +
+      `(${((real.filter((r) => r.shipPct >= PLINTH_WARN * 100).length / real.length) * 100).toFixed(0)}%)`,
+  );
 
   if (process.env.SHOW) {
-    for (const f of collect(args)) {
-      const buf = readFileSync(f);
-      const mesh = parseSTL(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-      if (mesh.count === 0) continue;
-      show(stlHeightfield(mesh, { scale: suggestUnitScale(mesh).scale }), basename(f));
-    }
+    for (const f of collect(args))
+      for (const { name, mesh } of loadAny(f)) {
+        if (mesh.count < 100) continue;
+        const scale = suggestUnitScale(mesh).scale;
+        show(stlHeightfield(reorient(mesh, UP), { scale }), `${name} [${UP}]`);
+      }
   }
 }
