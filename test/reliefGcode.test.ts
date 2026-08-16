@@ -68,7 +68,13 @@ test("relief: a black top-left pixel carves deepest at top-left in world (Y-up, 
   ]);
   const doc = new CADDocument({ width: 100, height: 100 });
   doc.add(new RasterImageEntity(id, { x: 10, y: 20 }, 4, 4, 0));
-  const g = generateGCode([reliefOp([doc.entities.find((e) => e.type === "image")!.id])], doc);
+  // ⌀1 rather than the file's ⌀2: at a 2mm dot pitch a ⌀2 ball's flank reaches
+  // exactly to the neighbouring white dot, so it is held up at −1 and this could
+  // no longer assert "black reaches full depth" (see test/toolProfile.test.ts).
+  const g = generateGCode(
+    [reliefOp([doc.entities.find((e) => e.type === "image")!.id], { diameter: 1 })],
+    doc,
+  );
 
   const moves = zMoves(g);
   const deepest = moves.reduce((a, b) => (b.z < a.z ? b : a));
@@ -221,7 +227,15 @@ test("output size: a solid relief merges each row to its endpoints (not one move
 
 test("a large relief generates without overflowing the stack (no spread-push)", () => {
   // ~290k moves — large enough that `lines.push(...reliefBody)` would overflow.
-  const bytes = Uint8Array.from({ length: 400 * 300 }, (_, i) => (i * 37) % 256);
+  //
+  // A ramp of one grey step per pixel, NOT the `(i*37)%256` noise this used to
+  // use. That noise swung the full tonal range every ~7 dots, which a ⌀2 ball at
+  // a 0.15mm pitch physically cannot follow — so the tool-shape correction
+  // (correctly) flattened it and the move count collapsed to 85k. A gentle ramp
+  // is inside what the bit can cut, keeps a distinct Z at nearly every dot, and
+  // so still exercises the size this guard is about.
+  const W = 400;
+  const bytes = Uint8Array.from({ length: W * 300 }, (_, i) => ((i % W) + Math.floor(i / W)) % 256);
   let bin = "";
   const C = 0x8000; // chunk: String.fromCharCode(...) also has an arg limit
   for (let i = 0; i < bytes.length; i += C) bin += String.fromCharCode(...bytes.subarray(i, i + C));

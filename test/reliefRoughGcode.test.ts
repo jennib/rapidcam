@@ -102,13 +102,17 @@ test("relief-rough: only a greyscale image is roughed — other geometry is note
 });
 
 test("relief-rough: a black top-left pixel is cleared deepest at top-left in world (Y-up)", () => {
-  // 2×2: black only top-left. diameter 5, stepover 0.4 → 2mm pitch → a 2×2 cell grid.
+  // 2×2: black only top-left, over 20mm so the dark quadrant is 10×10mm — room
+  // for a ⌀5 tool to get into. (At the old 4×4mm it was a 2mm-wide well and the
+  // tool physically could not enter it without ploughing the surface either
+  // side, which is what the footprint correction now refuses.)
+  // diameter 5, stepover 0.4 → 2mm pitch → a 10×10 cell grid.
   const id = registerGrid([
     [0, 255],
     [255, 255],
   ]);
   const doc = new CADDocument({ width: 100, height: 100 });
-  doc.add(new RasterImageEntity(id, { x: 10, y: 20 }, 4, 4, 0));
+  doc.add(new RasterImageEntity(id, { x: 10, y: 20 }, 20, 20, 0));
   const g = generateGCode(
     [
       roughOp([imgId(doc)], {
@@ -123,10 +127,16 @@ test("relief-rough: a black top-left pixel is cleared deepest at top-left in wor
   );
 
   const rs = runs(g);
-  expect(rs.length).toBe(1); // only the black cell has material
-  expect(rs[0].z).toBeCloseTo(-1.5, 6); // one plane at -(2−0.5)
-  expect(rs[0].x).toBeCloseTo(11, 6); // left column centre (10 + 0.5·2)
-  expect(rs[0].y).toBeCloseTo(23, 6); // TOP band (20 + 1.5·2) — image row 0 is up
+  expect(rs.length).toBeGreaterThan(0);
+  for (const r of rs) {
+    expect(r.z).toBeCloseTo(-1.5, 6); // one plane at -(2−0.5)
+    expect(r.x).toBeLessThan(20); // LEFT half (image spans x 10…30)
+    expect(r.y).toBeGreaterThan(30); // TOP half (y 20…40) — image row 0 is up
+  }
+  // The ⌀5 tool keeps a radius clear of the white: it never reaches the quadrant
+  // boundary, and never the far side of it.
+  expect(Math.max(...rs.map((r) => r.x))).toBeLessThanOrEqual(20 - 5 / 2);
+  expect(Math.min(...rs.map((r) => r.y))).toBeGreaterThanOrEqual(30 + 5 / 2);
 });
 
 test("relief-rough: long runs enter with a descending ramp (not a straight plunge)", () => {
@@ -152,10 +162,12 @@ test("relief-rough: long runs enter with a descending ramp (not a straight plung
 });
 
 test("relief-rough: a lone cell (too short to ramp) plunges straight", () => {
-  // diameter 5 → 2mm pitch → 2 cells; only the left cell is dark.
-  const id = registerGrid([[0, 255]]);
+  // diameter 5 → 2mm pitch → 5 cells; the middle three are dark. A ⌀5 tool fits
+  // only in the centre one — either edge of the dark band is a radius short —
+  // so exactly one cell is cleared, which is the single-cell run this is about.
+  const id = registerGrid([[255, 0, 0, 0, 255]]);
   const doc = new CADDocument({ width: 100, height: 100 });
-  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 4, 2, 0));
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 10, 2, 0));
   const g = generateGCode(
     [
       roughOp([imgId(doc)], {
@@ -247,7 +259,15 @@ test("a large relief roughing generates without overflowing the stack", () => {
   // in reliefGcode.test.ts carries that guard properly; this one covers that the
   // ROUGHING emit path runs and produces motion. It used to build a 400×300
   // image over 80×60mm to assert >1000, which cost real memory for nothing.
-  const bytes = Uint8Array.from({ length: 200 * 150 }, (_, i) => (i * 37) % 256);
+  // 6mm chequers, not the `(i*37)%256` noise this used to use: that swung the
+  // full tonal range every few cells, which a ⌀1 end mill cannot rough without
+  // ploughing its neighbours — so the footprint correction (correctly) left
+  // nothing to cut and this dropped to zero moves. Squares six times the tool
+  // diameter are broken up enough to make many runs per row and coarse enough
+  // that the tool genuinely fits inside them.
+  const bytes = Uint8Array.from({ length: 200 * 150 }, (_, i) =>
+    (Math.floor((i % 200) / 30) + Math.floor(Math.floor(i / 200) / 30)) % 2 ? 255 : 0,
+  );
   let bin = "";
   const C = 0x8000;
   for (let i = 0; i < bytes.length; i += C) bin += String.fromCharCode(...bytes.subarray(i, i + C));

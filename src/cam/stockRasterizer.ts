@@ -9,10 +9,15 @@
  * Tool geometry is respected:
  *   end-mill  — flat disc (original behaviour)
  *   ball-nose — hemispherical stamp: h(d) = depth + R − √(R²−d²)
- *   v-bit     — V-cone stamp: h(d) = depth + d / tan(halfAngle)
+ *   v-bit     — V-cone stamp: h(d) = depth + (d − tipR) / tan(halfAngle)
  *   drill     — V-cone stamp using tip angle, clamped to the bit's own radius (a
  *               real bit's flutes run straight past the point, not an ever-
  *               widening cone) — see {@link makeStampFn}, {@link stampVCone}
+ *
+ * The two flank laws are NOT written out here: `ballHeight`/`coneHeight` in
+ * {@link ./toolProfile} own them, because the toolpath is dilated by the same
+ * shapes and a preview that disagrees with the program is the bug this file
+ * exists to catch.
  */
 
 import type { Vec2 } from "../core/vec2";
@@ -30,7 +35,7 @@ import {
   RasterImageEntity,
 } from "../model/entities";
 import { textToContours } from "./textOutlines";
-import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
+import { rasterField, makeRasterXf, xfPoint, levelDepthEps } from "./rasterEngrave";
 import { getImageGrid } from "../core/imageManager";
 import {
   type CAMOperation,
@@ -39,7 +44,8 @@ import {
   chamferSharpSequence,
   resolveOpTool,
 } from "./types";
-import { reliefSpacing } from "./halftone";
+import { reliefSpacing, halfAngleRad } from "./halftone";
+import { ballHeight, coneHeight, toolContactField } from "./toolProfile";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
@@ -641,13 +647,16 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
     flipX: ent.flipX,
     flipY: ent.flipY,
   });
+  // Same tool-footprint correction the emitter applies, so the preview shows the
+  // Z the program will actually command. A laser has no flank to dig in with.
+  const cut = isLaser ? field : toolContactField(field, op, maxDepth);
   // Stamp each dot at its rotated world position so a tilted image previews tilted.
   const xf = makeRasterXf(ent.position, ent.angle);
-  for (const row of field.rows) {
-    for (let c = 0; c < field.cols; c++) {
+  for (const row of cut.rows) {
+    for (let c = 0; c < cut.cols; c++) {
       const level = row.levels[c];
       if (level <= 0) continue;
-      const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
+      const w = xfPoint(xf, (c + 0.5) * cut.colPitch, row.y);
       stamp(w.x * RES, w.y * RES, stockT - level * maxDepth);
     }
   }
@@ -678,11 +687,12 @@ function rasReliefRough(
   const nPasses = Math.max(1, Math.ceil(maxCut / stepdown));
   // The deepest flat plane (matching reliefRoughImage's pass sequence, last plane
   // clamped to −maxCut) that still reaches a cell of the given rough surface.
+  const eps = levelDepthEps(maxDepth); // levels are float32 — see the helper
   const floorZ = (roughSurf: number): number => {
     let z = 0;
     for (let p = 1; p <= nPasses; p++) {
       const zP = Math.max(-p * stepdown, -maxCut);
-      if (roughSurf <= zP + 1e-9) z = zP;
+      if (roughSurf <= zP + eps) z = zP;
     }
     return z; // ≤ 0; 0 = untouched
   };
@@ -697,12 +707,15 @@ function rasReliefRough(
     flipX: ent.flipX,
     flipY: ent.flipY,
   });
+  // Allowance and tool footprint folded into the level, exactly as the emitter
+  // does it — so a cell's level is the depth roughing may reach, no more.
+  const cut = toolContactField(field, op, maxDepth, allowance);
   const xf = makeRasterXf(ent.position, ent.angle);
-  for (const row of field.rows) {
-    for (let c = 0; c < field.cols; c++) {
-      const z = floorZ(Math.min(0, -row.levels[c] * maxDepth + allowance));
+  for (const row of cut.rows) {
+    for (let c = 0; c < cut.cols; c++) {
+      const z = floorZ(-row.levels[c] * maxDepth);
       if (z >= 0) continue; // nothing removed here
-      const w = xfPoint(xf, (c + 0.5) * field.colPitch, row.y);
+      const w = xfPoint(xf, (c + 0.5) * cut.colPitch, row.y);
       stamp(w.x * RES, w.y * RES, stockT + z);
     }
   }
@@ -744,8 +757,12 @@ function makeStampFn(
     return (cx, cy, d) => stampBallNose(data, w, h, cx - offX, cy - offY, R, d);
   }
   if (tt === "v-bit") {
-    const halfTan = Math.tan(((op.vAngle ?? 60) / 2) * (Math.PI / 180));
-    return (cx, cy, d) => stampVCone(data, w, h, cx - offX, cy - offY, halfTan, d, stockT);
+    // Same half-angle law (and degenerate-angle clamp) as `grooveWidth` and the
+    // tool profile the toolpath is dilated by — one definition, three readers.
+    const halfTan = Math.tan(halfAngleRad(op));
+    const tipR = Math.min(R, Math.max(0, op.tipDiameter ?? 0) / 2);
+    return (cx, cy, d) =>
+      stampVCone(data, w, h, cx - offX, cy - offY, halfTan, d, stockT, Infinity, tipR);
   }
   if (tt === "drill") {
     // A drill's point is conical, but only out to the bit's own radius — past
@@ -754,7 +771,9 @@ function makeStampFn(
     // a 12mm-deep hole at the standard 118° point (halfTan ≈ tan59° ≈ 1.66)
     // reaches ~20mm lateral before ever hitting the R clamp, rendering as a
     // crater several times the bit's actual diameter.
-    const tipHalfTan = Math.tan(((op.tipAngle ?? 118) / 2) * (Math.PI / 180));
+    const tipHalfTan = Math.tan(
+      halfAngleRad({ vAngle: op.tipAngle ?? DEFAULTS.tipAngle, diameter: op.diameter }),
+    );
     return (cx, cy, d) => stampVCone(data, w, h, cx - offX, cy - offY, tipHalfTan, d, stockT, R);
   }
   // end-mill (and any unrecognised type): flat disc
@@ -831,7 +850,7 @@ function stampBallNose(
       const dyMM = (y - cy) / RES;
       const d2 = dxMM * dxMM + dyMM * dyMM;
       if (d2 > R2) continue;
-      const hAt = depth + R_mm - Math.sqrt(R2 - d2);
+      const hAt = depth + ballHeight(Math.sqrt(d2), R_mm);
       if (hAt < data[base + x]) data[base + x] = hAt;
     }
   }
@@ -859,11 +878,12 @@ function stampVCone(
   depth: number,
   stockT: number,
   maxRMM: number = Infinity,
+  tipRMM: number = 0,
 ): void {
   // Maximum lateral reach in mm where the cone still removes material — where it
   // reaches the stock surface, or the caller's hard radius clamp, whichever is
   // tighter.
-  const dMaxMM = Math.min((stockT - depth) * halfAngleTan, maxRMM);
+  const dMaxMM = Math.min(tipRMM + (stockT - depth) * halfAngleTan, maxRMM);
   const dMaxCell = dMaxMM * RES;
   const dMax2 = dMaxMM * dMaxMM;
   const x0 = Math.max(0, Math.floor(cx - dMaxCell));
@@ -877,7 +897,7 @@ function stampVCone(
       const dyMM = (y - cy) / RES;
       const d2 = dxMM * dxMM + dyMM * dyMM;
       if (d2 > dMax2) continue;
-      const hAt = depth + Math.sqrt(d2) / halfAngleTan;
+      const hAt = depth + coneHeight(Math.sqrt(d2), halfAngleTan, tipRMM);
       if (hAt < data[base + x]) data[base + x] = hAt;
     }
   }
