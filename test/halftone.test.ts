@@ -493,6 +493,11 @@ describe("stepdown passes", () => {
       rasterLineInterval: 5,
       rasterDotPitch: 5,
       toolType: "ball-nose" as const,
+      // OP_BASE carries a ⌀50 V-bit MAJOR diameter, which as a ball-nose is a
+      // 25mm-radius flank — it cannot cut a 5mm band 4mm deep beside one that
+      // stays near the surface, so the tool-shape correction holds the whole
+      // image above the first pass floor and the second pass has nothing to skip.
+      diameter: 3,
     };
     const g = generateGCode([op], doc);
     const moves = allMoves(g);

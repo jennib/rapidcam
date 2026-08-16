@@ -12,13 +12,14 @@ import {
   ArcEntity,
   RasterImageEntity,
 } from "../model/entities";
-import { rasterField, makeRasterXf, xfPoint } from "./rasterEngrave";
+import { rasterField, makeRasterXf, xfPoint, levelDepthEps } from "./rasterEngrave";
 import {
   reliefSpacing,
   grooveWidth,
   grooveOverlapRatio,
   OVERLAP_WARN_RATIO,
 } from "./halftone";
+import { toolContactField } from "./toolProfile";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import {
@@ -1290,7 +1291,10 @@ function reliefImage(
   if (field.rows.length === 0)
     return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
 
-  const { cols, colPitch, rows } = field;
+  // A point sample is where the surface is under the TIP; the bit has flanks, so
+  // the Z it may ride at is the max over its whole footprint. Without this the
+  // flank cuts through material the centre sample said was clear.
+  const { cols, colPitch, rows } = toolContactField(field, op, maxDepth);
   const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
@@ -1475,7 +1479,11 @@ function reliefRoughImage(
       `; NOTE: relief roughing produced nothing (blank or zero size) — image ${ent.id} skipped`,
     ];
 
-  const { cols, colPitch, rows } = field;
+  // Backs the allowance off the target and then dilates by the roughing tool's
+  // own footprint — a ⌀6 end mill cannot drop into a 2mm-wide well however deep
+  // the image says it is. Both are folded into the level, so a cell's level IS
+  // the depth roughing may reach.
+  const { cols, colPitch, rows } = toolContactField(field, op, maxDepth, allowance);
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
   if (op.toolType === "v-bit" || op.toolType === "ball-nose")
@@ -1483,12 +1491,13 @@ function reliefRoughImage(
       `; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`,
     );
 
-  // Rough surface per cell = final depth left with the allowance on top, capped at
-  // the stock top (Z=0). White (level 0) → 0 → never cut.
-  const roughSurf = (level: number) => Math.min(0, -level * maxDepth + allowance);
+  // Rough surface per cell. The allowance and the tool footprint are already in
+  // the level (see above), and 0 still means "leave at the stock top, never cut".
+  const roughSurf = (level: number) => -level * maxDepth;
   const deepest = -(maxDepth - allowance); // deepest plane needed
   const nPasses = Math.max(1, Math.ceil((maxDepth - allowance) / stepdown));
   const RC = RAMP_CLEAR; // hop height above stock top
+  const eps = levelDepthEps(maxDepth); // levels are float32 — see the helper
 
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   let firstRun = true; // first traverse clears fixtures at safeZ
@@ -1529,7 +1538,7 @@ function reliefRoughImage(
       };
       for (let k = 0; k < cols; k++) {
         const c = ltr ? k : cols - 1 - k;
-        if (roughSurf(row.levels[c]) <= zP + 1e-9) {
+        if (roughSurf(row.levels[c]) <= zP + eps) {
           // material present at this plane
           if (runFrom < 0) runFrom = c;
           runTo = c;

@@ -60,8 +60,14 @@ export interface VBitGeometry {
   diameter: number;
 }
 
-/** Half-angle in radians, clamped to a cutting geometry that exists. */
-function halfAngleRad(bit: VBitGeometry): number {
+/**
+ * Half-angle in radians, clamped to a cutting geometry that exists. Exported
+ * because {@link ../cam/toolProfile} needs the same V-bit half-angle — including
+ * the same clamp — to build the cone the tool actually cuts with. (There are
+ * several other hand-rolled `tan(vAngle/2 · π/180)` sites in `src/`; this is the
+ * one with the degenerate-angle guard, and the one to grow toward.)
+ */
+export function halfAngleRad(bit: VBitGeometry): number {
   const deg = bit.vAngle && bit.vAngle > 0 ? bit.vAngle : DEFAULTS.vAngle;
   // 180° would be a flat disc (tan → ∞, infinitely wide groove); 0° an infinitely
   // long needle. Clamp to the range a real bit lives in so the arithmetic below

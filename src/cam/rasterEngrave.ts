@@ -183,6 +183,26 @@ export function resampleGrid(
 // backend without the merge depending on backend-specific units.
 
 /** One row of the dot field: quantised cut levels, left→right. 0 = surface, 1 = deepest/darkest. */
+/**
+ * Default level quantum: one 8-bit step, i.e. the finest a greyscale source can
+ * express. Exported so anything re-deriving levels quantises on the same ladder.
+ */
+export const DEFAULT_LEVEL_STEP = 1 / 255;
+
+/**
+ * Tolerance for testing a depth DERIVED FROM A LEVEL against a plane.
+ *
+ * Levels live in a `Float32Array`, so `−level·maxDepth` carries ~1e-7·maxDepth
+ * of representation error — a hundred times a bare `1e-9`. Compare a roughing
+ * plane that tight and a cell whose target IS that plane can miss it by 60 nm
+ * and go uncut, dropping a whole pass out of the program. Nothing in CAM
+ * distinguishes a nanometre; the epsilon has to sit above the float32 noise and
+ * far below any real geometry, and this does both.
+ */
+export function levelDepthEps(maxDepth: number): number {
+  return Math.max(1e-9, Math.abs(maxDepth) * 1e-6);
+}
+
 export interface RasterLevelRow {
   /** Row centre height, mm (bottom→top — same convention as RasterScanRow.y). */
   y: number;
@@ -194,6 +214,16 @@ export interface RasterField {
   cols: number;
   /** Horizontal pitch between dots, mm. */
   colPitch: number;
+  /** Vertical pitch between rows, mm. */
+  rowPitch: number;
+  /**
+   * The level quantum this field was built on (see {@link RasterFieldParams.levelStep}).
+   * Carried on the field rather than left to the caller to remember, because
+   * anything that RE-derives levels from it — the tool-shape dilation in
+   * {@link ../cam/toolProfile} — has to land back on the same ladder or the
+   * equal-Z run merging downstream stops merging.
+   */
+  levelStep: number;
   /** Rows, bottom→top. */
   rows: RasterLevelRow[];
 }
@@ -291,14 +321,15 @@ function ditherDots(
 export function rasterField(grid: RasterGrid, params: RasterFieldParams): RasterField {
   const { width: pxW, height: pxH, data } = grid;
   const { widthMM, heightMM, lineIntervalMM } = params;
-  if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0)
-    return { cols: 0, colPitch: 0, rows: [] };
-  if (data.length < pxW * pxH) return { cols: 0, colPitch: 0, rows: [] };
+  const empty = { cols: 0, colPitch: 0, rowPitch: 0, levelStep: DEFAULT_LEVEL_STEP, rows: [] };
+  if (pxW <= 0 || pxH <= 0 || widthMM <= 0 || heightMM <= 0 || lineIntervalMM <= 0) return empty;
+  if (data.length < pxW * pxH) return empty;
 
   const dotPitch = params.dotPitchMM && params.dotPitchMM > 0 ? params.dotPitchMM : lineIntervalMM;
   const whiteThreshold = params.whiteThreshold ?? 0.96;
   const invert = params.invert ?? false;
-  const levelStep = params.levelStep && params.levelStep > 0 ? params.levelStep : 1 / 255;
+  const levelStep =
+    params.levelStep && params.levelStep > 0 ? params.levelStep : DEFAULT_LEVEL_STEP;
   const gamma = params.gamma && params.gamma > 0 ? params.gamma : 1;
 
   const rowCount = Math.max(1, Math.round(heightMM / lineIntervalMM));
@@ -335,7 +366,7 @@ export function rasterField(grid: RasterGrid, params: RasterFieldParams): Raster
     for (let c = 0; c < colCount; c++) levels[c] = levelFor(dots[base + c]);
     rows.push({ y, levels });
   }
-  return { cols: colCount, colPitch, rows };
+  return { cols: colCount, colPitch, rowPitch, levelStep, rows };
 }
 
 /**
