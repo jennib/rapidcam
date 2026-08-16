@@ -15,8 +15,11 @@ the buffer as a photograph and silently re-flattens the top 4% of the model's
 height range. `zRangeMM` was added as an OPTIONAL field (old files still load),
 with the full 4-step drift checklist.
 
-Phase 2 is next; the steep/shallow split is the highest-value item there and needs
-only the local gradient, so it does not depend on Phase 3 or 5.
+**Phase 1.5 (below) comes before Phase 2**: warn when a model isn't relief-shaped.
+Phase 1 computes `emptyCells` and never uses it, so the data is already there and the
+gap is a real one — Easel warns here. After that, the steep/shallow split is the
+highest-value item and needs only the local gradient, so it does not depend on
+Phase 3 or 5.
 
 ## The decision
 
@@ -213,6 +216,37 @@ Verification: parse → rasterise → **render the heightfield to ASCII/PNG and 
 before trusting any test. A known-shape STL (a hemisphere, a stepped block) has a
 defining invariant to assert — a hemisphere of radius R must read `sqrt(R² − r²)` at every
 cell, to within cell size. `/run` the app afterwards; unit tests do not see the wiring.
+
+**Shipped 2026-08-16 except one thing, recorded here so it isn't lost:**
+
+### Phase 1.5 — warn when the model isn't relief-shaped
+
+**Do this before Phase 2.** It is small, it sits on data that already exists, and it is
+the difference between a user learning the limitation from the docs and learning it from
+a ruined blank.
+
+The heightfield rasteriser already computes and returns **`emptyCells`** — cells no
+triangle covered, i.e. the model's footprint doesn't fill its bounding box. A high count
+means a full 3D shape rather than a relief: undercuts and vertical walls that a
+3-axis heightfield carve will quietly flatten into the base plane, because unmodelled
+cells are treated as full depth (the Vectric/Easel convention, chosen deliberately).
+
+Today the import dialog says *"models with a flat back work best"* — advice that sits
+there whether or not it applies. **Nothing actively warns**, so the one case that needs
+the sentence never gets it while every case that doesn't, does.
+
+Easel warns here, and their own docs steer users away from full 3D input:
+
+> "STL files with a flat face or flat bottom will work best… Many STL files used for 3D
+> printing have a full 3D shape. These kinds of files will work, but for CNC router
+> applications, relief-styled models work best."
+
+Shape of the work: threshold `emptyCells / totalCells`, warn at import with the actual
+percentage rather than a generic caution, and say what will happen to those regions —
+"37% of this model has nothing above the base plane and will be cut flat" beats "models
+with a flat back work best". Calibrate the threshold against a real relief and a real
+printed-model STL rather than picking a number; a hemisphere on a plinth is legitimately
+mostly-empty at its corners and must not trip it.
 
 ### Phase 2 — close the Easel gap
 
