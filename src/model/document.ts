@@ -597,12 +597,18 @@ type EntitySnapshot = EntitySnapshotCommon &
     // so a plain rectangle — every rectangle in every existing file — serialises
     // byte-for-byte as it always did.
     | { type: "rectangle"; p0: Vec2; p1: Vec2; cornerRadii?: number[]; cornerType?: CornerType }
+    // cornerRadii is keyed by VERTEX ID, not by position — the same addressing
+    // constraints and dimensions use — and like a rectangle's it is written only
+    // when a corner is actually shaped, so every existing polyline serialises
+    // byte-for-byte as it always did.
     | {
         type: "polyline";
         points: Vec2[];
         vertexIds?: string[];
         closed: boolean;
         polygon?: PolygonParams;
+        cornerRadii?: Record<string, number>;
+        cornerType?: CornerType;
       }
     | { type: "arc"; center: Vec2; radius: number; startAngle: number; endAngle: number }
     | { type: "bezier"; p0: Vec2; p1: Vec2; p2: Vec2; p3: Vec2 }
@@ -1542,6 +1548,12 @@ export class CADDocument {
             vertexIds: [...pe.vertexIds],
             closed: pe.closed,
             ...(pe.polygon ? { polygon: { ...pe.polygon, center: { ...pe.polygon.center } } } : {}),
+            ...(pe.cornerRadii.size > 0
+              ? {
+                  cornerRadii: Object.fromEntries(pe.cornerRadii),
+                  cornerType: pe.cornerType,
+                }
+              : {}),
             ...entityCommon(pe),
           };
         }),
@@ -1645,6 +1657,16 @@ export class CADDocument {
             es.vertexIds,
           );
           if (es.polygon) pl.polygon = { ...es.polygon, center: { ...es.polygon.center } };
+          // Tolerant of a hand-authored file, as the rectangle branch is: a key
+          // naming no vertex, or a junk value, is dropped rather than throwing
+          // or producing NaN geometry.
+          if (es.cornerRadii) {
+            for (const [vid, v] of Object.entries(es.cornerRadii)) {
+              if (typeof v === "number" && Number.isFinite(v) && v > 0 && pl.vertexIds.includes(vid))
+                pl.cornerRadii.set(vid, v);
+            }
+          }
+          if (es.cornerType && CORNER_TYPES.includes(es.cornerType)) pl.cornerType = es.cornerType;
           e = pl;
           break;
         }

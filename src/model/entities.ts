@@ -464,6 +464,116 @@ export type OutlinePart =
 /** Below this a corner radius is treated as absent (square). */
 const CORNER_R_EPS = 1e-9;
 
+/**
+ * The wedge at one corner: unit directions to both neighbours, how far away
+ * they are, and the angle between them.
+ *
+ * `angle` is the UNSIGNED angle between the legs, in (0, π) — the wedge you are
+ * cutting into, which is what every treatment below is defined against. At a
+ * reflex vertex that is the wedge on the outside of the shape, and the
+ * construction still works, because a treatment is tangent to the two legs and
+ * knows nothing about which side the material is on.
+ */
+export interface CornerWedge {
+  P: Vec2;
+  d1: Vec2;
+  len1: number;
+  d2: Vec2;
+  len2: number;
+  angle: number;
+}
+
+/**
+ * The wedge at `P` between its neighbours, or null when there is no corner to
+ * treat: a leg of no length, legs that are collinear (a straight run), or legs
+ * folded back on each other.
+ */
+export function cornerWedge(P: Vec2, prev: Vec2, next: Vec2): CornerWedge | null {
+  const len1 = Math.hypot(prev.x - P.x, prev.y - P.y);
+  const len2 = Math.hypot(next.x - P.x, next.y - P.y);
+  if (len1 < CORNER_R_EPS || len2 < CORNER_R_EPS) return null;
+  const d1 = { x: (prev.x - P.x) / len1, y: (prev.y - P.y) / len1 };
+  const d2 = { x: (next.x - P.x) / len2, y: (next.y - P.y) / len2 };
+  const angle = Math.acos(Math.max(-1, Math.min(1, d1.x * d2.x + d1.y * d2.y)));
+  if (angle < 1e-4 || Math.abs(angle - Math.PI) < 1e-4) return null;
+  return { P, d1, len1, d2, len2, angle };
+}
+
+/**
+ * How far along each leg a treatment of size `value` eats.
+ *
+ * This is where round and chamfer stop being the same number, and it is the one
+ * real difference between a polyline's corners and a rectangle's. A rectangle's
+ * corner is 90°, where `tan(45°) = 1` makes a fillet's radius and its setback
+ * the same figure — which is why one field could serve all three types there.
+ * At any other angle they part company, so each type keeps the parameter its
+ * own tool has always used and which CAD names it by:
+ *
+ * - `round` — `value` is the RADIUS (Fusion's and AutoCAD's fillet parameter),
+ *   and the arc meets each leg `r / tan(θ/2)` back from the corner.
+ * - `chamfer` — `value` is the SETBACK along each leg (AutoCAD's CHAMFER
+ *   distance), so it is its own answer.
+ * - `inverted` — `value` is the cove's radius, and because the cove is centred
+ *   ON the corner its tangent points are exactly `r` back. Forced, not chosen.
+ *
+ * Consumption is linear in `value` for all three, which is what lets a corner
+ * that will not fit be scaled down by a single factor.
+ */
+export function cornerSetback(w: CornerWedge, value: number, type: CornerType): number {
+  if (!(value > CORNER_R_EPS)) return 0;
+  return type === "round" ? value / Math.tan(w.angle / 2) : value;
+}
+
+/**
+ * One corner's geometry: where the boundary leaves the incoming leg (`in`),
+ * where it rejoins the outgoing one (`out`), and the cut between them.
+ *
+ * `null` when the treatment does not fit between the two legs. The arc is
+ * always the SHORT way from `in` to `out` about its centre, with `ccw` reporting
+ * which way that turned out to be — that single rule gives a convex fillet its
+ * CCW sweep, a cove its CW one, and the right answer at a reflex vertex, where a
+ * fixed flag per type would be wrong.
+ */
+export function cornerCut(
+  w: CornerWedge,
+  value: number,
+  type: CornerType,
+): { in: Vec2; out: Vec2; cut: OutlinePart } | null {
+  const t = cornerSetback(w, value, type);
+  if (!(t > CORNER_R_EPS) || t >= w.len1 || t >= w.len2) return null;
+  const { P, d1, d2 } = w;
+  const T1 = { x: P.x + t * d1.x, y: P.y + t * d1.y };
+  const T2 = { x: P.x + t * d2.x, y: P.y + t * d2.y };
+  if (type === "chamfer") return { in: T1, out: T2, cut: { kind: "line", a: T1, b: T2 } };
+
+  let centre = P;
+  if (type === "round") {
+    // On the bisector, far enough out that the arc is tangent to both legs.
+    const bx = d1.x + d2.x;
+    const by = d1.y + d2.y;
+    const bl = Math.hypot(bx, by);
+    if (bl < CORNER_R_EPS) return null;
+    const away = value / Math.sin(w.angle / 2);
+    centre = { x: P.x + (bx / bl) * away, y: P.y + (by / bl) * away };
+  }
+  const a1 = Math.atan2(T1.y - centre.y, T1.x - centre.x);
+  const a2 = Math.atan2(T2.y - centre.y, T2.x - centre.x);
+  let span = (((a2 - a1) % TAU) + TAU) % TAU;
+  if (span > Math.PI) span -= TAU;
+  return {
+    in: T1,
+    out: T2,
+    cut: {
+      kind: "arc",
+      center: centre,
+      radius: value,
+      startAngle: a1,
+      endAngle: a2,
+      ccw: span >= 0,
+    },
+  };
+}
+
 /** Axis-aligned rectangle defined by two opposite corners. */
 export class RectEntity extends Entity {
   readonly type = "rectangle" as const;
@@ -905,6 +1015,32 @@ export class PolylineEntity extends Entity {
   private nextVid: number;
   /** Present only while this closed polyline is still a pristine regular polygon. */
   polygon?: PolygonParams;
+  /**
+   * Corner size per vertex, keyed by VERTEX ID — mm, and what the vertex's
+   * {@link cornerType} makes of it (radius for round/inverted, setback for
+   * chamfer; see {@link cornerSetback}).
+   *
+   * This is what makes a filleted polyline stay a POLYLINE. A fillet used to
+   * splice ~90 vertices in where one used to be, so the corner could never be
+   * adjusted again — the polyline half of the "can't edit a fillet" report that
+   * {@link RectEntity.cornerRadii} fixed for rectangles.
+   *
+   * Keyed rather than a fourth array parallel to `points`/`vertexIds`, which is
+   * the shape a rectangle uses. A rectangle has exactly four corners that can
+   * never move; a polyline's vertex set changes under every edit, which is the
+   * entire reason `vertexIds` exists. Keying off that id makes a whole class of
+   * bug unrepresentable: a radius cannot end up on the wrong vertex after a
+   * splice, a reversal or an insert, because it is not addressed by position.
+   * (That bug was real — flipping a polyline reversed `points` and not
+   * `vertexIds`; see the note on {@link reverse}.)
+   *
+   * Stored as asked for, not as drawn: a value too big for the legs it sits
+   * between is scaled down when the boundary is built, so pulling a vertex in
+   * and back out restores the corner instead of destroying it.
+   */
+  cornerRadii: Map<string, number> = new Map();
+  /** How the shaped corners are cut. One type per polyline, as for a rectangle. */
+  cornerType: CornerType = "round";
 
   constructor(points: Vec2[], closed = false, id?: EntityId, vertexIds?: string[]) {
     super(id);
@@ -935,6 +1071,8 @@ export class PolylineEntity extends Entity {
     this.points = points.map(clone);
     this.vertexIds = this.points.map((_, i) => String(i));
     this.nextVid = this.points.length;
+    // Ids are reset, so nothing a corner was keyed to still exists.
+    this.cornerRadii.clear();
   }
 
   /**
@@ -946,7 +1084,8 @@ export class PolylineEntity extends Entity {
   spliceVertices(start: number, deleteCount: number, ...newPoints: Vec2[]): void {
     const newIds = newPoints.map(() => this.mintVertexId());
     this.points.splice(start, deleteCount, ...newPoints.map(clone));
-    this.vertexIds.splice(start, deleteCount, ...newIds);
+    for (const gone of this.vertexIds.splice(start, deleteCount, ...newIds))
+      this.cornerRadii.delete(gone);
   }
 
   /**
@@ -968,6 +1107,9 @@ export class PolylineEntity extends Entity {
   reverse(): void {
     this.points.reverse();
     this.vertexIds.reverse();
+    // `cornerRadii` needs nothing: it is keyed by vertex id, so each corner is
+    // already attached to the vertex that moved. That is the point of keying it
+    // that way rather than adding a third array to keep in step here.
   }
 
   /**
@@ -1002,8 +1144,257 @@ export class PolylineEntity extends Entity {
    * flatten; it matches the rectangle's signature so both ends of the seam can
    * be called the same way.
    */
-  outlinePoints(_toleranceMM = 0.05): Vec2[] {
-    return this.points.map(clone);
+  outlinePoints(toleranceMM = 0.05): Vec2[] {
+    const parts = this.outlineParts();
+    if (parts === null) return this.points.map(clone);
+    const pts: Vec2[] = [];
+    for (const p of parts) {
+      if (p.kind === "line") {
+        pts.push({ ...p.a });
+        continue;
+      }
+      const span = arcSweep(p);
+      const steps = arcSteps(p.radius, Math.abs(span), toleranceMM);
+      for (let k = 0; k < steps; k++) {
+        const a = p.startAngle + (span * k) / steps;
+        pts.push({ x: p.center.x + p.radius * Math.cos(a), y: p.center.y + p.radius * Math.sin(a) });
+      }
+    }
+    // An OPEN polyline's boundary is a chain, so its far end is a real endpoint
+    // rather than the start of a closing run — nothing else will contribute it.
+    if (!this.closed) pts.push({ ...this.points[this.points.length - 1] });
+    return pts;
+  }
+
+  /**
+   * Which vertices can carry a corner at all.
+   *
+   * An open polyline's two ends are not corners — there is nothing on the far
+   * side to be tangent to — which is the same rule the Fillet and Chamfer tools
+   * already apply when picking.
+   */
+  private isShapeableVertex(i: number): boolean {
+    return this.closed || (i > 0 && i < this.points.length - 1);
+  }
+
+  /** The corner value asked for at vertex index `i`, before any clamping. */
+  cornerValueAt(i: number): number {
+    if (!this.isShapeableVertex(i)) return 0;
+    const v = this.cornerRadii.get(this.vertexIds[i]);
+    return Number.isFinite(v) && (v as number) > CORNER_R_EPS ? (v as number) : 0;
+  }
+
+  /**
+   * The corner values as they can actually be drawn: each scaled so two corners
+   * sharing an edge cannot overrun it.
+   *
+   * Indexed by vertex position, parallel to `points`. Same rule as
+   * {@link RectEntity.effectiveCornerRadii} — clamp when the boundary is built,
+   * per shared edge rather than by one global factor — but the length a corner
+   * eats now depends on its angle and type, so it goes through
+   * {@link cornerSetback} rather than being the value itself.
+   */
+  /**
+   * The drawable corner value at each SHAPED vertex, by index — the clamp,
+   * computed sparsely.
+   *
+   * Sparse because this sits under `distanceTo`, which hit-testing calls for
+   * every entity on every pointer move. A dense version cost six passes over the
+   * vertex list and two arrays the length of it, so a 20,000-point imported
+   * trace with one filleted corner paid for 20,000 corners it did not have.
+   * Here everything but a single cheap scan is proportional to the corners that
+   * actually exist.
+   */
+  private clampedCorners(): Map<number, number> {
+    const out = new Map<number, number>();
+    if (this.cornerRadii.size === 0) return out; // O(1), before touching a vertex
+    const n = this.points.length;
+
+    const want = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const v = this.cornerValueAt(i);
+      if (v > CORNER_R_EPS) want.set(i, v);
+    }
+    if (want.size === 0) return out;
+
+    // A wedge costs a hypot and an acos, so only the shaped vertices get one.
+    const eat = new Map<number, number>();
+    for (const [i, v] of want) {
+      const w = this.wedgeAt(i);
+      if (w) eat.set(i, cornerSetback(w, v, this.cornerType));
+    }
+
+    // Edge i runs from vertex i to vertex i+1, and both its ends eat into it.
+    // Only an edge with a corner on one end can bind, so the scan visits those
+    // edges rather than all of them.
+    const segs = this.segmentCount();
+    const fit = new Map<number, number>();
+    const bind = (i: number, f: number) => fit.set(i, Math.min(fit.get(i) ?? 1, f));
+    const edge = (a: number, b: number) => {
+      if (a >= segs) return; // open polyline: no closing edge
+      const pair = (eat.get(a) ?? 0) + (eat.get(b) ?? 0);
+      if (pair <= CORNER_R_EPS) return;
+      const len = Math.hypot(
+        this.points[b].x - this.points[a].x,
+        this.points[b].y - this.points[a].y,
+      );
+      if (pair > len) {
+        bind(a, len / pair);
+        bind(b, len / pair);
+      }
+    };
+    for (const i of eat.keys()) {
+      const prev = (i + n - 1) % n;
+      edge(i, (i + 1) % n);
+      // The edge behind this vertex, unless the vertex behind it is shaped too —
+      // it was that one's forward edge, and measuring it twice is the difference
+      // between one pass and two on a shape filleted throughout.
+      if (!eat.has(prev)) edge(prev, i);
+    }
+
+    for (const [i, v] of want) out.set(i, v * (fit.get(i) ?? 1));
+    return out;
+  }
+
+  /**
+   * The corner values as they can actually be drawn, indexed by vertex position
+   * and parallel to `points`.
+   *
+   * Same rule as {@link RectEntity.effectiveCornerRadii} — clamp when the
+   * boundary is built, per shared edge rather than by one global factor — but
+   * the length a corner eats now depends on its angle and type, so it goes
+   * through {@link cornerSetback} rather than being the value itself.
+   */
+  effectiveCornerValues(): number[] {
+    const clamped = this.clampedCorners();
+    const out = new Array<number>(this.points.length).fill(0);
+    for (const [i, v] of clamped) out[i] = v;
+    return out;
+  }
+
+  /** The wedge at vertex `i`, or null where no corner can be cut. */
+  private wedgeAt(i: number): CornerWedge | null {
+    if (!this.isShapeableVertex(i)) return null;
+    const n = this.points.length;
+    return cornerWedge(this.points[i], this.points[(i + n - 1) % n], this.points[(i + 1) % n]);
+  }
+
+  /** True when at least one vertex is actually shaped (a drawable corner). */
+  hasShapedCorners(): boolean {
+    return this.effectiveCornerValues().some((v) => v > CORNER_R_EPS);
+  }
+
+  /**
+   * The largest value every shapeable vertex could carry at once, at the current
+   * shape. The polyline twin of {@link RectEntity.maxUniformCornerRadius}.
+   *
+   * Each edge is shared by two corners whose setbacks scale linearly with the
+   * value, so the whole-shape ceiling is the tightest edge's.
+   */
+  maxUniformCornerValue(): number {
+    const n = this.points.length;
+    const k = this.points.map((_, i) => {
+      const w = this.wedgeAt(i);
+      return w ? cornerSetback(w, 1, this.cornerType) : 0;
+    });
+    let best = Infinity;
+    for (let i = 0; i < this.segmentCount(); i++) {
+      const j = (i + 1) % n;
+      const share = k[i] + k[j];
+      if (share <= CORNER_R_EPS) continue;
+      const len = Math.hypot(
+        this.points[j].x - this.points[i].x,
+        this.points[j].y - this.points[i].y,
+      );
+      best = Math.min(best, len / share);
+    }
+    return Number.isFinite(best) ? best : 0;
+  }
+
+  /**
+   * Whether `value` can be applied at vertex `i` beside its neighbours' corners.
+   *
+   * Two corners share an edge, so a value that is fine against its own legs can
+   * still fail to leave room for the next one. Asked before committing, so an
+   * impossible corner is refused out loud instead of silently clamped down.
+   */
+  fitsCornerValue(i: number, value: number): boolean {
+    if (!(value > CORNER_R_EPS)) return true; // square always fits
+    return value <= this.maxCornerValueAt(i) + CORNER_R_EPS;
+  }
+
+  /**
+   * The largest value vertex `i` can take beside its neighbours' corners, at the
+   * current shape — 0 when it cannot be shaped at all.
+   *
+   * The single definition of "how big can this corner be": {@link
+   * fitsCornerValue} asks it, and the properties panel clamps to it so the panel
+   * can never report a corner the shape does not have.
+   */
+  maxCornerValueAt(i: number): number {
+    if (!this.isShapeableVertex(i)) return 0;
+    const w = this.wedgeAt(i);
+    if (!w) return 0;
+    const n = this.points.length;
+    // Setback is linear in the value, so the room left on a leg converts back
+    // into a value by dividing by the per-unit setback.
+    const perUnit = cornerSetback(w, 1, this.cornerType);
+    if (!(perUnit > 0)) return 0;
+    const neighbour = (j: number): number => {
+      const wj = this.wedgeAt(j);
+      const v = this.cornerValueAt(j);
+      return wj && v > 0 ? cornerSetback(wj, v, this.cornerType) : 0;
+    };
+    const room = Math.min(
+      w.len1 - neighbour((i + n - 1) % n),
+      w.len2 - neighbour((i + 1) % n),
+    );
+    return Math.max(0, room / perUnit);
+  }
+
+  /**
+   * The boundary as straight runs and corner arcs, in vertex order — or `null`
+   * when no corner is shaped, so the common case allocates nothing and every
+   * consumer keeps seeing exactly the vertex list it always did.
+   */
+  /**
+   * The shaped vertices' geometry, by vertex index — or null when none is.
+   *
+   * Sparse on purpose. Everything downstream needs the same two facts (where the
+   * boundary leaves and rejoins each shaped vertex, and what bridges them), and
+   * this is the only place that works them out. It costs a wedge — a hypot and
+   * an acos — per SHAPED vertex, not per vertex, which is what keeps a
+   * 20,000-point trace with one filleted corner cheap to hit-test.
+   */
+  private cornerEnds(): Map<number, { in: Vec2; out: Vec2; cut: OutlinePart }> | null {
+    const out = new Map<number, { in: Vec2; out: Vec2; cut: OutlinePart }>();
+    for (const [i, v] of this.clampedCorners()) {
+      const w = this.wedgeAt(i);
+      const c = w ? cornerCut(w, v, this.cornerType) : null;
+      if (c) out.set(i, c);
+    }
+    return out.size > 0 ? out : null;
+  }
+
+  outlineParts(): OutlinePart[] | null {
+    const ends = this.cornerEnds();
+    if (!ends) return null;
+
+    const n = this.points.length;
+    const segs = this.segmentCount();
+    const parts: OutlinePart[] = [];
+    for (let i = 0; i < n; i++) {
+      const c = ends.get(i);
+      if (c) parts.push(c.cut);
+      if (i >= segs) break; // open polyline: no closing run off the last vertex
+      // An unshaped vertex leaves and rejoins at itself, which is what makes an
+      // unshaped stretch come out as exactly the segments it always was.
+      const a = c?.out ?? this.points[i];
+      const b = ends.get((i + 1) % n)?.in ?? this.points[(i + 1) % n];
+      // Two corners can eat a whole edge between them; there is then no run.
+      if (Math.hypot(a.x - b.x, a.y - b.y) > CORNER_R_EPS) parts.push({ kind: "line", a, b });
+    }
+    return parts;
   }
 
   /** Number of drawn segments (accounts for the closing segment). */
@@ -1042,11 +1433,31 @@ export class PolylineEntity extends Entity {
     return { min, max };
   }
   override distanceTo(p: Vec2): number {
-    let d = Infinity;
+    // Hit-testing calls this for every entity on every pointer move, so it walks
+    // the boundary rather than materialising it — building an OutlinePart per
+    // segment here meant 20,000 short-lived objects per mouse move on a large
+    // imported trace. Exact against the arcs either way: picking a shaped corner
+    // must not depend on how finely it happens to tessellate.
+    const ends = this.cornerEnds();
+    const n = this.points.length;
     const segs = this.segmentCount();
+    let d = Infinity;
     for (let i = 0; i < segs; i++) {
-      const [s0, s1] = this.segment(i);
-      d = Math.min(d, distToSegment(p, s0, s1));
+      const a = ends?.get(i)?.out ?? this.points[i];
+      const b = ends?.get((i + 1) % n)?.in ?? this.points[(i + 1) % n];
+      d = Math.min(d, distToSegment(p, a, b));
+    }
+    if (ends) {
+      for (const { cut } of ends.values()) {
+        d = Math.min(
+          d,
+          cut.kind === "line"
+            ? distToSegment(p, cut.a, cut.b)
+            : cut.ccw
+              ? distToArc(p, cut.center, cut.radius, cut.startAngle, cut.endAngle)
+              : distToArc(p, cut.center, cut.radius, cut.endAngle, cut.startAngle),
+        );
+      }
     }
     return d;
   }
@@ -1078,6 +1489,10 @@ export class PolylineEntity extends Entity {
   override duplicate(): PolylineEntity {
     const e = new PolylineEntity(this.points, this.closed, undefined, this.vertexIds);
     this.copyCommonTo(e);
+    // Vertex ids are carried over, so the corners land back on the same
+    // vertices they were keyed to.
+    e.cornerRadii = new Map(this.cornerRadii);
+    e.cornerType = this.cornerType;
     if (this.polygon) e.polygon = { ...this.polygon, center: { ...this.polygon.center } };
     return e;
   }
@@ -1120,6 +1535,43 @@ export class PolylineEntity extends Entity {
       { key, axis: "y" },
     ];
   }
+  /**
+   * The whole-shape corner size as one scalar DOF, so `Radius = thickness * 2`
+   * drives it through an ordinary ScalarBinding — the same channel a rectangle's
+   * `cr` and a circle's `r` use.
+   *
+   * Not a solver freedom: no constraint type reads a corner size, so the solver
+   * fixes it unless a binding drives it (`fixUndrivenScalars`), and an ordinary
+   * polyline costs exactly what it always did. Reports the largest when the
+   * corners differ — there is no single answer, and a bound value is about to
+   * make them equal anyway.
+   */
+  override dofScalars(): DofScalar[] {
+    const vals = this.points.map((_, i) => this.cornerValueAt(i));
+    return [{ key: "cr", value: vals.length ? Math.max(...vals) : 0 }];
+  }
+  override setScalar(key: string, v: number): void {
+    if (key !== "cr") return;
+    this.setAllCornerValues(Number.isFinite(v) && v > 0 ? v : 0);
+  }
+
+  /** Put `value` on every vertex that can carry a corner (0 clears them all). */
+  setAllCornerValues(value: number): void {
+    this.cornerRadii.clear();
+    if (!(value > CORNER_R_EPS)) return;
+    for (let i = 0; i < this.points.length; i++) {
+      if (this.isShapeableVertex(i)) this.cornerRadii.set(this.vertexIds[i], value);
+    }
+  }
+
+  /** Set (or clear, with 0) the corner at vertex index `i`. */
+  setCornerValue(i: number, value: number): void {
+    const id = this.vertexIds[i];
+    if (id === undefined) return;
+    if (value > CORNER_R_EPS && this.isShapeableVertex(i)) this.cornerRadii.set(id, value);
+    else this.cornerRadii.delete(id);
+  }
+
   override getPoint(key: string): Vec2 {
     if (key.startsWith("mid_")) {
       const i = this.vertexIndex(key.slice(4));

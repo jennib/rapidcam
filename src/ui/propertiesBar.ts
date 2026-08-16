@@ -1557,7 +1557,11 @@ export class PropertiesBar {
    * clamped, rather than stored and drawn smaller: the panel must not report a
    * radius the shape does not have.
    */
-  private cornerRows(sec: HTMLElement, entity: RectEntity): void {
+  private cornerRows(sec: HTMLElement, entity: RectEntity | PolylineEntity): void {
+    const poly = entity instanceof PolylineEntity;
+    // A polyline with no shapeable vertex has no corner to offer — an open
+    // two-point polyline is a line with extra steps.
+    if (poly && !(entity.maxUniformCornerValue() > 0)) return;
     const row = document.createElement("div");
     row.className = "props-row";
     const lbl = document.createElement("span");
@@ -1583,8 +1587,23 @@ export class PropertiesBar {
     row.append(lbl, sel);
     sec.appendChild(row);
 
-    const radii = entity.cornerRadii;
-    const uniform = radii.every((r) => r === radii[0]);
+    // Only a polyline needs saying: at a 90° corner a radius and a setback are
+    // the same figure, so on a rectangle the note would be noise.
+    if (poly) {
+      lbl.title +=
+        " On a polyline the number is the fillet radius for Round and Inverted, " +
+        "but the bevel's setback along each edge for Chamfer — they only coincide at 90°.";
+    }
+
+    const values = poly
+      ? entity.points.map((_, i) => entity.cornerValueAt(i))
+      : [...entity.cornerRadii];
+    // A polyline's unshapeable ends are not "a different radius" — they cannot
+    // hold one — so they must not make the field read `mixed`.
+    const shown = poly
+      ? values.filter((_, i) => entity.closed || (i > 0 && i < values.length - 1))
+      : values;
+    const uniform = shown.every((r) => r === shown[0]);
     // A binding row, not a plain number: the corner radius is a scalar DOF
     // (`cr`), so it takes a formula over variables exactly as a circle's radius
     // does — `thickness * 2`, and the corners follow the material. A formula is
@@ -1597,11 +1616,15 @@ export class PropertiesBar {
       entity.cornerType === "chamfer" ? "Chamfer" : "Radius",
       entity.id,
       "cr",
-      uniform ? radii[0] : 0,
+      uniform ? (shown[0] ?? 0) : 0,
       "mm",
       (v) => {
         if (v < 0) return;
         // Clamped so the panel cannot report a radius the shape does not have.
+        if (poly) {
+          entity.setAllCornerValues(Math.min(v, entity.maxUniformCornerValue()));
+          return;
+        }
         const r = Math.min(v, entity.maxUniformCornerRadius());
         entity.cornerRadii = [r, r, r, r];
       },
@@ -1668,6 +1691,11 @@ export class PropertiesBar {
     row.append(vLbl, vVal, closedBtn);
     sec.appendChild(row);
 
+    // The same Corner Type + size pair a rectangle gets, from the same builder —
+    // so the two shapes cannot drift apart in wording, ordering, or which scalar
+    // key the formula binds to.
+    this.cornerRows(sec, entity);
+
     // Per-vertex coordinates. Scrolls when a shape (e.g. a polygon, which is a
     // closed polyline) has many vertices.
     const list = document.createElement("div");
@@ -1691,6 +1719,29 @@ export class PropertiesBar {
       );
       this.originCoordRow(list, `${i} Y`, "y", entity.id, key, p.y, (v) =>
         setVertex(entity.points[i].x, v),
+      );
+      // Per-vertex corner size, beside the coordinates it belongs to.
+      //
+      // A rectangle can live without this: it has four corners, they are
+      // usually the same, and the whole-shape field above covers it. A polyline
+      // cannot — filleting one vertex of five is the NORMAL way to work, and
+      // without a row here that corner would be visible only as the word
+      // `mixed` in the field above, with no way to read or change it except by
+      // picking the Fillet tool up again.
+      if (!entity.closed && (i === 0 || i === entity.points.length - 1)) return;
+      this.numRow(
+        list,
+        `${i} ${entity.cornerType === "chamfer" ? "C" : "R"}`,
+        entity.cornerValueAt(i),
+        "mm",
+        (v) => {
+          if (v < 0) return;
+          // Clamped and shown clamped, as the whole-shape field above is: the
+          // panel must not report a corner the shape does not have. (The TOOLS
+          // refuse out loud instead — a drag that has gone too far should stop
+          // drawing an arc it will not create, which a field cannot do.)
+          this.applyEdit(() => entity.setCornerValue(i, Math.min(v, entity.maxCornerValueAt(i))));
+        },
       );
     });
     sec.appendChild(list);

@@ -100,6 +100,16 @@ integration guide, inlined as one plain-text document.
   and an editable radius, and the arcs reach the toolpath as true arcs. The
   radius is also the scalar DOF `cr`, so a `bindings[]` entry can drive it from
   a formula (`{"scalarKey": "cr", "expr": "stock * 2"}`), all four corners at once.
+- A **rounded, coved or chamfered `polyline` is still a `polyline`** — the same
+  two fields, but `cornerRadii` is an object keyed by **vertex id**, not an
+  array: `{"cornerRadii": {"1": 6, "2": 6}, "cornerType": "round"}` shapes the
+  vertices whose `vertexIds` entries are `"1"` and `"2"`. Do not tessellate an
+  arc into extra vertices — as corner data it stays editable, reaches the
+  toolpath as a true arc, and leaves every `v<id>` constraint alone. An open
+  polyline's first and last vertices cannot be shaped. **The number means the
+  fillet RADIUS for `"round"`/`"inverted"` but the bevel SETBACK for
+  `"chamfer"`**; those are the same figure only at a 90° corner, which is why a
+  `rectangle` gets away with one meaning.
 - Declare `"version": 3` and validate your output against the schema before
   presenting it to a user.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;

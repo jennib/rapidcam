@@ -215,7 +215,10 @@ describe("Fillet", () => {
     expect(rect.cornerRadii[0]).toBe(15);
   });
 
-  it("splices an arc into a closed polyline vertex in place", () => {
+  it("puts a RADIUS on a closed polyline vertex — no vertices are cut in", () => {
+    // This used to splice ~90 arc vertices in where one had been. The corner
+    // was then indistinguishable from hand-drawn geometry and could never be
+    // adjusted again, which is the polyline half of "you can't edit a fillet".
     const doc = new CADDocument({ width: 400, height: 300 });
     const pl = new PolylineEntity(
       [
@@ -232,8 +235,15 @@ describe("Fillet", () => {
     h.type("5");
 
     expect(ofType(doc, PolylineEntity)).toHaveLength(1);
-    expect(pl.points.length).toBeGreaterThan(4);
     expect(ofType(doc, ArcEntity), "a polyline corner stays one polyline").toHaveLength(0);
+    expect(pl.points).toHaveLength(4); // the vertex list is untouched
+    expect(pl.cornerValueAt(1)).toBe(5);
+    expect(pl.cornerType).toBe("round");
+    // The BOUNDARY is what changed — and it is still editable, which is the
+    // whole point: setting it back to 0 restores the sharp corner exactly.
+    expect(pl.outlinePoints().length).toBeGreaterThan(4);
+    pl.setCornerValue(1, 0);
+    expect(pl.outlinePoints()).toEqual(pl.points);
   });
 });
 

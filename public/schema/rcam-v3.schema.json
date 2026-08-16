@@ -356,7 +356,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "points", "closed"],
-      "description": "Point DOF keys: v<id> (vertices), mid_<id> (segment midpoints, keyed by the segment's START-vertex id). A segment can substitute for a line in line-type constraints via the entity ref \"<polylineId>#<startVertexId>\". The id of vertex i is vertexIds[i] when present, else its index as a string (\"0\",\"1\",…) — so files without vertexIds use v0/mid_0/<id>#0 exactly as before.",
+      "description": "Point DOF keys: v<id> (vertices), mid_<id> (segment midpoints, keyed by the segment's START-vertex id). A segment can substitute for a line in line-type constraints via the entity ref \"<polylineId>#<startVertexId>\". The id of vertex i is vertexIds[i] when present, else its index as a string (\"0\",\"1\",…) — so files without vertexIds use v0/mid_0/<id>#0 exactly as before. Vertices may be rounded, coved or chamfered via cornerRadii + cornerType; the point keys are unaffected, so a shaped polyline is constrained and dimensioned exactly like a sharp one.",
       "properties": {
         "type": { "const": "polyline" },
         "id": { "type": "string", "minLength": 1 },
@@ -378,6 +378,17 @@
             "radius": { "type": "number", "exclusiveMinimum": 0 },
             "rotation": { "type": "number", "description": "radians" }
           }
+        },
+        "cornerRadii": {
+          "type": "object",
+          "description": "Corner size per shaped vertex, mm, keyed by VERTEX ID (the vertexIds entry, not the array index) — the same addressing constraints and dimensions use, so a corner stays on its vertex through any edit that inserts or removes others. Omit, or omit a vertex, for a sharp corner. An open polyline's two end vertices cannot be shaped. The value is what was asked for, not necessarily what is drawn: corners sharing an edge are scaled down to fit it when the outline is built, so pulling a vertex in and back out restores the corner. What the number MEANS follows cornerType: for \"round\" it is the fillet RADIUS (the arc meets each leg radius/tan(angle/2) back from the vertex); for \"chamfer\" it is the bevel's SETBACK along each leg; for \"inverted\" it is the cove's radius, which is also its setback. Those coincide only at 90°, which is why a rectangle can call all three the same number.",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "cornerType": {
+          "enum": ["round", "inverted", "chamfer"],
+          "description": "How every shaped vertex is cut — one type per polyline, as for a rectangle and as in Vectric's Corner Type control. \"round\": a convex fillet tangent to both legs. \"inverted\": a concave cove centred ON the vertex, meeting both legs square (a shape — unrelated to a dogbone, which is a machining relief applied at toolpath time). \"chamfer\": a straight bevel. Default \"round\"; meaningless without cornerRadii.",
+          "default": "round"
         },
         "isConstruction": { "type": "boolean" },
         "name": { "type": "string" },

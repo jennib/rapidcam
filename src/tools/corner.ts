@@ -50,6 +50,35 @@ export function setRectCorner(corner: RectCorner, value: number, type: CornerTyp
 }
 
 /**
+ * Shape a polyline's corner by setting its value, rather than by cutting the
+ * vertex list up.
+ *
+ * The polyline half of the same retirement. A fillet used to splice ~90 vertices
+ * in where one vertex had been, so the corner could never be adjusted again and
+ * the shape stopped being the thing the user drew — "you can't edit a fillet",
+ * on the shape a rectangle turns into the moment you rotate it off-axis. Now
+ * nothing is spliced: the vertices, their ids and every constraint naming them
+ * are untouched, and the corner stays editable in Properties.
+ *
+ * Note the value means what the TYPE says it means — a radius for round and
+ * inverted, a setback for chamfer — which is the same thing each tool's own
+ * field has always meant. They are only the same number at 90°, which is why a
+ * rectangle never had to distinguish them.
+ */
+export function setPolyCorner(corner: PolyCorner, value: number, type: CornerType): boolean {
+  const pl = corner.entity;
+  // The type is whole-shape, so a value that fits must be judged against it.
+  const prev = pl.cornerType;
+  pl.cornerType = type;
+  if (!(value > 0) || !pl.fitsCornerValue(corner.index, value)) {
+    pl.cornerType = prev;
+    return false;
+  }
+  pl.setCornerValue(corner.index, value);
+  return true;
+}
+
+/**
  * Tell the user when shaping one corner re-typed the others.
  *
  * A rectangle has ONE corner type (as in Vectric), so filleting a corner of an
@@ -63,11 +92,19 @@ export function reportRetype(
   type: CornerType,
   ctx: { notify(msg: string): void },
 ): void {
-  if (corner.kind !== "rect") return;
-  const rect = corner.entity;
-  if (rect.cornerType === type) return;
-  if (!rect.cornerRadii.some((r, i) => i !== corner.index && r > 0)) return;
-  ctx.notify(`All corners are now ${CORNER_TYPE_LABELS[type]} — a rectangle has one corner type.`);
+  if (corner.kind === "rect") {
+    const rect = corner.entity;
+    if (rect.cornerType === type) return;
+    if (!rect.cornerRadii.some((r, i) => i !== corner.index && r > 0)) return;
+    ctx.notify(`All corners are now ${CORNER_TYPE_LABELS[type]} — a rectangle has one corner type.`);
+    return;
+  }
+  if (corner.kind !== "poly") return;
+  const pl = corner.entity;
+  if (pl.cornerType === type) return;
+  const others = pl.points.some((_, i) => i !== corner.index && pl.cornerValueAt(i) > 0);
+  if (!others) return;
+  ctx.notify(`All corners are now ${CORNER_TYPE_LABELS[type]} — a polyline has one corner type.`);
 }
 
 /**
@@ -79,22 +116,24 @@ export function reportRetype(
  * drawing an arc that will not be created.
  */
 export function cornerValueFits(corner: Corner, value: number): boolean {
-  return corner.kind !== "rect" || corner.entity.fitsCornerRadius(corner.index, value);
+  if (corner.kind === "rect") return corner.entity.fitsCornerRadius(corner.index, value);
+  if (corner.kind === "poly") return corner.entity.fitsCornerValue(corner.index, value);
+  return true; // a line-line corner has no neighbour to leave room for
 }
 
 /**
- * Every corner of the shape `corner` belongs to, HIGHEST INDEX FIRST.
+ * Every corner of the shape `corner` belongs to, highest index first.
  *
  * AutoCAD's `FILLET → Polyline` rounds every vertex of a polyline in one go, and
  * Illustrator's corner widgets round all corners together; doing a rectangle one
  * corner at a time is the friction that was reported. This is the corner list
  * that operation walks.
  *
- * **Descending order is load-bearing for a polyline, not tidiness.** Each fillet
- * replaces one vertex with several, so every index above it shifts. Walking down
- * means the indices still to come are all below the splice and therefore
- * untouched — no re-derivation, no bookkeeping. A rectangle's four corners are
- * fixed and cannot shift, so the order is merely harmless there.
+ * The descending order used to be load-bearing: a polyline fillet spliced one
+ * vertex into many, so every index above it shifted, and walking down kept the
+ * indices still to come below the splice. Nothing splices any more — a corner is
+ * a value on the entity — so no index can move and the order is now merely
+ * stable. Kept because a stable order makes a partial result reproducible.
  *
  * A line-line corner has no enclosing shape, so it yields only itself.
  */
@@ -352,18 +391,10 @@ export function joinCornerEnds(
   link(2, corner.line2.id, corner.key2, endKey);
 }
 
-/**
- * Cut `pts` into a polyline corner, in place.
- *
- * The entity, its id and every reference to it survive untouched — a polyline's
- * vertices carry stable ids, so the constraints on the vertices either side of
- * the splice keep pointing at the same physical corners.
- *
- * Rectangles no longer come through here. They used to: a rectangle was
- * converted to a polyline and swapped into the document, which cost it its
- * editability and (before #53) its constraints. A rectangle corner is now a
- * radius on the entity — see {@link setRectCorner}.
- */
-export function spliceCornerVertices(corner: PolyCorner, pts: Vec2[]): void {
-  corner.entity.spliceVertices(corner.index, 1, ...pts);
-}
+// Corner surgery on a SHAPE is gone. `spliceCornerVertices` used to cut a
+// tessellated arc into a polyline's vertex list — ~90 vertices where one had
+// been — and before that a rectangle was converted to a polyline outright. Both
+// are now a value on the entity (see setRectCorner / setPolyCorner), so no
+// corner operation can drop a reference or produce a shape that cannot be edited
+// again. Don't reintroduce a splice path for either: the only surgery left is on
+// a pair of loose LINES, which have no shape to carry the corner.

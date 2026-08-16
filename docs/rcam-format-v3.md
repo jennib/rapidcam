@@ -292,7 +292,7 @@ these right is the single most important thing when authoring constraints.
 | `line` | `a`, `b` (Vec2) | `a`, `b` endpoints; `mid` (derived, pickable) | — |
 | `circle` | `center` (Vec2), `radius` | `c` center | `r` radius |
 | `rectangle` | `p0`, `p1` (opposite corners), `cornerRadii` (number[4], optional), `cornerType` (optional) | corners `bl` `br` `tr` `tl`; edge mids `mid_b` `mid_r` `mid_t` `mid_l`; `center` | `cr` corner radius |
-| `polyline` | `points` (Vec2[]), `vertexIds` (string[], optional), `closed` (bool) | vertices `v<id>`; segment mids `mid_<id>` (id of the segment's start vertex) | — |
+| `polyline` | `points` (Vec2[]), `vertexIds` (string[], optional), `closed` (bool), `cornerRadii` (object keyed by vertex id, optional), `cornerType` (optional) | vertices `v<id>`; segment mids `mid_<id>` (id of the segment's start vertex) | `cr` corner size |
 | `arc` | `center`, `radius`, `startAngle`, `endAngle` (rad, CCW) | `c` center; `start`, `end` (derived) | `r`, `sa`, `ea` |
 | `bezier` | `p0` `p1` `p2` `p3` (start, start handle, end handle, end) | `p0` `p3` (constrainable); `p1` `p2` (drag-only) | — |
 | `point` | `pos` (Vec2) | `p` | — |
@@ -345,6 +345,41 @@ Notes:
   (the segment that starts at that vertex and runs to the next). Legacy files
   encoded the start vertex's *index* here; that resolves identically because a
   loaded vertex's default id is its index.
+- A **polyline's corners can be shaped** without it ceasing to be a polyline, and
+  without the vertices moving. `cornerRadii` is an object keyed by **vertex id**
+  — `{"3": 5}` puts a 5mm corner on the vertex whose id is `"3"` — and
+  `cornerType` (`"round"` | `"inverted"` | `"chamfer"`, one per polyline) says how
+  every shaped vertex is cut. Both are optional; omit them, or omit a vertex, for
+  sharp corners, which is how every file written before they existed reads.
+
+  It is keyed by id rather than being a fourth array parallel to `points` and
+  `vertexIds` for the reason `vertexIds` exists at all: a polyline's vertex set
+  changes under edits, and an id cannot end up describing a different vertex
+  after a splice, an insert or a reversal. The **point keys are unchanged** —
+  `v3` is still the theoretical vertex when it is rounded away — so constraints
+  and dimensions behave exactly as on a sharp polyline. An open polyline's two
+  **end vertices cannot be shaped**: there is no far leg to be tangent to.
+
+  **What the number means follows `cornerType`**, and this is the one place a
+  polyline's corners are not simply a rectangle's:
+  - `"round"` — the fillet **radius**. The arc is tangent to both legs and meets
+    them `radius / tan(θ/2)` back from the vertex, where θ is the angle between
+    the legs.
+  - `"chamfer"` — the bevel's **setback** along each leg (AutoCAD's CHAMFER
+    distance), so it is its own answer.
+  - `"inverted"` — the cove's radius. Because the cove is centred *on* the
+    vertex, its setback is also exactly that radius.
+
+  At 90° all three coincide, which is why a `rectangle` can call them one number.
+  At any other angle they do not, so each type keeps the parameter its own tool
+  and the rest of CAD names it by.
+
+  Corners sharing an edge are **scaled to fit when the outline is built, not on
+  load**, exactly as a rectangle's are: the stored value is what was asked for,
+  so pulling a vertex in and back out restores the corner. The corner size is
+  also the scalar DOF **`cr`**, drivable by a formula through `bindings[]`; one
+  binding drives every shaped vertex, and like a rectangle's it is not a solver
+  freedom.
 - `fontId` is either a bundled font (e.g. `"roboto-regular"`) or a `"font-XXXXXXXX"`
   id present in the top-level [`fonts`](#fonts) array. Text stays editable until CAM
   export, where it is expanded to glyph contours.
