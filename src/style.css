@@ -1544,7 +1544,10 @@ button.cbtn.solve {
   background: #c9352b !important;
 }
 
-.npd-discard-warning {
+/* Two selectors, one rule: the in-dialog warning block is a shared idiom, and a
+   sixth copy of the amber literal is exactly the drift `--warn` above is stuck on. */
+.npd-discard-warning,
+.stl-warning {
   font-size: 12px;
   line-height: 1.4;
   color: var(--warn, #e0a85a);

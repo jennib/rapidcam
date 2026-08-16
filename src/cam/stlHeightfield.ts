@@ -132,7 +132,78 @@ export interface Heightfield {
   heightMM: number;
   /** Cells no triangle covered. They encode as `zMin`, i.e. full depth. */
   emptyCells: number;
+  /**
+   * How much of the carved solid is plinth: material below the model that no
+   * 3-axis cutter can reach, left standing because the tool only ever comes down
+   * from above. 0 for a relief, high for a free-standing object. See
+   * {@link PLINTH_WARN} for the calibration and the threshold.
+   */
+  plinthRatio: number;
 }
+
+/**
+ * When to tell the user their model is not relief-shaped.
+ *
+ * ## What is measured, and why not `emptyCells`
+ *
+ * The obvious candidate — the fraction of cells no triangle covered — is not a
+ * property of the model's depth at all. It is one minus (silhouette area / bounding
+ * box area): a measure of the model's SHADOW. Measured on real files, it cannot
+ * do this job:
+ *
+ * | shape                  | empty | plinth |
+ * |------------------------|-------|--------|
+ * | hemisphere on its disc | 21.5% |   0.0% |
+ * | sphere                 | 21.5% |  20.1% |
+ * | sealed hollow ball     | 21.5% |  20.1% |
+ * | open-topped vase       | 21.5% |   0.3% |
+ *
+ * Four shapes, one number, and the damage ranges over the whole scale — because
+ * all four cast a circle on a square. Worse, `dragon_wall_art-01.stl`, a genuine
+ * relief a user would carve as-is, is **17.3% empty**, and a torus lying flat is
+ * 44.3% empty while costing only 12.2%. Any threshold low enough to catch a
+ * printed figurine fires on both.
+ *
+ * ## What this measures instead
+ *
+ * The carve leaves everything under the top surface: `zMin ≤ z ≤ zTop(x,y)`. The
+ * model's own outer form occupies `zBottom(x,y) ≤ z ≤ zTop(x,y)`. The difference
+ * is plinth — material the cutter cannot get under:
+ *
+ *     plinthRatio = 1 − Σ(zTop − zBottom) / Σ(zTop − zMin)
+ *
+ * It needs one extra buffer and no mesh volume, and it is bounded in [0,1] by
+ * construction because `zBottom ≥ zMin`. Taking the model's volume from the facet
+ * winding instead was tried and rejected: `resurgence-2.stl` and
+ * `35-36.5mm_adapter.STL` both report a NEGATIVE waste that way — geometrically
+ * impossible for a solid — because their doubled shells are wound so an invisible
+ * cavity adds instead of subtracting, and the standard closedness test (area-
+ * weighted normals summing to zero) passes them both at ~1e-18. Spanning between
+ * the outermost crossings has no opinion about winding and fills such cavities in,
+ * which is what carving them solid does anyway.
+ *
+ * ## Why 5%, measured rather than picked
+ *
+ * Across 22 real STLs (printed parts, CNC fixtures, relief wall art) and 9
+ * synthetic shapes with closed-form answers, `scripts/stl-relief-probe.ts` found
+ * a clear empty band:
+ *
+ * - Genuine reliefs top out at **0.9%** — `last_supper_remix` 0.0, `dragon_wall_art`
+ *   0.0, `resurgence-2` 0.1, `atenea_v1` (facing the tool) 0.3, `lion5-1` 0.9.
+ * - Parts lying flat, where the carve does reproduce the top form, reach **3.8%**
+ *   (`SonicKnifePCB`; `plasticbox` 2.4, `Quinn-PushStick` 2.5).
+ * - The first model that genuinely misleads is at **8.8%** (a hex-head screw),
+ *   then 12.2 (torus), 15.1, 20.0 (sphere, exact), 40.2, 56.8, 65.6, 71.8.
+ *
+ * 5% sits in the 3.8–8.8 gap: no false positive and no false negative on any of
+ * the 31, with 5.5× margin over the worst genuine relief. It errs low on purpose —
+ * an unwanted warning is an annoyance, a missed one is a ruined blank.
+ *
+ * Orientation matters and the number follows it, which is the useful part:
+ * `atenea_v1` reads 56.8% carved from her back, 5.8% from above and **0.3%** from
+ * the front, so the warning clears when the user picks the face they meant.
+ */
+export const PLINTH_WARN = 0.05;
 
 /**
  * Rasterise a parsed STL into a heightfield.
@@ -160,6 +231,7 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
       widthMM: Math.max(0, spanU),
       heightMM: Math.max(0, spanV),
       emptyCells: 1,
+      plinthRatio: 0,
     };
   }
 
@@ -170,6 +242,9 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
   // -Infinity marks "no triangle covered this cell" — distinguishable from a real
   // height of zMin, which a model's own base plane legitimately produces.
   const zbuf = new Float32Array(nx * ny).fill(-Infinity);
+  // The model's UNDERSIDE at each cell. The gap between this and `zbuf` is the
+  // model; everything below it is plinth the cutter can never reach.
+  const zbot = new Float32Array(nx * ny).fill(Infinity);
   const vtx = mesh.vertices;
 
   for (let t = 0; t < mesh.count; t++) {
@@ -221,6 +296,7 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
         const z = w0 * ah + w1 * bh + w2 * ch;
         const i = rowBase + c;
         if (z > zbuf[i]) zbuf[i] = z;
+        if (z < zbot[i]) zbot[i] = z;
       }
     }
   }
@@ -229,6 +305,10 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
   const range = b.maxH - b.minH;
   const gray = new Uint8Array(nx * ny);
   let emptyCells = 0;
+  // Accumulated from the float buffers rather than from `gray`, so the ratio does
+  // not inherit the 8-bit quantisation the encoding is about to impose.
+  let carvedSum = 0;
+  let spanSum = 0;
   if (!(range > 0)) {
     // A flat model has no relief to carve; everything is the top surface.
     gray.fill(255);
@@ -242,6 +322,8 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
         gray[i] = 0; // unmodelled → the base plane → full depth
         continue;
       }
+      carvedSum += z - b.minH;
+      spanSum += z - zbot[i];
       const q = Math.round((z - b.minH) * k);
       gray[i] = q < 0 ? 0 : q > 255 ? 255 : q;
     }
@@ -256,6 +338,9 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
     widthMM: spanU,
     heightMM: spanV,
     emptyCells,
+    // Every cell contributes the same area, so the cell area cancels and the two
+    // height sums are the whole ratio.
+    plinthRatio: carvedSum > 0 ? Math.max(0, 1 - spanSum / carvedSum) : 0,
   };
 }
 

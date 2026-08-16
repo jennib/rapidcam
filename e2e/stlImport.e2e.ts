@@ -9,7 +9,7 @@
  * what landed in the document carves the model rather than a tone-curved
  * photograph of it.
  */
-import { binarySTL, hemisphere, steppedBlock } from "../test/stlFixtures";
+import { binarySTL, hemisphere, sphere, steppedBlock } from "../test/stlFixtures";
 import { APP_URL, expect, test, waitForApp } from "./appFixture";
 import type { Page } from "@playwright/test";
 
@@ -85,6 +85,59 @@ test("an imported model lands at true size and is read as a height map", async (
   // Top of the dome = no cut; a bbox corner the dome never reaches = full depth.
   expect(placed.centreByte).toBe(255);
   expect(placed.cornerByte).toBe(0);
+});
+
+test("the relief warning fires on a full 3-D shape and not on a relief", async ({ page }) => {
+  test.setTimeout(120_000);
+  await freshProject(page);
+
+  const dialog = page.locator("#stl-backdrop");
+  const warning = dialog.locator(".stl-warning");
+
+  // A dome closed with a flat disc: a relief. It is 21.5% EMPTY — the number the
+  // plan proposed thresholding — so a warning here would be the false positive
+  // that made the emptiness ratio unusable.
+  await importSTL(page, Buffer.from(binarySTL(hemisphere(20, 48, 96))), "dome.stl");
+  await expect(dialog).toBeVisible();
+  await expect(warning).toBeHidden();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // The same silhouette, as a ball. 20% of that carving is plinth.
+  await importSTL(page, Buffer.from(binarySTL(sphere(20, 48, 96))), "ball.stl");
+  await expect(dialog).toBeVisible();
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("20% of");
+  await expect(warning).toContainText("not a relief");
+
+  // The warning is advice, not a gate: the model still imports.
+  await dialog.getByRole("button", { name: "Place" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => (window as any).__app.project.doc.entities.filter((e: any) => e.type === "image").length,
+    ),
+  ).toBe(1);
+});
+
+test("the warning follows the up axis, so it guides the user to the right face", async ({ page }) => {
+  test.setTimeout(120_000);
+  await freshProject(page);
+
+  // A staircase is relief-shaped seen from +Z (0% plinth) and seen end-on from
+  // +Y it is 40%. Same model, same file, one control — measured, not assumed:
+  // +X reads 0.0% because the block spans X solidly, which is why the axis used
+  // here is the one that was checked rather than the one that looked obvious.
+  await importSTL(page, Buffer.from(binarySTL(steppedBlock(40, 40, 5, 5))), "steps.stl");
+  const dialog = page.locator("#stl-backdrop");
+  const warning = dialog.locator(".stl-warning");
+  await expect(warning).toBeHidden();
+
+  await dialog.locator("select").nth(1).selectOption("+Y");
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("40% of");
+
+  await dialog.locator("select").nth(1).selectOption("+Z");
+  await expect(warning).toBeHidden();
 });
 
 test("the height map is not tone-curved, and the top of the model survives", async ({ page }) => {

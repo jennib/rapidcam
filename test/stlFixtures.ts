@@ -59,6 +59,56 @@ export function hemisphere(R = 10, nLat = 24, nLon = 48): Tri[] {
   return tris;
 }
 
+/** The sphere both shapes below are built from, as latitude/longitude quads. */
+function sphereShell(R: number, nLat: number, nLon: number, outward: boolean): Tri[] {
+  const p = (t: number, f: number): [number, number, number] => [
+    R * Math.sin(t) * Math.cos(f),
+    R * Math.sin(t) * Math.sin(f),
+    R * Math.cos(t),
+  ];
+  const tris: Tri[] = [];
+  for (let i = 0; i < nLat; i++) {
+    const t0 = (i / nLat) * Math.PI;
+    const t1 = ((i + 1) / nLat) * Math.PI;
+    for (let j = 0; j < nLon; j++) {
+      const f0 = (j / nLon) * 2 * Math.PI;
+      const f1 = ((j + 1) / nLon) * 2 * Math.PI;
+      const a = p(t0, f0),
+        b = p(t1, f0),
+        c = p(t1, f1),
+        d = p(t0, f1);
+      if (outward) tris.push([...a, ...b, ...c], [...a, ...c, ...d]);
+      else tris.push([...a, ...c, ...b], [...a, ...d, ...c]);
+    }
+  }
+  return tris;
+}
+
+/**
+ * A closed sphere — the textbook full-3D solid, and one with a closed-form
+ * answer for the plinth ratio.
+ *
+ * The carve leaves `∫(zTop − zMin)dA = (2/3)πR³ + πR³ = (5/3)πR³` and the ball
+ * itself is `(4/3)πR³`, so exactly **20%** of the carving is plinth. A fixture
+ * that has to agree with arithmetic cannot drift quietly.
+ */
+export function sphere(R = 10, nLat = 48, nLon = 96): Tri[] {
+  return sphereShell(R, nLat, nLon, true);
+}
+
+/**
+ * A sealed hollow ball: a sphere with a second, inverted shell inside it.
+ *
+ * Its cavity is invisible from every direction, so its OUTER form — and
+ * therefore the right answer for "how much of this carving is plinth" — is
+ * identical to the solid sphere's 20%. Any measure derived from the model's
+ * material rather than its outline reads something else entirely (78% by
+ * volume), which is why this fixture exists.
+ */
+export function hollowBall(R = 10, wall = 1, nLat = 48, nLon = 96): Tri[] {
+  return [...sphereShell(R, nLat, nLon, true), ...sphereShell(R - wall, nLat, nLon, false)];
+}
+
 /**
  * A staircase: `steps` treads of equal depth across Y, rising in Z, spanning
  * `width` in X. Every face is axis-aligned, so each tread's height is exact and

@@ -2,7 +2,7 @@
 
 Written 2026-08-15.
 
-Status: **Phase 1 SHIPPED 2026-08-16.** Item 3 (tool-profile dilation) landed
+Status: **Phase 1 SHIPPED 2026-08-16; Phase 1.5 SHIPPED 2026-08-16.** Item 3 (tool-profile dilation) landed
 separately as #62, because it turned out to be a live bug in the existing relief
 path rather than an STL prerequisite — a hard-edged heightfield gouged 2.905 mm
 on a 3 mm part. Items 1, 2, 4 and 5 followed.
@@ -15,9 +15,10 @@ the buffer as a photograph and silently re-flattens the top 4% of the model's
 height range. `zRangeMM` was added as an OPTIONAL field (old files still load),
 with the full 4-step drift checklist.
 
-**Phase 1.5 (below) comes before Phase 2**: warn when a model isn't relief-shaped.
-Phase 1 computes `emptyCells` and never uses it, so the data is already there and the
-gap is a real one — Easel warns here. After that, the steep/shallow split is the
+**Phase 1.5 SHIPPED 2026-08-16**, but *not* on the signal this plan proposed —
+`emptyCells` was measured against real files and rejected. See that section below;
+the short version is that it measures the model's SHADOW, and a real relief in the
+test corpus scores 17.3% on it. After this, the steep/shallow split is the
 highest-value item and needs only the local gradient, so it does not depend on
 Phase 3 or 5.
 
@@ -219,7 +220,7 @@ cell, to within cell size. `/run` the app afterwards; unit tests do not see the 
 
 **Shipped 2026-08-16 except one thing, recorded here so it isn't lost:**
 
-### Phase 1.5 — warn when the model isn't relief-shaped
+### Phase 1.5 — warn when the model isn't relief-shaped ✅ SHIPPED
 
 **Do this before Phase 2.** It is small, it sits on data that already exists, and it is
 the difference between a user learning the limitation from the docs and learning it from
@@ -247,6 +248,58 @@ percentage rather than a generic caution, and say what will happen to those regi
 with a flat back work best". Calibrate the threshold against a real relief and a real
 printed-model STL rather than picking a number; a hemisphere on a plinth is legitimately
 mostly-empty at its corners and must not trip it.
+
+#### What shipped instead, and why (2026-08-16)
+
+**`emptyCells` was measured and rejected.** The instinct above — that it is "the data
+already on hand" — is right, but it is data about the wrong thing. `emptyCells/total` is
+one minus (silhouette area ÷ bounding-box area): a measure of the model's **shadow**,
+which is independent of its depth. Four shapes with the same shadow:
+
+| shape | empty | actual damage |
+|---|---|---|
+| hemisphere on its disc | 21.5% | 0.0% |
+| sphere | 21.5% | 20.1% |
+| sealed hollow ball | 21.5% | 20.1% |
+| open-topped vase | 21.5% | 0.3% |
+
+And on real files: `dragon_wall_art-01.stl`, a relief a user would carve unchanged, is
+**17.3% empty**; a torus lying flat is 44.3%. Any threshold low enough to catch a printed
+figurine fires on both. There is no such threshold — the ordering is wrong, not the number.
+
+**Shipped: `plinthRatio`.** The carve leaves `zMin ≤ z ≤ zTop(x,y)`; the model occupies
+`zBottom(x,y) ≤ z ≤ zTop(x,y)`. The difference is plinth, material a cutter coming from
+above can never reach:
+
+    plinthRatio = 1 − Σ(zTop − zBottom) / Σ(zTop − zMin)
+
+One extra `Float32Array` in the existing raster loop, bounded in [0,1] by construction.
+Threshold **5%**, in a measured empty band: genuine reliefs top out at 0.9%, parts lying
+flat at 3.8%, and the first genuinely misleading model is 8.8%. Zero false positives and
+zero false negatives across 22 real STLs and 9 synthetics — `scripts/stl-relief-probe.ts`.
+
+**Taking the model's volume from the facet winding was tried and rejected.** It is the
+more obvious formulation and it is wrong on real files: `resurgence-2.stl` and
+`35-36.5mm_adapter.STL` both report a *negative* waste, impossible for a solid, because
+their doubled shells are wound so an invisible cavity adds instead of subtracting — and
+the standard closedness test (area-weighted normals summing to zero) passes both at
+~1e-18. Spanning between the outermost crossings has no opinion about winding.
+
+**Undercut area was measured and deliberately not shipped.** Counting cells whose
+vertical ray crosses the surface more than twice detects material-over-void exactly (a
+sealed hollow ball reads 81.0%, matching `(18/20)²` in closed form). But it fires 99.8% on
+`resurgence-2` and 100% on `SonicKnifePCB` — both *hollowed* prints whose top surface
+carves perfectly — so it is a bad warning signal, and it costs a two-pass crossing list
+(~2.5 s, tens of MB) that the dialog would recompute on every control change. It is the
+right tool for Phase 2's steep/shallow split, not for this.
+
+**The warning follows the up axis, which turned out to be the most useful part.**
+`atenea_v1.stl` reads 56.8% carved from her back, 5.8% from above and 0.3% from her face,
+so the warning doubles as a guide to the correct orientation: change the axis and it
+clears as the preview snaps into a relief.
+
+Undercuts need no user option: keeping the max Z *is* treating them as vertical walls, and
+there is no second mode to switch to. The standing note says so instead.
 
 ### Phase 2 — close the Easel gap
 

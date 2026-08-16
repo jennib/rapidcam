@@ -30,9 +30,23 @@
  * resolution it will be registered at. It is the same "look at the field before
  * trusting it" check the rasteriser's own probe script does, put in front of the
  * person who knows what the model is supposed to look like.
+ *
+ * ## The warning, and why it is conditional
+ *
+ * "Models with a flat back work best" used to sit here unconditionally, which is
+ * close to saying nothing: the one user who needs it never notices, and everyone
+ * who doesn't reads it anyway. It is replaced by a warning that fires only when
+ * the model earns it, states the measured percentage, and names the consequence —
+ * see {@link PLINTH_WARN} for what is measured and how the threshold was
+ * calibrated.
+ *
+ * It is advice, not a gate: `Place` stays enabled, because a full 3-D model does
+ * carve, just not into the object the user is picturing. And because the number
+ * follows the up axis, the warning clears when they pick the face they meant,
+ * which is the most useful thing it does.
  */
 
-import { stlHeightfield, type Heightfield, type UpAxis } from "../cam/stlHeightfield";
+import { PLINTH_WARN, stlHeightfield, type Heightfield, type UpAxis } from "../cam/stlHeightfield";
 import { suggestUnitScale, type STLMesh } from "../io/stlImport";
 import { registerModal } from "./modal";
 
@@ -99,8 +113,16 @@ export function openSTLImportDialog(
   note.textContent =
     "The model becomes a height map: white is the top surface, black the base. " +
     "Carve it with a relief toolpath — rough it out with an end mill first, then " +
-    "finish with a ball-nose. Models with a flat back work best.";
+    "finish with a ball-nose. Only the surface facing the tool is cut, so overhangs " +
+    "and undercuts come out as vertical walls.";
   body.appendChild(note);
+
+  // Shown only when the model earns it — see PLINTH_WARN for the measurement.
+  // Placed above the preview so it is read before the picture is interpreted.
+  const warning = document.createElement("p");
+  warning.className = "stl-warning";
+  warning.hidden = true;
+  body.appendChild(warning);
 
   const preview = document.createElement("canvas");
   preview.style.display = "block";
@@ -164,6 +186,18 @@ export function openSTLImportDialog(
       img.data[i * 4 + 3] = 255;
     }
     pctx.putImageData(img, 0, 0);
+
+    // Recomputed on every change, because the answer follows the orientation:
+    // the same bust reads 57% carved from her back and 0.3% from her face.
+    const plinth = hf.plinthRatio;
+    warning.hidden = plinth < PLINTH_WARN;
+    // Kept to three lines deliberately. At six it pushed the Up axis control —
+    // the one this very text tells the user to reach for — below the fold of the
+    // dialog's scrolling body on a 620px-tall window.
+    warning.textContent =
+      `Full 3-D shape, not a relief: ${Math.round(plinth * 100)}% of this carving ` +
+      `will be solid plinth a cutter can't reach under. If the model has a flatter ` +
+      `side, try another up axis.`;
 
     const zRange = hf.zMaxMM - hf.zMinMM;
     sizeOut.textContent = `${fmt(hf.widthMM)} × ${fmt(hf.heightMM)} mm`;

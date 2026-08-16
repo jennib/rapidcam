@@ -7,9 +7,17 @@
  * below was found in the first place, with the numeric tests all passing.
  */
 import { describe, expect, test } from "vitest";
-import { stlHeightfield } from "../src/cam/stlHeightfield";
+import { PLINTH_WARN, stlHeightfield } from "../src/cam/stlHeightfield";
 import { parseSTL } from "../src/io/stlImport";
-import { binarySTL, hemisphere, sliverPlate, steppedBlock, type Tri } from "./stlFixtures";
+import {
+  binarySTL,
+  hemisphere,
+  hollowBall,
+  sliverPlate,
+  sphere,
+  steppedBlock,
+  type Tri,
+} from "./stlFixtures";
 
 const field = (tris: Tri[], opts = {}) => stlHeightfield(parseSTL(binarySTL(tris)), opts);
 const at = (hf: ReturnType<typeof field>, col: number, row: number) =>
@@ -90,6 +98,59 @@ describe("no gaps in a surface the model covers", () => {
     // Positive control the other way: emptyCells === 0 above is a property of a
     // rectangular model, not a counter that is always zero.
     expect(field(hemisphere(10, 32, 64), { cellMM: 0.5 }).emptyCells).toBeGreaterThan(0);
+  });
+});
+
+describe("plinthRatio: is the model relief-shaped?", () => {
+  test("THE CLAIM: it separates two shapes emptyCells cannot tell apart", () => {
+    // A dome on its disc and a ball of the same radius cast the SAME shadow — a
+    // circle in a square — so the cell-emptiness ratio the plan proposed is
+    // identical for both. One is a relief that carves as itself; the other comes
+    // out as a dome on a cylinder. This is the whole reason the signal changed.
+    const dome = field(hemisphere(10, 48, 96), { cellMM: 0.25 });
+    const ball = field(sphere(10, 48, 96), { cellMM: 0.25 });
+
+    const emptyOf = (hf: ReturnType<typeof field>) => hf.emptyCells / (hf.width * hf.height);
+    expect(emptyOf(ball)).toBeCloseTo(emptyOf(dome), 3);
+    expect(emptyOf(dome)).toBeGreaterThan(0.2); // and it is a LARGE number for both
+
+    expect(dome.plinthRatio).toBeLessThan(PLINTH_WARN);
+    expect(ball.plinthRatio).toBeGreaterThan(PLINTH_WARN);
+  });
+
+  test("a sphere is exactly 20% plinth, which is arithmetic not a fixture", () => {
+    // carved = ∫(√(R²−r²) + R)dA = (5/3)πR³ over the disc; the ball is (4/3)πR³.
+    // So 1 − (4/3)/(5/3) = 0.2, and no amount of retessellating changes it.
+    expect(field(sphere(10, 48, 96), { cellMM: 0.25 }).plinthRatio).toBeCloseTo(0.2, 2);
+  });
+
+  test("a sealed cavity does not change the answer", () => {
+    // The outer form is what gets carved, so a ball hollowed to save print resin
+    // must read the same 20% as a solid one. A measure taken from the model's
+    // MATERIAL (its signed volume) reads 78% here instead — and on two of the
+    // real files it went negative, which is impossible for a solid.
+    const solid = field(sphere(10, 48, 96), { cellMM: 0.25 });
+    const hollow = field(hollowBall(10, 1, 48, 96), { cellMM: 0.25 });
+    expect(hollow.plinthRatio).toBeCloseTo(solid.plinthRatio, 2);
+  });
+
+  test("flat-backed shapes read zero", () => {
+    for (const tris of [steppedBlock(30, 30, 3, 2), hemisphere(10, 48, 96), sliverPlate(100, 0.02, 200)])
+      expect(field(tris, { cellMM: 0.5 }).plinthRatio).toBeLessThan(0.01);
+  });
+
+  test("it is a ratio, so scaling the model does not move it", () => {
+    // Guards the cell area cancelling out of the two sums, which is why neither
+    // is multiplied by one.
+    const small = field(sphere(5, 48, 96), { cellMM: 0.125 });
+    const large = field(sphere(50, 48, 96), { cellMM: 1.25 });
+    expect(large.plinthRatio).toBeCloseTo(small.plinthRatio, 2);
+  });
+
+  test("a degenerate mesh reports zero rather than NaN", () => {
+    // 0/0 here would render as "NaN% of what gets carved" in the import dialog.
+    expect(field([]).plinthRatio).toBe(0);
+    expect(field(steppedBlock(30, 30, 1, 0)).plinthRatio).toBe(0); // flat: no range
   });
 });
 
