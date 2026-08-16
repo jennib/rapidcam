@@ -80,6 +80,19 @@ export function applyScale(
       // We assume sx, sy are positive for normal scale ops.
       // Flips should be done via applyFlipH / applyFlipV explicitly.
     } else if (e instanceof RectEntity) {
+      // A corner radius is a length and scales with the shape, exactly like the
+      // circle radius and text size above. Leaving it behind would shrink a
+      // rounded rectangle's corners relative to its sides every time the W/H
+      // fields or a scale drag ran — and only the drawing would say so.
+      // A corner is round, never elliptical, so a non-uniform scale can only
+      // take one factor; report it alongside circles/arcs/text.
+      if (nonUniform && e.hasShapedCorners()) uniformOnly++;
+      e.cornerRadii = e.cornerRadii.map((r) => r * Math.abs(sx)) as [
+        number,
+        number,
+        number,
+        number,
+      ];
       scalePt(e.p0);
       scalePt(e.p1);
       const minX = Math.min(e.p0.x, e.p1.x),
@@ -157,6 +170,9 @@ export function applyRotate(
     } else if (e instanceof RectEntity) {
       const rem = Math.abs(angle % (Math.PI / 2));
       if (rem < 1e-6 || Math.abs(rem - Math.PI / 2) < 1e-6) {
+        // The rectangle stays axis-aligned, so its corners swap places rather
+        // than move — the treatments have to follow them round.
+        e.rotateCorners(angle / (Math.PI / 2));
         rotPt(e.p0);
         rotPt(e.p1);
         const minX = Math.min(e.p0.x, e.p1.x),
@@ -222,7 +238,7 @@ export function applyFlipH(entities: Entity[], cx: number): void {
       flipPt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) flipPt(p);
-      e.points.reverse(); // Maintain winding order
+      e.reverse(); // Maintain winding order — ids in step, see PolylineEntity.reverse
     } else if (e instanceof BezierEntity) {
       flipPt(e.p0);
       flipPt(e.p1);
@@ -237,6 +253,7 @@ export function applyFlipH(entities: Entity[], cx: number): void {
       e.startAngle = normalizeAngle(start);
       e.endAngle = normalizeAngle(end);
     } else if (e instanceof RectEntity) {
+      e.mirrorCornersX();
       flipPt(e.p0);
       flipPt(e.p1);
       const minX = Math.min(e.p0.x, e.p1.x),
@@ -271,7 +288,7 @@ export function applyFlipV(entities: Entity[], cy: number): void {
       flipPt(e.b);
     } else if (e instanceof PolylineEntity) {
       for (const p of e.points) flipPt(p);
-      e.points.reverse(); // Maintain winding order
+      e.reverse(); // Maintain winding order — ids in step, see PolylineEntity.reverse
     } else if (e instanceof BezierEntity) {
       flipPt(e.p0);
       flipPt(e.p1);
@@ -286,6 +303,7 @@ export function applyFlipV(entities: Entity[], cy: number): void {
       e.startAngle = normalizeAngle(start);
       e.endAngle = normalizeAngle(end);
     } else if (e instanceof RectEntity) {
+      e.mirrorCornersY();
       flipPt(e.p0);
       flipPt(e.p1);
       const minY = Math.min(e.p0.y, e.p1.y),

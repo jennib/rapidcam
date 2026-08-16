@@ -579,6 +579,44 @@ export class RectEntity extends Entity {
   }
 
   /**
+   * Reorder the corner treatments: `order[i]` names the corner whose radius
+   * lands at corner `i`.
+   *
+   * The permutations below are the ONLY place a transform has to know the
+   * bl/br/tr/tl ordering `corners()` defines. A transform that moves a rectangle
+   * without moving its corner treatments to match puts the round on the wrong
+   * corner — silently, and all the way through to the G-code.
+   */
+  private permuteCornerRadii(order: readonly [number, number, number, number]): void {
+    const r = this.cornerRadii;
+    this.cornerRadii = [r[order[0]], r[order[1]], r[order[2]], r[order[3]]];
+  }
+  /** Mirror the corner treatments about a vertical axis: bl↔br, tl↔tr. */
+  mirrorCornersX(): void {
+    this.permuteCornerRadii([1, 0, 3, 2]);
+  }
+  /** Mirror the corner treatments about a horizontal axis: bl↔tl, br↔tr. */
+  mirrorCornersY(): void {
+    this.permuteCornerRadii([3, 2, 1, 0]);
+  }
+  /**
+   * Turn the corner treatments through `quarterTurns` × 90° CCW — bl→br→tr→tl,
+   * matching where the rectangle's own corners land.
+   */
+  rotateCorners(quarterTurns: number): void {
+    const k = (((Math.round(quarterTurns) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+    if (k === 0) return;
+    // Corner i afterwards holds what corner i-k held: one CCW quarter-turn
+    // carries bl's treatment onto br.
+    this.permuteCornerRadii([(4 - k) % 4, (5 - k) % 4, (6 - k) % 4, (7 - k) % 4] as [
+      number,
+      number,
+      number,
+      number,
+    ]);
+  }
+
+  /**
    * The boundary as an ordered ring of straight runs and corner arcs, CCW from
    * the bottom-left.
    *
@@ -909,6 +947,27 @@ export class PolylineEntity extends Entity {
     const newIds = newPoints.map(() => this.mintVertexId());
     this.points.splice(start, deleteCount, ...newPoints.map(clone));
     this.vertexIds.splice(start, deleteCount, ...newIds);
+  }
+
+  /**
+   * Reverse the traversal direction, keeping everything indexed BY vertex in
+   * lock-step with `points` — ids included.
+   *
+   * A bare `points.reverse()` is a silent constraint corruption: vertex
+   * point-keys (`v<id>`) resolve through `vertexIds` BY INDEX, so reversing one
+   * array and not the other leaves every constraint and dimension on the shape
+   * pointing at a different physical vertex. A mirror has to reverse winding to
+   * stay CCW, so this is the only way to do it.
+   *
+   * Segment keys (`mid_<id>`, and the `<id>#<vertexId>` a segment-as-line
+   * constraint uses) name a segment by the vertex it LEAVES, so each one moves
+   * to the other end of its own segment. That is inherent to reversing
+   * direction, not something an ordering could avoid: which endpoint comes first
+   * is exactly what changed.
+   */
+  reverse(): void {
+    this.points.reverse();
+    this.vertexIds.reverse();
   }
 
   /** Number of drawn segments (accounts for the closing segment). */
