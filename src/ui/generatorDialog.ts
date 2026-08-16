@@ -151,6 +151,23 @@ export interface GeneratorDialogOptions {
   /** Runs after a fresh insert commits (fits the view) — not on edit. */
   onInserted?: () => void;
   /**
+   * Re-solve after a commit. Required, and separate from `onInserted` because
+   * BOTH paths need it — insert and edit alike.
+   *
+   * Adding entities changes the variable count, and the solver's `dof` is read
+   * straight off its LAST result. Without a solve here that result still
+   * describes the document before the feature existed: on a new project it says
+   * `variables = 0`, so `dof = 0`, and SelectTool refuses to drag the thing that
+   * was just inserted — reporting "Fully constrained — edit a dimension or
+   * remove a constraint" on a document with no constraints at all. Measured: a
+   * finger-box inserts at dof 0 and moves 0 of its 9 entities; after a solve it
+   * reads dof 136 and all 9 move together.
+   *
+   * The drawing tools have always called `ctx.solve()` themselves; this dialog
+   * was the one commit path that didn't.
+   */
+  solve: () => void;
+  /**
    * Live ghost preview sink (flipDialog precedent): called with the probe's
    * shapes on open and on every debounced edit, and with null when the dialog
    * closes. When provided, the dialog uses the non-dimming "peek" backdrop and
@@ -352,6 +369,11 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
       );
       onInserted?.();
     }
+    // AFTER both paths, before returning. The feature has changed the variable
+    // count, and everything that gates on `dof` — dragging most of all — reads
+    // the solver's last result. Leaving it stale makes a freshly inserted
+    // feature immovable and blames a constraint that isn't there.
+    opts.solve();
     return true;
   });
 
