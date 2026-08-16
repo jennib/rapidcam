@@ -23,7 +23,8 @@ import { openGeneratorDialog } from "../src/ui/generatorDialog";
 
 /** Open the dialog for `gen` over `doc` and return its root element. */
 function openDialog(doc: CADDocument, genId: string): HTMLElement {
-  openGeneratorDialog({ doc, pushHistory: () => {}, gen: GENERATORS[genId] });
+  openGeneratorDialog({ doc, pushHistory: () => {},
+    solve: () => {}, gen: GENERATORS[genId] });
   const dialogs = [...document.querySelectorAll(".tp-dialog")];
   return dialogs[dialogs.length - 1] as HTMLElement;
 }
@@ -206,7 +207,8 @@ test("an untouched expression field keeps its formula", () => {
   expect(doc.features[0].paramExprs?.bar).toBe("stock / 2");
 
   // Re-open that feature and Update without touching anything.
-  openGeneratorDialog({ doc, pushHistory: () => {}, gen: GENERATORS["kumiko-asanoha"], editFeatureId: id });
+  openGeneratorDialog({ doc, pushHistory: () => {},
+    solve: () => {}, gen: GENERATORS["kumiko-asanoha"], editFeatureId: id });
   const dialogs = [...document.querySelectorAll(".tp-dialog")];
   const second = dialogs[dialogs.length - 1] as HTMLElement;
   expect(field(second, "Bar width").value).toBe("stock / 2");

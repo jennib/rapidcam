@@ -1874,6 +1874,7 @@ export class PropertiesBar {
         editBtn.title = "Edit this feature's parameters";
         editBtn.addEventListener("click", () => {
           openGeneratorDialog({
+            solve: () => this.solve(),
             doc: this.doc,
             pushHistory: this.pushHistory,
             gen,

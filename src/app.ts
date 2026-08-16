@@ -388,6 +388,7 @@ export class App {
             return;
           }
           openGeneratorDialog({
+            solve: () => this.runSolve(),
             doc: this.doc,
             pushHistory: this.project.pushHistory,
             gen: GENERATORS[feat.generatorId],
@@ -400,6 +401,7 @@ export class App {
         generators: Object.values(GENERATORS).map((g) => ({ id: g.id, name: g.name })),
         onInsertGenerator: (id) =>
           openGeneratorDialog({
+            solve: () => this.runSolve(),
             doc: this.doc,
             pushHistory: this.project.pushHistory,
             gen: GENERATORS[id],
@@ -1143,6 +1145,7 @@ export class App {
       const gen = feat ? GENERATORS[feat.generatorId] : undefined;
       if (feat && gen) {
         openGeneratorDialog({
+          solve: () => this.runSolve(),
           doc: this.doc,
           pushHistory: this.project.pushHistory,
           gen,
