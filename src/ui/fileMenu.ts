@@ -16,6 +16,7 @@ export interface FileMenuCallbacks {
   onImportSvg: () => void;
   onImportDxf: () => void;
   onImportImage: () => void;
+  onImportStl: () => void;
   onExportSvg: () => void;
   onExportDxf: () => void;
 }
@@ -113,6 +114,10 @@ export class FileMenu {
     this.item("Import Image…", "", () => {
       this.close();
       this.cb.onImportImage();
+    });
+    this.item("Import 3D Model (STL)…", "", () => {
+      this.close();
+      this.cb.onImportStl();
     });
     this.item("Export SVG", "", () => {
       this.close();

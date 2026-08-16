@@ -19,6 +19,27 @@ import { newBoxAccumulator, boxAccumulate, boxMeanBytes } from "./resample";
  *  keeps the embedded buffer (and the .rcam file) from ballooning. */
 export const MAX_IMAGE_EDGE = 1000;
 
+/**
+ * What marks a buffer as a HEIGHT MAP rather than a picture.
+ *
+ * The distinction is not cosmetic: every tone control in the raster path (gamma,
+ * the white threshold, linear-light tone) exists to make a photograph read well,
+ * and each one is a geometry error on a buffer whose bytes are already lengths.
+ * {@link ../cam/reliefEncoding} is the single place that acts on this; nothing
+ * else should branch on it.
+ */
+export interface HeightfieldMeta {
+  /**
+   * The model's full height range, mm — the carve depth at true scale.
+   *
+   * Only the RANGE is kept, not `zMin`/`zMax`: a relief hangs the model's top at
+   * the stock surface and cuts downward, so where the model sat in its own
+   * coordinate system has no machining meaning, and storing a number nothing
+   * reads is how copies start disagreeing.
+   */
+  zRangeMM: number;
+}
+
 export interface ImageEntry {
   id: string;
   name: string;
@@ -27,6 +48,8 @@ export interface ImageEntry {
   height: number;
   /** Greyscale, row-major, row 0 = top. 0 = black, 255 = white. length = w*h. */
   gray: Uint8Array;
+  /** Set when the bytes are a height map (an imported STL), not a picture. */
+  heightfield?: HeightfieldMeta;
   /** Cached 0..1 float view for the path generator (built lazily). */
   grayF?: Float32Array;
   /** Cached canvas for drawing (built lazily, browser only). */
@@ -82,9 +105,13 @@ export function getImageCanvas(id: string): HTMLCanvasElement | null {
   return e.canvas;
 }
 
-/** FNV-1a 32-bit hash of the bytes, hex — stable content id for an image. */
-function hashBytes(bytes: Uint8Array): string {
+/** FNV-1a 32-bit hash of the bytes (plus any salt), hex — stable content id. */
+function hashBytes(bytes: Uint8Array, salt = ""): string {
   let h = 0x811c9dc5;
+  for (let i = 0; i < salt.length; i++) {
+    h ^= salt.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 0x01000193);
+  }
   for (let i = 0; i < bytes.length; i++) {
     h ^= bytes[i];
     h = Math.imul(h, 0x01000193);
@@ -107,10 +134,28 @@ function toGreyscale(rgba: Uint8ClampedArray, w: number, h: number): Uint8Array 
   return gray;
 }
 
-/** Register a greyscale buffer, returning its content id (deduped). */
-function register(name: string, width: number, height: number, gray: Uint8Array): string {
-  const id = `img-${hashBytes(gray)}`;
-  if (!IMAGES.has(id)) IMAGES.set(id, { id, name, width, height, gray });
+/**
+ * Register a greyscale buffer, returning its content id (deduped).
+ *
+ * A heightfield's depth range is part of its identity, not just its pixels. The
+ * encoding is RELATIVE to the model's own Z range, so the same STL imported at
+ * 1× and at 2× produces byte-identical buffers that mean different depths —
+ * hashing the pixels alone would dedup them together and silently hand the second
+ * import the first one's carve depth. Salting the hash keeps them distinct.
+ */
+function register(
+  name: string,
+  width: number,
+  height: number,
+  gray: Uint8Array,
+  heightfield?: HeightfieldMeta,
+): string {
+  const id = `img-${hashBytes(gray, heightfield ? `z${heightfield.zRangeMM}` : "")}`;
+  if (!IMAGES.has(id)) {
+    const entry: ImageEntry = { id, name, width, height, gray };
+    if (heightfield) entry.heightfield = heightfield;
+    IMAGES.set(id, entry);
+  }
   return id;
 }
 
@@ -122,6 +167,30 @@ export function registerGrey(
   gray: Uint8Array,
 ): string {
   return register(name, width, height, gray);
+}
+
+/**
+ * Register a buffer whose bytes are HEIGHTS, not tones (an imported STL).
+ *
+ * The marker travels with the pixels rather than with the entity that places
+ * them, because "these bytes are lengths" is a fact about the data: two entities
+ * showing one imported model must not be able to disagree about it, which is
+ * exactly how a rough pass and its finish pass would come to cut different
+ * surfaces.
+ */
+export function registerHeightfield(
+  name: string,
+  width: number,
+  height: number,
+  gray: Uint8Array,
+  meta: HeightfieldMeta,
+): string {
+  return register(name, width, height, gray, meta);
+}
+
+/** The height-map metadata for an image id, or null if it is an ordinary picture. */
+export function heightfieldMeta(id: string): HeightfieldMeta | null {
+  return IMAGES.get(id)?.heightfield ?? null;
 }
 
 /** Raw greyscale, decoded and downscaled but not registered — the input to an
@@ -233,6 +302,14 @@ export interface EmbeddedImage {
   height: number;
   /** Base64-encoded greyscale bytes (row-major, row 0 = top). */
   data: string;
+  /**
+   * Present when the bytes are a height map: the model's height range in mm.
+   *
+   * Without this a reopened STL project reads as a photograph — the white
+   * threshold alone would flatten the top 4% of the model's height range, ~1 mm
+   * on a 25 mm model, with no error anywhere.
+   */
+  zRangeMM?: number;
 }
 
 /** Collect the embedded form of the given image ids, skipping any not loaded. */
@@ -244,13 +321,15 @@ export function collectEmbeddedImages(ids: Iterable<string>): EmbeddedImage[] {
     seen.add(id);
     const e = IMAGES.get(id);
     if (!e) continue;
-    out.push({
+    const emb: EmbeddedImage = {
       id: e.id,
       name: e.name,
       width: e.width,
       height: e.height,
       data: bytesToBase64(e.gray),
-    });
+    };
+    if (e.heightfield) emb.zRangeMM = e.heightfield.zRangeMM;
+    out.push(emb);
   }
   return out;
 }
@@ -263,7 +342,16 @@ export function registerEmbeddedImage(img: EmbeddedImage): void {
     console.warn(`[images] embedded image "${img.name}" (${img.id}) has too few bytes — skipped.`);
     return;
   }
-  IMAGES.set(img.id, { id: img.id, name: img.name, width: img.width, height: img.height, gray });
+  const entry: ImageEntry = {
+    id: img.id,
+    name: img.name,
+    width: img.width,
+    height: img.height,
+    gray,
+  };
+  if (typeof img.zRangeMM === "number" && img.zRangeMM > 0)
+    entry.heightfield = { zRangeMM: img.zRangeMM };
+  IMAGES.set(img.id, entry);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

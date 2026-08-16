@@ -13,6 +13,7 @@ import type {
 import { DEFAULTS } from "../../../cam/types";
 import type { DitherMode } from "../../../cam/dither";
 import { type Entity, RasterImageEntity } from "../../../model/entities";
+import { heightfieldMeta } from "../../../core/imageManager";
 import type { Vec2 } from "../../../core/vec2";
 import {
   type OpCombo,
@@ -110,6 +111,30 @@ export function autoOpName(combo: OpCombo, doc: CADDocument): string {
   return autoName(combo, doc);
 }
 
+/**
+ * The carve depth an imported 3-D model already determines, or null.
+ *
+ * An STL knows how tall it is, so making the user read that figure off a toast
+ * and retype it is a transcription step whose failure mode is silent: a typo
+ * carves the model squashed, and nothing downstream can tell that apart from a
+ * deliberate scaling. The height range travels with the image (see
+ * `registerHeightfield`), so the dialog reads it instead of asking.
+ *
+ * It is a DEFAULT, not a constraint — deliberately carving a 25 mm model 6 mm
+ * deep into thin stock is ordinary practice, so the field stays editable. The
+ * value being shared by the roughing and finishing passes is also what makes them
+ * agree by construction rather than by the operator remembering to match them
+ * (see the `relief-pass-mismatch` lint).
+ */
+function modelDepth(ents: Entity[]): number | null {
+  for (const e of ents) {
+    if (!(e instanceof RasterImageEntity)) continue;
+    const meta = heightfieldMeta(e.imageId);
+    if (meta && meta.zRangeMM > 0) return -meta.zRangeMM; // depth is negative
+  }
+  return null;
+}
+
 export function createInitialOpState(
   existing: CAMOperation | null,
   doc: CADDocument,
@@ -142,7 +167,7 @@ export function createInitialOpState(
     plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,
     spindleSpeed: existing?.spindleSpeed ?? DEFAULTS.spindleSpeed,
     safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
-    depth: existing?.depth ?? DEFAULTS.depth,
+    depth: existing?.depth ?? modelDepth(preSelectedEnts) ?? DEFAULTS.depth,
     stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
     peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
     pocketBoundaryMode: (existing?.regions?.length ? "regions" : "entities") as

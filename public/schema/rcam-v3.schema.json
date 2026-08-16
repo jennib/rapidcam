@@ -508,13 +508,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "name", "width", "height", "data"],
-      "description": "A raster image embedded in the file, referenced by imageEntity.imageId. Stored as a downscaled GREYSCALE buffer (one byte per pixel, row-major, row 0 = top, 0 = black) — colour carries no machining information for a laser.",
+      "description": "A raster image embedded in the file, referenced by imageEntity.imageId. Stored as a downscaled GREYSCALE buffer (one byte per pixel, row-major, row 0 = top, 0 = black) — colour carries no machining information for a laser. When \"zRangeMM\" is present the bytes are a HEIGHT MAP from an imported STL, not a picture: 255 is the model's top surface (no cut) and 0 its base (full depth).",
       "properties": {
         "id": { "type": "string", "minLength": 1, "description": "Stable content-addressed id, e.g. \"img-1a2b3c4d\"." },
         "name": { "type": "string", "description": "Human-readable image name." },
         "width": { "type": "integer", "minimum": 1, "description": "Pixel width of the greyscale buffer." },
         "height": { "type": "integer", "minimum": 1, "description": "Pixel height of the greyscale buffer." },
-        "data": { "type": "string", "description": "Base64-encoded greyscale bytes (length = width × height)." }
+        "data": { "type": "string", "description": "Base64-encoded greyscale bytes (length = width × height)." },
+        "zRangeMM": { "type": "number", "exclusiveMinimum": 0, "description": "Present only when the buffer is a HEIGHT MAP (an imported STL) rather than a picture: the model's full height range in mm, i.e. the carve depth at true scale. Its presence changes how a relief op reads the bytes — no gamma, no white threshold, encoded tone — because the bytes are lengths, not tones. Omitted for photographs." }
       }
     },
 

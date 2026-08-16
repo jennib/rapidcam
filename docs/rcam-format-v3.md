@@ -396,6 +396,16 @@ Notes:
   Its `imageId` (`"img-XXXXXXXX"`) must appear in the top-level `images` array,
   which stores a downscaled **greyscale** buffer (one byte per pixel, row-major,
   row 0 = top, 0 = black) — colour carries no machining information for a laser.
+  An embedded image that carries **`zRangeMM`** is a **height map** produced by
+  importing an STL, not a picture: byte 255 is the model's top surface (no cut),
+  byte 0 its base (full depth), and `zRangeMM` is the model's full height range
+  in mm — the carve depth at true scale. The flag travels with the *pixels*
+  rather than the entity because it is a fact about what the bytes mean, so a
+  relief roughing pass and its finishing pass cannot disagree about it. Its
+  presence suppresses every tone control in the relief path (`reliefGamma`, the
+  0.96 white threshold, linear-light tone, and halftoning), each of which is a
+  geometry error on bytes that are already lengths. Dropping the field on a
+  rewrite silently re-reads the model as a photograph.
   `angle` (CCW radians) rotates the image about its anchor. The engrave/relief
   sweeps in the image's own (rotated) frame, so a non-zero `angle` is honoured in
   both the toolpath and the preview — the scan rows tilt with the image.

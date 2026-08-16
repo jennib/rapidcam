@@ -658,6 +658,69 @@ function checkRestToolMismatch(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: a relief roughing pass and the finishing pass on the same image are
+ * cutting different surfaces.
+ *
+ * Roughing's whole job is to leave a uniform `finishAllowance` for the finisher.
+ * It does that by rasterising the SAME image to the SAME depth and handing back a
+ * surface offset by the allowance — so the two ops agree only as long as the
+ * fields they derive agree. The relief path says so in its own doc comment:
+ *
+ * > "The op's depth / gamma / invert / flip should MATCH the finish op or the
+ * > left allowance won't be uniform; they're exposed on both ops for that reason."
+ *
+ * Which is one fact stored in two places, and this project's standing defect
+ * class. Three of those four can no longer drift: `flip` comes from the entity,
+ * and on an imported STL `gamma` is pinned by {@link ../cam/reliefEncoding}. The
+ * two that remain are typed per-op, so they get a guard instead.
+ *
+ * A depth mismatch is the dangerous one. Rough to 6 mm, finish at 10 mm, and the
+ * finisher meets 4 mm of untouched material with a small ball-nose taking the
+ * whole thing in one pass — the standing complaint on Easel's forum, and how
+ * finishing cutters get snapped.
+ */
+function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
+  const roughs = doc.operations.filter((o) => o.type === "relief-rough");
+  const finishes = doc.operations.filter((o) => o.type === "engrave");
+  const problems: string[] = [];
+  const ids = new Set<string>();
+
+  for (const rough of roughs) {
+    for (const finish of finishes) {
+      // Paired by the image they both target — the only thing that makes one the
+      // roughing pass "for" the other.
+      const shared = rough.entityIds.filter((id) => finish.entityIds.includes(id));
+      if (shared.length === 0) continue;
+
+      const rd = Math.abs(rough.depth);
+      const fd = Math.abs(finish.depth);
+      if (Math.abs(rd - fd) > EPS)
+        problems.push(
+          `"${rough.name}" roughs to ${rd}mm but "${finish.name}" finishes at ${fd}mm`,
+        );
+      if ((rough.rasterInvert ?? false) !== (finish.rasterInvert ?? false))
+        problems.push(
+          `"${rough.name}" and "${finish.name}" disagree about Invert, so they carve ` +
+            `the image and its negative`,
+        );
+      if (problems.length > 0) for (const id of shared) ids.add(id);
+    }
+  }
+  if (problems.length === 0) return null;
+
+  return {
+    code: "relief-pass-mismatch",
+    severity: "warning",
+    message:
+      `Relief roughing and finishing do not describe the same surface: ${problems.join("; ")}. ` +
+      `The roughing pass leaves its finish allowance relative to its OWN depth, so the ` +
+      `finisher meets an uneven — and possibly full-depth — wall of material rather than ` +
+      `the allowance it expects. Match the settings on both toolpaths.`,
+    entityIds: [...ids],
+  };
+}
+
+/**
  * WARNING: an operation bound to geometry that is hidden, and which CAM
  * therefore did not cut (see machinable.ts).
  *
@@ -751,6 +814,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // laser cuts nothing too); the move stream can't see it since it emits none.
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
+  if (ctx.doc) findings.push(checkReliefPassMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkSpoilboardMixed(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));

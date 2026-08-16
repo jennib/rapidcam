@@ -853,6 +853,19 @@ function parametricDoc(): CADDocument {
   const img = new RasterImageEntity("img-p", { x: 10, y: 10 }, 40, 20, 0.3, true, false);
   img.aspectLocked = true;
   doc.add(img);
+
+  // An STL-backed HEIGHT MAP alongside the picture above: the only schema
+  // coverage `zRangeMM` gets, and the field whose absence would silently re-read
+  // an imported model as a photograph.
+  registerEmbeddedImage({
+    id: "img-hf",
+    name: "dome",
+    width: 2,
+    height: 2,
+    data: btoa(String.fromCharCode(0, 128, 255, 64)),
+    zRangeMM: 12.5,
+  });
+  doc.add(new RasterImageEntity("img-hf", { x: 60, y: 10 }, 30, 30, 0));
   // Image size/rotation formulas are ordinary scalar bindings (like circle radius).
   doc.bindings.push(
     { id: "b2", entityId: img.id, scalarKey: "w", expr: "plateW" },

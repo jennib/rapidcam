@@ -23,7 +23,14 @@ import type { RecentEntry, RcamFile } from "./fileio";
 import type { ExampleEntry } from "./examples";
 import { nextId } from "../model/ids";
 import { TextEntity, RasterImageEntity } from "../model/entities";
-import { decodeImageFile, adjustGrey, registerGrey } from "../core/imageManager";
+import {
+  decodeImageFile,
+  adjustGrey,
+  registerGrey,
+  registerHeightfield,
+} from "../core/imageManager";
+import { parseSTL } from "./stlImport";
+import { openSTLImportDialog } from "../ui/stlImportDialog";
 import { openImageAdjustDialog } from "../ui/imageAdjustDialog";
 import { isFontResolvable } from "../core/fontManager";
 import { isImageResolvable } from "../core/imageManager";
@@ -669,6 +676,77 @@ export class ProjectManager {
       const ent = new RasterImageEntity(id, pos, widthMM, heightMM);
       this.doc.addSelected(ent);
       this.doc.emitChange();
+    });
+  }
+
+  /**
+   * Import an STL as a carveable relief.
+   *
+   * The mesh never enters the document: it is rasterised to a height map, which
+   * is registered as an image and placed as an ordinary image entity. So flip,
+   * rotary, tiling, the 3-D preview, the pre-flight linter and the operation list
+   * all work on an imported model with no knowledge that one exists — and the
+   * .rcam file stays a design file rather than a mesh container.
+   */
+  async stlImport(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".stl,model/stl";
+    const file = await new Promise<File | null>((resolve) => {
+      let settled = false;
+      const settle = (v: File | null) => {
+        if (!settled) {
+          settled = true;
+          resolve(v);
+        }
+      };
+      input.addEventListener("cancel", () => settle(null));
+      input.addEventListener("change", () => settle(input.files?.[0] ?? null));
+      input.click();
+    });
+    if (!file) return;
+
+    let mesh: ReturnType<typeof parseSTL>;
+    try {
+      mesh = parseSTL(await file.arrayBuffer());
+    } catch {
+      showError("Could not read that STL file.");
+      return;
+    }
+    if (mesh.count === 0) {
+      showError(
+        `“${file.name}” contains no triangles. It may not be an STL, or it may be truncated.`,
+      );
+      return;
+    }
+    if (mesh.dropped > 0)
+      toast(
+        `${mesh.dropped} triangle${mesh.dropped > 1 ? "s" : ""} in “${file.name}” had invalid ` +
+          `coordinates and were skipped.`,
+        6000,
+      );
+
+    const name = mesh.name || file.name.replace(/\.[^.]+$/, "");
+    openSTLImportDialog(mesh, name, (hf, modelName) => {
+      const zRangeMM = hf.zMaxMM - hf.zMinMM;
+      // The depth range is part of the image's identity, not just its pixels —
+      // see registerHeightfield. Placed at the model's TRUE SIZE, because a
+      // model has one, unlike a photograph.
+      const id = registerHeightfield(modelName, hf.width, hf.height, hf.gray, { zRangeMM });
+      const pos = {
+        x: this.doc.canvas.width / 2 - hf.widthMM / 2,
+        y: this.doc.canvas.height / 2 - hf.heightMM / 2,
+      };
+      this.pushHistory();
+      this.doc.addSelected(new RasterImageEntity(id, pos, hf.widthMM, hf.heightMM));
+      this.doc.emitChange();
+      toast(
+        `“${modelName}” placed at ${hf.widthMM.toFixed(1)}×${hf.heightMM.toFixed(1)}mm, ` +
+          `${zRangeMM.toFixed(2)}mm tall. Add a Relief toolpath with it selected and the ` +
+          `carve depth is filled in for you — rough it with an end mill first, then finish ` +
+          `with a ball-nose.`,
+        9000,
+      );
     });
   }
 
