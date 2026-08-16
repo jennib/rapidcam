@@ -62,6 +62,11 @@ export function applyScale(
       scalePt(e.a);
       scalePt(e.b);
     } else if (e instanceof PolylineEntity) {
+      // Corner sizes are lengths and scale with the shape, as a rectangle's do.
+      // They need no reordering under flip or rotate — they are keyed by vertex
+      // id, so they are already attached to the vertex that moved.
+      if (nonUniform && e.hasShapedCorners()) uniformOnly++;
+      for (const [id, v] of e.cornerRadii) e.cornerRadii.set(id, v * Math.abs(sx));
       for (const p of e.points) scalePt(p);
     } else if (e instanceof BezierEntity) {
       scalePt(e.p0);

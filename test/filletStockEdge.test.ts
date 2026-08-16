@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { CADDocument, STOCK_ENTITY_ID } from "../src/model/document";
 import { PolylineEntity, RectEntity } from "../src/model/entities";
 import { makeConstraint, SEGMENT_SEP } from "../src/model/constraints";
-import { findCorner, setRectCorner, spliceCornerVertices } from "../src/tools/corner";
+import { findCorner, setPolyCorner, setRectCorner } from "../src/tools/corner";
 
 /**
  * Filleting a rectangle that other things are constrained to.
@@ -112,9 +112,12 @@ test("a dimension anchored to a filleted corner keeps measuring it", () => {
   expect(rect.height).toBe(40);
 });
 
-test("a polyline corner is still spliced in place and loses nothing", () => {
-  // Polylines keep the splice path — they are a vertex list, so a corner really
-  // is cut into them. Their stable vertex ids are what carries the references.
+test("a polyline corner is a value too — no vertices are cut in", () => {
+  // The splice is gone from polylines as well. It used to turn one vertex into
+  // ~90, which kept the constraints (stable vertex ids carried them) but left a
+  // shape whose corner could never be adjusted again. Now nothing moves at all,
+  // which is the stronger property: the vertex count, the ids and the pin are
+  // exactly as they were, and the corner is still editable.
   const { doc } = docWithRect();
   const pl = doc.add(
     new PolylineEntity(
@@ -128,14 +131,16 @@ test("a polyline corner is still spliced in place and loses nothing", () => {
     ),
   ) as PolylineEntity;
   pinToStock(doc, pl.id, `v${pl.vertexIds[2]}`);
+  const idsBefore = [...pl.vertexIds];
 
   const c = findCorner({ x: 100, y: 0 }, doc, 1);
   if (c?.kind !== "poly") throw new Error("expected a poly corner");
-  spliceCornerVertices(c, [
-    { x: 105, y: 0 },
-    { x: 100, y: 5 },
-  ]);
+  expect(setPolyCorner(c, 5, "round")).toBe(true);
 
   expect(doc.constraints).toHaveLength(1);
-  expect(pl.points).toHaveLength(5);
+  expect(pl.points).toHaveLength(4);
+  expect(pl.vertexIds).toEqual(idsBefore);
+  expect(pl.cornerValueAt(0)).toBe(5);
+  // And the boundary really did change, so this is not a no-op dressed up.
+  expect(pl.outlinePoints().length).toBeGreaterThan(4);
 });

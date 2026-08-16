@@ -3,12 +3,14 @@
  *
  * Drag away from the corner for a live preview — release to commit.
  * Click without dragging to type an exact radius instead.
- * Works on line-line corners and polyline / polygon vertices.
+ * Works on line-line corners, rectangle corners and polyline / polygon vertices.
  *
- * For line-line corners an ArcEntity is inserted and the lines are trimmed.
- * For polyline / polygon vertices the corner is replaced in-place with
- * tessellated arc points (~2° per step) so the result stays a single
- * offsettable PolylineEntity.
+ * A rectangle or a polyline keeps its corner as an editable RADIUS on the
+ * entity — nothing is cut, replaced or spliced, so the corner can be adjusted
+ * or removed afterwards and every constraint on the shape survives untouched.
+ * Only a pair of loose lines gets surgery: there an ArcEntity is inserted and
+ * the two lines are trimmed back to it, because there is no shape to carry a
+ * corner value.
  */
 
 import { type Vec2, dist } from "../core/vec2";
@@ -35,7 +37,7 @@ import {
   reportRetype,
   setRectCorner,
   shapeCorners,
-  spliceCornerVertices,
+  setPolyCorner,
   trimCornerLegs,
 } from "./corner";
 
@@ -117,43 +119,32 @@ function buildPreviews(corner: Corner, radius: number, unit: Unit): PreviewShape
  * reads as the tool half-working.
  */
 function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean {
-  // A rectangle keeps its corners as a property: no geometry is cut, nothing is
-  // replaced, and the radius stays editable in Properties afterwards.
+  // Rectangles and polylines both keep their corners as a property: no geometry
+  // is cut, nothing is replaced or spliced, and the radius stays editable in
+  // Properties afterwards. Only a pair of loose lines still gets an arc entity,
+  // because there is no shape there to hang a corner on.
   if (corner.kind === "rect") return setRectCorner(corner, radius, "round");
+  if (corner.kind === "poly") return setPolyCorner(corner, radius, "round");
 
   const dirs = getCornerDirs(corner);
   if (!dirs) return false;
   const geo = computeGeo(dirs, radius);
   if (!geo) return false;
 
-  if (corner.kind === "line") {
-    // Determine arc winding (CCW from startAngle to endAngle)
-    const crossVal =
-      (geo.T1.x - geo.C.x) * (geo.T2.y - geo.C.y) - (geo.T1.y - geo.C.y) * (geo.T2.x - geo.C.x);
-    const startAngle = crossVal >= 0 ? geo.a1 : geo.a2;
-    const endAngle = crossVal >= 0 ? geo.a2 : geo.a1;
-    const arcStartKey: "start" | "end" = crossVal >= 0 ? "start" : "end";
-    const arcEndKey: "start" | "end" = crossVal >= 0 ? "end" : "start";
+  // Determine arc winding (CCW from startAngle to endAngle)
+  const crossVal =
+    (geo.T1.x - geo.C.x) * (geo.T2.y - geo.C.y) - (geo.T1.y - geo.C.y) * (geo.T2.x - geo.C.x);
+  const startAngle = crossVal >= 0 ? geo.a1 : geo.a2;
+  const endAngle = crossVal >= 0 ? geo.a2 : geo.a1;
+  const arcStartKey: "start" | "end" = crossVal >= 0 ? "start" : "end";
+  const arcEndKey: "start" | "end" = crossVal >= 0 ? "end" : "start";
 
-    trimCornerLegs(corner, geo.T1, geo.T2);
-    dropCornerJoin(doc, corner);
+  trimCornerLegs(corner, geo.T1, geo.T2);
+  dropCornerJoin(doc, corner);
 
-    const arc = new ArcEntity(geo.C, radius, startAngle, endAngle);
-    doc.add(arc);
-    joinCornerEnds(doc, corner, arc.id, arcStartKey, arcEndKey, "fillet");
-  } else {
-    // A polyline is a vertex list, so its corner really is tessellated in —
-    // ~2° per step — which keeps the result one offsettable entity.
-    let span = (((geo.a2 - geo.a1) % TAU) + TAU) % TAU;
-    if (span > Math.PI) span -= TAU;
-    const steps = Math.max(2, Math.ceil(Math.abs(span) / (Math.PI / 90)));
-    const arcPts: Vec2[] = [];
-    for (let k = 0; k <= steps; k++) {
-      const a = geo.a1 + (span * k) / steps;
-      arcPts.push({ x: geo.C.x + radius * Math.cos(a), y: geo.C.y + radius * Math.sin(a) });
-    }
-    spliceCornerVertices(corner, arcPts);
-  }
+  const arc = new ArcEntity(geo.C, radius, startAngle, endAngle);
+  doc.add(arc);
+  joinCornerEnds(doc, corner, arc.id, arcStartKey, arcEndKey, "fillet");
 
   return true;
 }
@@ -165,8 +156,7 @@ function applyFillet(corner: Corner, radius: number, doc: CADDocument): boolean 
  * whole shape in one action; doing a rectangle one corner at a time was the
  * reported friction.
  *
- * Corners are walked highest-index-first (see `shapeCorners`) so each polyline
- * splice only disturbs indices already dealt with, and each one is re-read from
+ * Corners are walked in the stable order `shapeCorners` gives, each re-read from
  * the live document.
  *
  * A corner the radius does not fit is skipped rather than abandoning the rest —

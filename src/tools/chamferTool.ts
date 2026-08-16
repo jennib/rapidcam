@@ -3,7 +3,11 @@
  *
  * Drag away from the corner for a live preview — release to commit.
  * Click without dragging to type an exact distance instead.
- * Works on line-line corners and polyline / polygon vertices.
+ * Works on line-line corners, rectangle corners and polyline / polygon vertices.
+ *
+ * A rectangle or a polyline keeps its corner as an editable SETBACK on the
+ * entity; only a pair of loose lines gets surgery (a bevel line inserted, the
+ * two legs trimmed). See the fillet tool's header — the two are the same story.
  */
 
 import { type Vec2, dist } from "../core/vec2";
@@ -27,7 +31,7 @@ import {
   joinCornerEnds,
   reportRetype,
   setRectCorner,
-  spliceCornerVertices,
+  setPolyCorner,
   trimCornerLegs,
 } from "./corner";
 
@@ -78,25 +82,22 @@ function buildPreviews(corner: Corner, value: number, unit: Unit): PreviewShape[
  * the caller can say so rather than appearing to do nothing.
  */
 function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boolean {
-  // A rectangle keeps its corners as a property — nothing is cut or replaced,
-  // and the setback stays editable in Properties afterwards.
+  // Rectangles and polylines keep their corners as a property — nothing is cut,
+  // replaced or spliced, and the setback stays editable in Properties.
   if (corner.kind === "rect") return setRectCorner(corner, distance, "chamfer");
+  if (corner.kind === "poly") return setPolyCorner(corner, distance, "chamfer");
 
   const dirs = getCornerDirs(corner);
   if (!dirs) return false;
   const geo = computeGeo(dirs, distance);
   if (!geo) return false;
 
-  if (corner.kind === "line") {
-    trimCornerLegs(corner, geo.T1, geo.T2);
-    dropCornerJoin(doc, corner);
+  trimCornerLegs(corner, geo.T1, geo.T2);
+  dropCornerJoin(doc, corner);
 
-    const chamfer = new LineEntity(geo.T1, geo.T2);
-    doc.add(chamfer);
-    joinCornerEnds(doc, corner, chamfer.id, "a", "b", "chamfer");
-  } else {
-    spliceCornerVertices(corner, [geo.T1, geo.T2]);
-  }
+  const chamfer = new LineEntity(geo.T1, geo.T2);
+  doc.add(chamfer);
+  joinCornerEnds(doc, corner, chamfer.id, "a", "b", "chamfer");
 
   return true;
 }

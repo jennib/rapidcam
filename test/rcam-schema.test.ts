@@ -212,7 +212,8 @@ describe("rcam v3 schema — serialized real document", () => {
   // formulas, a scalar binding, a hidden driving dimension, an image entity with
   // formula fields + flip + aspectLocked (and an embedded image), and metadata.
   // Coverage the bundled examples lack: bezier, non-empty `groups`, a non-default
-  // `layer`, construction geometry, and a polyline carrying `polygon` + `vertexIds`.
+  // `layer`, construction geometry, and a polyline carrying `polygon`,
+  // `vertexIds` and a shaped corner.
   // (`point` is intentionally excluded — it's origin-only, filtered from save, and
   // no longer in the schema.)
   it("validates a serializeDoc() output covering every serializable entity type + optional fields", () => {
@@ -385,6 +386,158 @@ describe("rectangle corner radii round-trip", () => {
     expect(bad({ cornerRadii: [1, 2, 3, 4] })).toBe(true); // positive control
     expect(bad({ cornerRadii: [-1, 0, 0, 0] })).toBe(false);
     expect(bad({ cornerRadii: [1, 2, 3] })).toBe(false);
+    expect(bad({ cornerType: "rounded" })).toBe(false);
+  });
+});
+
+/**
+ * The polyline half of the same story. Keyed by vertex id rather than by
+ * position, which is the part a round trip has to prove: the corner has to come
+ * back on the same physical vertex, including after an edit renumbers the array.
+ */
+describe("polyline corner radii round-trip", () => {
+  function reopen(doc: CADDocument): CADDocument {
+    const file = JSON.parse(JSON.stringify(serializeDoc(doc, "polycorners")));
+    const fresh = new CADDocument({ width: 100, height: 100 });
+    applyFile(fresh, file);
+    return fresh;
+  }
+  const square = () =>
+    new PolylineEntity(
+      [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 40, y: 30 },
+        { x: 0, y: 30 },
+      ],
+      true,
+    );
+
+  it("a sharp polyline serialises with no corner fields at all", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    doc.add(square());
+    const data = serializeDoc(doc, "sharp") as { entities: Record<string, unknown>[] };
+    const pl = data.entities.find((e) => e.type === "polyline")!;
+    expect(Object.keys(pl)).not.toContain("cornerRadii");
+    expect(Object.keys(pl)).not.toContain("cornerType");
+  });
+
+  it("shaped corners survive a save/open cycle", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const p = doc.add(square());
+    p.cornerRadii.set("1", 5);
+    p.cornerRadii.set("3", 2.5);
+    p.cornerType = "chamfer";
+
+    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    expect(Object.fromEntries(back.cornerRadii)).toEqual({ "1": 5, "3": 2.5 });
+    expect(back.cornerType).toBe("chamfer");
+    // The boundary is what actually gets cut — compare that, not just the fields.
+    expect(back.outlinePoints()).toEqual(p.outlinePoints());
+  });
+
+  it("the corner comes back on the same VERTEX, not the same index", () => {
+    // The whole reason for keying by id. Insert a vertex ahead of the shaped
+    // one so its array position moves, then reopen: a positional format would
+    // put the corner back on whatever now sits at index 2.
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const p = doc.add(square());
+    p.cornerRadii.set("2", 5);
+    const shapedAt = { ...p.points[2] };
+    p.spliceVertices(0, 0, { x: -10, y: -10 });
+    expect(p.points[3]).toEqual(shapedAt); // it really did move along
+
+    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    const i = back.points.findIndex((q) => q.x === shapedAt.x && q.y === shapedAt.y);
+    expect(back.cornerValueAt(i)).toBe(5);
+  });
+
+  it("keeps a value the current legs cannot draw", () => {
+    // Clamping is for drawing; the FILE must hold what was asked for, or saving
+    // while a vertex is temporarily pulled in would destroy the corner.
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const p = doc.add(square());
+    p.setAllCornerValues(40);
+    expect(p.effectiveCornerValues()[0]).toBeLessThan(40);
+
+    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    expect(back.cornerRadii.get("0")).toBe(40);
+  });
+
+  it("a file written before polyline corners existed loads sharp", () => {
+    const file = minimalDoc();
+    file.entities = [
+      {
+        type: "polyline",
+        id: "p1",
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        closed: true,
+      },
+    ];
+    expect(validate(file)).toBe(true);
+    const doc = new CADDocument({ width: 100, height: 100 });
+    applyFile(doc, file);
+    const pl = doc.entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    expect(pl.cornerRadii.size).toBe(0);
+    expect(pl.cornerType).toBe("round");
+    expect(pl.outlinePoints()).toEqual(pl.points);
+  });
+
+  it("survives a hand-authored file with junk corner data", () => {
+    // A file that loads WRONG is worse than one that is rejected, so the loader
+    // drops what it cannot use — including a key naming no vertex at all.
+    const file = minimalDoc();
+    file.entities = [
+      {
+        type: "polyline",
+        id: "p1",
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        closed: true,
+        cornerRadii: { "1": 2, "2": "x", "9": 4, "0": -3 },
+        cornerType: "bogus",
+      },
+    ];
+    expect(validate(file), "the schema still rejects it").toBe(false);
+    const doc = new CADDocument({ width: 100, height: 100 });
+    applyFile(doc, file);
+    const pl = doc.entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    expect(Object.fromEntries(pl.cornerRadii)).toEqual({ "1": 2 }); // "9" names no vertex
+    expect(pl.cornerType).toBe("round");
+    for (const p of pl.outlinePoints()) {
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  it("the schema rejects a non-positive corner and an unknown corner type", () => {
+    const bad = (extra: Record<string, unknown>) => {
+      const file = minimalDoc();
+      file.entities = [
+        {
+          type: "polyline",
+          id: "p1",
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+            { x: 10, y: 10 },
+          ],
+          closed: true,
+          ...extra,
+        },
+      ];
+      return validate(file);
+    };
+    expect(bad({ cornerRadii: { "1": 3 } })).toBe(true); // positive control
+    expect(bad({ cornerRadii: { "1": 0 } })).toBe(false);
+    expect(bad({ cornerRadii: { "1": -3 } })).toBe(false);
+    expect(bad({ cornerRadii: { "1": "3" } })).toBe(false);
     expect(bad({ cornerType: "rounded" })).toBe(false);
   });
 });
@@ -646,6 +799,10 @@ function allEntityTypesDoc(): CADDocument {
     ["va", "vb", "vc"],
   );
   poly.polygon = { sides: 3, center: { x: 162, y: 157 }, radius: 12, rotation: 0 };
+  // A shaped vertex, keyed by id — so the kitchen-sink covers the polyline
+  // corner fields the same way it covers `polygon` and `vertexIds`.
+  poly.cornerRadii.set("vb", 3);
+  poly.cornerType = "inverted";
   doc.add(poly);
   doc.add(new TextEntity("Hi", "roboto-regular", 10, { x: 200, y: 200 }, 0.2));
   doc.groups.push({ id: "grp1", name: "Group A", entityIds: [line.id] });

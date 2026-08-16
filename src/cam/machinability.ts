@@ -40,7 +40,7 @@
 
 import type { Vec2 } from "../core/vec2";
 import type { CADDocument } from "../model/document";
-import { type CornerType, RectEntity } from "../model/entities";
+import { type CornerType, PolylineEntity, RectEntity } from "../model/entities";
 import { type CAMOperation, resolveOpTool } from "./types";
 import { collectClosedLoops, pointInPolygon } from "./loops";
 import { resolveRegion } from "./regions";
@@ -179,13 +179,20 @@ function checkDeclaredCornerRadii(doc: CADDocument): LintFinding[] {
     const tooTight: { id: string; radius: number }[] = [];
     for (const id of op.entityIds) {
       const ent = doc.entities.find((e) => e.id === id);
-      if (!(ent instanceof RectEntity) || ent.cornerType !== tight) continue;
+      // Rectangles and polylines alike — a DECLARED radius is the user's claim
+      // about the finished part either way, so it can be checked by number.
+      // (Chamfered corners are excluded by the `tight` match: a bevel has no
+      // radius for a tool to fail to reach into.)
+      const declared: number[] | null =
+        ent instanceof RectEntity && ent.cornerType === tight
+          ? ent.effectiveCornerRadii()
+          : ent instanceof PolylineEntity && ent.cornerType === tight
+            ? ent.effectiveCornerValues()
+            : null;
+      if (!declared) continue;
       // The radii as they will be DRAWN, so a corner already clamped away by a
-      // small rectangle isn't reported as a corner that cannot be cut.
-      const worst = ent
-        .effectiveCornerRadii()
-        .filter((r) => r > CORNER_RADIUS_EPS)
-        .sort((a, b) => a - b)[0];
+      // small shape isn't reported as a corner that cannot be cut.
+      const worst = declared.filter((r) => r > CORNER_RADIUS_EPS).sort((a, b) => a - b)[0];
       if (worst !== undefined && worst < toolR - CORNER_RADIUS_EPS)
         tooTight.push({ id, radius: worst });
     }
@@ -193,11 +200,13 @@ function checkDeclaredCornerRadii(doc: CADDocument): LintFinding[] {
 
     const smallest = Math.min(...tooTight.map((t) => t.radius));
     const noun = tight === "inverted" ? "inverted corner" : "corner";
+    const subject =
+      tooTight.length === 1 ? "a shape has an" : `${tooTight.length} shapes have`;
     findings.push({
       code: "corner-tighter-than-tool",
       severity: "warning",
       message:
-        `"${op.name}": ${tooTight.length === 1 ? "a rectangle has an" : `${tooTight.length} rectangles have`} ` +
+        `"${op.name}": ${subject} ` +
         `${noun}${tooTight.length === 1 ? "" : "s"} of R${+smallest.toFixed(3)} mm, which a ⌀${eff.diameter} mm ` +
         `tool cannot cut — it will leave R${+toolR.toFixed(3)} mm there and the part will be the wrong shape. ` +
         `Use a tool of ⌀${+(smallest * 2).toFixed(3)} mm or smaller, or open the corner out.`,

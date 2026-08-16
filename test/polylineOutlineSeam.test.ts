@@ -56,29 +56,17 @@ const VERTS: Vec2[] = [
 /** The square corner that only a consumer reading the VERTEX list ever visits. */
 const SQUARE_CORNER = VERTS[0];
 
-class ShapedPolyline extends PolylineEntity {
-  override outlinePoints(): Vec2[] {
-    const out: Vec2[] = [];
-    const n = this.points.length;
-    for (let i = 0; i < n; i++) {
-      const p = this.points[i];
-      const prev = this.points[(i + n - 1) % n];
-      const next = this.points[(i + 1) % n];
-      const towards = (q: Vec2): Vec2 => {
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
-        return { x: p.x + ((q.x - p.x) / d) * CUT, y: p.y + ((q.y - p.y) / d) * CUT };
-      };
-      out.push(towards(prev), towards(next));
-    }
-    return out;
-  }
-}
-
 function docWith(shaped: boolean): { doc: CADDocument; ent: PolylineEntity } {
   const doc = new CADDocument({ width: 200, height: 200 }, "mm");
-  const ent = doc.add(
-    shaped ? new ShapedPolyline(VERTS, true, ID) : new PolylineEntity(VERTS, true, ID),
-  );
+  const ent = doc.add(new PolylineEntity(VERTS, true, ID));
+  if (shaped) {
+    // A real chamfer now that Pass B has shipped one. Until it did, this was a
+    // test-only subclass overriding outlinePoints() to cut the corners back —
+    // which is what made this guard load-bearing during a pass that shipped no
+    // radii at all. The shape is the same; only the storage changed.
+    ent.cornerType = "chamfer";
+    ent.setAllCornerValues(CUT);
+  }
   return { doc, ent };
 }
 
@@ -354,16 +342,19 @@ describe("every consumer of a polyline's boundary goes through outlinePoints()",
     });
   }
 
-  it("the stand-in really does move the boundary off the vertices", () => {
-    // Guards the guard: if ShapedPolyline ever returned the vertices, every
-    // assertion above would be comparing a shape with itself.
-    const shaped = new ShapedPolyline(VERTS, true, ID);
-    const plain = new PolylineEntity(VERTS, true, ID);
+  it("the shaped fixture really does move the boundary off the vertices", () => {
+    // Guards the guard: if the fixture ever stopped differing, every assertion
+    // above would be comparing a shape with itself and passing for nothing.
+    const { ent: shaped } = docWith(true);
+    const { ent: plain } = docWith(false);
     expect(plain.outlinePoints()).toEqual(VERTS);
     expect(shaped.outlinePoints()).toHaveLength(VERTS.length * 2);
     for (const p of shaped.outlinePoints()) {
       expect(Math.hypot(p.x - SQUARE_CORNER.x, p.y - SQUARE_CORNER.y)).toBeGreaterThan(1e-9);
     }
+    // And the vertices themselves did NOT move — the corner is a value on the
+    // entity, so the constraint vocabulary is untouched.
+    expect(shaped.points).toEqual(VERTS);
   });
 
   it("the toolpath physically avoids the corner the vertex list would have cut", () => {

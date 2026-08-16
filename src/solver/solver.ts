@@ -24,13 +24,7 @@ import {
 import { dimensionResiduals } from "../model/dimensions";
 import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
-import {
-  ArcEntity,
-  type Entity,
-  RasterImageEntity,
-  RectEntity,
-  TextEntity,
-} from "../model/entities";
+import { ArcEntity, CircleEntity, type Entity, RasterImageEntity } from "../model/entities";
 import { varMap } from "../model/variables";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
@@ -673,23 +667,29 @@ export function freeImageScalars(ent: RasterImageEntity): string[] {
  * Which of an entity's scalars are genuine solver freedoms, or `null` when they
  * all are.
  *
- * A circle's `r` and an arc's `sa`/`ea` are geometry that constraints act on —
- * tangent, equal, radius — so the solver owns them. These are the exceptions:
+ * **A scalar is a freedom only if some constraint type READS it.** A circle's
+ * `r` and an arc's `r`/`sa`/`ea` are exactly that — tangent, equal and radius
+ * constraints act on them — so the solver owns them. An image opts in to `w`,
+ * `h` and `angle` per {@link freeImageScalars}.
  *
- * - **Images and text are rigid bodies.** An image releases what
- *   {@link freeImageScalars} allows; text releases nothing, having no equivalent
- *   opt-in. So a constraint translates the object rather than stretching or
- *   spinning it to satisfy itself, and a sketch's DOF count doesn't grow by two
- *   for every label on it.
- * - **A rectangle's `cr`** (corner radius) is a parameter, not a freedom: no
- *   constraint type reads a corner radius, so leaving it free would add a
- *   variable per rectangle that the solver could only ever hold still.
+ * Everything else is a PARAMETER: a number the user or a formula sets, which no
+ * constraint can move. Leaving one free adds a variable per entity that the
+ * solver could only ever hold still, and the shape reports as under-defined —
+ * blue geometry and a DOF count that never reaches zero.
+ *
+ * The list is written that way round on purpose. It used to name the entities
+ * whose scalars are FIXED, so the default for anything unlisted was "free", and
+ * adding a scalar to an entity silently added a phantom freedom to every one of
+ * them — which is precisely what happened when polylines gained a corner size:
+ * a bundled example went under-defined, caught only by the example suite.
+ * Naming the freedoms instead makes the safe answer the default, and the
+ * failure mode for a genuine new freedom is loud (a constraint cannot move it)
+ * rather than silent.
  */
 function freeScalarKeys(ent: Entity): string[] | null {
   if (ent instanceof RasterImageEntity) return freeImageScalars(ent);
-  if (ent instanceof TextEntity) return [];
-  if (ent instanceof RectEntity) return [];
-  return null;
+  if (ent instanceof CircleEntity || ent instanceof ArcEntity) return null;
+  return [];
 }
 
 /**
