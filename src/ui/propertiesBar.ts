@@ -1560,8 +1560,9 @@ export class PropertiesBar {
   private cornerRows(sec: HTMLElement, entity: RectEntity | PolylineEntity): void {
     const poly = entity instanceof PolylineEntity;
     // A polyline with no shapeable vertex has no corner to offer — an open
-    // two-point polyline is a line with extra steps.
-    if (poly && !(entity.maxUniformCornerValue() > 0)) return;
+    // two-point polyline is a line with extra steps. Asked in O(1): this runs on
+    // every panel refresh, and a refresh happens on every frame of a drag.
+    if (poly && !entity.canShapeCorners()) return;
     const row = document.createElement("div");
     row.className = "props-row";
     const lbl = document.createElement("span");

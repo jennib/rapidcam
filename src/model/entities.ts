@@ -1285,11 +1285,26 @@ export class PolylineEntity extends Entity {
   }
 
   /**
+   * Whether this polyline has any vertex that could carry a corner — a closed
+   * one always does, an open one needs a vertex that is not an end.
+   *
+   * Deliberately O(1) and trig-free. It answers the only question the properties
+   * panel asks on every refresh ("offer the corner controls at all?"), and a
+   * refresh happens on every `emitChange` — so on every frame of a drag. Asking
+   * {@link maxUniformCornerValue} instead cost a hypot and an acos per vertex,
+   * 3.6ms a frame on a 20,000-point polyline that had no corners on it.
+   */
+  canShapeCorners(): boolean {
+    return this.points.length >= 3;
+  }
+
+  /**
    * The largest value every shapeable vertex could carry at once, at the current
    * shape. The polyline twin of {@link RectEntity.maxUniformCornerRadius}.
    *
    * Each edge is shared by two corners whose setbacks scale linearly with the
-   * value, so the whole-shape ceiling is the tightest edge's.
+   * value, so the whole-shape ceiling is the tightest edge's. O(n) with trig per
+   * vertex — call it when a value is COMMITTED, not to decide what to draw.
    */
   maxUniformCornerValue(): number {
     const n = this.points.length;

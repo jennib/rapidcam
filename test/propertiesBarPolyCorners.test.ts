@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { CADDocument } from "../src/model/document";
 import { PolylineEntity } from "../src/model/entities";
 import { PropertiesBar } from "../src/ui/propertiesBar";
@@ -182,6 +182,38 @@ test("a value too big for its neighbours is clamped, and shown clamped", () => {
   commit(host, "1 R", "40"); // 60 + 40 > 80
   expect(pl.cornerValueAt(1)).toBeCloseTo(20, 6);
   expect(pl.fitsCornerValue(1, pl.cornerValueAt(1))).toBe(true);
+});
+
+test("a panel refresh does no per-vertex corner maths on a sharp polyline", () => {
+  // The panel refreshes on every `emitChange`, which is every frame of a drag.
+  // Deciding whether to OFFER the corner controls used to ask for the largest
+  // radius the shape could hold, which is a hypot and an acos per vertex — 3.6ms
+  // a frame on a 20,000-point polyline carrying no corners at all.
+  //
+  // Counted rather than timed, for the same reason as the hit-test guard.
+  document.body.replaceChildren();
+  const big = doc.add(
+    new PolylineEntity(
+      Array.from({ length: 400 }, (_, i) => {
+        const a = (i / 400) * Math.PI * 2;
+        return { x: 150 + 40 * Math.cos(a), y: 100 + 40 * Math.sin(a) };
+      }),
+      true,
+    ),
+  );
+  pl.selected = false;
+  big.selected = true;
+
+  const spy = vi.spyOn(Math, "acos");
+  try {
+    mount(doc);
+    expect(spy.mock.calls.length, "corner maths on a shape with no corners").toBe(0);
+  } finally {
+    spy.mockRestore();
+  }
+  // Positive control: the panel really did build the corner controls, so the
+  // count above is zero because the work is cheap, not because nothing ran.
+  expect(findRow(document.body as HTMLElement, "Corner")).not.toBeNull();
 });
 
 test("a two-point open polyline offers no corner controls at all", () => {
