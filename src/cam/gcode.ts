@@ -19,6 +19,7 @@ import {
   grooveOverlapRatio,
   OVERLAP_WARN_RATIO,
 } from "./halftone";
+import { reliefEncodingFor } from "./reliefEncoding";
 import { toolContactField } from "./toolProfile";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
@@ -1257,11 +1258,17 @@ function engraveArc(
  */
 function reliefImage(
   ent: RasterImageEntity,
-  op: CAMOperation,
+  rawOp: CAMOperation,
   ox: number,
   oy: number,
   zOff: number,
 ): string[] {
+  // How this image's bytes become depth, resolved once — a height map from an
+  // imported STL is not tone-curved. `enc.op` is the op AS IT APPLIES to this
+  // image, and shadowing the parameter with it means every line below screens on
+  // the same truth rather than on what the op merely claims.
+  const enc = reliefEncodingFor(ent, rawOp);
+  const op = enc.op;
   if (op.toolType !== "ball-nose" && op.toolType !== "v-bit")
     return [
       `; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`,
@@ -1277,17 +1284,7 @@ function reliefImage(
   // cannot disagree with what is posted here — halftone or ordinary relief.
   const { lineInterval, dotPitch, tone, plan } = reliefSpacing(op);
 
-  const field = rasterField(grid, {
-    widthMM: ent.widthMM,
-    heightMM: ent.heightMM,
-    lineIntervalMM: lineInterval,
-    dotPitchMM: dotPitch,
-    tone,
-    invert: op.rasterInvert,
-    gamma: op.reliefGamma,
-    flipX: ent.flipX,
-    flipY: ent.flipY,
-  });
+  const field = rasterField(grid, enc.field(lineInterval, dotPitch, tone));
   if (field.rows.length === 0)
     return [`; NOTE: relief produced nothing (blank or zero size) — image ${ent.id} skipped`];
 
@@ -1442,11 +1439,15 @@ function reliefImage(
  */
 function reliefRoughImage(
   ent: RasterImageEntity,
-  op: CAMOperation,
+  rawOp: CAMOperation,
   ox: number,
   oy: number,
   zOff: number,
 ): string[] {
+  // Same resolver as the finish pass — which is the point. The encoding is read
+  // from the image both ops share, so it cannot be typed into one and not the other.
+  const enc = reliefEncodingFor(ent, rawOp);
+  const op = enc.op;
   const grid = getImageGrid(ent.imageId);
   if (!grid) return [`; NOTE: image (${ent.id}) pixels not loaded — skipped`];
 
@@ -1464,16 +1465,8 @@ function reliefRoughImage(
   // pitch is that radial engagement in mm.
   const pitch = Math.max(0.05, (op.stepover > 0 ? op.stepover : DEFAULTS.stepover) * op.diameter);
 
-  const field = rasterField(grid, {
-    widthMM: ent.widthMM,
-    heightMM: ent.heightMM,
-    lineIntervalMM: pitch,
-    dotPitchMM: pitch, // coarse square grid at the tool's stepover
-    invert: op.rasterInvert,
-    gamma: op.reliefGamma,
-    flipX: ent.flipX,
-    flipY: ent.flipY,
-  });
+  // Coarse square grid at the tool's stepover.
+  const field = rasterField(grid, enc.field(pitch, pitch));
   if (field.rows.length === 0)
     return [
       `; NOTE: relief roughing produced nothing (blank or zero size) — image ${ent.id} skipped`,

@@ -64,6 +64,7 @@ describe("Copy File to Clipboard feature", () => {
       onImportSvg: () => {},
       onImportDxf: () => {},
       onImportImage: () => {},
+    onImportStl: () => {},
       onExportSvg: () => {},
       onExportDxf: () => {},
     });

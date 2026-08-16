@@ -13,7 +13,7 @@ import { lintGCode, buildLintContext, type LintContext } from "../src/cam/lint";
 import { generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
 import { CADDocument } from "../src/model/document";
-import { RectEntity, CircleEntity } from "../src/model/entities";
+import { RectEntity, CircleEntity, RasterImageEntity } from "../src/model/entities";
 
 // A 100 × 80mm stock, top-origin: X/Y envelope [0,100]×[0,80], Z top 0, bottom −10.
 const CTX: LintContext = {
@@ -376,4 +376,81 @@ test("G53: a real off-stock cut after a machine-frame move is still caught", () 
   // the check itself.
   const g = ["G53 G0 Z-5", "G0 Z5", "G0 X200 Y30", "G1 Z-3 F300"].join("\n");
   expect(codes(g, OFFSET_CTX)).toContain("out-of-bounds");
+});
+
+// --- relief rough/finish mismatch -------------------------------------------
+
+/**
+ * The guard for the drift the relief path warns about in its own doc comment:
+ * roughing leaves its allowance relative to ITS depth, so if the finish op is
+ * set deeper the finisher meets a wall of material rather than the allowance.
+ */
+function reliefPair(over: Partial<CAMOperation> = {}): CADDocument {
+  const doc = new CADDocument({ width: 100, height: 80 });
+  const img = doc.add(new RasterImageEntity("img-x", { x: 10, y: 10 }, 40, 40, 0));
+  const base: CAMOperation = {
+    id: "r",
+    name: "Rough",
+    type: "relief-rough",
+    entityIds: [img.id],
+    side: "outside",
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 6,
+    feedrate: 1500,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -8,
+    stepdown: 2,
+    stepover: 0.4,
+    finishAllowance: 0.5,
+  };
+  doc.operations.push(base, {
+    ...base,
+    id: "f",
+    name: "Finish",
+    type: "engrave",
+    toolType: "ball-nose",
+    diameter: 3,
+    ...over,
+  });
+  return doc;
+}
+
+test("relief mismatch: a finish pass deeper than its roughing pass is flagged", () => {
+  const doc = reliefPair({ depth: -12 });
+  const f = lintGCode("G0 Z5", buildLintContext(doc)).find(
+    (x) => x.code === "relief-pass-mismatch",
+  );
+  expect(f?.severity).toBe("warning");
+  expect(f?.message).toContain("8mm");
+  expect(f?.message).toContain("12mm");
+  expect(f?.entityIds?.length).toBe(1);
+});
+
+test("relief mismatch: disagreeing about Invert carves the image and its negative", () => {
+  const doc = reliefPair({ rasterInvert: true });
+  const f = lintGCode("G0 Z5", buildLintContext(doc)).find(
+    (x) => x.code === "relief-pass-mismatch",
+  );
+  expect(f?.message).toContain("Invert");
+});
+
+test("relief mismatch: matched passes lint clean (positive control)", () => {
+  // Same depth, same invert — the pairing and the check both ran, and found
+  // nothing. Without this the two tests above would pass on a rule that fires
+  // for every relief pair.
+  const doc = reliefPair();
+  expect(lintGCode("G0 Z5", buildLintContext(doc)).map((x) => x.code)).not.toContain(
+    "relief-pass-mismatch",
+  );
+});
+
+test("relief mismatch: ops on DIFFERENT images are not paired", () => {
+  const doc = reliefPair({ depth: -12 });
+  doc.operations[1].entityIds = ["some-other-image"];
+  expect(lintGCode("G0 Z5", buildLintContext(doc)).map((x) => x.code)).not.toContain(
+    "relief-pass-mismatch",
+  );
 });

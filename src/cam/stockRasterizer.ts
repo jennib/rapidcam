@@ -45,6 +45,7 @@ import {
   resolveOpTool,
 } from "./types";
 import { reliefSpacing, halfAngleRad } from "./halftone";
+import { reliefEncodingFor } from "./reliefEncoding";
 import { ballHeight, coneHeight, toolContactField } from "./toolProfile";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
@@ -613,7 +614,11 @@ function rasVcarve(
  * (scallop and all), which the per-dot tip-Z G-code only approximates. Mirrors
  * `reliefImage` in gcode.ts (same rasterField, same level→depth mapping).
  */
-function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, stockT: number, isLaser: boolean = false): void {
+function rasRelief(ent: RasterImageEntity, rawOp: CAMOperation, stamp: StampFn, stockT: number, isLaser: boolean = false): void {
+  // The emitter's encoding resolver, so the preview shows the depths the program
+  // will command — including "this image is a height map, do not tone-curve it".
+  const enc = reliefEncodingFor(ent, rawOp);
+  const op = enc.op;
   const grid = getImageGrid(ent.imageId);
   if (!grid) return;
   const maxDepth = Math.min(Math.abs(isLaser ? LASER_BURN_DEPTH_MM : op.depth), stockT);
@@ -632,21 +637,11 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
         tone: "encoded" as const,
       }
     : reliefSpacing(op);
-  const field = rasterField(grid, {
-    widthMM: ent.widthMM,
-    heightMM: ent.heightMM,
-    lineIntervalMM: spacing.lineInterval,
-    dotPitchMM: spacing.dotPitch,
-    tone: spacing.tone,
-    invert: op.rasterInvert,
-    gamma: op.reliefGamma,
-    // op.rasterDither is intentionally NOT applied here: the 3-D height field is
-    // coarser than the dot pitch, and a dither pattern's density-average is the
-    // source tone anyway, so this preview shows continuous tone for both greyscale
-    // and dithered laser ops. The dot pattern shows in the flat preview + G-code.
-    flipX: ent.flipX,
-    flipY: ent.flipY,
-  });
+  // op.rasterDither is intentionally NOT applied here: the 3-D height field is
+  // coarser than the dot pitch, and a dither pattern's density-average is the
+  // source tone anyway, so this preview shows continuous tone for both greyscale
+  // and dithered laser ops. The dot pattern shows in the flat preview + G-code.
+  const field = rasterField(grid, enc.field(spacing.lineInterval, spacing.dotPitch, spacing.tone));
   // Same tool-footprint correction the emitter applies, so the preview shows the
   // Z the program will actually command. A laser has no flank to dig in with.
   const cut = isLaser ? field : toolContactField(field, op, maxDepth);
@@ -671,10 +666,12 @@ function rasRelief(ent: RasterImageEntity, op: CAMOperation, stamp: StampFn, sto
  */
 function rasReliefRough(
   ent: RasterImageEntity,
-  op: CAMOperation,
+  rawOp: CAMOperation,
   stamp: StampFn,
   stockT: number,
 ): void {
+  const enc = reliefEncodingFor(ent, rawOp);
+  const op = enc.op;
   const grid = getImageGrid(ent.imageId);
   if (!grid) return;
   const maxDepth = Math.min(Math.abs(op.depth), stockT);
@@ -697,16 +694,7 @@ function rasReliefRough(
     return z; // ≤ 0; 0 = untouched
   };
 
-  const field = rasterField(grid, {
-    widthMM: ent.widthMM,
-    heightMM: ent.heightMM,
-    lineIntervalMM: pitch,
-    dotPitchMM: pitch,
-    invert: op.rasterInvert,
-    gamma: op.reliefGamma,
-    flipX: ent.flipX,
-    flipY: ent.flipY,
-  });
+  const field = rasterField(grid, enc.field(pitch, pitch));
   // Allowance and tool footprint folded into the level, exactly as the emitter
   // does it — so a cell's level is the depth roughing may reach, no more.
   const cut = toolContactField(field, op, maxDepth, allowance);

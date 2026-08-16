@@ -110,6 +110,13 @@ integration guide, inlined as one plain-text document.
   fillet RADIUS for `"round"`/`"inverted"` but the bevel SETBACK for
   `"chamfer"`**; those are the same figure only at a 90° corner, which is why a
   `rectangle` gets away with one meaning.
+- An embedded image carrying **`zRangeMM`** is a HEIGHT MAP from an imported STL,
+  not a picture: byte 255 is the model's top surface (no cut), byte 0 its base
+  (full depth), and `zRangeMM` is the carve depth in mm at true scale. Preserve
+  the field when editing such a file — dropping it turns the model back into a
+  photograph, and the white-threshold default alone then flattens the top 4% of
+  its height range. For the same reason, do not set `reliefGamma` on a relief
+  operation that reads one; a tone curve on a height map is a geometry error.
 - Declare `"version": 3` and validate your output against the schema before
   presenting it to a user.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;

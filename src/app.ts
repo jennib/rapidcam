@@ -362,6 +362,7 @@ export class App {
         onImportDxf: () => this.project.dxfImport(),
         onExportDxf: () => this.project.dxfExport(),
         onImportImage: () => this.project.imageImport(),
+        onImportStl: () => this.project.stlImport(),
         onExportSvg: () => this.project.svgExport(),
       },
       edit: {
