@@ -13,6 +13,7 @@ import {
   binarySTL,
   hemisphere,
   hollowBall,
+  openReliefSurface,
   sliverPlate,
   sphere,
   steppedBlock,
@@ -137,6 +138,31 @@ describe("plinthRatio: is the model relief-shaped?", () => {
   test("flat-backed shapes read zero", () => {
     for (const tris of [steppedBlock(30, 30, 3, 2), hemisphere(10, 48, 96), sliverPlate(100, 0.02, 200)])
       expect(field(tris, { cellMM: 0.5 }).plinthRatio).toBeLessThan(0.01);
+  });
+
+  test("an open relief surface with no back reads zero, not 100%", () => {
+    // A single skin has no underside, so top and bottom coincide and the span
+    // collapses — which read as pure plinth and fired the loudest possible
+    // warning on the most relief-shaped input there is. Shipped that way once.
+    const open = field(openReliefSurface(), { cellMM: 0.25 });
+    expect(open.plinthRatio).toBeLessThan(PLINTH_WARN);
+
+    // Positive control: the assertion above must not be passing because the
+    // field is degenerate. It has real relief in it, and a real height range —
+    // `sliverPlate` misses this bug precisely by being flat.
+    expect(open.zMaxMM - open.zMinMM).toBeCloseTo(8, 1);
+    expect(new Set(open.gray).size).toBeGreaterThan(50);
+    expect(open.emptyCells).toBe(0);
+  });
+
+  test("...and closing that same surface does not change the answer", () => {
+    // Skipping skin cells must not be a licence to skip everything: the closed
+    // version of the same face measures the same, so the exclusion is removing
+    // the rim, not the model.
+    const open = field(openReliefSurface(), { cellMM: 0.25 });
+    const ball = field(sphere(10, 48, 96), { cellMM: 0.25 });
+    expect(open.plinthRatio).toBeLessThan(0.01);
+    expect(ball.plinthRatio).toBeCloseTo(0.2, 2); // the rim exclusion costs it nothing
   });
 
   test("it is a ratio, so scaling the model does not move it", () => {

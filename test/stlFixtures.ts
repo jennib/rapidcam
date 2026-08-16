@@ -149,6 +149,40 @@ export function steppedBlock(width = 30, depth = 30, steps = 3, rise = 2): Tri[]
   return tris;
 }
 
+/**
+ * A relief FACE and nothing else — no flat back, no skirt walls.
+ *
+ * This is what a scanned or sculpted relief looks like when it is exported
+ * without being solidified, and it is the most relief-shaped input there is. It
+ * is also the shape that breaks any measure taken between a cell's topmost and
+ * bottommost surface, because a single skin has only one: the span collapses to
+ * zero and the model reads as pure plinth.
+ *
+ * `sliverPlate` does not cover this — being perfectly flat, it has no height
+ * range at all and exits down a different path entirely.
+ */
+export function openReliefSurface(size = 60, R = 25, domeH = 8, n = 64): Tri[] {
+  const tris: Tri[] = [];
+  const cx = size / 2;
+  const zAt = (x: number, y: number): number => {
+    const r = Math.hypot(x - cx, y - cx);
+    return r >= R ? 0 : domeH * Math.cos((Math.PI * r) / (2 * R));
+  };
+  const at = (i: number) => (i / n) * size;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      const x0 = at(i),
+        x1 = at(i + 1),
+        y0 = at(j),
+        y1 = at(j + 1);
+      tris.push(
+        [x0, y0, zAt(x0, y0), x1, y0, zAt(x1, y0), x1, y1, zAt(x1, y1)],
+        [x0, y0, zAt(x0, y0), x1, y1, zAt(x1, y1), x0, y1, zAt(x0, y1)],
+      );
+    }
+  return tris;
+}
+
 /** Write triangles as a binary STL. The header starts with "solid" on purpose. */
 export function binarySTL(tris: Tri[], header = "solid THIS IS BINARY - do not trust me"): ArrayBuffer {
   const buf = new ArrayBuffer(84 + 50 * tris.length);

@@ -315,6 +315,14 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
     for (let i = 0; i < zbuf.length; i++) if (zbuf[i] === -Infinity) emptyCells++;
   } else {
     const k = 255 / range;
+    // A cell whose top and bottom coincide is a SKIN, not a solid: one surface
+    // and nothing behind it. Both sums skip those, which is what keeps an open
+    // mesh — a relief face exported without a back, as scanned and sculpted
+    // reliefs routinely are — from reading a span of zero and therefore 100%
+    // plinth, the loudest possible warning on the most relief-shaped input there
+    // is. Excluding them costs a closed model nothing: the only cells it loses
+    // are the knife-edge rim where the ray grazes the silhouette.
+    const skin = range * 1e-6;
     for (let i = 0; i < zbuf.length; i++) {
       const z = zbuf[i];
       if (z === -Infinity) {
@@ -322,8 +330,11 @@ export function stlHeightfield(mesh: STLMesh, opts: HeightfieldOptions = {}): He
         gray[i] = 0; // unmodelled → the base plane → full depth
         continue;
       }
-      carvedSum += z - b.minH;
-      spanSum += z - zbot[i];
+      const thickness = z - zbot[i];
+      if (thickness > skin) {
+        carvedSum += z - b.minH;
+        spanSum += thickness;
+      }
       const q = Math.round((z - b.minH) * k);
       gray[i] = q < 0 ? 0 : q > 255 ? 255 : q;
     }
