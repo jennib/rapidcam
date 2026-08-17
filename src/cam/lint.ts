@@ -25,6 +25,8 @@ import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { lexWords } from "./gcodeWords";
+import { isHalftone } from "./halftone";
+import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
 import { hiddenOpEntityIds, isMachinable } from "./machinable";
 import { checkMachinability } from "./machinability";
 
@@ -756,6 +758,43 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: a relief finish pass whose rows are spaced wider than its own bit.
+ *
+ * Between two passes that overlap stands a cusp, and its height is a surface
+ * finish — the tool's flank at half the spacing, which is what the dialog's cusp
+ * calculator reads off {@link ../cam/scallop}. Space the rows further apart than
+ * the cutter is wide and there is no cusp at all: the passes never meet, and what
+ * is left between them is full-height uncut stock in stripes, all the way across
+ * the relief. The program looks entirely normal — every move is in bounds, at
+ * depth, at feed — and the failure is only visible on the finished part.
+ *
+ * The roughing op is deliberately not checked. Its stepover is a fraction of
+ * diameter, clamped to ≤ 1 by the shared param table, so it cannot express this.
+ */
+function checkReliefStepoverGap(doc: CADDocument): LintFinding | null {
+  const bad = doc.operations.filter((op) => {
+    if (op.type !== "engrave" || isHalftone(op)) return false;
+    const spacing = op.rasterLineInterval ?? 0;
+    return spacing > 0 && !cuspReadout(op, spacing).overlapping;
+  });
+  if (bad.length === 0) return null;
+  const names = bad
+    .map((o) => `"${o.name}" (${o.rasterLineInterval}mm rows, ⌀${o.diameter}mm bit)`)
+    .join(", ");
+  return {
+    code: "relief-stepover-gap",
+    severity: "warning",
+    message:
+      `${bad.length} relief toolpath${bad.length > 1 ? "s" : ""} (${names}) ` +
+      `space${bad.length > 1 ? "" : "s"} the scan rows wider than the cutter, so adjacent ` +
+      `passes never touch — the carve comes out as ridges of uncut stock at full height ` +
+      `between them. Set the stepover from a target cusp height, or to ` +
+      `${FINISH_STEPOVER_FRACTION * 100}% of the bit diameter.`,
+    entityIds: bad.flatMap((o) => o.entityIds),
+  };
+}
+
+/**
  * WARNING: an operation bound to geometry that is hidden, and which CAM
  * therefore did not cut (see machinable.ts).
  *
@@ -850,6 +889,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefPassMismatch(ctx.doc));
+  if (ctx.doc) findings.push(checkReliefStepoverGap(ctx.doc));
   if (ctx.doc) findings.push(checkSpoilboardMixed(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));

@@ -21,6 +21,8 @@ import {
 } from "./halftone";
 import { reliefEncodingFor } from "./reliefEncoding";
 import { toolContactField } from "./toolProfile";
+import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
+import { steepSplit } from "./steep";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import {
@@ -1291,7 +1293,8 @@ function reliefImage(
   // A point sample is where the surface is under the TIP; the bit has flanks, so
   // the Z it may ride at is the max over its whole footprint. Without this the
   // flank cuts through material the centre sample said was clear.
-  const { cols, colPitch, rows } = toolContactField(field, op, maxDepth);
+  const contact = toolContactField(field, op, maxDepth);
+  const { cols, colPitch, rows } = contact;
   const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
@@ -1343,6 +1346,34 @@ function reliefImage(
       );
   }
 
+  // Which cells the raster gives up on, and the contours that finish them
+  // instead. Computed from the CONTACT field, because both halves are about
+  // where the tool actually rides: the cusp is set by the spacing of adjacent
+  // tool positions, and a contour of that field is already a tool-centre path.
+  const steep = steepSplit(contact, op, maxDepth);
+  if (steep.kind === "split")
+    lines.push(
+      `; steep/shallow split: ${steep.cells} of ${steep.total} cells are steeper than the ` +
+        `raster can finish (over 45° across the rows) — ${steep.paths.length} constant-Z ` +
+        `contours at ${n(steep.zStep)}mm instead, and the raster skips them`,
+    );
+
+  if (!plan) {
+    // The finish this program will leave, stated before it is cut. Only the ROW
+    // spacing leaves a cusp — along a row the tool rides a continuous Z, so the
+    // dot pitch buys resolution, not smoothness.
+    const cusp = cuspReadout(op, lineInterval);
+    lines.push(
+      cusp.overlapping
+        ? `; finish: ⌀${n(op.diameter)}mm ${op.toolType} at ${n(lineInterval)}mm stepover ` +
+          `(${Math.round(cusp.fraction * 100)}% of diameter) leaves a ${n(cusp.cusp)}mm cusp between rows`
+        : `; NOTE: rows are ${n(lineInterval)}mm apart, wider than the ⌀${n(op.diameter)}mm bit — ` +
+          `adjacent passes never touch, so what stands between them is not a cusp but ` +
+          `full-height uncut stock. ${n(cusp.suggested)}mm (${FINISH_STEPOVER_FRACTION * 100}% of ⌀) ` +
+          `is the usual finish stepover.`,
+    );
+  }
+
   for (let p = 1; p <= passes; p++) {
     const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
     // How deep the previous pass already got. A row with nothing below that gets
@@ -1355,9 +1386,18 @@ function reliefImage(
     const needsPass = (r: number): boolean =>
       p === 1 || rows[r].levels.some((lv) => lv * maxDepth > prevReach + 1e-9);
 
-    /** Vertices for rows `from..to`, one continuous boustrophedon, equal-Z merged. */
-    const vertsFor = (from: number, to: number): { x: number; y: number; z: number }[] => {
-      const verts: { x: number; y: number; z: number }[] = [];
+    /**
+     * Vertices for rows `from..to` as one continuous boustrophedon, equal-Z
+     * merged — SPLIT wherever a steep cell interrupts it.
+     *
+     * Returns a list because a skipped cell breaks the snake exactly as a
+     * skipped row does: feeding across the gap would plough through the wall the
+     * contour passes are there to finish. With no steep cells the list is one
+     * run and the moves are the ones this emitter has always produced.
+     */
+    const vertsFor = (from: number, to: number): { x: number; y: number; z: number }[][] => {
+      const runs: { x: number; y: number; z: number }[][] = [];
+      let verts: { x: number; y: number; z: number }[] = [];
       for (let r = from; r <= to; r++) {
         const row = rows[r];
         // Keyed to the ROW index, not to emission order, so the snake keeps
@@ -1366,6 +1406,11 @@ function reliefImage(
         const zAt = (c: number) => Math.max(-row.levels[c] * maxDepth, passFloor);
         for (let k = 0; k < cols; k++) {
           const c = ltr ? k : cols - 1 - k;
+          if (steep.kind === "split" && steep.steep(r, c)) {
+            if (verts.length > 0) runs.push(verts);
+            verts = [];
+            continue;
+          }
           // Keep run boundaries and depth changes; drop interior collinear dots.
           const prev = ltr ? c - 1 : c + 1;
           const next = ltr ? c + 1 : c - 1;
@@ -1386,7 +1431,8 @@ function reliefImage(
           }
         }
       }
-      return verts;
+      if (verts.length > 0) runs.push(verts);
+      return runs;
     };
 
     // Skipped rows break the snake, so each unbroken stretch is its own path
@@ -1400,20 +1446,40 @@ function reliefImage(
       }
       let end = r;
       while (end + 1 < rows.length && needsPass(end + 1)) end++;
-      const verts = vertsFor(r, end);
+      const runs = vertsFor(r, end);
       r = end + 1;
-      if (verts.length === 0) continue;
-
-      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
-      lines.push(`G0 X${X(verts[0].x, ox)} Y${Y(verts[0].y, oy)}`);
-      lines.push(`G1 Z${Z(verts[0].z, zOff)} F${n(op.plungeRate)}`);
-      for (let i = 1; i < verts.length; i++) {
-        const v = verts[i];
-        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
-        lines.push(`G1 X${X(v.x, ox)} Y${Y(v.y, oy)} Z${Z(v.z, zOff)}${f}`);
+      for (const verts of runs) {
+        if (verts.length === 0) continue;
+        lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+        lines.push(`G0 X${X(verts[0].x, ox)} Y${Y(verts[0].y, oy)}`);
+        lines.push(`G1 Z${Z(verts[0].z, zOff)} F${n(op.plungeRate)}`);
+        for (let i = 1; i < verts.length; i++) {
+          const v = verts[i];
+          const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+          lines.push(`G1 X${X(v.x, ox)} Y${Y(v.y, oy)} Z${Z(v.z, zOff)}${f}`);
+        }
       }
     }
   }
+
+  // The steep half of the split: constant-Z contours of the same field, top
+  // down. A single-point path would be a plunge that cuts nothing, so it is
+  // dropped rather than posted.
+  if (steep.kind === "split") {
+    for (const path of steep.paths) {
+      if (path.pts.length < 2) continue;
+      const w0 = xfPoint(xf, path.pts[0].x, path.pts[0].y);
+      lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
+      lines.push(`G0 X${X(w0.x, ox)} Y${Y(w0.y, oy)}`);
+      lines.push(`G1 Z${Z(path.z, zOff)} F${n(op.plungeRate)}`);
+      for (let i = 1; i < path.pts.length; i++) {
+        const w = xfPoint(xf, path.pts[i].x, path.pts[i].y);
+        const f = i === 1 ? ` F${n(op.feedrate)}` : "";
+        lines.push(`G1 X${X(w.x, ox)} Y${Y(w.y, oy)}${f}`);
+      }
+    }
+  }
+
   lines.push(`G0 Z${Z(op.safeZ, zOff)}`);
   return lines;
 }

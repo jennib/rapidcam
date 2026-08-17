@@ -11,6 +11,7 @@ import type {
   ToolType,
 } from "../../../cam/types";
 import { DEFAULTS } from "../../../cam/types";
+import { FINISH_STEPOVER_FRACTION } from "../../../cam/scallop";
 import type { DitherMode } from "../../../cam/dither";
 import { type Entity, RasterImageEntity } from "../../../model/entities";
 import { heightfieldMeta } from "../../../core/imageManager";
@@ -99,6 +100,7 @@ export interface OpState {
   // grooves whose width carries the tone. Row pitch is derived, not typed.
   halftone: boolean;
   halftoneLand: number;
+  reliefSteepPass: boolean;
   paramExprs: Record<string, string>;
 }
 
@@ -224,13 +226,14 @@ export function createInitialOpState(
     airAssist: existing?.airAssist ?? false,
     laserOverride: existing?.laserOverride ?? false,
     // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
-    // scales with the bit — ~10% of the cutter diameter is a good scallop/speed
-    // balance (a fixed fine value is a needlessly long cut with a wide bit).
+    // scales with the bit — Vectric's 8–12% of cutter diameter is the scallop/
+    // speed balance (a fixed fine value is a needlessly long cut with a wide
+    // bit). The fraction lives with the cusp calculator that reports on it.
     rasterLineInterval:
       existing?.rasterLineInterval ??
       (isLaser
         ? DEFAULTS.rasterLineInterval
-        : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * 0.1)),
+        : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * FINISH_STEPOVER_FRACTION)),
     rasterDotPitch: existing?.rasterDotPitch ?? 0,
     rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
     rasterInvert: existing?.rasterInvert ?? false,
@@ -238,6 +241,7 @@ export function createInitialOpState(
     reliefGamma: existing?.reliefGamma ?? 1,
     halftone: existing?.halftone ?? false,
     halftoneLand: existing?.halftoneLand ?? DEFAULTS.halftoneLand,
+    reliefSteepPass: existing?.reliefSteepPass ?? false,
     paramExprs: existing?.paramExprs ? { ...existing.paramExprs } : {},
   };
 }

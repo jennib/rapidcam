@@ -291,3 +291,172 @@ test("output size: a gradient relief stays bounded by the dot grid × passes", (
   expect(moves).toBeLessThanOrEqual(cols * rows * passes); // bounded, not unbounded
   expect(moves).toBeGreaterThan(rows); // it does vary with tone
 });
+
+test("relief: the posted program states the cusp its stepover leaves", () => {
+  const id = registerGrid([
+    [0, 128],
+    [200, 255],
+  ]);
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+  const eid = doc.entities.find((e) => e.type === "image")!.id;
+  const g = generateGCode(
+    [reliefOp([eid], { diameter: 6, rasterLineInterval: 0.6, rasterDotPitch: 0.6 })],
+    doc,
+  );
+  // ⌀6 ball at 0.6mm → 15µm, and the percentage that makes it comparable. The
+  // post is ASCII-only, so "⌀" reaches the file as "dia".
+  expect(g).toMatch(
+    /; finish: dia 6mm ball-nose at 0\.6mm stepover \(10% of diameter\) leaves a 0\.015mm cusp/,
+  );
+
+  // A stepover wider than the bit is not a big cusp — say so instead of printing
+  // a number for a ridge that is really full-height stock.
+  const wide = generateGCode(
+    [reliefOp([eid], { diameter: 2, rasterLineInterval: 4, rasterDotPitch: 4 })],
+    doc,
+  );
+  expect(wide).toContain("adjacent passes never touch");
+  expect(wide).not.toMatch(/leaves a .* cusp/);
+});
+
+test("relief: a halftone gets no cusp line — its rows are grooves, not passes", () => {
+  const id = registerGrid([
+    [0, 128],
+    [200, 255],
+  ]);
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+  const eid = doc.entities.find((e) => e.type === "image")!.id;
+  const g = generateGCode(
+    [reliefOp([eid], { toolType: "v-bit", diameter: 6, vAngle: 60, halftone: true })],
+    doc,
+  );
+  expect(g).not.toContain("; finish:");
+  // Positive control: the halftone DID post, and said its own thing.
+  expect(g).toContain("V-carve halftone:");
+});
+
+// --- steep/shallow split -----------------------------------------------------
+
+/** A 32x32 height map from a height function in mm (0..depth), 1px per mm. */
+function registerHeight(fn: (x: number, y: number) => number, depth: number): string {
+  const N = 32;
+  const rows: number[][] = [];
+  for (let py = 0; py < N; py++) {
+    const r: number[] = [];
+    for (let px = 0; px < N; px++)
+      r.push(Math.round(255 * Math.min(1, Math.max(0, fn(px + 0.5, N - py - 0.5) / depth))));
+    rows.push(r);
+  }
+  return registerGrid(rows);
+}
+
+/** A centred cone of the given flank slope — a shape with a known steepness. */
+const coneAt = (slope: number, depth: number) => (x: number, y: number) =>
+  Math.max(0, depth - slope * Math.hypot(x - 16, y - 16));
+
+function steepDoc(fn: (x: number, y: number) => number, depth: number) {
+  const id = registerHeight(fn, depth);
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 32, 32, 0));
+  return { doc, eid: doc.entities.find((e) => e.type === "image")!.id };
+}
+
+test("steep pass: off, the program is byte-identical to one that never asked", () => {
+  // The regression that matters. Turning the feature on for a model with no
+  // steep area must change nothing at all — the raster's run-splitting has to
+  // collapse back to the single continuous boustrophedon it always emitted.
+  const { doc, eid } = steepDoc(coneAt(0.2, 3), 3); // 11°, nothing steep
+  const base = reliefOp([eid], {
+    depth: -3,
+    stepdown: 3,
+    diameter: 3,
+    rasterLineInterval: 1,
+    rasterDotPitch: 1,
+  });
+  const off = generateGCode([base], doc);
+  const on = generateGCode([{ ...base, reliefSteepPass: true }], doc);
+  expect(on).toBe(off);
+  expect(off).toContain("G1 "); // positive control: it posted a real program
+});
+
+test("steep pass: a steep wall gets constant-Z contours the raster skips", () => {
+  const depth = 6;
+  const { doc, eid } = steepDoc(coneAt(2, depth), depth); // 63° flank
+  const base = reliefOp([eid], {
+    depth: -depth,
+    stepdown: depth,
+    diameter: 3,
+    rasterLineInterval: 1,
+    rasterDotPitch: 1,
+  });
+  const off = generateGCode([base], doc);
+  const on = generateGCode([{ ...base, reliefSteepPass: true }], doc);
+  expect(on).not.toBe(off);
+  expect(on).toContain("steep/shallow split:");
+
+  // A contour pass is a run of XY moves with NO Z word, entered by a plunge to a
+  // level that is a whole multiple of the stepover. The raster never emits an XY
+  // move without a Z, so their presence is the signature.
+  const flat = [...on.matchAll(/^G1 X(-?[\d.]+) Y(-?[\d.]+)(?: F\d+)?$/gm)];
+  expect(flat.length).toBeGreaterThan(20);
+  expect([...off.matchAll(/^G1 X(-?[\d.]+) Y(-?[\d.]+)(?: F\d+)?$/gm)].length).toBe(0);
+
+  // And the raster GAVE THOSE CELLS UP: its own moves (the ones carrying a Z)
+  // must be fewer than when it covered the whole relief. Without this the test
+  // passes just as well for a version that contours the wall AND still rasters
+  // it — the tool cutting the same wall twice, once badly.
+  expect(zMoves(on).length).toBeLessThan(zMoves(off).length);
+  // The snake is broken where it meets the wall, so the raster now approaches
+  // more times than it did.
+  const approaches = (g: string) => [...g.matchAll(/G0 Z[\d.]+\nG0 X[^\n]+\nG1 Z/g)].length;
+  expect(approaches(on)).toBeGreaterThan(approaches(off));
+
+  // Every contour Z is a multiple of the stepover (the derived level spacing).
+  const contourZ = [...on.matchAll(/G1 Z(-?[\d.]+) F\d+\n(?:; [^\n]*\n)?G1 X[-\d.]+ Y[-\d.]+ F/g)];
+  expect(contourZ.length).toBeGreaterThan(0);
+  for (const m of contourZ) {
+    const z = Math.abs(+m[1]);
+    expect(Math.abs(z - Math.round(z))).toBeLessThan(1e-6); // stepover is 1mm
+  }
+});
+
+test("steep pass: nothing is cut deeper than the relief depth", () => {
+  // The contours ride the same contact field the raster does, so they are bound
+  // by the same floor — a pass that ran past it would be gouging.
+  const depth = 6;
+  const { doc, eid } = steepDoc(coneAt(2, depth), depth);
+  const g = generateGCode(
+    [
+      reliefOp([eid], {
+        depth: -depth,
+        stepdown: depth,
+        diameter: 3,
+        rasterLineInterval: 1,
+        rasterDotPitch: 1,
+        reliefSteepPass: true,
+      }),
+    ],
+    doc,
+  );
+  const zs = [...g.matchAll(/Z(-?[\d.]+)/g)].map((m) => +m[1]);
+  expect(zs.length).toBeGreaterThan(50);
+  for (const z of zs) expect(z).toBeGreaterThanOrEqual(-depth - 1e-6);
+});
+
+test("steep pass: a halftone ignores it rather than contouring a groove screen", () => {
+  const depth = 6;
+  const { doc, eid } = steepDoc(coneAt(2, depth), depth);
+  const base = reliefOp([eid], {
+    depth: -depth,
+    stepdown: depth,
+    toolType: "v-bit",
+    vAngle: 60,
+    diameter: 6,
+    halftone: true,
+  });
+  const on = generateGCode([{ ...base, reliefSteepPass: true }], doc);
+  expect(on).toBe(generateGCode([base], doc));
+  expect(on).toContain("V-carve halftone:"); // positive control: it did halftone
+});

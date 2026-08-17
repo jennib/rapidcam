@@ -53,6 +53,7 @@ import { addCornerReliefs } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
 import { restCentreRegions, reliefRest } from "./rest";
+import { steepSplit } from "./steep";
 import { facePlan } from "./facing";
 import { finishAllowance } from "./gcode";
 import {
@@ -645,16 +646,31 @@ function rasRelief(ent: RasterImageEntity, rawOp: CAMOperation, stamp: StampFn, 
   // Same tool-footprint correction the emitter applies, so the preview shows the
   // Z the program will actually command. A laser has no flank to dig in with.
   const cut = isLaser ? field : toolContactField(field, op, maxDepth);
+  // ...and the same split, or the preview would show a rastered wall the program
+  // no longer rasters: with the steep pass on, those cells are cut by contours at
+  // discrete Z levels, which is a visibly different surface (and the reason the
+  // feature exists). A beam has no steep/shallow question.
+  const split = isLaser ? { kind: "off" as const } : steepSplit(cut, op, maxDepth);
   // Stamp each dot at its rotated world position so a tilted image previews tilted.
   const xf = makeRasterXf(ent.position, ent.angle);
-  for (const row of cut.rows) {
+  for (let r = 0; r < cut.rows.length; r++) {
+    const row = cut.rows[r];
     for (let c = 0; c < cut.cols; c++) {
       const level = row.levels[c];
       if (level <= 0) continue;
+      if (split.kind === "split" && split.steep(r, c)) continue;
       const w = xfPoint(xf, (c + 0.5) * cut.colPitch, row.y);
       stamp(w.x * RES, w.y * RES, stockT - level * maxDepth);
     }
   }
+  // The contour passes, stamped where the tool actually goes. Vertices sit about
+  // a cell apart and the stamp is a whole tool footprint, so this is continuous.
+  if (split.kind === "split")
+    for (const p of split.paths)
+      for (const pt of p.pts) {
+        const w = xfPoint(xf, pt.x, pt.y);
+        stamp(w.x * RES, w.y * RES, stockT + p.z);
+      }
 }
 
 /**

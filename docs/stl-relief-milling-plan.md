@@ -44,6 +44,14 @@ the buffer as a photograph and silently re-flattens the top 4% of the model's
 height range. `zRangeMM` was added as an OPTIONAL field (old files still load),
 with the full 4-step drift checklist.
 
+**Phase 2 is now clear** (2026-08-17): the steep/shallow split and the scallop→stepover
+calculator both shipped, taking the two highest-value items with them. What remains in
+that section is the tapered ball-nose `ToolType` and pencil finishing, neither of which
+anything else waits on. One more note for the tell at the top of this document: the only
+Phase 2 claim carrying a `file:line` citation — `ToolType` at `types.ts:19` — was
+accurate, and the two that named capabilities without one (`restRegions()`, Z-level
+finishing) were both wrong. The pattern has now held five times.
+
 **Phase 1.5 SHIPPED 2026-08-16**, but *not* on the signal this plan proposed —
 `emptyCells` was measured against real files and rejected. See that section below;
 the short version is that it measures the model's SHADOW, and a real relief in the
@@ -355,7 +363,8 @@ there is no second mode to switch to. The standing note says so instead.
 
 ### Phase 2 — close the Easel gap
 
-- **Steep/shallow split — the highest-value item.** ⚠️ **This bullet said "and
+- **Steep/shallow split — the highest-value item.** ✅ **SHIPPED 2026-08-17.**
+  ⚠️ **This bullet said "and
   nearly free here", which is half true and misled two sessions — see the
   correction directly below it.** The *gradient* is nearly free; the thing you
   split into is a build, because no Z-level finishing exists. MeshCAM's
@@ -379,10 +388,15 @@ there is no second mode to switch to. The standing note says so instead.
   a single diameter. (Easel punts entirely: you enter a tapered bit as "other bit" and type
   a diameter.) Adding a tool type has fan-out — follow the 12-place op/tool checklist, and
   expect faults that green typecheck + green unit tests do not catch.
-- **Scallop-height → stepover** calculator, so the finish stepover is chosen by target
+- **Scallop-height → stepover** calculator ✅ **SHIPPED 2026-08-17**, so the finish
+  stepover is chosen by target
   cusp height rather than guessed. Vectric's stated rule of thumb — **8–12% of tool
   diameter for a 3D finish pass** — is the default to ship and the sanity check for the
-  calculator's output.
+  calculator's output. **Do this one FIRST**: it is what makes the steep/shallow
+  threshold above derivable instead of tuned, because both passes are then quoted at
+  one cusp. It also needed no geometry of its own — `ToolProfile.height` already owns
+  the flank law and `ToolProfile.reach` already inverts it, so the calculator is that
+  one law read forwards and backwards.
 - **Pencil finishing** (MeshCAM has it) — trace the concave corners to clear leftover
   stock the raster can't reach. On a heightfield these are the cells where the dilated
   field differs most from the raw field. Lower priority; list it so it isn't forgotten.
@@ -406,6 +420,82 @@ One correction in its favour when it is picked up: **Clipper2 offsetting is not 
 at — so an iso-contour of that field at constant Z *is* the tool-centre path, by
 construction. Offsetting the raw field's contours by a tool radius would be a second and
 worse way to compute what the dilation already computed.
+
+#### The split shipped 2026-08-17, and the threshold is derived (2026-08-17)
+
+**Do item 4 (the cusp calculator) first** — that is what removes the "slope threshold
+measured on a corpus" from the list above. A cusp is monotone in the distance between
+adjacent passes *measured on the surface*, so the better strategy at a cell is whichever
+lands its passes closer together:
+
+    raster:   s · hypot(1, g)              Z-level:  Δz · hypot(1, g) / g
+
+The Z step is not a free number either: `Δz = s` states "leave the same cusp on a
+vertical wall that the raster leaves on a flat floor", which is what choosing a stepover
+by cusp height meant in the first place. Substituting it collapses the comparison to
+**g > 1, i.e. 45°** — the textbook crossover, arrived at rather than picked. No corpus,
+no constant, and one persisted field (an on/off), not the two this section predicted.
+
+**The exact anisotropic rule is more correct and is the wrong answer.** Keeping `∂z/∂y`
+(the slope *across* the scan rows) separate from `|∇z|` is exactly right about cusp
+height — a wall running *along* the rows genuinely is finished by the raster as well as
+flat ground — and it was implemented first. Drawing it is what settled it: on a cone it
+fires on the two caps facing across the rows and leaves the other two to the raster, so
+one boss wall comes out in **two visibly different finishes meeting on a diagonal**,
+both meeting the same cusp spec. It also closes almost no loops, so every wall becomes
+four arcs with four plunges. A finish is a guarantee rather than an average, so the
+raster is judged at the worst orientation the surface presents — which is also what
+every package that exposes this does (MeshCAM, PowerMill, Fusion all split on the
+surface ANGLE).
+
+**Clipping contours by the cell mask fragments them, and the cause is not quantisation.**
+Near the boundary a contour runs almost *parallel* to it, so a boundary made of cell
+edges cuts the curve at every step: **628 contours on a hemisphere at a 0.25 mm stepover,
+336 of them under 1 mm** — hundreds of plunge-and-retract stubs where a dozen rings
+belong. The 8-bit level ladder was the first suspect and is not it (1/4096 gives
+580/340). Testing the *interpolated* slope at the contour point cuts each ring once;
+with arcs shorter than one tool diameter dropped as well, the same hemisphere gives
+**18 contours, median 177 mm, none under 1 mm**.
+
+**The raster was giving up cells that nothing then cut** — found by rendering the 3-D
+preview, not by a test. Contour levels stop one `zStep` above the floor, and a cusp is
+finished by the tool bodies on *both* sides of it, so the ring at the foot of every wall
+had no pass beneath it: 0.37 mm of stock standing round the base of a cone. The raster
+now skips a cell only where a contour demonstrably runs within a cell of it **and at or
+below that cell's own floor**. The horizontal half of that test is free in theory (a
+steep cell has under one cell of horizontal spacing between contours, by the same
+inequality that defines steepness) and removes 0–17% of the mask in practice, depending
+on how lumpy the surface is.
+
+**The split does leave more material than the plain raster in places, and that had to be
+chased down rather than waved at.** Ticking the box has to be an improvement everywhere,
+because a user who gets a worse surface *somewhere* has no way to find out where. Simulated
+through the app's own cut model on a cone, a hemisphere and a moat wall, it leaves **less**
+material at 3–5× as many cells as it leaves more (hemisphere at 0.5 mm: 3424 cells better,
+1016 worse). What stands is bounded by about one cusp — 0.035–0.121 mm — and lands on a
+few **repeated** values (0.070 mm × 8, 0.121 mm × 8), which is the signature of the two
+finishes meeting on a seam rather than of a region nothing cut. Halving the stepover
+roughly halves it; a fixed sampling artifact would not move. The cause is phase: the
+raster's ridge crests and the contours' crests do not line up, so a cell on the boundary
+can sit on one strategy's crest and between the other's passes. Every package that ships a
+surface-angle split has this seam. `scripts/steep-vs-raster.ts` reproduces it.
+
+**Cost, and a measurement trap that nearly buried a 1.7× win.** The pass runs at op time on
+the UI thread — both `reliefImage` and the 3-D preview go through it — so it is a freeze the
+user feels. On a deliberately extreme model (200 mm, 20 mm deep, 63% steep, 0.15 mm
+stepover: 1.8 M cells, 133 levels) it costs **4.5 s**, about 1.9 µs per contour point, for a
+toolpath of 2.3 M points; a typical panel is well under a second. Two fixes got it there
+from 7.8 s: the marching-squares loop was testing all 133 levels against every cell to find
+the ~2 that cross (the levels are evenly spaced, so that is an index range), and the path
+ordering rescanned every vertex of every remaining loop per pick (a per-chain bounding box
+bounds it exactly). **Measure it bundled.** Under `npx tsx` the loader's own `__name`
+wrappers and TextDecoder work are 35% of the profile and are attributed to `steep.ts`,
+because that is the file being instrumented — which reported the 1.74× as 1.1× and nearly
+got it discarded as not worth the code. `scripts/steep-cost.ts`, which says so at the top.
+
+`scripts/steep-split-probe.ts` draws the mask and the contours for a cone, a hemisphere
+and two walls, and reports the path-length distribution that all of the above was
+measured on.
 
 **"Rest pass via `restRegions()`" was reuse of the wrong thing.** `restRegions()` takes
 `Vec2[]` boundaries and returns polygons; the whole relief path is a grid of

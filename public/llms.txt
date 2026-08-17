@@ -117,6 +117,10 @@ integration guide, inlined as one plain-text document.
   photograph, and the white-threshold default alone then flattens the top 4% of
   its height range. For the same reason, do not set `reliefGamma` on a relief
   operation that reads one; a tone curve on a height map is a geometry error.
+  A model with near-vertical walls also takes `"reliefSteepPass": true` on
+  the finish op: anything steeper than 45° is then cut by constant-Z contours
+  rather than by the raster, which cannot hold a cusp on a wall. It has no
+  settings of its own — the contour spacing is derived from the stepover.
 - Declare `"version": 3` and validate your output against the schema before
   presenting it to a user.
 - Opening a file in RapidCAM reports schema, solver, and CAM lint problems;

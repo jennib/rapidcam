@@ -10,7 +10,9 @@ import {
   type CoolantMode,
 } from "../../../../cam/types";
 import { halftonePlan } from "../../../../cam/halftone";
-import { formatLength } from "../../../../core/units";
+import type { ToolShape } from "../../../../cam/toolProfile";
+import { FINISH_STEPOVER_BAND, cuspReadout, spacingForCusp } from "../../../../cam/scallop";
+import { formatLength, toMM } from "../../../../core/units";
 import { getMachineHasCoolant } from "../../../../core/prefs";
 import type { OpState, OpDialogEvents } from "../opDialogState";
 import { dSection, dField, lenU, paramRow } from "../dialogDom";
@@ -204,10 +206,16 @@ export function buildCutSection(
   halftoneInfoRow.appendChild(halftoneInfoSpan);
   cutSec.appendChild(halftoneInfoRow);
 
-  /** The bit the halftone maths must use: library tool if one is selected, else inline. */
-  const halftoneBit = (): { vAngle: number; tipDiameter: number; diameter: number } => {
+  /**
+   * The bit the relief maths must use: the library tool if one is selected, else
+   * the inline fields. Shared by the halftone screen and the cusp readout — both
+   * are geometry off the same bit, and reading it twice is how they would come
+   * to disagree about which one is loaded.
+   */
+  const reliefBit = (): ToolShape & { vAngle: number; tipDiameter: number } => {
     const t = state.toolId ? doc.tools.find((td) => td.id === state.toolId) : undefined;
     return {
+      toolType: t?.toolType ?? state.toolType,
       vAngle: t?.vAngle ?? state.vAngle,
       tipDiameter: t?.tipDiameter ?? 0,
       diameter: t?.diameter ?? state.diameter,
@@ -219,7 +227,7 @@ export function buildCutSection(
       halftoneInfoSpan.textContent = "";
       return;
     }
-    const bit = halftoneBit();
+    const bit = reliefBit();
     const depth = Math.abs(state.depth);
     const plan = halftonePlan(bit, depth, state.halftoneLand);
     const parts = [
@@ -249,10 +257,125 @@ export function buildCutSection(
     {
       title:
         "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.",
-      onChange: () => updateReliefEstimate(),
+      onChange: () => {
+        syncCusp();
+        updateReliefEstimate();
+      },
     },
   );
   cutSec.appendChild(reliefLineRow.el);
+
+  // The stepover, stated as the surface it leaves — and drivable from that end.
+  // Nothing new is stored: the two rows are one number read in both directions
+  // (`cuspHeight` / `spacingForCusp`), which is how the CAM packages that expose
+  // both link them. Asking for a finish is the question a user actually has; a
+  // percentage of cutter diameter is an answer to it that changes meaning with
+  // every bit.
+  const cuspInp = document.createElement("input");
+  cuspInp.type = "text";
+  cuspInp.className = "dim";
+  cuspInp.title =
+    "The ridge left standing between adjacent passes. Type a target here and the " +
+    "stepover above follows the bit — a cusp is a surface finish, so it means the " +
+    "same thing on a ⌀1 as on a ⌀6.";
+  // Same flex wrapper every `paramRow` uses, plus an invisible ƒx badge holding
+  // its slot — so this input lines up with the ones above and below it. The
+  // badge is only a spacer: a cusp is not a stored field, so there is nothing
+  // here for a formula to drive, and a live badge would promise otherwise.
+  const cuspWrap = document.createElement("div");
+  cuspWrap.style.cssText = "display:flex;align-items:center;gap:4px;flex:1 1 auto;width:0;";
+  const cuspSpacer = document.createElement("span");
+  cuspSpacer.className = "tp-fx-badge";
+  cuspSpacer.textContent = "ƒx";
+  cuspSpacer.style.cssText = "visibility:hidden;padding:0 4px;flex:0 0 auto;";
+  cuspSpacer.setAttribute("aria-hidden", "true");
+  cuspWrap.append(cuspInp, cuspSpacer);
+  const cuspRow = dField(`Cusp height (${du})`, cuspWrap);
+  cutSec.appendChild(cuspRow);
+
+  // Beside the control, not in a tooltip: the percentage of cutter diameter, so
+  // Vectric's 8-12% rule of thumb stays available as the sanity check on
+  // whatever the calculator produced.
+  const cuspNoteRow = document.createElement("div");
+  cuspNoteRow.className = "props-row";
+  const cuspNoteSpan = document.createElement("span");
+  cuspNoteSpan.style.cssText = "opacity:0.7;font-size:11px;";
+  cuspNoteRow.appendChild(cuspNoteSpan);
+  cutSec.appendChild(cuspNoteRow);
+
+  /**
+   * A cusp is two orders of magnitude smaller than the lengths this dialog
+   * usually shows, so the standard display precision rounds every useful answer
+   * to "0.01" or "0.00" — a field that cannot show its own values. One extra
+   * digit past a micron (a ten-thousandth of an inch) is enough to steer by and
+   * still stops short of pretending the machine can hold it.
+   */
+  const cuspView = (mm: number): string =>
+    formatLength(mm, doc.displayUnit, doc.displayUnit === "in" ? 5 : 3);
+
+  /** Show the cusp the CURRENT stepover leaves (called after anything moves it). */
+  function syncCusp(): void {
+    const bit = reliefBit();
+    const r = cuspReadout(bit, state.rasterLineInterval);
+    const pct = `${(r.fraction * 100).toFixed(0)}% of ⌀${lenU(bit.diameter, doc)}`;
+    if (!r.overlapping) {
+      // Not a large cusp — no cusp. Adjacent passes never touch, so what stands
+      // between them is uncut stock at full height, and printing a number for it
+      // would be inventing one.
+      cuspInp.value = "";
+      cuspInp.placeholder = "passes don't overlap";
+      cuspNoteSpan.textContent = `⚠ ${pct} — wider than the bit, so full-height ridges are left uncut. ${lenU(r.suggested, doc)} is the usual finish stepover.`;
+      return;
+    }
+    cuspInp.placeholder = "";
+    cuspInp.value = cuspView(r.cusp);
+    cuspNoteSpan.textContent = r.inBand
+      ? `${pct} — within the 8–12% usual for a 3D finish pass.`
+      : `${pct} — the usual 3D finish range is ${FINISH_STEPOVER_BAND[0] * 100}–${FINISH_STEPOVER_BAND[1] * 100}% of ⌀ (${lenU(bit.diameter * FINISH_STEPOVER_BAND[0], doc)}–${lenU(bit.diameter * FINISH_STEPOVER_BAND[1], doc)}).`;
+  }
+
+  const commitCusp = (): void => {
+    const raw = parseFloat(cuspInp.value.trim());
+    if (!Number.isFinite(raw) || raw <= 0) {
+      syncCusp();
+      return;
+    }
+    const step = spacingForCusp(reliefBit(), toMM(raw, doc.displayUnit));
+    // Through the row rather than around it: `setValue` clamps by the shared CAM
+    // param table and drops any formula the stepover was bound to, which is what
+    // typing a number into that row would have done.
+    if (step > 0) reliefLineRow.setValue(step);
+    // Re-read rather than trust the request — the stepover clamps, and a bit
+    // finer than the asked-for cusp cannot deliver it.
+    syncCusp();
+    updateReliefEstimate();
+  };
+  cuspInp.addEventListener("change", commitCusp);
+  cuspInp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      commitCusp();
+      cuspInp.blur();
+    }
+  });
+
+  // Steep/shallow split. Nothing to size — the contour spacing and the 45° split
+  // are both derived from the stepover above — so it is one checkbox, and the
+  // sentence beside it says what changes rather than naming a strategy.
+  const steepChk = document.createElement("input");
+  steepChk.type = "checkbox";
+  steepChk.className = "settings-checkbox";
+  steepChk.checked = state.reliefSteepPass;
+  steepChk.addEventListener("change", () => {
+    state.reliefSteepPass = steepChk.checked;
+  });
+  const steepRow = dField("Contour the steep areas", steepChk);
+  steepRow.title =
+    "A raster stepping across a near-vertical wall leaves ridges spaced by how far " +
+    "the wall climbs in one stepover, so the cusp above is not what you get there. " +
+    "With this on, anything steeper than 45° is cut by constant-Z contours spaced to " +
+    "the same cusp instead, and left out of the raster. Adds cutting time on models " +
+    "with walls; does nothing at all on a shallow one.";
+  cutSec.appendChild(steepRow);
 
   const reliefDotRow = paramRow(
     doc,
@@ -317,6 +440,7 @@ export function buildCutSection(
     // Depth and the bit drive both readouts, and every field that changes either
     // already refreshes the estimate — so piggyback rather than re-hook them all.
     updateHalftoneInfo();
+    syncCusp();
     const ent = [...state.entityIds]
       .map((id) => doc.entities.find((e) => e.id === id))
       .find((e): e is RasterImageEntity => e instanceof RasterImageEntity);
@@ -335,7 +459,7 @@ export function buildCutSection(
     const li = rough
       ? Math.max(0.05, state.stepover * state.diameter)
       : state.halftone && state.toolType === "v-bit"
-        ? halftonePlan(halftoneBit(), maxDepth, state.halftoneLand).rowPitch
+        ? halftonePlan(reliefBit(), maxDepth, state.halftoneLand).rowPitch
         : state.rasterLineInterval > 0
           ? state.rasterLineInterval
           : DEFAULTS.rasterLineInterval;
@@ -664,8 +788,11 @@ export function buildCutSection(
     for (const r of [halftoneLandRow.el, halftoneInfoRow])
       r.style.display = halftoning ? "" : "none";
     // The stepover is what a halftone DERIVES; leaving the field on screen while
-    // it is ignored is the same lie as a disabled control that looks live.
+    // it is ignored is the same lie as a disabled control that looks live. The
+    // cusp row is the same number from the other end, so it follows exactly.
     reliefLineRow.el.style.display = isFinish && !halftoning ? "" : "none";
+    for (const r of [cuspRow, cuspNoteRow, steepRow])
+      r.style.display = isFinish && !halftoning ? "" : "none";
     reliefDotRow.el.style.display = isFinish ? "" : "none";
     // Image controls shared by finish + roughing (invert / tone curve / estimate).
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
