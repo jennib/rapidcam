@@ -25,9 +25,14 @@
 import type { Vec2 } from "../core/vec2";
 import { inflatePathsD, differenceD, intersectD, JoinType, EndType, FillRule } from "clipper2-ts";
 import { signedArea } from "./offset";
+import type { RasterImageEntity } from "../model/entities";
+import type { CADDocument } from "../model/document";
+import { getImageGrid } from "../core/imageManager";
 import { rasterField, levelDepthEps, type RasterField, type RasterGrid } from "./rasterEngrave";
-import { toolSweptFloor } from "./toolProfile";
-import type { ReliefEncoding } from "./reliefEncoding";
+import { toolSweptFloor, toolContactField } from "./toolProfile";
+import { reliefEncodingFor, type ReliefEncoding } from "./reliefEncoding";
+import { reliefSpacing } from "./halftone";
+import { steepSplit } from "./steep";
 import { DEFAULTS, type CAMOperation } from "./types";
 
 const toV = (path: { x: number; y: number }[]): Vec2[] => path.map((p) => ({ x: p.x, y: p.y }));
@@ -503,4 +508,60 @@ function stampStaircase(
 
 function clampIdx(i: number, n: number): number {
   return i < 0 ? 0 : i >= n ? n - 1 : i;
+}
+
+/**
+ * The deepest stock a relief finish still has to cut, in mm, over the cells the
+ * raster pass cuts (steep cells go to the contour half, whose bite is its own
+ * small zStep). Shared by the emitter's header and the engagement lint so the two
+ * cannot report different numbers.
+ */
+export function reliefMaxRemaining(
+  contact: RasterField,
+  stockFloor: RasterField,
+  steep: { kind: string; steep?: (r: number, c: number) => boolean },
+  maxDepth: number,
+): number {
+  let maxRemaining = 0;
+  for (let r = 0; r < contact.rows.length; r++) {
+    const sr = stockFloor.rows[r].levels;
+    const row = contact.rows[r];
+    for (let c = 0; c < contact.cols; c++) {
+      if (steep.kind === "split" && steep.steep?.(r, c)) continue;
+      const remaining = Math.max(0, (row.levels[c] - sr[c]) * maxDepth);
+      if (remaining > maxRemaining) maxRemaining = remaining;
+    }
+  }
+  return maxRemaining;
+}
+
+/**
+ * The deepest stock a relief finish op still has to cut, in mm — the same readout
+ * the emitter's header reports, for callers (the engagement lint) that have the
+ * document but not the emitted text. With no roughing op ahead the stock is the
+ * uncut blank, so this is the full relief depth.
+ */
+export function reliefFinishRemaining(
+  ent: RasterImageEntity,
+  rawOp: CAMOperation,
+  doc: CADDocument,
+): number {
+  const enc = reliefEncodingFor(ent, rawOp);
+  const op = enc.op;
+  const maxDepth = Math.abs(op.depth);
+  if (!(maxDepth > 0)) return 0;
+  const grid = getImageGrid(ent.imageId);
+  if (!grid) return 0;
+  const { lineInterval, dotPitch, tone } = reliefSpacing(op);
+  const field = rasterField(grid, enc.field(lineInterval, dotPitch, tone));
+  if (field.rows.length === 0) return 0;
+  const contact = toolContactField(field, op, maxDepth);
+  const priorOps = doc.operations
+    .slice(0, doc.operations.indexOf(rawOp))
+    .filter(
+      (p) => p.type === "relief-rough" && p.entityIds.some((id) => rawOp.entityIds.includes(id)),
+    );
+  const stockFloor = reliefStockFloor(field, grid, enc, priorOps, maxDepth);
+  const steep = steepSplit(contact, op, maxDepth);
+  return reliefMaxRemaining(contact, stockFloor, steep, maxDepth);
 }

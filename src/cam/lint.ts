@@ -23,12 +23,14 @@
 
 import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
+import { RasterImageEntity } from "../model/entities";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { lexWords } from "./gcodeWords";
 import { isHalftone } from "./halftone";
 import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
 import { hiddenOpEntityIds, isMachinable } from "./machinable";
 import { sharedReliefImageIds } from "./reliefOps";
+import { reliefFinishRemaining } from "./rest";
 import { checkMachinability } from "./machinability";
 
 export type LintSeverity = "error" | "warning";
@@ -796,6 +798,50 @@ function checkReliefStepoverGap(doc: CADDocument): LintFinding | null {
 }
 
 /**
+ * WARNING: a relief finish pass takes a deeper axial bite than its ball-nose can
+ * safely cut.
+ *
+ * The stock model caps the finish's bite at its `stepdown`, but the user can set
+ * a stepdown larger than the bit's radius — and a roughing pass that could not
+ * reach into a channel leaves that much stock standing. Either way the finish
+ * meets a wall of material deeper than the ball can cut: the probe measured
+ * 17 mm of engagement with a ⌀3 ball nose in exactly this situation.
+ */
+function checkReliefEngagement(doc: CADDocument): LintFinding | null {
+  const problems: string[] = [];
+  const ids = new Set<string>();
+  for (const op of doc.operations) {
+    // The threshold is a ball-nose's cutting depth (its radius). A V-bit cuts by
+    // its flank and a tapered ball by its tip, so their safe axial engagement is
+    // a different number — and a ball-nose is the finish the plan measured.
+    if (op.type !== "engrave" || op.toolType !== "ball-nose") continue;
+    const ent = doc.entities.find(
+      (e) => op.entityIds.includes(e.id) && e instanceof RasterImageEntity,
+    ) as RasterImageEntity | undefined;
+    if (!ent) continue;
+    const radius = op.diameter / 2;
+    if (!(radius > 0)) continue;
+    const stepdown = op.stepdown > 0 ? op.stepdown : Math.abs(op.depth);
+    const bite = Math.min(stepdown, reliefFinishRemaining(ent, op, doc));
+    if (!(bite > radius + 1e-6)) continue;
+    problems.push(
+      `"${op.name}" takes up to ${bite.toFixed(1)}mm of axial engagement with a ⌀${op.diameter}mm ${op.toolType}`,
+    );
+    for (const id of op.entityIds) ids.add(id);
+  }
+  if (problems.length === 0) return null;
+  return {
+    code: "relief-engagement",
+    severity: "warning",
+    message:
+      `${problems.join("; ")} — the bit can only cut its own radius deep. ` +
+      `Reduce the finish stepdown, or add a rest pass with a smaller roughing tool to clear ` +
+      `the stock the roughing pass could not reach.`,
+    entityIds: [...ids],
+  };
+}
+
+/**
  * WARNING: an operation bound to geometry that is hidden, and which CAM
  * therefore did not cut (see machinable.ts).
  *
@@ -891,6 +937,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefPassMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefStepoverGap(ctx.doc));
+  if (ctx.doc) findings.push(checkReliefEngagement(ctx.doc));
   if (ctx.doc) findings.push(checkSpoilboardMixed(ctx.doc));
   // Also machine-agnostic, and paired with machinable.ts — see that module.
   if (ctx.doc) findings.push(checkHiddenGeometry(ctx.doc));

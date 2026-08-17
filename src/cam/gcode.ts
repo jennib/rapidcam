@@ -51,7 +51,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
 }
 import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
 import { adaptiveClear } from "./adaptive";
-import { restRegions, restCentreRegions, restArea, reliefRest, reliefStockFloor } from "./rest";
+import { restRegions, restCentreRegions, restArea, reliefRest, reliefStockFloor, reliefMaxRemaining } from "./rest";
 import { facePlan, type Rect } from "./facing";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -1312,6 +1312,7 @@ function reliefImage(
   let overAllowance = 0;
   let rasterCells = 0;
   if (stockFloor) {
+    maxRemainingMM = reliefMaxRemaining(contact, stockFloor, steep, maxDepth);
     const allowanceMM = Math.max(0, priorOps[0].finishAllowance ?? 0);
     for (let r = 0; r < rows.length; r++) {
       const sr = stockFloor.rows[r].levels;
@@ -1320,7 +1321,6 @@ function reliefImage(
         if (steep.kind === "split" && steep.steep(r, c)) continue; // contours own these
         rasterCells++;
         const remaining = Math.max(0, (row.levels[c] - sr[c]) * maxDepth);
-        if (remaining > maxRemainingMM) maxRemainingMM = remaining;
         if (remaining <= allowanceMM + 1e-9) withinAllowance++;
         else overAllowance++;
       }

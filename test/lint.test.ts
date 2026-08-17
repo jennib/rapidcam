@@ -14,6 +14,7 @@ import { generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
 import { CADDocument } from "../src/model/document";
 import { RectEntity, CircleEntity, RasterImageEntity } from "../src/model/entities";
+import { registerEmbeddedImage } from "../src/core/imageManager";
 
 // A 100 × 80mm stock, top-origin: X/Y envelope [0,100]×[0,80], Z top 0, bottom −10.
 const CTX: LintContext = {
@@ -535,5 +536,56 @@ test("relief mismatch: ops on DIFFERENT images are not paired", () => {
   doc.operations[1].entityIds = ["some-other-image"];
   expect(lintGCode("G0 Z5", buildLintContext(doc)).map((x) => x.code)).not.toContain(
     "relief-pass-mismatch",
+  );
+});
+
+// --- relief axial engagement -------------------------------------------------
+
+let engCounter = 0;
+/** A doc with one ⌀3 ball-nose finish over a solid-black image, at the given stepdown. */
+function finishDoc(stepdown: number): CADDocument {
+  const id = `img-eng-${engCounter++}`;
+  registerEmbeddedImage({
+    id,
+    name: id,
+    width: 8,
+    height: 8,
+    data: btoa(String.fromCharCode(...new Array(64).fill(0))), // solid black → full depth
+  });
+  const doc = new CADDocument({ width: 100, height: 80 });
+  const img = doc.add(new RasterImageEntity(id, { x: 10, y: 10 }, 40, 40, 0));
+  doc.operations.push({
+    id: "f",
+    name: "Finish",
+    type: "engrave",
+    entityIds: [img.id],
+    side: "outside",
+    toolType: "ball-nose",
+    toolNumber: 1,
+    diameter: 3,
+    feedrate: 1500,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -8,
+    stepdown,
+    stepover: 0.4,
+    rasterLineInterval: 0.3,
+  });
+  return doc;
+}
+
+test("relief engagement: a finish whose stepdown exceeds the bit's radius is flagged", () => {
+  const f = lintGCode("G0 Z5", buildLintContext(finishDoc(8))).find(
+    (x) => x.code === "relief-engagement",
+  );
+  expect(f?.severity).toBe("warning");
+  expect(f?.message).toContain("8.0mm");
+  expect(f?.message).toContain("radius");
+});
+
+test("relief engagement: a finish stepped within the bit's radius lints clean (positive control)", () => {
+  expect(lintGCode("G0 Z5", buildLintContext(finishDoc(1))).map((x) => x.code)).not.toContain(
+    "relief-engagement",
   );
 });
