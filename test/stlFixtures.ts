@@ -59,6 +59,56 @@ export function hemisphere(R = 10, nLat = 24, nLon = 48): Tri[] {
   return tris;
 }
 
+/** The sphere both shapes below are built from, as latitude/longitude quads. */
+function sphereShell(R: number, nLat: number, nLon: number, outward: boolean): Tri[] {
+  const p = (t: number, f: number): [number, number, number] => [
+    R * Math.sin(t) * Math.cos(f),
+    R * Math.sin(t) * Math.sin(f),
+    R * Math.cos(t),
+  ];
+  const tris: Tri[] = [];
+  for (let i = 0; i < nLat; i++) {
+    const t0 = (i / nLat) * Math.PI;
+    const t1 = ((i + 1) / nLat) * Math.PI;
+    for (let j = 0; j < nLon; j++) {
+      const f0 = (j / nLon) * 2 * Math.PI;
+      const f1 = ((j + 1) / nLon) * 2 * Math.PI;
+      const a = p(t0, f0),
+        b = p(t1, f0),
+        c = p(t1, f1),
+        d = p(t0, f1);
+      if (outward) tris.push([...a, ...b, ...c], [...a, ...c, ...d]);
+      else tris.push([...a, ...c, ...b], [...a, ...d, ...c]);
+    }
+  }
+  return tris;
+}
+
+/**
+ * A closed sphere — the textbook full-3D solid, and one with a closed-form
+ * answer for the plinth ratio.
+ *
+ * The carve leaves `∫(zTop − zMin)dA = (2/3)πR³ + πR³ = (5/3)πR³` and the ball
+ * itself is `(4/3)πR³`, so exactly **20%** of the carving is plinth. A fixture
+ * that has to agree with arithmetic cannot drift quietly.
+ */
+export function sphere(R = 10, nLat = 48, nLon = 96): Tri[] {
+  return sphereShell(R, nLat, nLon, true);
+}
+
+/**
+ * A sealed hollow ball: a sphere with a second, inverted shell inside it.
+ *
+ * Its cavity is invisible from every direction, so its OUTER form — and
+ * therefore the right answer for "how much of this carving is plinth" — is
+ * identical to the solid sphere's 20%. Any measure derived from the model's
+ * material rather than its outline reads something else entirely (78% by
+ * volume), which is why this fixture exists.
+ */
+export function hollowBall(R = 10, wall = 1, nLat = 48, nLon = 96): Tri[] {
+  return [...sphereShell(R, nLat, nLon, true), ...sphereShell(R - wall, nLat, nLon, false)];
+}
+
 /**
  * A staircase: `steps` treads of equal depth across Y, rising in Z, spanning
  * `width` in X. Every face is axis-aligned, so each tread's height is exact and
@@ -96,6 +146,40 @@ export function steppedBlock(width = 30, depth = 30, steps = 3, rise = 2): Tri[]
   };
   const dy = depth / steps;
   for (let s = 0; s < steps; s++) box(0, width, s * dy, (s + 1) * dy, 0, (s + 1) * rise);
+  return tris;
+}
+
+/**
+ * A relief FACE and nothing else — no flat back, no skirt walls.
+ *
+ * This is what a scanned or sculpted relief looks like when it is exported
+ * without being solidified, and it is the most relief-shaped input there is. It
+ * is also the shape that breaks any measure taken between a cell's topmost and
+ * bottommost surface, because a single skin has only one: the span collapses to
+ * zero and the model reads as pure plinth.
+ *
+ * `sliverPlate` does not cover this — being perfectly flat, it has no height
+ * range at all and exits down a different path entirely.
+ */
+export function openReliefSurface(size = 60, R = 25, domeH = 8, n = 64): Tri[] {
+  const tris: Tri[] = [];
+  const cx = size / 2;
+  const zAt = (x: number, y: number): number => {
+    const r = Math.hypot(x - cx, y - cx);
+    return r >= R ? 0 : domeH * Math.cos((Math.PI * r) / (2 * R));
+  };
+  const at = (i: number) => (i / n) * size;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      const x0 = at(i),
+        x1 = at(i + 1),
+        y0 = at(j),
+        y1 = at(j + 1);
+      tris.push(
+        [x0, y0, zAt(x0, y0), x1, y0, zAt(x1, y0), x1, y1, zAt(x1, y1)],
+        [x0, y0, zAt(x0, y0), x1, y1, zAt(x1, y1), x0, y1, zAt(x0, y1)],
+      );
+    }
   return tris;
 }
 
