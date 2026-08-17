@@ -16,6 +16,7 @@ import type { DitherMode } from "../../../cam/dither";
 import { type Entity, RasterImageEntity } from "../../../model/entities";
 import { heightfieldMeta } from "../../../core/imageManager";
 import type { Vec2 } from "../../../core/vec2";
+import { findReliefPair } from "../../../cam/reliefOps";
 import {
   type OpCombo,
   autoName,
@@ -26,6 +27,31 @@ import {
 } from "../../camBarHelpers";
 
 export type CornerStyle = "none" | "dogbone" | "tbone";
+
+/** The tool half of a dialog stage: the fields `buildToolSection` reads/writes. */
+export interface ToolState {
+  toolId?: string;
+  toolType: ToolType;
+  toolNumber: number;
+  diameter: number;
+  vAngle: number;
+  tipDiameter: number;
+  tipAngle: number;
+  feedrate: number;
+  plungeRate: number;
+  spindleSpeed: number;
+  safeZ: number;
+  /** Parametric formulas keyed by field name (empty = plain numbers). */
+  paramExprs: Record<string, string>;
+}
+
+/** The roughing half of a relief job: its own tool plus its own cut fields. */
+export interface RoughStageState extends ToolState {
+  stepdown: number;
+  stepover: number;
+  finishAllowance: number;
+  rampAngle?: number;
+}
 
 export interface OpState {
   name: string;
@@ -102,6 +128,10 @@ export interface OpState {
   halftone: boolean;
   halftoneLand: number;
   reliefSteepPass: boolean;
+  /** The roughing stage of a relief job (null unless combo === "relief"). */
+  reliefRough: RoughStageState | null;
+  /** Whether the relief job writes a roughing pass. */
+  includeRough: boolean;
   paramExprs: Record<string, string>;
 }
 
@@ -147,104 +177,137 @@ export function createInitialOpState(
   const preSelected = new Set(preSelectedEnts.map((e) => e.id));
   // initialCombo picks the starting op type (and defaults an image selection to
   // Engrave so it isn't stripped as invalid-for-profile — see defaultCombo).
-  const initialCombo: OpCombo = defaultCombo(existing, preSelectedEnts, isLaser);
+  const initialCombo: OpCombo = defaultCombo(existing, preSelectedEnts, isLaser, doc);
+
+  // Editing a relief edits BOTH its ops. The top-level fields below carry the
+  // FINISH (the engrave); `reliefRough` carries the roughing stage. When a relief
+  // is clicked via its roughing row, `existing` is the rough and the finish is
+  // its pair (and vice versa).
+  const isRelief = initialCombo === "relief";
+  const finish: CAMOperation | null =
+    isRelief && existing ? (existing.type === "engrave" ? existing : findReliefPair(existing, doc)) : existing;
+  const rough: CAMOperation | null =
+    isRelief && existing ? (existing.type === "relief-rough" ? existing : findReliefPair(existing, doc)) : null;
 
   return {
-    name: existing?.name ?? autoOpName(initialCombo, doc),
+    name: finish?.name ?? autoOpName(initialCombo, doc),
     combo: initialCombo,
-    toolId: existing?.toolId,
-    // A mill relief (engrave targeting an image) needs a depth-shaping bit, so a
-    // new one defaults to a ball-nose rather than the flat end mill (which carves
-    // nothing). Done here at state init so the tool selector reflects it on open.
-    toolType: (existing?.toolType ??
+    toolId: finish?.toolId,
+    // A relief finish needs a depth-shaping bit, so a new one defaults to a
+    // ball-nose rather than the flat end mill (which carves nothing). Done here
+    // so the tool selector reflects it on open.
+    toolType: (finish?.toolType ??
       (!isLaser &&
-      initialCombo === "engrave" &&
+      (initialCombo === "engrave" || initialCombo === "relief") &&
       preSelectedEnts.some((e) => e instanceof RasterImageEntity)
         ? "ball-nose"
         : DEFAULTS.toolType)) as ToolType,
-    toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
-    diameter: existing?.diameter ?? DEFAULTS.diameter,
-    vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
-    tipDiameter: existing?.tipDiameter ?? DEFAULTS.tipDiameter,
-    tipAngle: existing?.tipAngle ?? DEFAULTS.tipAngle,
-    feedrate: existing?.feedrate ?? DEFAULTS.feedrate,
-    plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,
-    spindleSpeed: existing?.spindleSpeed ?? DEFAULTS.spindleSpeed,
-    safeZ: existing?.safeZ ?? DEFAULTS.safeZ,
-    depth: existing?.depth ?? modelDepth(preSelectedEnts) ?? DEFAULTS.depth,
-    stepdown: existing?.stepdown ?? DEFAULTS.stepdown,
-    peckDepth: existing?.peckDepth ?? DEFAULTS.peckDepth,
-    pocketBoundaryMode: (existing?.regions?.length ? "regions" : "entities") as
+    toolNumber: finish?.toolNumber ?? DEFAULTS.toolNumber,
+    diameter: finish?.diameter ?? DEFAULTS.diameter,
+    vAngle: finish?.vAngle ?? DEFAULTS.vAngle,
+    tipDiameter: finish?.tipDiameter ?? DEFAULTS.tipDiameter,
+    tipAngle: finish?.tipAngle ?? DEFAULTS.tipAngle,
+    feedrate: finish?.feedrate ?? DEFAULTS.feedrate,
+    plungeRate: finish?.plungeRate ?? DEFAULTS.plungeRate,
+    spindleSpeed: finish?.spindleSpeed ?? DEFAULTS.spindleSpeed,
+    safeZ: finish?.safeZ ?? DEFAULTS.safeZ,
+    depth: finish?.depth ?? modelDepth(preSelectedEnts) ?? DEFAULTS.depth,
+    stepdown: finish?.stepdown ?? DEFAULTS.stepdown,
+    peckDepth: finish?.peckDepth ?? DEFAULTS.peckDepth,
+    pocketBoundaryMode: (finish?.regions?.length ? "regions" : "entities") as
       | "regions"
       | "entities",
-    finishPass: existing?.finishPass ?? false,
-    finishAllowance: existing?.finishAllowance ?? DEFAULTS.finishAllowance,
-    restToolDiameter: existing?.restToolDiameter ?? 0,
-    faceTarget: existing?.faceTarget ?? "stock",
-    faceOverhang: existing?.faceOverhang ?? 0,
-    faceDirection: existing?.faceDirection ?? "x",
-    chamferWidth: existing?.chamferWidth ?? DEFAULTS.chamferWidth,
-    chamferSide: (existing?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
-    sharpenCorners: existing?.sharpenCorners ?? false,
-    vStep: existing?.vStep ?? DEFAULTS.vStep,
-    vHopClearance: existing?.vHopClearance ?? 0,
-    coolant: (existing?.coolant ?? DEFAULTS.coolant) as CoolantMode,
-    entityIds: new Set<string>(existing?.entityIds ?? [...preSelected]),
-    islandIds: new Set<string>(existing?.islandIds ?? []),
-    followPattern: existing?.followPattern ?? true,
-    face: (existing?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
-    regionSeeds: existing?.regions?.length
-      ? seedsFromRegions(doc, existing.regions)
-      : existing && comboOf(existing) === "pocket"
-        ? legacyPocketSeeds(existing, doc)
+    finishPass: finish?.finishPass ?? false,
+    finishAllowance: finish?.finishAllowance ?? DEFAULTS.finishAllowance,
+    restToolDiameter: finish?.restToolDiameter ?? 0,
+    faceTarget: finish?.faceTarget ?? "stock",
+    faceOverhang: finish?.faceOverhang ?? 0,
+    faceDirection: finish?.faceDirection ?? "x",
+    chamferWidth: finish?.chamferWidth ?? DEFAULTS.chamferWidth,
+    chamferSide: (finish?.chamferSide ?? DEFAULTS.chamferSide) as ChamferSide,
+    sharpenCorners: finish?.sharpenCorners ?? false,
+    vStep: finish?.vStep ?? DEFAULTS.vStep,
+    vHopClearance: finish?.vHopClearance ?? 0,
+    coolant: (finish?.coolant ?? DEFAULTS.coolant) as CoolantMode,
+    entityIds: new Set<string>(finish?.entityIds ?? [...preSelected]),
+    islandIds: new Set<string>(finish?.islandIds ?? []),
+    followPattern: finish?.followPattern ?? true,
+    face: (finish?.face === "bottom" ? "bottom" : "top") as "top" | "bottom",
+    regionSeeds: finish?.regions?.length
+      ? seedsFromRegions(doc, finish.regions)
+      : finish && comboOf(finish, doc) === "pocket"
+        ? legacyPocketSeeds(finish, doc)
         : ([] as Vec2[]),
-    tabsEnabled: existing?.tabs?.enabled ?? false,
-    tabStrategy: (existing?.tabs?.strategy ?? "count") as "count" | "spacing",
-    tabCount: existing?.tabs?.count ?? 4,
-    tabSpacing: existing?.tabs?.spacing ?? 40,
-    tabWidth: existing?.tabs?.width ?? 4,
-    tabHeight: existing?.tabs?.height ?? 2,
-    stepover: existing?.stepover ?? DEFAULTS.stepover,
-    cornerStyle: (existing?.cornerStyle ?? "none") as CornerStyle,
+    tabsEnabled: finish?.tabs?.enabled ?? false,
+    tabStrategy: (finish?.tabs?.strategy ?? "count") as "count" | "spacing",
+    tabCount: finish?.tabs?.count ?? 4,
+    tabSpacing: finish?.tabs?.spacing ?? 40,
+    tabWidth: finish?.tabs?.width ?? 4,
+    tabHeight: finish?.tabs?.height ?? 2,
+    stepover: finish?.stepover ?? DEFAULTS.stepover,
+    cornerStyle: (finish?.cornerStyle ?? "none") as CornerStyle,
     // New profiles default to climb (best on rigid CNC); an existing profile
     // without the field defaults to whatever its raw winding already cuts, so
     // re-applying an old op doesn't silently flip its direction.
     cutDirection:
-      existing?.cutDirection ?? (existing?.side === "outside" ? "conventional" : "climb"),
-    rampAngle: existing?.rampAngle,
-    pocketStrategy: (existing?.pocketStrategy ?? "offset") as "offset" | "adaptive" | "raster",
-    leadInType: (existing?.leadIn?.type ?? "none") as LeadType,
-    leadInLen: existing?.leadIn?.length ?? 2,
-    leadOutType: (existing?.leadOut?.type ?? "none") as LeadType,
-    leadOutLen: existing?.leadOut?.length ?? 2,
+      finish?.cutDirection ?? (finish?.side === "outside" ? "conventional" : "climb"),
+    rampAngle: finish?.rampAngle,
+    pocketStrategy: (finish?.pocketStrategy ?? "offset") as "offset" | "adaptive" | "raster",
+    leadInType: (finish?.leadIn?.type ?? "none") as LeadType,
+    leadInLen: finish?.leadIn?.length ?? 2,
+    leadOutType: (finish?.leadOut?.type ?? "none") as LeadType,
+    leadOutLen: finish?.leadOut?.length ?? 2,
     // A score/fold marks the surface, not through it — seed a low default power
     // for a new one (a full-power score would burn through the fold line).
-    laserPower: existing?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
-    laserPasses: existing?.laserPasses ?? DEFAULTS.laserPasses,
-    kerfWidth: existing?.kerfWidth ?? DEFAULTS.kerfWidth,
-    laserFill: existing?.laserFill ?? false,
-    laserFillSpacing: existing?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
-    laserOverscan: existing?.laserOverscan ?? DEFAULTS.laserOverscan,
-    airAssist: existing?.airAssist ?? false,
-    laserOverride: existing?.laserOverride ?? false,
+    laserPower: finish?.laserPower ?? (initialCombo === "score" ? 15 : DEFAULTS.laserPower),
+    laserPasses: finish?.laserPasses ?? DEFAULTS.laserPasses,
+    kerfWidth: finish?.kerfWidth ?? DEFAULTS.kerfWidth,
+    laserFill: finish?.laserFill ?? false,
+    laserFillSpacing: finish?.laserFillSpacing ?? DEFAULTS.laserFillSpacing,
+    laserOverscan: finish?.laserOverscan ?? DEFAULTS.laserOverscan,
+    airAssist: finish?.airAssist ?? false,
+    laserOverride: finish?.laserOverride ?? false,
     // Laser wants a fine line interval (≈ beam width); a mill relief's stepover
     // scales with the bit — Vectric's 8–12% of cutter diameter is the scallop/
     // speed balance (a fixed fine value is a needlessly long cut with a wide
     // bit). The fraction lives with the cusp calculator that reports on it.
     rasterLineInterval:
-      existing?.rasterLineInterval ??
+      finish?.rasterLineInterval ??
       (isLaser
         ? DEFAULTS.rasterLineInterval
-        : Math.max(0.05, (existing?.diameter ?? DEFAULTS.diameter) * FINISH_STEPOVER_FRACTION)),
-    rasterDotPitch: existing?.rasterDotPitch ?? 0,
-    rasterMinPower: existing?.rasterMinPower ?? DEFAULTS.rasterMinPower,
-    rasterInvert: existing?.rasterInvert ?? false,
-    rasterDither: existing?.rasterDither ?? "none",
-    reliefGamma: existing?.reliefGamma ?? 1,
-    halftone: existing?.halftone ?? false,
-    halftoneLand: existing?.halftoneLand ?? DEFAULTS.halftoneLand,
-    reliefSteepPass: existing?.reliefSteepPass ?? false,
-    paramExprs: existing?.paramExprs ? { ...existing.paramExprs } : {},
+        : Math.max(0.05, (finish?.diameter ?? DEFAULTS.diameter) * FINISH_STEPOVER_FRACTION)),
+    rasterDotPitch: finish?.rasterDotPitch ?? 0,
+    rasterMinPower: finish?.rasterMinPower ?? DEFAULTS.rasterMinPower,
+    rasterInvert: finish?.rasterInvert ?? false,
+    rasterDither: finish?.rasterDither ?? "none",
+    reliefGamma: finish?.reliefGamma ?? 1,
+    halftone: finish?.halftone ?? false,
+    halftoneLand: finish?.halftoneLand ?? DEFAULTS.halftoneLand,
+    reliefSteepPass: finish?.reliefSteepPass ?? false,
+    reliefRough: isRelief
+      ? {
+          toolId: rough?.toolId,
+          toolType: (rough?.toolType ?? "end-mill") as ToolType,
+          toolNumber: rough?.toolNumber ?? DEFAULTS.toolNumber,
+          diameter: rough?.diameter ?? DEFAULTS.diameter,
+          vAngle: rough?.vAngle ?? DEFAULTS.vAngle,
+          tipDiameter: rough?.tipDiameter ?? DEFAULTS.tipDiameter,
+          tipAngle: rough?.tipAngle ?? DEFAULTS.tipAngle,
+          feedrate: rough?.feedrate ?? DEFAULTS.feedrate,
+          plungeRate: rough?.plungeRate ?? DEFAULTS.plungeRate,
+          spindleSpeed: rough?.spindleSpeed ?? DEFAULTS.spindleSpeed,
+          safeZ: rough?.safeZ ?? DEFAULTS.safeZ,
+          stepdown: rough?.stepdown ?? DEFAULTS.stepdown,
+          stepover: rough?.stepover ?? DEFAULTS.stepover,
+          finishAllowance: rough?.finishAllowance ?? DEFAULTS.finishAllowance,
+          rampAngle: rough?.rampAngle,
+          paramExprs: rough?.paramExprs ? { ...rough.paramExprs } : {},
+        }
+      : null,
+    // A new relief defaults to including the roughing pass; editing one reflects
+    // whether a roughing op actually exists.
+    includeRough: isRelief && (existing === null ? true : rough !== null),
+    paramExprs: finish?.paramExprs ? { ...finish.paramExprs } : {},
   };
 }
 
