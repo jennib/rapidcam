@@ -19,10 +19,12 @@ import { OP_TYPE_BY_COMBO, labelFor, opTypesFor } from "../opTypeInfo";
 import { opTypeDiagram } from "../opTypeDiagram";
 import { regionAtPoint } from "../../../cam/regions";
 import { nextId } from "../../../model/ids";
+import { findReliefPair } from "../../../cam/reliefOps";
 import { type OpState, OpDialogEvents, createInitialOpState } from "./opDialogState";
 import { dField, buildDialogShell } from "./dialogDom";
 import { buildToolSection } from "./sections/toolSection";
 import { buildCutSection } from "./sections/cutSection";
+import { buildReliefRoughSection } from "./sections/reliefRoughSection";
 import { buildLaserSection } from "./sections/laserSection";
 import { buildTabsSection } from "./sections/tabsSection";
 import { buildLeadSection } from "./sections/leadSection";
@@ -141,6 +143,10 @@ export function openOpDialog(options: OpDialogOptions): void {
   const cut = buildCutSection(doc, state, events);
   body.appendChild(cut.root);
 
+  // Roughing stage — a 3-D Relief's second tool + stepdown/stepover/allowance.
+  const rough = buildReliefRoughSection(doc, state, isNew);
+  body.appendChild(rough.root);
+
   // Laser Section
   const laser = buildLaserSection(doc, state, events);
   if (!isLaser) laser.root.style.display = "none";
@@ -198,6 +204,7 @@ export function openOpDialog(options: OpDialogOptions): void {
 
   const updateAllSections = () => {
     cut.update();
+    rough.update();
     if (isLaser) laser.update();
     if (!isLaser) {
       tabs.update();
@@ -297,11 +304,13 @@ export function openOpDialog(options: OpDialogOptions): void {
     } else if (state.combo === "engrave") {
       type = "engrave";
       side = "outside";
+    } else if (state.combo === "relief") {
+      // The merged relief job writes its FINISH op here (type "engrave"); the
+      // roughing op is appended below from state.reliefRough.
+      type = "engrave";
+      side = "outside";
     } else if (state.combo === "score") {
       type = "score";
-      side = "outside";
-    } else if (state.combo === "relief-rough") {
-      type = "relief-rough";
       side = "outside";
     } else if (state.combo === "face") {
       type = "face";
@@ -312,17 +321,31 @@ export function openOpDialog(options: OpDialogOptions): void {
     }
 
     const isProfile = type === "profile";
-    const reliefRough = type === "relief-rough";
     // Image engrave: laser raster OR mill relief — both carry the same raster
     // resolution fields (rasterLineInterval/DotPitch/Invert).
     const imageEngrave = type === "engrave" && opTargetsImage(state.entityIds);
     const raster = isLaser && imageEngrave;
     const rasterFields = imageEngrave;
-    // Invert / tone curve apply to both the mill relief FINISH and its roughing.
-    const reliefImageFields = imageEngrave || reliefRough;
+    // Invert / tone curve apply to the mill relief finish.
+    const reliefImageFields = imageEngrave;
+
+    // A relief edits two ops; `existing` may be either one. Track the pair so the
+    // finish updates in place and the rough is added/updated/removed.
+    const existingFinish: CAMOperation | null =
+      state.combo === "relief" && existing
+        ? existing.type === "engrave"
+          ? existing
+          : findReliefPair(existing, doc)
+        : existing;
+    const existingRough: CAMOperation | null =
+      state.combo === "relief" && existing
+        ? existing.type === "relief-rough"
+          ? existing
+          : findReliefPair(existing, doc)
+        : null;
 
     const op: CAMOperation = {
-      id: existing?.id ?? nextId("cam"),
+      id: existingFinish?.id ?? nextId("cam"),
       name: state.name || autoName(state.combo, doc),
       type,
       side,
@@ -354,19 +377,15 @@ export function openOpDialog(options: OpDialogOptions): void {
         (state.cornerStyle === "dogbone" || state.cornerStyle === "tbone")
           ? state.cornerStyle
           : undefined,
-      // Plunge ramp angle override — only for ops that ramp (pocket, relief-rough).
+      // Plunge ramp angle override — only for ops that ramp (pocket; a relief's
+      // ramp lives on its roughing op, written below).
       rampAngle:
-        (state.combo === "pocket" || state.combo === "relief-rough") &&
-        state.rampAngle !== undefined
-          ? state.rampAngle
-          : undefined,
+        state.combo === "pocket" && state.rampAngle !== undefined ? state.rampAngle : undefined,
       // Cut direction — mill profile contours only (a laser cut has no climb/conventional).
       cutDirection: type === "profile" && !isLaser ? state.cutDirection : undefined,
-      // Roughing always leaves an allowance for the finish pass (implicit, no checkbox).
+      // A finishing lap leaves a wall skin for the finish pass.
       finishAllowance:
-        ((type === "profile" || type === "pocket") && state.finishPass) || reliefRough
-          ? state.finishAllowance
-          : undefined,
+        (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
       chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
       chamferSide: type === "chamfer" ? state.chamferSide : undefined,
       sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
@@ -378,10 +397,7 @@ export function openOpDialog(options: OpDialogOptions): void {
       faceTarget: type === "face" ? state.faceTarget : undefined,
       faceOverhang: type === "face" && state.faceOverhang > 0 ? state.faceOverhang : undefined,
       faceDirection: type === "face" ? state.faceDirection : undefined,
-      restToolDiameter:
-        (type === "pocket" || type === "relief-rough") && state.restToolDiameter > 0
-          ? state.restToolDiameter
-          : undefined,
+      restToolDiameter: type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
       regions: regionBased ? refsFromSeeds(doc, state.regionSeeds) : undefined,
       tabs: isProfile
         ? {
@@ -456,11 +472,65 @@ export function openOpDialog(options: OpDialogOptions): void {
           : undefined,
     };
 
-    if (existing) {
-      const idx = doc.operations.findIndex((o) => o.id === existing.id);
+    if (existingFinish) {
+      const idx = doc.operations.findIndex((o) => o.id === existingFinish.id);
       if (idx >= 0) doc.operations[idx] = op;
     } else {
       doc.operations.push(op);
+    }
+
+    // The merged relief also writes (or removes) its roughing pass, sharing the
+    // one model (depth / invert / tone curve) so the two passes cannot drift.
+    if (state.combo === "relief") {
+      const rr = state.reliefRough;
+      const roughOp: CAMOperation | null =
+        state.includeRough && rr
+          ? {
+              id: existingRough?.id ?? nextId("cam"),
+              name: `${state.name || autoName(state.combo, doc)} Rough`,
+              type: "relief-rough",
+              side: "outside",
+              entityIds: ids,
+              toolId: rr.toolId,
+              toolType: rr.toolType,
+              toolNumber: rr.toolNumber,
+              diameter: rr.diameter,
+              vAngle:
+                rr.toolType === "v-bit" || rr.toolType === "tapered-ball-nose" ? rr.vAngle : undefined,
+              tipDiameter: rr.toolType === "tapered-ball-nose" ? rr.tipDiameter : undefined,
+              tipAngle: rr.toolType === "drill" ? rr.tipAngle : undefined,
+              feedrate: rr.feedrate,
+              plungeRate: rr.plungeRate,
+              spindleSpeed: rr.spindleSpeed,
+              safeZ: rr.safeZ,
+              depth: state.depth,
+              stepdown: rr.stepdown,
+              stepover: rr.stepover,
+              finishAllowance: rr.finishAllowance,
+              rampAngle: rr.rampAngle,
+              rasterInvert: state.rasterInvert ? true : undefined,
+              reliefGamma:
+                state.reliefGamma > 0 && state.reliefGamma !== 1 ? state.reliefGamma : undefined,
+              paramExprs: (() => {
+                const out: Record<string, string> = { ...rr.paramExprs };
+                if (state.paramExprs.depth) out.depth = state.paramExprs.depth; // shared model
+                return Object.keys(out).length > 0 ? out : undefined;
+              })(),
+            }
+          : null;
+
+      if (roughOp) {
+        const ridx = existingRough ? doc.operations.findIndex((o) => o.id === existingRough.id) : -1;
+        if (ridx >= 0) {
+          doc.operations[ridx] = roughOp;
+        } else {
+          // Insert the rough immediately before the finish so it cuts first.
+          const fidx = doc.operations.findIndex((o) => o.id === op.id);
+          doc.operations.splice(fidx >= 0 ? fidx : doc.operations.length, 0, roughOp);
+        }
+      } else if (existingRough) {
+        doc.operations = doc.operations.filter((o) => o.id !== existingRough.id);
+      }
     }
     doc.emitChange();
     renderOps?.();

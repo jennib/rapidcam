@@ -10,7 +10,7 @@ import {
   DEFAULTS,
 } from "../../../../cam/types";
 import { loadLibrary, addTool } from "../../../../cam/toolLibrary";
-import type { OpState, OpDialogEvents } from "../opDialogState";
+import type { ToolState, OpDialogEvents } from "../opDialogState";
 import {
   dSection,
   dField,
@@ -20,11 +20,12 @@ import {
 
 export function buildToolSection(
   doc: CADDocument,
-  state: OpState,
+  state: ToolState,
   events: OpDialogEvents,
   isNew: boolean,
+  title = "Tool",
 ): HTMLElement {
-  const toolSec = dSection("Tool");
+  const toolSec = dSection(title);
   const toolSectionTitle = toolSec.querySelector(".tp-dialog-section-title") as HTMLElement;
   const toolArrow = document.createElement("span");
   toolArrow.style.cssText = "float:right;margin-left:6px;font-style:normal;";

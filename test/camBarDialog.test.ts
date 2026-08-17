@@ -296,7 +296,7 @@ describe("Add-Toolpath dialog: laser documents", () => {
     ].map((o) => (o as HTMLOptionElement).value);
 
     expect(values).toEqual(
-      expect.arrayContaining(["pocket", "drill", "vcarve", "chamfer", "relief-rough"]),
+      expect.arrayContaining(["pocket", "drill", "vcarve", "chamfer", "relief"]),
     );
     expect(values).not.toContain("score");
   });
@@ -468,19 +468,17 @@ describe("Add-Toolpath dialog: the type caption", () => {
     expect(svg()!.innerHTML).not.toBe(before);
   });
 
-  test("only Relief Roughing gets a pairing line, and it names the Engrave pass", () => {
-    // The gap that prompted this: nothing said relief roughing leaves a
-    // staircase and needs a second op to become a surface.
+  test("no op needs a pairing line anymore — a relief owns both passes", () => {
+    // The gap that prompted this was that nothing said relief roughing left a
+    // staircase needing a second op. The merged 3-D Relief now writes both, so
+    // no type carries a "pairs with …" strip.
     const dialog = openDialog(millDoc());
     expect(shown(pairs(dialog))).toBe(false);
 
-    selectType(dialog, "relief-rough");
-    expect(shown(pairs(dialog))).toBe(true);
-    expect(pairs(dialog).textContent).toMatch(/Engrave/);
-    expect(pairs(dialog).textContent).toMatch(/ball-nose/);
-
-    selectType(dialog, "pocket");
-    expect(shown(pairs(dialog))).toBe(false);
+    for (const combo of ["engrave", "relief", "pocket"]) {
+      selectType(dialog, combo);
+      expect(shown(pairs(dialog))).toBe(false);
+    }
   });
 });
 

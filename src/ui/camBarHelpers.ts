@@ -22,6 +22,7 @@ import type { CAMOperation, RegionRef } from "../cam/types";
 import { collectClosedLoops } from "../cam/loops";
 import { OP_TYPES, OP_TYPE_BY_COMBO } from "./camBar/opTypeInfo";
 import { interiorPoint, resolveRegion, seedsFromEntityIds } from "../cam/regions";
+import { reliefImageIds } from "../cam/reliefOps";
 
 export type OpCombo =
   | "profile-outside"
@@ -31,7 +32,7 @@ export type OpCombo =
   | "drill"
   | "chamfer"
   | "vcarve"
-  | "relief-rough"
+  | "relief"
   | "score"
   | "face";
 
@@ -46,13 +47,18 @@ export const AUTO_NAME_RE = new RegExp(
   `^(${OP_TYPES.map((t) => t.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")}) \\d+$`,
 );
 
-export function comboOf(op: CAMOperation): OpCombo {
+export function comboOf(op: CAMOperation, doc?: CADDocument): OpCombo {
   if (op.type === "profile") return op.side === "outside" ? "profile-outside" : "profile-inside";
+  // A relief is one merged job: its roughing pass OR its finish pass (an engrave
+  // on an image) both present as the "3-D Relief" type. Without a doc an engrave
+  // is just an engrave.
+  if (op.type === "relief-rough") return "relief";
+  if (op.type === "engrave" && doc && reliefImageIds(op, doc).length > 0) return "relief";
   return op.type as OpCombo;
 }
 
 export function autoName(combo: OpCombo, doc: CADDocument): string {
-  const n = doc.operations.filter((o) => comboOf(o) === combo).length + 1;
+  const n = doc.operations.filter((o) => comboOf(o, doc) === combo).length + 1;
   return `${OP_TYPE_BY_COMBO[combo].name} ${n}`;
 }
 
@@ -70,8 +76,9 @@ export function defaultCombo(
   existing: CAMOperation | null,
   preSelected: Entity[],
   isLaser: boolean,
+  doc: CADDocument,
 ): OpCombo {
-  let combo: OpCombo = existing ? comboOf(existing) : "profile-outside";
+  let combo: OpCombo = existing ? comboOf(existing, doc) : "profile-outside";
   // Laser has no spindle/Z ops; keep only beam-capable types.
   if (
     isLaser &&
@@ -81,7 +88,8 @@ export function defaultCombo(
     combo !== "score"
   )
     combo = "profile-outside";
-  if (!existing && preSelected.some((e) => e instanceof RasterImageEntity)) combo = "engrave";
+  // A new op on an image starts as the merged relief job, not a bare engrave.
+  if (!existing && preSelected.some((e) => e instanceof RasterImageEntity)) combo = "relief";
   return combo;
 }
 
@@ -134,7 +142,7 @@ export function checkOpSelection(
   if (sel.some((e) => e instanceof RasterImageEntity))
     return {
       validIds: [],
-      error: "An image can only be engraved — set this toolpath's type to Engrave.",
+      error: "An image can only be a relief or engrave — set this toolpath's type to 3-D Relief.",
     };
   if (sel.length > 0)
     return {
@@ -191,8 +199,8 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
       // V-carve fills closed regions (text is the main use case), but takes the
       // same chained-open-curve path as profile — see isContourTarget.
       return isContourTarget(e);
-    case "relief-rough":
-      // Roughing (like the relief finish) only targets a greyscale image.
+    case "relief":
+      // A relief (rough + finish) only targets a greyscale image.
       return e instanceof RasterImageEntity;
     case "drill":
       return e instanceof CircleEntity;

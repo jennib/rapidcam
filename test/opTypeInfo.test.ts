@@ -35,7 +35,7 @@ const ALL_COMBOS: OpCombo[] = [
   "chamfer",
   "vcarve",
   "engrave",
-  "relief-rough",
+  "relief",
   "drill",
   "face",
   "score",
@@ -113,15 +113,12 @@ describe("machine lists match what the app can actually do", () => {
 });
 
 describe("the blurbs' claims hold against the code", () => {
-  test("only relief-rough claims to need a partner op", () => {
-    // If another op grows a required pairing, this fails and someone has to
-    // decide whether the card should say so — which is the point.
-    expect(OP_TYPES.filter((t) => t.pairsWith).map((t) => t.combo)).toEqual(["relief-rough"]);
-  });
-
-  test("relief roughing's partner really is an Engrave on the same image", () => {
-    expect(OP_TYPE_BY_COMBO["relief-rough"].pairsWith).toMatch(/Engrave/);
-    expect(OP_TYPE_BY_COMBO["relief-rough"].pairsWith).toMatch(/ball-nose/);
+  test("no op claims to need a partner op — a relief owns both passes", () => {
+    // The merged 3-D Relief writes its own roughing + finishing passes, so no
+    // type has to say "pairs with …" anymore. If one grows a required pairing
+    // again, this fails and someone has to decide whether the card should say
+    // so — which is the point.
+    expect(OP_TYPES.filter((t) => t.pairsWith).map((t) => t.combo)).toEqual([]);
   });
 
   test("facing claims to need no geometry — and isValidFor accepts none", () => {

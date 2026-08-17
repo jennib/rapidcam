@@ -4,8 +4,8 @@
 import type { CADDocument } from "../../model/document";
 import { opFace } from "../../cam/flip";
 import { opPatternTargetCount } from "../../cam/patternExpand";
-import { RasterImageEntity } from "../../model/entities";
 import { type CAMOperation, resolveOpLaser, DEFAULTS } from "../../cam/types";
+import { shareReliefImage } from "../../cam/reliefOps";
 import { formatLength, formatFeed } from "../../core/units";
 import { formatDuration } from "../../cam/timeEstimate";
 import { getBeamLayer } from "./dialog/dialogDom";
@@ -52,14 +52,8 @@ export interface OpItemContext extends OpItemCallbacks {
  */
 export function reliefRoughGougeWarning(op: CAMOperation, doc: CADDocument): string | null {
   if (op.type !== "relief-rough") return null;
-  const shared = new Set(op.entityIds);
   const finishDepths = doc.operations
-    .filter(
-      (o) =>
-        o.type === "engrave" &&
-        o.entityIds.some((id) => shared.has(id)) &&
-        doc.entities.some((e) => e.id && shared.has(e.id) && e instanceof RasterImageEntity),
-    )
+    .filter((o) => o.type === "engrave" && shareReliefImage(op, o, doc))
     .map((o) => Math.abs(o.depth));
   if (finishDepths.length === 0) return null;
   const roughFloor = Math.abs(op.depth) - Math.max(0, op.finishAllowance ?? 0);

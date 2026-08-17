@@ -90,9 +90,9 @@ const DRAW: Record<OpCombo, (svg: SVGSVGElement) => void> = {
     slab(svg);
     svg.appendChild(node("rect", { x: 20, y: 24, width: W - 40, height: 7, rx: 1 }, CUT));
   },
-  // The staircase, and — dashed — the smooth surface it is NOT cutting. The one
-  // diagram whose job is to say "unfinished".
-  "relief-rough": (svg) => {
+  // The same staircase as relief roughing: the job clears the steps, and the
+  // dashed line is the smooth surface the finish pass then cuts.
+  relief: (svg) => {
     slab(svg);
     for (const [x, d] of [
       [16, 8],

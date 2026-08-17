@@ -20,6 +20,7 @@ import {
 import type { CAMOperation } from "../src/cam/types";
 
 const img = () => new RasterImageEntity("img-x", { x: 0, y: 0 }, 10, 10, 0);
+const doc = () => new CADDocument({ width: 100, height: 80 });
 
 test("isValidFor: an image is engrave-only (not profile/pocket/vcarve/drill)", () => {
   const e = img();
@@ -30,18 +31,22 @@ test("isValidFor: an image is engrave-only (not profile/pocket/vcarve/drill)", (
   expect(isValidFor(e, "drill")).toBe(false);
 });
 
-test("defaultCombo: a new op with an image selected starts on Engrave", () => {
+test("defaultCombo: a new op with an image selected starts on 3-D Relief", () => {
   // This is the regression guard: defaulting to a profile op would strip the
   // image as invalid-for-profile and leave the op with no geometry.
-  expect(defaultCombo(null, [img()], true)).toBe("engrave");
-  expect(defaultCombo(null, [img()], false)).toBe("engrave");
-  // Mixed selection that includes an image still defaults to engrave.
-  expect(defaultCombo(null, [new CircleEntity({ x: 0, y: 0 }, 5), img()], true)).toBe("engrave");
+  expect(defaultCombo(null, [img()], true, doc())).toBe("relief");
+  expect(defaultCombo(null, [img()], false, doc())).toBe("relief");
+  // Mixed selection that includes an image still defaults to relief.
+  expect(defaultCombo(null, [new CircleEntity({ x: 0, y: 0 }, 5), img()], true, doc())).toBe(
+    "relief",
+  );
 });
 
 test("defaultCombo: a new op without an image starts on Cut (profile-outside)", () => {
-  expect(defaultCombo(null, [new CircleEntity({ x: 0, y: 0 }, 5)], true)).toBe("profile-outside");
-  expect(defaultCombo(null, [], false)).toBe("profile-outside");
+  expect(defaultCombo(null, [new CircleEntity({ x: 0, y: 0 }, 5)], true, doc())).toBe(
+    "profile-outside",
+  );
+  expect(defaultCombo(null, [], false, doc())).toBe("profile-outside");
 });
 
 test("checkOpSelection: filters to the valid subset, keeping invalid entities selectable elsewhere", () => {
@@ -59,13 +64,14 @@ test("checkOpSelection: filters to the valid subset, keeping invalid entities se
   expect(prof.error).toBeNull();
 });
 
-test("checkOpSelection: an image-only selection on a non-engrave op explains why", () => {
+test("checkOpSelection: an image-only selection on a non-image op explains why", () => {
   const image = img();
   const r = checkOpSelection([image], [image.id], "profile-outside");
   expect(r.validIds).toEqual([]);
-  expect(r.error).toMatch(/image can only be engraved/i);
-  // …and is fine on Engrave.
+  expect(r.error).toMatch(/image can only be a relief/i);
+  // …and is fine on Engrave and 3-D Relief.
   expect(checkOpSelection([image], [image.id], "engrave").error).toBeNull();
+  expect(checkOpSelection([image], [image.id], "relief").error).toBeNull();
 });
 
 test("checkOpSelection: distinguishes 'nothing selected' from 'nothing usable'", () => {
@@ -78,12 +84,12 @@ test("checkOpSelection: distinguishes 'nothing selected' from 'nothing usable'",
 });
 
 test("defaultCombo: editing an existing op keeps its own type (image default is new-op only)", () => {
-  const pocket = { type: "pocket" } as CAMOperation;
-  expect(defaultCombo(pocket, [img()], false)).toBe("pocket");
+  const pocket = { type: "pocket", entityIds: [] as string[] } as CAMOperation;
+  expect(defaultCombo(pocket, [img()], false, doc())).toBe("pocket");
   // …but a laser doc coerces a non-beam existing op to a beam-capable one.
-  expect(defaultCombo(pocket, [], true)).toBe("profile-outside");
-  const eng = { type: "engrave" } as CAMOperation;
-  expect(defaultCombo(eng, [], true)).toBe("engrave");
+  expect(defaultCombo(pocket, [], true, doc())).toBe("profile-outside");
+  const eng = { type: "engrave", entityIds: [] as string[] } as CAMOperation;
+  expect(defaultCombo(eng, [], true, doc())).toBe("engrave");
 });
 
 test("comboOf splits profile by side", () => {
@@ -91,6 +97,18 @@ test("comboOf splits profile by side", () => {
   expect(comboOf({ ...base, side: "outside" } as CAMOperation)).toBe("profile-outside");
   expect(comboOf({ ...base, side: "inside" } as CAMOperation)).toBe("profile-inside");
   expect(comboOf({ type: "pocket" } as CAMOperation)).toBe("pocket");
+});
+
+test("comboOf: a relief rough and an image engrave both present as 3-D Relief", () => {
+  const d = doc();
+  const image = d.add(new RasterImageEntity("img-y", { x: 0, y: 0 }, 10, 10, 0));
+  const rough = { type: "relief-rough", entityIds: [image.id] } as CAMOperation;
+  const finish = { type: "engrave", entityIds: [image.id] } as CAMOperation;
+  const lineEngrave = { type: "engrave", entityIds: [] as string[] } as CAMOperation;
+  expect(comboOf(rough, d)).toBe("relief");
+  expect(comboOf(finish, d)).toBe("relief");
+  expect(comboOf(lineEngrave, d)).toBe("engrave");
+  expect(comboOf(lineEngrave)).toBe("engrave"); // no doc → a plain engrave
 });
 
 test("isValidFor: drill accepts only circles", () => {

@@ -51,7 +51,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
 }
 import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
 import { adaptiveClear } from "./adaptive";
-import { restRegions, restCentreRegions, restArea, reliefRest } from "./rest";
+import { restRegions, restCentreRegions, restArea, reliefRest, reliefStockFloor } from "./rest";
 import { facePlan, type Rect } from "./facing";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -1261,6 +1261,7 @@ function engraveArc(
 function reliefImage(
   ent: RasterImageEntity,
   rawOp: CAMOperation,
+  priorOps: CAMOperation[],
   ox: number,
   oy: number,
   zOff: number,
@@ -1295,7 +1296,39 @@ function reliefImage(
   // flank cuts through material the centre sample said was clear.
   const contact = toolContactField(field, op, maxDepth);
   const { cols, colPitch, rows } = contact;
-  const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
+
+  // Which cells the raster gives up on, and the contours that finish them
+  // instead. Needed up here — before the header and the pass loop — so the stock
+  // model can size the staircase over the cells the raster actually cuts.
+  const steep = steepSplit(contact, op, maxDepth);
+
+  // The in-process stock floor left by any relief-rough ops ahead of this one.
+  // With none, the stock is the uncut blank and every expression below reduces to
+  // the pre-stock-model behaviour — a single-op relief stays byte-identical.
+  const hasStock = priorOps.length > 0;
+  const stockFloor = hasStock ? reliefStockFloor(field, grid, enc, priorOps, maxDepth) : null;
+  let maxRemainingMM = 0;
+  let withinAllowance = 0;
+  let overAllowance = 0;
+  let rasterCells = 0;
+  if (stockFloor) {
+    const allowanceMM = Math.max(0, priorOps[0].finishAllowance ?? 0);
+    for (let r = 0; r < rows.length; r++) {
+      const sr = stockFloor.rows[r].levels;
+      const row = rows[r];
+      for (let c = 0; c < cols; c++) {
+        if (steep.kind === "split" && steep.steep(r, c)) continue; // contours own these
+        rasterCells++;
+        const remaining = Math.max(0, (row.levels[c] - sr[c]) * maxDepth);
+        if (remaining > maxRemainingMM) maxRemainingMM = remaining;
+        if (remaining <= allowanceMM + 1e-9) withinAllowance++;
+        else overAllowance++;
+      }
+    }
+  }
+  // Size the staircase to the stock, not to the model: the deepest bite the
+  // finish must still take. No stock model → the nominal depth, exactly as before.
+  const passes = Math.max(1, Math.ceil((hasStock ? maxRemainingMM : maxDepth) / stepdown));
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
 
@@ -1347,10 +1380,8 @@ function reliefImage(
   }
 
   // Which cells the raster gives up on, and the contours that finish them
-  // instead. Computed from the CONTACT field, because both halves are about
-  // where the tool actually rides: the cusp is set by the spacing of adjacent
-  // tool positions, and a contour of that field is already a tool-centre path.
-  const steep = steepSplit(contact, op, maxDepth);
+  // instead — the mask is computed from the CONTACT field (see above), because
+  // both halves are about where the tool actually rides.
   if (steep.kind === "split")
     lines.push(
       `; steep/shallow split: ${steep.cells} of ${steep.total} cells are steeper than the ` +
@@ -1374,17 +1405,43 @@ function reliefImage(
     );
   }
 
+  if (stockFloor) {
+    const allowanceMM = Math.max(0, priorOps[0].finishAllowance ?? 0);
+    const pctWithin = rasterCells > 0 ? Math.round((withinAllowance / rasterCells) * 1000) / 10 : 0;
+    const pctOver = rasterCells > 0 ? Math.round((overAllowance / rasterCells) * 1000) / 10 : 0;
+    lines.push(
+      `; after ${priorOps.map((o) => `"${o.name}"`).join(", ")} (⌀${n(priorOps[0].diameter)}mm ${priorOps[0].toolType}): ` +
+        `${pctWithin}% of this relief holds ≤${n(allowanceMM)}mm, ${pctOver}% holds more — ` +
+        `deepest remaining ${n(maxRemainingMM)}mm, ${passes} ${passes === 1 ? "pass" : "passes"} of ${n(stepdown)}mm`,
+    );
+  }
+
   for (let p = 1; p <= passes; p++) {
-    const passFloor = -Math.min(p * stepdown, maxDepth); // deepest Z this pass may reach
+    // The staircase steps down over the REMAINING stock, not the nominal depth:
+    // with a stock model the first pass starts at the shallowest still-standing
+    // stock and each pass takes at most `stepdown` of new material. Without one,
+    // `stairStart` is `maxDepth` and this reduces to the pre-stock-model staircase.
+    const stairStart = hasStock ? maxRemainingMM : maxDepth;
+    const passFloor = -Math.min(maxDepth - stairStart + p * stepdown, maxDepth); // deepest Z this pass may reach
     // How deep the previous pass already got. A row with nothing below that gets
     // clamped to exactly the Z it is already sitting at, so re-tracing it cuts
     // AIR for the row's whole length — on a halftone, where most of an image is
     // shallower than one stepdown, that was most of every pass after the first.
     // The first pass has nothing behind it and still rides the whole image
     // (blank rows included), so its output is unchanged.
-    const prevReach = (p - 1) * stepdown;
+    const prevReach = maxDepth - stairStart + (p - 1) * stepdown;
     const needsPass = (r: number): boolean =>
       p === 1 || rows[r].levels.some((lv) => lv * maxDepth > prevReach + 1e-9);
+    // A cell the stock model (or a previous finish pass) has already cleared down
+    // to this pass's floor: nothing to cut. Per-cell, so a mixed row no longer
+    // re-traces its already-finished stretches.
+    const passLevel = -passFloor / maxDepth;
+    const prevReachLevel = prevReach / maxDepth;
+    const stockClear = stockFloor
+      ? (r: number, c: number): boolean =>
+          Math.max(stockFloor.rows[r].levels[c], prevReachLevel) >=
+          Math.min(rows[r].levels[c], passLevel) - 1e-9
+      : null;
 
     /**
      * Vertices for rows `from..to` as one continuous boustrophedon, equal-Z
@@ -1407,6 +1464,14 @@ function reliefImage(
         for (let k = 0; k < cols; k++) {
           const c = ltr ? k : cols - 1 - k;
           if (steep.kind === "split" && steep.steep(r, c)) {
+            if (verts.length > 0) runs.push(verts);
+            verts = [];
+            continue;
+          }
+          if (stockClear?.(r, c)) {
+            // Roughing (or an earlier finish pass) already cleared this cell down
+            // to this pass's floor. Break the run exactly like a steep cell does,
+            // so the tool doesn't feed across already-clear ground.
             if (verts.length > 0) runs.push(verts);
             verts = [];
             continue;
@@ -1808,6 +1873,7 @@ function vcarveRegionGcode(
 
 function toolpathBody(
   op: CAMOperation,
+  opsBefore: CAMOperation[],
   doc: CADDocument,
   ox: number,
   oy: number,
@@ -2060,11 +2126,14 @@ function toolpathBody(
     }
 
     if (op.type === "engrave") {
-      if (ent instanceof RasterImageEntity)
+      if (ent instanceof RasterImageEntity) {
+        const priorOps = opsBefore.filter(
+          (p) => p.type === "relief-rough" && p.entityIds.includes(ent.id),
+        );
         // Append element-wise, NOT push(...): a relief can emit 100k+ lines and
         // spreading that as call args overflows the stack (same trap as laser).
-        for (const l of reliefImage(ent, op, ox, oy, zOff)) lines.push(l);
-      else if (ent instanceof LineEntity)
+        for (const l of reliefImage(ent, op, priorOps, ox, oy, zOff)) lines.push(l);
+      } else if (ent instanceof LineEntity)
         lines.push(...engravePoints([ent.a, ent.b], false, op, ox, oy, zOff));
       else if (ent instanceof CircleEntity)
         lines.push(...engraveCircle(ent.center.x, ent.center.y, ent.radius, op, ox, oy, zOff));
@@ -2255,7 +2324,8 @@ export function generateGCode(
   let currentTool: number | null = null;
   let currentSpeed: number | null = null;
 
-  for (const op of ops) {
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
     const toolChanged = op.toolNumber !== currentTool;
     const speedChanged = op.spindleSpeed !== currentSpeed;
     const isFirst = currentTool === null;
@@ -2333,7 +2403,7 @@ export function generateGCode(
       const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);
       lines.push(`; V-Bit effective cut width at ${op.depth}mm: ${width}mm`);
     }
-    for (const l of toolpathBody(op, doc, ox, oy, zOffset, pp, opts.bed)) lines.push(l); // not spread: a relief op can emit 100k+ lines
+    for (const l of toolpathBody(op, ops.slice(0, i), doc, ox, oy, zOffset, pp, opts.bed)) lines.push(l); // not spread: a relief op can emit 100k+ lines
     lines.push("");
   }
 

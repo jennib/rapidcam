@@ -9,7 +9,6 @@ import { clampOpParam, varMap } from "../../../model/variables";
 import { ContextMenu } from "../../contextMenu";
 import { varPickerEntries } from "../../propertiesBar";
 import { opLayerId } from "../../../cam/types";
-import type { OpState } from "./opDialogState";
 
 export function dSection(title: string): HTMLElement {
   const sec = document.createElement("div");
@@ -110,7 +109,7 @@ export interface ParamRowHandle {
  */
 export function paramRow(
   doc: CADDocument,
-  state: OpState,
+  state: { paramExprs: Record<string, string> },
   paramKey: string,
   label: string,
   get: () => number,

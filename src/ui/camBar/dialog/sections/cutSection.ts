@@ -453,20 +453,15 @@ export function buildCutSection(
     // Roughing rasters at the tool's stepover (fraction × diameter) over the
     // depth minus the finish allowance; the finish pass rasters at its line
     // interval over the full depth.
-    const rough = state.combo === "relief-rough";
     // A halftone ignores the stepover field — its rows are the bit's groove width
     // — so estimating off that field would report a job several times the real one.
-    const li = rough
-      ? Math.max(0.05, state.stepover * state.diameter)
-      : state.halftone && state.toolType === "v-bit"
+    const li =
+      state.halftone && state.toolType === "v-bit"
         ? halftonePlan(reliefBit(), maxDepth, state.halftoneLand).rowPitch
         : state.rasterLineInterval > 0
           ? state.rasterLineInterval
           : DEFAULTS.rasterLineInterval;
-    const cutDepth = rough
-      ? Math.max(0, maxDepth - Math.max(0, state.finishAllowance))
-      : maxDepth;
-    const passes = Math.max(1, Math.ceil(cutDepth / stepdown));
+    const passes = Math.max(1, Math.ceil(maxDepth / stepdown));
     const rows = ent.heightMM / li;
     const lenMM = rows * ent.widthMM * passes;
     const mins = state.feedrate > 0 ? lenMM / state.feedrate : 0;
@@ -779,8 +774,8 @@ export function buildCutSection(
   // Relief rows visible only for a mill Engrave op targeting an image; that op
   // also needs a depth-shaping bit, so force a ball-nose if it's a flat end mill.
   const updateReliefVisibility = (): void => {
-    const isFinish = state.combo === "engrave" && opTargetsImage(state.entityIds);
-    const isRough = state.combo === "relief-rough";
+    const isFinish =
+      (state.combo === "engrave" || state.combo === "relief") && opTargetsImage(state.entityIds);
     // Halftoning is a V-bit trick and only applies to the relief FINISH pass.
     const canHalftone = isFinish && state.toolType === "v-bit";
     const halftoning = canHalftone && state.halftone;
@@ -794,15 +789,15 @@ export function buildCutSection(
     for (const r of [cuspRow, cuspNoteRow, steepRow])
       r.style.display = isFinish && !halftoning ? "" : "none";
     reliefDotRow.el.style.display = isFinish ? "" : "none";
-    // Image controls shared by finish + roughing (invert / tone curve / estimate).
+    // Image controls (invert / tone curve / estimate) belong to the relief finish.
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
-      r.style.display = isFinish || isRough ? "" : "none";
+      r.style.display = isFinish ? "" : "none";
     if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit" && state.toolType !== "tapered-ball-nose") {
       events.emitSetToolType("ball-nose");
     }
     reliefGammaInp.title = halftoning ? HALFTONE_GAMMA_TIP : RELIEF_GAMMA_TIP;
     if (halftoning) updateHalftoneInfo();
-    if (isFinish || isRough) updateReliefEstimate();
+    if (isFinish) updateReliefEstimate();
   };
 
   // The halftone row is gated on a V-bit being loaded, and the tool is chosen in
@@ -818,8 +813,7 @@ export function buildCutSection(
     cutSec.style.display = "";
     stepRow.el.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
     peckRow.el.style.display = state.combo === "drill" ? "" : "none";
-    stepoverRow.el.style.display =
-      state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
+    stepoverRow.el.style.display = state.combo === "pocket" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket" ? "" : "none";
 
     const facing = state.combo === "face";
@@ -832,23 +826,22 @@ export function buildCutSection(
     // Rest machining is a clearing idea, so it belongs to the two ops that clear
     // — it was showing on a profile, where it would have been read as a promise
     // and done nothing. The emitter honours it for exactly these two.
-    restRow.el.style.display =
-      state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
+    restRow.el.style.display = state.combo === "pocket" ? "" : "none";
     vStepRow.el.style.display = state.combo === "vcarve" ? "" : "none";
     vHopRow.el.style.display = state.combo === "vcarve" ? "" : "none";
 
     const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
     finishRow.style.display = showFinish ? "" : "none";
-    finishAllowRow.el.style.display =
-      (showFinish && state.finishPass) || state.combo === "relief-rough" ? "" : "none";
+    finishAllowRow.el.style.display = showFinish && state.finishPass ? "" : "none";
     // Corner overcut is a female-feature relief — inside profiles and pockets only.
     cornerRow.style.display =
       state.combo === "profile-inside" || state.combo === "pocket" ? "" : "none";
     // Cut direction — mill profile contours only (a laser beam has no climb/conventional).
     dirRow.style.display = state.combo.startsWith("profile") && !isLaser ? "" : "none";
 
-    // Plunge ramp angle — ops that ramp into the cut (pocket, relief-rough).
-    const showRamp = state.combo === "pocket" || state.combo === "relief-rough";
+    // Plunge ramp angle — ops that ramp into the cut (pocket; a relief's ramp
+    // lives on its roughing stage).
+    const showRamp = state.combo === "pocket";
     rampRow.el.style.display = showRamp ? "" : "none";
     rampRow.inp.placeholder = "auto";
 
@@ -858,15 +851,6 @@ export function buildCutSection(
     // Chamfer and v-carve both need a V-bit (the cut angle comes from the tool).
     if ((state.combo === "chamfer" || state.combo === "vcarve") && state.toolType !== "v-bit") {
       events.emitSetToolType("v-bit");
-    }
-    // Roughing wants a flat tool — reset a depth-shaping bit (often inherited
-    // from the image → Engrave default) to an end mill when switching to it.
-    // The finish needs the depth-shaping bit; roughing does not.
-    if (
-      state.combo === "relief-rough" &&
-      (state.toolType === "ball-nose" || state.toolType === "v-bit" || state.toolType === "tapered-ball-nose")
-    ) {
-      events.emitSetToolType("end-mill");
     }
     events.emitUpdateVBitHint();
   };

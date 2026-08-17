@@ -96,24 +96,18 @@ export const OP_TYPES: readonly OpTypeInfo[] = [
     name: "Engrave",
     label: "Engrave",
     laserLabel: "Engrave (centreline)",
-    // Three behaviours behind one type, and the image one is the surprise.
     blurb:
-      "Traces a line at a fixed depth. Pointed at an image instead, it carves that image as a relief — or, with a V-bit, as a halftone of V-grooves.",
+      "Traces a line at a fixed depth — and, on a laser, engraves a raster image by modulating power per dot.",
     machines: ["mill", "laser"],
   },
   {
-    combo: "relief-rough",
-    name: "Relief Roughing",
-    label: "Relief Roughing (image)",
+    combo: "relief",
+    name: "3-D Relief",
+    label: "3-D Relief (image)",
+    // One job, two stages: it writes a relief-rough pass and an engrave finish on
+    // the same image, sharing one depth/invert/tone-curve model.
     blurb:
-      "Clears the bulk of an image relief in flat steps with a coarse tool, deliberately stopping short of the final surface.",
-    // This is the whole reason the picker exists: relief-rough leaves a
-    // staircase and nothing else. reliefRoughImage's own doc comment says the
-    // finish is "an engrave op on the same image, ball-nose".
-    // One sentence: this sits in a strip under the dropdown, and a paragraph
-    // there pushes the controls the user came for further down a dialog that
-    // already scrolls. The matching-settings detail lives in the format doc.
-    pairsWith: "an Engrave op on the same image (ball-nose) — that pass cuts the actual surface.",
+      "Carves a greyscale image or STL heightfield as a 3-D surface: a roughing pass clears the bulk with a coarse flat tool, then a ball-nose finish cuts the surface. One model, two tools.",
     machines: ["mill"],
   },
   {

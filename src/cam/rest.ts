@@ -25,9 +25,10 @@
 import type { Vec2 } from "../core/vec2";
 import { inflatePathsD, differenceD, intersectD, JoinType, EndType, FillRule } from "clipper2-ts";
 import { signedArea } from "./offset";
-import type { RasterField } from "./rasterEngrave";
+import { rasterField, levelDepthEps, type RasterField, type RasterGrid } from "./rasterEngrave";
 import { toolSweptFloor } from "./toolProfile";
-import type { CAMOperation } from "./types";
+import type { ReliefEncoding } from "./reliefEncoding";
+import { DEFAULTS, type CAMOperation } from "./types";
 
 const toV = (path: { x: number; y: number }[]): Vec2[] => path.map((p) => ({ x: p.x, y: p.y }));
 const ccwize = (pts: Vec2[]): Vec2[] => (signedArea(pts) >= 0 ? pts : [...pts].reverse());
@@ -382,4 +383,124 @@ export function reliefRest(
     total: cols * nRows,
     maxLeftoverMM,
   };
+}
+
+/**
+ * The surface the relief-rough operations ahead of a finish op have already left
+ * on an image, at the finish field's own resolution — the in-process stock floor
+ * the finish pass should not re-cut.
+ *
+ * This is {@link reliefRest} generalised from "one named prior tool" to "every
+ * relief-rough op ahead of me in the job that cut this image". Each rough op
+ * leaves a STAIRCASE, not its swept surface: it clears flat planes at
+ * `−p·stepdown` clamped to `−(maxDepth − allowance)`, so a cell's floor is the
+ * deepest such plane still at or above what the rough tool's body swept there.
+ * The swept surface is the greyscale OPENING (`toolSweptFloor`), never the tip
+ * field — see the {@link reliefRest} header for why the tip field is wrong in
+ * both directions.
+ *
+ * Cost is why the opening runs on the ROUGH op's own coarse grid (pitch =
+ * stepover × diameter) and is then upsampled, never computed on the finish grid:
+ * a 300 mm relief at 0.1 mm pitch is 9M cells and a ⌀12 footprint is a 60-cell
+ * radius (measured ~4 min); the coarse grid is a handful of cells wide. The
+ * floor is staircase-quantised and opening-smoothed, so it is piecewise-constant
+ * at the coarse scale; upsampling takes the least-removed (lowest-level, i.e.
+ * highest-surface) neighbour, so any sub-pitch error lands on the safe side — the
+ * finish may cut a little air along a staircase edge, never leave a bump.
+ *
+ * With no prior rough op the stock is the uncut blank (all levels 0), returned on
+ * `finishField`'s grid. That is what keeps a single-op relief byte-identical to
+ * the G-code this code posted before the stock model existed.
+ *
+ * Scope: every prior `relief-rough` op is modelled as FULL coverage. A
+ * rest-machined rough (one with `restToolDiameter`, which cuts only its rest
+ * mask) would be over-credited here — its opening is stamped everywhere it
+ * reaches, not just where the mask said to cut — which makes the finish believe
+ * up to a stepdown more stock is gone than is, and can under-cut. Threading the
+ * rest mask through is deferred (see the plan's open question on the three-op
+ * chain); until then a rest rough ahead of a finish is mis-modelled in the
+ * UNSAFE direction (it can under-cut), so treat it as unsupported rather than
+ * silently wrong.
+ */
+export function reliefStockFloor(
+  finishField: RasterField,
+  grid: RasterGrid,
+  enc: ReliefEncoding,
+  priorOps: CAMOperation[],
+  maxDepth: number,
+): RasterField {
+  const blank = (): RasterField => ({
+    cols: finishField.cols,
+    colPitch: finishField.colPitch,
+    rowPitch: finishField.rowPitch,
+    levelStep: finishField.levelStep,
+    rows: finishField.rows.map((row) => ({ y: row.y, levels: new Float32Array(finishField.cols) })),
+  });
+
+  if (priorOps.length === 0 || !(maxDepth > 0) || finishField.rows.length === 0) return blank();
+
+  const floor = blank();
+  for (const op of priorOps) {
+    if (op.type !== "relief-rough") continue;
+    const allowance = Math.max(0, op.finishAllowance ?? 0);
+    const stepdown = op.stepdown > 0 ? op.stepdown : maxDepth;
+    // The coarse pitch the rough op itself resamples to (reliefRoughImage).
+    const pitch = Math.max(0.05, (op.stepover > 0 ? op.stepover : DEFAULTS.stepover) * op.diameter);
+    const coarse = rasterField(grid, enc.field(pitch, pitch));
+    if (coarse.rows.length === 0) continue;
+    const swept = toolSweptFloor(coarse, { toolType: op.toolType, diameter: op.diameter }, maxDepth, allowance);
+    stampStaircase(floor, swept, stepdown, maxDepth, allowance);
+  }
+  return floor;
+}
+
+/**
+ * Quantise a rough op's swept surface to its staircase planes and stamp it into
+ * `floor`, upsampling from the coarse grid onto the finish grid. Each finish cell
+ * reads the least-removed (lowest-level) coarse neighbour it overlaps, so a cell
+ * is only ever credited with LESS removal than really happened — the finish may
+ * cut a little air along a staircase edge, never leave stock standing.
+ */
+function stampStaircase(
+  floor: RasterField,
+  swept: RasterField,
+  stepdown: number,
+  maxDepth: number,
+  allowance: number,
+): void {
+  const { cols, colPitch, rowPitch, rows } = floor;
+  const maxCut = maxDepth - allowance; // deepest plane −(maxDepth − allowance)
+  const eps = levelDepthEps(maxDepth); // levels are float32 — same tolerance the emitter uses
+  const cCols = swept.cols;
+  const cRows = swept.rows.length;
+  const cColPitch = swept.colPitch;
+  const cRowPitch = swept.rowPitch;
+  for (let r = 0; r < rows.length; r++) {
+    const y = rows[r].y;
+    const cr0 = clampIdx(Math.floor((y - rowPitch / 2) / cRowPitch), cRows);
+    const cr1 = clampIdx(Math.floor((y + rowPitch / 2 - 1e-9) / cRowPitch), cRows);
+    for (let c = 0; c < cols; c++) {
+      const x0 = c * colPitch;
+      const x1 = (c + 1) * colPitch;
+      const cc0 = clampIdx(Math.floor(x0 / cColPitch), cCols);
+      const cc1 = clampIdx(Math.floor((x1 - 1e-9) / cColPitch), cCols);
+      let s = Infinity;
+      for (let cr = cr0; cr <= cr1; cr++)
+        for (let cc = cc0; cc <= cc1; cc++) {
+          const v = swept.rows[cr].levels[cc];
+          if (v < s) s = v;
+        }
+      // Deepest staircase plane still at-or-above the swept surface. A cell whose
+      // swept surface reaches the roughing's floor takes the clamped final plane
+      // `−maxCut`, not a `stepdown` multiple.
+      const depthMM = s * maxDepth;
+      const planeMM = depthMM >= maxCut - eps ? maxCut : Math.floor(depthMM / stepdown) * stepdown;
+      const plane = planeMM / maxDepth;
+      if (plane > rows[r].levels[c]) rows[r].levels[c] = plane;
+    }
+  }
+}
+
+function clampIdx(i: number, n: number): number {
+  return i < 0 ? 0 : i >= n ? n - 1 : i;
 }

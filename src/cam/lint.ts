@@ -28,6 +28,7 @@ import { lexWords } from "./gcodeWords";
 import { isHalftone } from "./halftone";
 import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
 import { hiddenOpEntityIds, isMachinable } from "./machinable";
+import { sharedReliefImageIds } from "./reliefOps";
 import { checkMachinability } from "./machinability";
 
 export type LintSeverity = "error" | "warning";
@@ -700,7 +701,7 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
     for (let j = i + 1; j < roughs.length; j++) {
       const a = roughs[i];
       const b = roughs[j];
-      const shared = a.entityIds.filter((id) => b.entityIds.includes(id));
+      const shared = sharedReliefImageIds(a, b, doc);
       if (shared.length === 0) continue;
       const before = problems.length;
       if (Math.abs(Math.abs(a.depth) - Math.abs(b.depth)) > EPS)
@@ -720,7 +721,7 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
     for (const finish of finishes) {
       // Paired by the image they both target — the only thing that makes one the
       // roughing pass "for" the other.
-      const shared = rough.entityIds.filter((id) => finish.entityIds.includes(id));
+      const shared = sharedReliefImageIds(rough, finish, doc);
       if (shared.length === 0) continue;
 
       const before = problems.length;
