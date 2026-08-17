@@ -15,6 +15,10 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { PLINTH_WARN, stlHeightfield, type Heightfield, type UpAxis } from "../src/cam/stlHeightfield";
 import { parseSTL, suggestUnitScale, type STLMesh } from "../src/io/stlImport";
+import { rasterField } from "../src/cam/rasterEngrave";
+import { HEIGHTFIELD_WHITE_THRESHOLD } from "../src/cam/reliefEncoding";
+import { toolSweptFloor, toolTipField } from "../src/cam/toolProfile";
+import { reliefRest } from "../src/cam/rest";
 import {
   binarySTL,
   hemisphere,
@@ -617,17 +621,307 @@ function loadAny(f: string): { name: string; mesh: STLMesh }[] {
   ];
 }
 
+/**
+ * Every model file under the given paths, RECURSIVELY — a maker's download
+ * folder nests one directory per download, so a single-level scan sees almost
+ * none of it. The Phase 1.5 threshold was first set on a 31-model corpus and the
+ * "gap" that justified it turned out to be the sample size, so how much of the
+ * disk this reaches is not a detail.
+ */
 function collect(paths: string[]): string[] {
   const out: string[] = [];
-  for (const p of paths) {
-    if (!statSync(p, { throwIfNoEntry: false })) continue;
-    if (statSync(p).isDirectory())
-      for (const f of readdirSync(p)) {
-        if (/\.(stl|model)$/i.test(f)) out.push(join(p, f));
-      }
-    else out.push(p);
-  }
+  const walk = (p: string, depth: number): void => {
+    if (!statSync(p, { throwIfNoEntry: false })) return;
+    if (!statSync(p).isDirectory()) {
+      out.push(p);
+      return;
+    }
+    if (depth > 6) return;
+    // Windows scatters junction points through a user profile ("My Music" and
+    // friends) that scandir refuses outright; one of those must not end a
+    // corpus-wide sweep.
+    let entries: string[];
+    try {
+      entries = readdirSync(p);
+    } catch {
+      return;
+    }
+    for (const f of entries) {
+      const full = join(p, f);
+      if (/\.(stl|model)$/i.test(f)) out.push(full);
+      else if (statSync(full, { throwIfNoEntry: false })?.isDirectory()) walk(full, depth + 1);
+    }
+  };
+  for (const p of paths) walk(p, 0);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// REST=1 — how much does a big roughing tool actually leave behind?
+//
+// A different question from the rest of this probe (which asks "is this model
+// relief-shaped"), but the same corpus and the same loaders answer it, so it
+// lives here rather than in a second script that would drift from these.
+//
+// Phase 2's rest pass needs two numbers this decides:
+//   1. whether there is meaningful leftover on real models at all, and
+//   2. where to put the threshold that says a cell is worth a second pass.
+//
+// It also settles a design question that looks like a detail and is not: whether
+// leftover is (small tool's TIP field − big tool's TIP field), or the difference
+// of the two OPENINGS. See `toolSweptFloor`.
+// ---------------------------------------------------------------------------
+if (process.env.REST) {
+  const files = collect(process.argv.slice(2));
+  const ROUGH_D = 6; // ⌀6 flat: the usual relief roughing cutter
+  const REST_D = 3; // ⌀3 flat: the tool the rest pass would run
+  const STEPOVER = 0.4; // fraction of diameter — DEFAULTS.stepover
+  const ALLOWANCE = 0.3; // finish allowance, mm
+
+  interface RestRow {
+    label: string;
+    depth: number;
+    cells: number;
+    openPct: number; // cells with leftover > 0.1mm, opening-vs-opening
+    naivePct: number; // the same, tip-field-vs-tip-field
+    maxMM: number;
+    deepPct: number; // cells with leftover > one roughing stepdown
+    byMultiple: Record<number, number>; // % of cells firing at k x stepdown
+  }
+  const restRows: RestRow[] = [];
+
+  const measureRest = (label: string, mesh: STLMesh, scale: number): RestRow | null => {
+    const hf = stlHeightfield(reorient(mesh, UP), { scale });
+    const depth = hf.zMaxMM - hf.zMinMM;
+    if (!(depth > 0.5)) return null; // a flat plate has no relief to rough
+    // The grid is the REST op's own — `reliefRoughImage` resamples at
+    // `stepover x this op's diameter`, and this op runs the small tool. Sizing it
+    // off the roughing tool instead makes every feature narrower than 2.4mm
+    // invisible to the measurement, which is exactly the range a rest pass is for.
+    const pitch = STEPOVER * REST_D;
+    const field = rasterField(
+      { width: hf.width, height: hf.height, data: Float32Array.from(hf.gray, (g) => g / 255) },
+      {
+        widthMM: hf.widthMM,
+        heightMM: hf.heightMM,
+        lineIntervalMM: pitch,
+        dotPitchMM: pitch,
+        gamma: 1,
+        tone: "encoded",
+        whiteThreshold: HEIGHTFIELD_WHITE_THRESHOLD,
+      },
+    );
+    if (field.rows.length === 0) return null;
+
+    const big = { toolType: "end-mill" as const, diameter: ROUGH_D };
+    const small = { toolType: "end-mill" as const, diameter: REST_D };
+    const floorBig = toolSweptFloor(field, big, depth, ALLOWANCE);
+    const floorSmall = toolSweptFloor(field, small, depth, ALLOWANCE);
+    const tipBig = toolTipField(field, big, depth, ALLOWANCE);
+    const tipSmall = toolTipField(field, small, depth, ALLOWANCE);
+
+    // A stepdown a real job would use: the deeper of 1mm and a tenth of the cut.
+    const stepdown = Math.max(1, depth / 10);
+    const MULTIPLES = [0.25, 0.5, 1, 1.5, 2, 3, 4];
+    const hits = new Float64Array(MULTIPLES.length);
+    let cells = 0,
+      open = 0,
+      naive = 0,
+      deep = 0,
+      max = 0;
+    for (let r = 0; r < field.rows.length; r++) {
+      const fb = floorBig.rows[r].levels,
+        fs = floorSmall.rows[r].levels;
+      const tb = tipBig.rows[r].levels,
+        ts = tipSmall.rows[r].levels;
+      for (let c = 0; c < field.cols; c++) {
+        cells++;
+        const d = (fs[c] - fb[c]) * depth;
+        if (d > 0.1) open++;
+        if (d > stepdown) deep++;
+        for (let m = 0; m < MULTIPLES.length; m++) if (d > MULTIPLES[m] * stepdown) hits[m]++;
+        if (d > max) max = d;
+        if ((ts[c] - tb[c]) * depth > 0.1) naive++;
+      }
+    }
+    return {
+      label,
+      depth,
+      cells,
+      openPct: (open / cells) * 100,
+      naivePct: (naive / cells) * 100,
+      maxMM: max,
+      deepPct: (deep / cells) * 100,
+      byMultiple: Object.fromEntries(MULTIPLES.map((k, m) => [k, (hits[m] / cells) * 100])),
+    };
+  };
+
+  console.log(
+    `=== leftover after a ⌀${ROUGH_D} flat, taken by a ⌀${REST_D} — ` +
+      `${(STEPOVER * REST_D).toFixed(1)}mm cells, ${ALLOWANCE}mm allowance ===\n`,
+  );
+  const synthRest: [string, Tri[]][] = [
+    ["relief panel (dome on a slab)", reliefPanel()],
+    ["hemisphere + flat disc", hemisphere(20, 64, 128)],
+    ["stepped block", steppedBlock(30, 30, 3, 2)],
+    ["plate with a square hole", plateWithHole()],
+  ];
+  for (const [label, tris] of synthRest) {
+    const row = measureRest(label, parseSTL(binarySTL(tris)), 1);
+    if (row) restRows.push(row);
+  }
+  const synthCount = restRows.length;
+
+  for (const f of files) {
+    try {
+      for (const { name, mesh } of loadAny(f)) {
+        if (mesh.count < 100) continue;
+        const row = measureRest(name, mesh, suggestUnitScale(mesh).scale);
+        if (row) restRows.push(row);
+      }
+    } catch (e) {
+      console.log(`  (failed) ${basename(f)}: ${(e as Error).message}`);
+    }
+  }
+
+  const head =
+    `${"model".padEnd(40)} ${"depth".padStart(7)} ${"opening%".padStart(9)} ` +
+    `${"naive%".padStart(8)} ${"max mm".padStart(8)} ${">step%".padStart(8)}`;
+  console.log(head);
+  console.log("-".repeat(head.length));
+  const line = (r: RestRow) =>
+    console.log(
+      `${r.label.slice(0, 40).padEnd(40)} ${r.depth.toFixed(1).padStart(7)} ` +
+        `${r.openPct.toFixed(1).padStart(9)} ${r.naivePct.toFixed(1).padStart(8)} ` +
+        `${r.maxMM.toFixed(2).padStart(8)} ${r.deepPct.toFixed(1).padStart(8)}`,
+    );
+  for (const r of restRows.slice(0, synthCount)) line(r);
+  const real = restRows.slice(synthCount);
+  if (real.length > 0) {
+    console.log("-".repeat(head.length));
+    const sorted = [...real].sort((a, b) => b.openPct - a.openPct);
+    for (const r of sorted.slice(0, 25)) line(r);
+
+    // The inflation factor is the whole argument for the opening: how much air
+    // the naive difference of tip fields would send a cutter over.
+    const ratios = real.filter((r) => r.openPct > 0.05).map((r) => r.naivePct / r.openPct);
+    ratios.sort((a, b) => a - b);
+    const med = ratios.length ? ratios[ratios.length >> 1] : Number.NaN;
+    console.log(
+      `\nover ${real.length} real objects: median naive/opening = ${med.toFixed(1)}× ` +
+        `(the naive mask cuts that much more area, nearly all of it air)`,
+    );
+
+    const buckets = [0.1, 0.5, 1, 2, 5, 10, 20, 40, 101];
+    console.log(`\n=== distribution of leftover area (opening, >0.1mm) ===`);
+    let lo = 0;
+    for (const hi of buckets) {
+      const n = real.filter((r) => r.openPct >= lo && r.openPct < hi).length;
+      console.log(`  ${`${lo}–${hi}%`.padStart(10)} ${String(n).padStart(4)} ${"█".repeat(Math.min(70, n))}`);
+      lo = hi;
+    }
+    const worth = real.filter((r) => r.deepPct >= 0.5).length;
+    console.log(
+      `\n${worth}/${real.length} objects have >=0.5% of cells holding more than a full ` +
+        `roughing stepdown — those are the ones a rest pass is for`,
+    );
+
+    // Pinning the threshold from both sides. It is derived rather than tuned —
+    // one stepdown is what roughing's own staircase already hands the finish
+    // pass everywhere — so what this has to show is that the derived point is
+    // not perched on a cliff: that the answer degrades smoothly either side of
+    // it, and that no multiple is secretly the "real" boundary.
+    console.log(`\n=== sensitivity: cells firing at k x stepdown (median over objects) ===`);
+    for (const k of [0.25, 0.5, 1, 1.5, 2, 3, 4]) {
+      const pcts = real.map((r) => r.byMultiple[k] ?? 0).sort((a, b) => a - b);
+      const med = pcts[pcts.length >> 1];
+      const fires = real.filter((r) => (r.byMultiple[k] ?? 0) >= 0.5).length;
+      console.log(
+        `  ${`${k}x`.padStart(6)}  median ${med.toFixed(1).padStart(5)}% of cells   ` +
+          `${String(fires).padStart(3)}/${real.length} objects get a pass  ` +
+          `${"█".repeat(Math.round(med * 2))}`,
+      );
+    }
+  }
+  // -------------------------------------------------------------------------
+  // RESTSHOW=1 — draw the mask on a shape whose answer is known by hand.
+  //
+  // Every number above is an aggregate, and an aggregate cannot tell a mask that
+  // covers the right cells from one that covers the right NUMBER of cells. Both
+  // of Phase 1's real bugs were found by rendering and looking with the whole
+  // suite green, so this draws the field, the mask that ships, and the mask the
+  // tip-field difference would have produced, on one shape carrying both cases:
+  // a narrow slot no ⌀6 can enter, and a wide step it clears to the wall.
+  // -------------------------------------------------------------------------
+  if (process.env.RESTSHOW) {
+    const W = 96,
+      H = 40;
+    const MM = 60; // 60mm square
+    const depth = 10;
+    // gray: 255 = top of stock (no cut), 0 = full depth.
+    const gray = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const mx = (x / W) * MM;
+        let z = depth; // height above the base plane, mm
+        if (mx > 12 && mx < 17) z = 0; // 5mm slot: a ⌀3 fits, a ⌀6 does not
+        else if (mx > 26) z = 3; // a wide step down: 7mm deep, a ⌀6 clears it
+        gray[y * W + x] = Math.round((z / depth) * 255);
+      }
+    const pitch = STEPOVER * REST_D;
+    const field = rasterField(
+      { width: W, height: H, data: Float32Array.from(gray, (g) => g / 255) },
+      {
+        widthMM: MM,
+        heightMM: (MM * H) / W,
+        lineIntervalMM: pitch,
+        dotPitchMM: pitch,
+        gamma: 1,
+        tone: "encoded",
+        whiteThreshold: HEIGHTFIELD_WHITE_THRESHOLD,
+      },
+    );
+    const op = {
+      diameter: REST_D,
+      toolType: "end-mill",
+      restToolDiameter: ROUGH_D,
+    } as unknown as Parameters<typeof reliefRest>[1];
+    const stepdown = 2;
+    const r = reliefRest(field, op, depth, stepdown, ALLOWANCE);
+    const big = { toolType: "end-mill" as const, diameter: ROUGH_D };
+    const small = { toolType: "end-mill" as const, diameter: REST_D };
+    const tb = toolTipField(field, big, depth, ALLOWANCE);
+    const ts = toolTipField(field, small, depth, ALLOWANCE);
+
+    const draw = (label: string, at: (row: number, col: number) => string) => {
+      console.log(`\n${label}`);
+      for (let row = field.rows.length - 1; row >= 0; row -= 2) {
+        let s = "  ";
+        for (let c = 0; c < field.cols; c++) s += at(row, c);
+        console.log(s);
+      }
+    };
+    console.log(
+      `\n=== ${MM}mm plate, ${depth}mm deep: a 5mm slot at x=12..17 and a step down at x>26 ===` +
+        `\n    cells ${field.cols}x${field.rows.length} at ${pitch.toFixed(1)}mm; ⌀${ROUGH_D} roughed, ⌀${REST_D} resting`,
+    );
+    draw("depth field (. = stock top, @ = full depth)", (row, c) =>
+      RAMP[Math.min(RAMP.length - 1, Math.round(field.rows[row].levels[c] * (RAMP.length - 1)))],
+    );
+    draw("SHIPPED mask — difference of openings (# = cut)", (row, c) =>
+      r.kind === "mask" && r.keep(row, c) ? "#" : ".",
+    );
+    draw("REJECTED mask — difference of tip fields (# = cut)", (row, c) =>
+      (ts.rows[row].levels[c] - tb.rows[row].levels[c]) * depth > stepdown ? "#" : ".",
+    );
+    if (r.kind === "mask")
+      console.log(
+        `\nshipped: ${r.cells}/${r.total} cells, deepest leftover ${r.maxLeftoverMM.toFixed(2)}mm`,
+      );
+    else console.log(`\nshipped: ${r.kind}`);
+  }
+
+  process.exit(0);
 }
 
 const rows: Row[] = [];

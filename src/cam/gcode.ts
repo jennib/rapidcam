@@ -49,7 +49,7 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
 }
 import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
 import { adaptiveClear } from "./adaptive";
-import { restRegions, restCentreRegions, restArea } from "./rest";
+import { restRegions, restCentreRegions, restArea, reliefRest } from "./rest";
 import { facePlan, type Rect } from "./facing";
 import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
@@ -1479,6 +1479,30 @@ function reliefRoughImage(
   const { cols, colPitch, rows } = toolContactField(field, op, maxDepth, allowance);
   const xf = makeRasterXf(ent.position, ent.angle);
   const lines: string[] = [];
+
+  // Rest machining: cut only where the earlier, bigger tool left more than its
+  // own staircase behind. The mask is constant across passes, which is what
+  // preserves this emitter's standing invariant — a deeper plane's cut region is
+  // a subset of the one above it, so each plunge only takes one stepdown of new
+  // material even inside a rest region.
+  const rest = reliefRest(field, op, maxDepth, stepdown, allowance);
+  if (rest.kind === "not-larger")
+    return [
+      `; NOTE: rest machining needs a previous tool LARGER than this one ` +
+        `(previous dia ${n(rest.prevDiameter)}mm, this dia ${n(op.diameter)}mm) — skipped`,
+    ];
+  if (rest.kind === "clear")
+    return [
+      `; NOTE: nothing to rest machine — a dia ${n(rest.prevDiameter)}mm tool already reached ` +
+        `everything this dia ${n(op.diameter)}mm one could take on this relief`,
+    ];
+  if (rest.kind === "mask")
+    lines.push(
+      `; rest machining after dia ${n(rest.prevDiameter)}mm (assumed flat): ${rest.cells} of ` +
+        `${rest.total} cells hold more than one ${n(stepdown)}mm stepdown, deepest ` +
+        `${n(rest.maxLeftoverMM)}mm`,
+    );
+
   if (op.toolType === "v-bit" || op.toolType === "ball-nose")
     lines.push(
       `; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`,
@@ -1531,8 +1555,8 @@ function reliefRoughImage(
       };
       for (let k = 0; k < cols; k++) {
         const c = ltr ? k : cols - 1 - k;
-        if (roughSurf(row.levels[c]) <= zP + eps) {
-          // material present at this plane
+        if (roughSurf(row.levels[c]) <= zP + eps && (rest.kind !== "mask" || rest.keep(r, c))) {
+          // material present at this plane, and this operation's to take
           if (runFrom < 0) runFrom = c;
           runTo = c;
         } else flush();

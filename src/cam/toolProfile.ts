@@ -166,10 +166,63 @@ export function toolContactField(
   maxDepth: number,
   finishAllowance = 0,
 ): RasterField {
-  if (field.cols <= 0 || field.rows.length === 0 || !(maxDepth > 0)) return field;
   if (isHalftone(op)) return field; // the groove width IS the tone — see the header
+  return toolTipField(field, op, maxDepth, finishAllowance);
+}
+
+/**
+ * {@link toolContactField} without the operation — the tip field for a tool
+ * considered purely as a shape. Rest machining asks this about a tool no
+ * operation is running any more ("the ⌀6 that roughed this"), which has no op to
+ * screen for halftoning.
+ */
+export function toolTipField(
+  field: RasterField,
+  tool: ToolShape,
+  maxDepth: number,
+  finishAllowance = 0,
+): RasterField {
+  if (field.cols <= 0 || field.rows.length === 0 || !(maxDepth > 0)) return field;
   const backoff = Math.min(1, Math.max(0, finishAllowance) / maxDepth);
-  return dilate(field, toolProfile(op), maxDepth, backoff);
+  return dilate(field, toolProfile(tool), maxDepth, backoff);
+}
+
+/**
+ * The floor a tool actually LEAVES BEHIND — where its flank swept, not where its
+ * tip went.
+ *
+ * {@link toolContactField} answers "how deep may the tip go at this cell", and it
+ * is tempting to read that as the finished floor. It is not, and the gap between
+ * the two is a tool radius wide. Beside a 5 mm step a ⌀6 end mill's tip cannot
+ * descend within 3 mm of the wall — its contact level there is the top of the
+ * step — yet the cut floor at those cells is the bottom, because the cutter
+ * reached them sideways from a tip position 3 mm away. Read the contact field as
+ * the floor and every wall in the model grows a 3 mm band of imaginary standing
+ * stock.
+ *
+ * The floor is therefore the greyscale **opening** of the field by the tool: where
+ * the tip may go, then what the body swept from there.
+ *
+ *     floor = (Z ⊖ tool) ⊕ tool
+ *
+ * which is the identity {@link ../cam/rest} states for polygons —
+ * `reached = (region ⊖ R) ⊕ R` — on a grid instead of a boundary. The two
+ * halves are the same sweep run in opposite directions, so this shares
+ * {@link sweep} with the erosion rather than restating the footprint arithmetic.
+ *
+ * Takes a {@link ToolShape} rather than an operation because the caller's tool is
+ * usually a HYPOTHETICAL one — "the ⌀6 that roughed this" — that no operation in
+ * the job need still be running.
+ */
+export function toolSweptFloor(
+  field: RasterField,
+  tool: ToolShape,
+  maxDepth: number,
+  finishAllowance = 0,
+): RasterField {
+  if (field.cols <= 0 || field.rows.length === 0 || !(maxDepth > 0)) return field;
+  const tip = toolTipField(field, tool, maxDepth, finishAllowance);
+  return expand(tip, toolProfile(tool), maxDepth);
 }
 
 /**
@@ -210,13 +263,69 @@ function dilate(
     return out;
   });
 
+  const out = sweep(src, cols, nRows, colPitch, rowPitch, profile, maxDepth);
+  if (!out) return backoff > 0 ? withLevels(field, rows, src) : field;
+
+  // Land back on the level ladder the field was quantised to, or the equal-Z run
+  // merging downstream stops merging and the program grows by orders of
+  // magnitude. Round DOWN — shallower is the safe side — and leave a cell no
+  // neighbour reached bit-identical, so a relief the tool can already cut posts
+  // exactly the G-code it posted before. In place: `sweep` allocated these.
+  for (let r = 0; r < nRows; r++) {
+    const own = src[r];
+    const levels = out[r];
+    for (let c = 0; c < cols; c++)
+      if (levels[c] !== own[c]) levels[c] = Math.floor(levels[c] / levelStep + 1e-9) * levelStep;
+  }
+  return { ...field, rows: rows.map((row, r) => ({ y: row.y, levels: out[r] })) };
+}
+
+/**
+ * Greyscale DILATION of the level field — the other half of the opening, and the
+ * same sweep by duality: `max(L − pen) = −min(−L + pen)`. Negating the field and
+ * running the erosion is not a trick to save typing; it is the only way the two
+ * directions cannot drift apart, which is this project's standing defect class.
+ *
+ * No quantisation here. A swept floor is only ever COMPARED — to another tool's
+ * floor, to decide what is left standing — and never commanded as a Z, so it has
+ * no run-merging to protect and rounding it would only lose resolution in the
+ * comparison.
+ */
+function expand(field: RasterField, profile: ToolProfile, maxDepth: number): RasterField {
+  const { cols, colPitch, rowPitch, rows } = field;
+  const neg = rows.map((row) => {
+    const out = new Float32Array(cols);
+    for (let c = 0; c < cols; c++) out[c] = -row.levels[c];
+    return out;
+  });
+  const out = sweep(neg, cols, rows.length, colPitch, rowPitch, profile, maxDepth);
+  if (!out) return field;
+  for (const levels of out) for (let c = 0; c < cols; c++) levels[c] = -levels[c];
+  return { ...field, rows: rows.map((row, r) => ({ y: row.y, levels: out[r] })) };
+}
+
+/**
+ * The footprint sweep itself: `out[c] = min over the footprint of (src + pen)`.
+ *
+ * Sign-agnostic on purpose — every bound below is stated in terms of `src` as
+ * given, so feeding it a negated field yields the dilation (see {@link expand}).
+ * Returns `null` when the tool is finer than one cell, i.e. nothing to correct.
+ */
+function sweep(
+  src: Float32Array[],
+  cols: number,
+  nRows: number,
+  colPitch: number,
+  rowPitch: number,
+  profile: ToolProfile,
+  maxDepth: number,
+): Float32Array[] | null {
   const reach = profile.reach(maxDepth);
   // A sample stands for its whole cell, so a cell is in reach when its NEAR EDGE
   // is (see the header). Half a pitch of slack, in both axes.
   const L = colPitch > 0 ? Math.floor(reach / colPitch + 0.5) : 0;
   const K = rowPitch > 0 ? Math.floor(reach / rowPitch + 0.5) : 0;
-  if (L <= 0 && K <= 0)
-    return backoff > 0 ? withLevels(field, rows, src) : field; // tool finer than one cell
+  if (L <= 0 && K <= 0) return null; // tool finer than one cell
 
   // --- the footprint, priced once ------------------------------------------
   // pen[j][i] = what the tool's flank costs (in level units) at the offset j
@@ -242,14 +351,13 @@ function dilate(
     if (len === 0) break; // vy only grows — no later band is in reach either
     maxBand = j;
   }
-  if (maxBand < 0 || (maxBand === 0 && bandLen[0] <= 1))
-    return backoff > 0 ? withLevels(field, rows, src) : field;
+  if (maxBand < 0 || (maxBand === 0 && bandLen[0] <= 1)) return null;
 
   // --- the early-out bound --------------------------------------------------
   const boxMin = boxMinimum(src, cols, nRows, L, K);
 
   // --- the sweep ------------------------------------------------------------
-  const outRows: RasterLevelRow[] = new Array(nRows);
+  const outRows: Float32Array[] = new Array(nRows);
   for (let r = 0; r < nRows; r++) {
     const levels = new Float32Array(cols);
     const centre = src[r];
@@ -279,16 +387,11 @@ function dilate(
           if (v < best) best = v;
         }
       }
-      // Land back on the level ladder the field was quantised to, or the equal-Z
-      // run merging downstream stops merging and the program grows by orders of
-      // magnitude. Round DOWN — shallower is the safe side — and leave a cell no
-      // neighbour reached bit-identical, so a relief the tool can already cut
-      // posts exactly the G-code it posted before.
-      levels[c] = best === own ? own : Math.floor(best / levelStep + 1e-9) * levelStep;
+      levels[c] = best;
     }
-    outRows[r] = { y: rows[r].y, levels };
+    outRows[r] = levels;
   }
-  return { ...field, rows: outRows };
+  return outRows;
 }
 
 /** Same field, different level arrays (used when only the allowance moved). */

@@ -52,7 +52,7 @@ import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
 import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
 import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { restCentreRegions } from "./rest";
+import { restCentreRegions, reliefRest } from "./rest";
 import { facePlan } from "./facing";
 import { finishAllowance } from "./gcode";
 import {
@@ -698,9 +698,16 @@ function rasReliefRough(
   // Allowance and tool footprint folded into the level, exactly as the emitter
   // does it — so a cell's level is the depth roughing may reach, no more.
   const cut = toolContactField(field, op, maxDepth, allowance);
+  // Same resolver the emitter uses, so a rest pass previews the cells it will
+  // actually cut rather than the whole relief. A refusal there (`not-larger`)
+  // posts no motion at all, so nothing is stamped here either.
+  const rest = reliefRest(field, op, maxDepth, stepdown, allowance);
+  if (rest.kind === "not-larger" || rest.kind === "clear") return;
   const xf = makeRasterXf(ent.position, ent.angle);
-  for (const row of cut.rows) {
+  for (let r = 0; r < cut.rows.length; r++) {
+    const row = cut.rows[r];
     for (let c = 0; c < cut.cols; c++) {
+      if (rest.kind === "mask" && !rest.keep(r, c)) continue;
       const z = floorZ(-row.levels[c] * maxDepth);
       if (z >= 0) continue; // nothing removed here
       const w = xfPoint(xf, (c + 0.5) * cut.colPitch, row.y);
