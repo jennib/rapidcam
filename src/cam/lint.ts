@@ -678,12 +678,41 @@ function checkRestToolMismatch(doc: CADDocument): LintFinding | null {
  * finisher meets 4 mm of untouched material with a small ball-nose taking the
  * whole thing in one pass — the standing complaint on Easel's forum, and how
  * finishing cutters get snapped.
+ *
+ * **Two ROUGHING passes on one image count too**, since `restToolDiameter` began
+ * inviting exactly that (see {@link ../cam/rest}). A rest pass works out what the
+ * earlier tool left by opening the same depth field with each tool in turn, so a
+ * different `depth` on the two ops means it is subtracting two different
+ * surfaces — and the answer is wrong with nothing to show for it. There is no
+ * legitimate reason for them to differ: a relief op's depth is the image's whole
+ * Z mapping, not how much of it this pass removes.
  */
 function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
   const roughs = doc.operations.filter((o) => o.type === "relief-rough");
   const finishes = doc.operations.filter((o) => o.type === "engrave");
   const problems: string[] = [];
   const ids = new Set<string>();
+
+  // Rough against rough, each unordered pair once.
+  for (let i = 0; i < roughs.length; i++)
+    for (let j = i + 1; j < roughs.length; j++) {
+      const a = roughs[i];
+      const b = roughs[j];
+      const shared = a.entityIds.filter((id) => b.entityIds.includes(id));
+      if (shared.length === 0) continue;
+      const before = problems.length;
+      if (Math.abs(Math.abs(a.depth) - Math.abs(b.depth)) > EPS)
+        problems.push(
+          `"${a.name}" roughs to ${Math.abs(a.depth)}mm but "${b.name}" roughs the same ` +
+            `image to ${Math.abs(b.depth)}mm`,
+        );
+      if ((a.rasterInvert ?? false) !== (b.rasterInvert ?? false))
+        problems.push(
+          `"${a.name}" and "${b.name}" disagree about Invert, so they rough the image ` +
+            `and its negative`,
+        );
+      if (problems.length > before) for (const id of shared) ids.add(id);
+    }
 
   for (const rough of roughs) {
     for (const finish of finishes) {
@@ -692,6 +721,7 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
       const shared = rough.entityIds.filter((id) => finish.entityIds.includes(id));
       if (shared.length === 0) continue;
 
+      const before = problems.length;
       const rd = Math.abs(rough.depth);
       const fd = Math.abs(finish.depth);
       if (Math.abs(rd - fd) > EPS)
@@ -703,7 +733,10 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
           `"${rough.name}" and "${finish.name}" disagree about Invert, so they carve ` +
             `the image and its negative`,
         );
-      if (problems.length > 0) for (const id of shared) ids.add(id);
+      // `> before`, not `> 0`: once any pair had a problem, `> 0` attributed the
+      // finding to every subsequent well-matched pair's geometry too, so the
+      // pre-flight dialog highlighted entities that were not at fault.
+      if (problems.length > before) for (const id of shared) ids.add(id);
     }
   }
   if (problems.length === 0) return null;
@@ -712,10 +745,12 @@ function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
     code: "relief-pass-mismatch",
     severity: "warning",
     message:
-      `Relief roughing and finishing do not describe the same surface: ${problems.join("; ")}. ` +
-      `The roughing pass leaves its finish allowance relative to its OWN depth, so the ` +
-      `finisher meets an uneven — and possibly full-depth — wall of material rather than ` +
-      `the allowance it expects. Match the settings on both toolpaths.`,
+      `Relief passes on the same image do not describe the same surface: ${problems.join("; ")}. ` +
+      `Each pass derives its field from the image and its OWN depth, so a mismatch means the ` +
+      `allowance left behind is not the one the next tool expects — it meets an uneven, ` +
+      `possibly full-depth wall of material instead. A rest pass is worse off still: it works ` +
+      `out what the earlier tool left by comparing the two, so a mismatch simply gives it the ` +
+      `wrong answer. Match the settings on every toolpath sharing the image.`,
     entityIds: [...ids],
   };
 }

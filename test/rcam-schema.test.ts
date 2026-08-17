@@ -695,6 +695,20 @@ function kitchenSinkDoc(): CADDocument {
       finishAllowance: 0.25,
     },
     {
+      // relief-rough as a REST pass: `restToolDiameter` is honoured on two op
+      // types, and a field that only ever round-trips on one of them is exactly
+      // how the pair drifts apart.
+      id: "op-relief-rough",
+      name: "Relief rough",
+      type: "relief-rough",
+      entityIds: [outer.id],
+      side: "inside",
+      toolType: "end-mill",
+      ...base,
+      restToolDiameter: 8,
+      finishAllowance: 0.3,
+    },
+    {
       // face: faceTarget, faceOverhang, faceDirection. Carries NO entityIds —
       // facing takes its extent from the blank or the bed — which is itself
       // worth round-tripping.

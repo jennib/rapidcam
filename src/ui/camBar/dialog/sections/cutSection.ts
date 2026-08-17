@@ -454,9 +454,10 @@ export function buildCutSection(
     "len",
   );
   restRow.el.title =
-    "Set to the diameter of the tool that already roughed this pocket, and this " +
-    "operation cuts only the corners and channels that tool could not reach. " +
-    "Leave at 0 to clear the whole pocket.";
+    "Set to the diameter of the tool that already roughed this, and this operation " +
+    "cuts only what that tool could not reach — the corners of a pocket, or the " +
+    "narrow valleys of a relief a big cutter cannot drop into. Leave at 0 to clear " +
+    "the whole area.";
   cutSec.appendChild(restRow.el);
 
   // Finishing pass — profile + pocket only. Leaves an allowance during
@@ -701,10 +702,11 @@ export function buildCutSection(
     // Only when the spoilboard is the target — on the blank it would be noise,
     // and a warning shown for everything is read as decoration.
     faceWarn.style.display = facing && state.faceTarget === "bed" ? "" : "none";
-    // Rest machining is a clearing idea, so it belongs to pockets only — it was
-    // showing on a profile, where it would have been read as a promise and done
-    // nothing (the emitter only honours it for pockets).
-    restRow.el.style.display = state.combo === "pocket" ? "" : "none";
+    // Rest machining is a clearing idea, so it belongs to the two ops that clear
+    // — it was showing on a profile, where it would have been read as a promise
+    // and done nothing. The emitter honours it for exactly these two.
+    restRow.el.style.display =
+      state.combo === "pocket" || state.combo === "relief-rough" ? "" : "none";
     vStepRow.el.style.display = state.combo === "vcarve" ? "" : "none";
     vHopRow.el.style.display = state.combo === "vcarve" ? "" : "none";
 

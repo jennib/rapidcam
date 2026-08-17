@@ -25,6 +25,9 @@
 import type { Vec2 } from "../core/vec2";
 import { inflatePathsD, differenceD, intersectD, JoinType, EndType, FillRule } from "clipper2-ts";
 import { signedArea } from "./offset";
+import type { RasterField } from "./rasterEngrave";
+import { toolSweptFloor } from "./toolProfile";
+import type { CAMOperation } from "./types";
 
 const toV = (path: { x: number; y: number }[]): Vec2[] => path.map((p) => ({ x: p.x, y: p.y }));
 const ccwize = (pts: Vec2[]): Vec2[] => (signedArea(pts) >= 0 ? pts : [...pts].reverse());
@@ -207,4 +210,176 @@ export function restArea(regions: RestRegion[]): number {
     for (const h of r.holes) a -= Math.abs(signedArea(h));
   }
   return a;
+}
+
+// ---------------------------------------------------------------------------
+// The same question on a GRID: rest machining a relief.
+//
+// A relief has no boundary to offset. It is a depth field, and every operation
+// on it — the gouge correction, the roughing staircase, the 3-D preview — is a
+// sweep over cells. So the polygon machinery above cannot serve it, and the STL
+// plan's "rest pass via restRegions()" would need a grid-to-polygon contour step
+// that does not exist anywhere in this codebase.
+//
+// It does not need one. The identity at the top of this file,
+//
+//     reached = (region ⊖ R) ⊕ R
+//
+// is the morphological OPENING, and an opening is defined on a greyscale field
+// exactly as it is on a set. `toolSweptFloor` is that opening on the depth
+// field: erode by the tool's profile (where the tip may go — which is the gouge
+// correction the relief path already runs), then dilate by it again (what the
+// body swept from there). Two tools, two floors, and what one left for the other
+// is the difference.
+// ---------------------------------------------------------------------------
+
+/**
+ * Why the leftover must be a difference of OPENINGS and not of tip fields.
+ *
+ * The tempting version subtracts the two tool-contact fields, which are already
+ * computed and sitting right there. It is wrong in both directions, and the
+ * error is large enough to see on any real model:
+ *
+ * - **It invents stock.** A ⌀6 end mill's TIP cannot come within 3 mm of a wall,
+ *   so a tip-field difference reports standing stock in a 3 mm band along every
+ *   wall in the model — stock the cutter's flank removed on its way past. On a
+ *   smooth dome on a slab, a shape with nothing whatever for a second tool to do,
+ *   it claims **48.6% of the model**.
+ * - **It also MISSES stock.** Beside a narrow slot only the small tool enters,
+ *   that tool's own tip cannot descend at the shoulders either — but its flank
+ *   clears them. Measured on a printed spring, the tip difference finds 11.1%
+ *   where the opening difference finds 55.6%.
+ *
+ * Over 220 real objects the tip difference covers a median of 2.6x the area
+ * while being smaller than the truth on the models with the narrowest features.
+ * `REST=1 npx tsx scripts/stl-relief-probe.ts <dir>` reproduces both columns, and
+ * `RESTSHOW=1` draws the two masks on a shape carrying both cases at once.
+ */
+export type ReliefRest =
+  | { kind: "off" }
+  /** `restToolDiameter` is set but is not larger than this operation's own tool. */
+  | { kind: "not-larger"; prevDiameter: number }
+  /** The previous tool reached everything this one could take. */
+  | { kind: "clear"; prevDiameter: number }
+  | {
+      kind: "mask";
+      prevDiameter: number;
+      /** Whether cell (row, col) holds stock the previous tool could not reach. */
+      keep(row: number, col: number): boolean;
+      cells: number;
+      total: number;
+      /** Deepest leftover found, mm — the bite the finish pass would otherwise take. */
+      maxLeftoverMM: number;
+    };
+
+/**
+ * The previous roughing tool is taken to be a FLAT end mill.
+ *
+ * Only its diameter is recorded (see `restToolDiameter`), matching the pocket
+ * rest pass, and a flat mill is what roughs. The assumption is also the safe one
+ * if it is wrong: a ball-nose of the same diameter reaches further down into a
+ * valley than a flat one, so assuming flat under-states what the previous pass
+ * cleared, and the cost of that is cutting a little air rather than driving into
+ * stock this operation was told had gone.
+ */
+const PREV_TOOL_TYPE = "end-mill" as const;
+
+/**
+ * What a smaller tool should still cut after a bigger one has roughed a relief.
+ *
+ * ## The threshold is derived, not tuned
+ *
+ * Roughing steps down in flat planes, so at every cell it DID reach it already
+ * leaves the finish pass up to one `stepdown` of material. A cell holding less
+ * than that is no worse than the model's ordinary worst case, and a second
+ * roughing pass there buys nothing the finish pass is not already doing
+ * everywhere else. More than one stepdown means the previous tool did not reach
+ * the cell at all — that is geometry, not staircase.
+ *
+ * So the threshold is `stepdown` itself, and there is no new constant to
+ * calibrate. Measured over 220 real objects it fires on 174 of them, at a median
+ * of 3.0% of cells. That is an operating point on a smooth curve, not a
+ * boundary: a quarter of a stepdown fires on 200 objects and 6.8% of cells, four
+ * stepdowns on 96 objects and 0.2%, with no gap anywhere between. Nothing in the
+ * distribution picks the number — the roughing staircase does.
+ */
+export function reliefRest(
+  field: RasterField,
+  op: CAMOperation,
+  maxDepth: number,
+  stepdown: number,
+  finishAllowance = 0,
+): ReliefRest {
+  const prevDiameter = op.restToolDiameter ?? 0;
+  if (!(prevDiameter > 0)) return { kind: "off" };
+  if (prevDiameter <= op.diameter) return { kind: "not-larger", prevDiameter };
+  if (field.cols <= 0 || field.rows.length === 0 || !(maxDepth > 0)) return { kind: "off" };
+
+  // Both floors on THIS operation's grid — which is the rest tool's own stepover,
+  // finer than the pass being rested. Sizing it off the ROUGHING tool instead
+  // hides every feature narrower than that tool's stepover, which is exactly the
+  // range a rest pass exists for; the probe made that mistake first, and the
+  // corpus numbers moved by a third when it was corrected.
+  const mine = toolSweptFloor(field, op, maxDepth, finishAllowance);
+  const prev = toolSweptFloor(
+    field,
+    { toolType: PREV_TOOL_TYPE, diameter: prevDiameter },
+    maxDepth,
+    finishAllowance,
+  );
+
+  const { cols, rows } = field;
+  const nRows = rows.length;
+  const raw = new Uint8Array(cols * nRows);
+  let maxLeftoverMM = 0;
+  for (let r = 0; r < nRows; r++) {
+    const a = mine.rows[r].levels;
+    const b = prev.rows[r].levels;
+    for (let c = 0; c < cols; c++) {
+      const left = (a[c] - b[c]) * maxDepth;
+      if (left > maxLeftoverMM) maxLeftoverMM = left;
+      if (left > stepdown) raw[r * cols + c] = 1;
+    }
+  }
+
+  // Grow by one cell, 8-connected. Two reasons, and the first is load-bearing:
+  // the sweep treats a sample as standing for its whole cell and measures to the
+  // cell's NEAR edge, which is the conservative reading for the erosion (it
+  // protects walls) but the optimistic one for the dilation — it credits the
+  // previous tool with sweeping half a cell further than centre-to-centre would.
+  // A cell of slack in the mask hands that back. Second, it puts this pass's edge
+  // inside material the previous one really did cut rather than exactly on the
+  // seam, so no witness ridge is left standing along the join.
+  const mask = new Uint8Array(cols * nRows);
+  let cells = 0;
+  for (let r = 0; r < nRows; r++)
+    for (let c = 0; c < cols; c++) {
+      let hit = 0;
+      for (let dr = -1; dr <= 1 && !hit; dr++) {
+        const rr = r + dr;
+        if (rr < 0 || rr >= nRows) continue;
+        for (let dc = -1; dc <= 1; dc++) {
+          const cc = c + dc;
+          if (cc < 0 || cc >= cols) continue;
+          if (raw[rr * cols + cc]) {
+            hit = 1;
+            break;
+          }
+        }
+      }
+      if (hit) {
+        mask[r * cols + c] = 1;
+        cells++;
+      }
+    }
+
+  if (cells === 0) return { kind: "clear", prevDiameter };
+  return {
+    kind: "mask",
+    prevDiameter,
+    keep: (row, col) => mask[row * cols + col] === 1,
+    cells,
+    total: cols * nRows,
+    maxLeftoverMM,
+  };
 }

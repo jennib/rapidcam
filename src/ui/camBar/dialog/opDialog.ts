@@ -377,7 +377,9 @@ export function openOpDialog(options: OpDialogOptions): void {
       faceOverhang: type === "face" && state.faceOverhang > 0 ? state.faceOverhang : undefined,
       faceDirection: type === "face" ? state.faceDirection : undefined,
       restToolDiameter:
-        type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
+        (type === "pocket" || type === "relief-rough") && state.restToolDiameter > 0
+          ? state.restToolDiameter
+          : undefined,
       regions: regionBased ? refsFromSeeds(doc, state.regionSeeds) : undefined,
       tabs: isProfile
         ? {

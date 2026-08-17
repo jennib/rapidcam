@@ -338,9 +338,9 @@ there is no second mode to switch to. The standing note says so instead.
   can ship the pro-tier strategy on the hobby-tier architecture: parallel raster where the
   grid is shallow, Z-level passes where it's steep, split on a slope threshold. **No mesh
   slicing required**, so this does not depend on Phase 3 or 5.
-- **Rest pass between rough and finish** via `restRegions()`, so the ball-nose isn't
+- **Rest pass between rough and finish** ✅ **SHIPPED 2026-08-16**, so the ball-nose isn't
   handed a full stepdown of material on a steep wall. This is the standing complaint on
-  Easel's forum.
+  Easel's forum. **Not via `restRegions()` — that line was wrong**; see below.
 - **Tapered ball-nose as a real `ToolType`.** Currently `ToolType` is
   `"end-mill" | "ball-nose" | "v-bit" | "drill"` ([types.ts:19](../src/cam/types.ts#L19)).
   Model it the way opencamlib does — a `CompositeCutter`, i.e. a cone with a ball tip, not
@@ -356,6 +356,75 @@ there is no second mode to switch to. The standing note says so instead.
   field differs most from the raw field. Lower priority; list it so it isn't forgotten.
 - **Cut-time estimate** for a relief, since 3D carves are long and users need to know
   before they start.
+
+#### What shipped, and the two things this section got wrong (2026-08-16)
+
+**"Z-level passes where it's steep" describes something that does not exist.** There is no
+waterline, no Z-level finishing and no iso-contour or marching-squares code anywhere in
+`src/`. `relief-rough` does Z-*planes* for roughing — clearing at depth — which is a
+different operation from contouring around the model at each Z to finish a wall. The
+gradient half of the split really is nearly free; the other half is a build:
+marching squares over the field, loop linking, path ordering, an emitter that is not a
+boustrophedon, matching preview support in `rasRelief`, two persisted op fields with the
+4-step drift checklist, and a slope threshold measured on a corpus. **Sized as its own PR
+and deferred.**
+
+One correction in its favour when it is picked up: **Clipper2 offsetting is not needed.**
+`toolContactField` already returns the drop-cutter surface — the Z the tool TIP may ride
+at — so an iso-contour of that field at constant Z *is* the tool-centre path, by
+construction. Offsetting the raw field's contours by a tool radius would be a second and
+worse way to compute what the dilation already computed.
+
+**"Rest pass via `restRegions()`" was reuse of the wrong thing.** `restRegions()` takes
+`Vec2[]` boundaries and returns polygons; the whole relief path is a grid of
+`Float32Array` rows with no boundary anywhere in it. Routing a relief through it needs
+grid→polygon contouring — i.e. the marching squares the item above just deferred.
+
+What shipped instead needs no polygons at all. The identity `rest.ts` already states,
+`reached = (region ⊖ R) ⊕ R`, is the morphological **opening**, and an opening is defined
+on a greyscale field exactly as it is on a set. So `toolSweptFloor` opens the depth field
+— erode by the tool profile (which is `toolContactField`, the gouge correction already
+running) then dilate by it again — and the leftover is the difference of two tools'
+floors. The erosion and the dilation are **the same sweep by duality**
+(`max(L − pen) = −min(−L + pen)`), so there is one kernel and no second copy of the
+footprint arithmetic.
+
+**The difference of TIP fields is wrong in both directions, which is the finding.** It is
+the obvious formulation — both fields are already computed and sitting there — and it
+fails twice over:
+
+| shape | tip difference | opening difference |
+|---|---|---|
+| smooth dome on a slab (nothing to do) | **48.6%** of the model | 0.0% |
+| printed spring (narrow features) | 11.1% | **55.6%** |
+
+A ⌀6 end mill's tip cannot come within 3 mm of a wall, so the tip difference reports
+standing stock in a tool-radius band along every wall in the model — stock the flank
+removed on the way past. And beside a narrow slot the *small* tool's tip cannot descend at
+the shoulders either, so it also misses stock that is really there. Over 220 real objects
+the tip difference covers a median of **2.6× the area** while being smaller than the truth
+on exactly the models a rest pass is for. `RESTSHOW=1` draws both masks on one shape.
+
+**The threshold is derived, not calibrated: one `stepdown`.** Roughing already leaves the
+finish pass up to one stepdown at every cell it *did* reach, so a cell holding less than
+that is no worse than the model's ordinary worst case and a second roughing pass there
+buys nothing. More than one stepdown means the previous tool did not reach the cell at
+all. There is no new constant. The corpus confirms it is not perched on a cliff — it fires
+on 174/220 objects at a median 3.0% of cells, with ¼ stepdown at 200 objects / 6.8% and 4
+stepdowns at 96 / 0.2%, smooth and monotone throughout, exactly the continuum Phase 1.5
+found for `plinthRatio`.
+
+**A measurement bug found by rendering, not by testing.** The probe first sized its grid
+off the ROUGHING tool's stepover. The rest op resamples at its *own* tool's stepover,
+which is half that — so every feature narrower than 2.4 mm was invisible to the
+measurement, which is precisely the range the feature exists for. It showed up as an ASCII
+render in which a 2 mm slot had averaged away to nothing before either tool saw it; the
+corpus numbers moved by about a third once corrected. Aggregates could not have caught it.
+
+**No new persisted field.** `restToolDiameter` already existed, already bound as a formula,
+already had a UI row and a staleness lint — it was scoped to pockets. Widening the scope
+still needs the schema description, the format doc and the kitchen-sink fixture, which is
+why the relief-rough op is now in `kitchenSinkDoc()`.
 
 ### Phase 3 — mesh section → 2D polylines
 
