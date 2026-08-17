@@ -2,6 +2,35 @@
 
 Written 2026-08-15.
 
+## How much of this to trust — read before building on any of it
+
+Four claims in this plan have turned out wrong across implementation, and they
+share a shape worth knowing, because it tells you which of the remaining ones to
+check.
+
+**Its judgement has been reliable.** The heightfield-over-direct-mesh
+architecture, rejecting mesh feature recognition with arithmetic rather than
+taste, spotting the gouging gap *and naming its exact fix*, and every one of the
+encoding gotchas (gamma, `whiteThreshold`, tone, halftone) — each of which would
+otherwise have produced silently wrong depths.
+
+**Its inventory has not.** Every wrong claim was about *what already exists in
+the codebase*, and there is a tell:
+
+> **A claim here with a `file:line` citation has held. A claim that names a
+> capability without one has not.**
+
+The "What already exists" table carries a citation for every row and has been
+accurate — including the `restRegions()` row, which correctly describes what that
+function does. The errors are all in prose that names a capability in passing:
+*"zero `.rcam` schema change"* and *"Rest pass via `restRegions()`"*. Both were
+inferences from names, written while reasoning about the shape of the work rather
+than while reading the implementation.
+
+So: **verify any capability this document names without a line reference, before
+building on it.** Wrong claims are corrected in place rather than deleted — the
+reason each one was wrong is worth more than a tidy document.
+
 Status: **Phase 1 SHIPPED 2026-08-16; Phase 1.5 SHIPPED 2026-08-16.** Item 3 (tool-profile dilation) landed
 separately as #62, because it turned out to be a live bug in the existing relief
 path rather than an STL prerequisite — a hard-edged heightfield gouged 2.905 mm
@@ -326,7 +355,10 @@ there is no second mode to switch to. The standing note says so instead.
 
 ### Phase 2 — close the Easel gap
 
-- **Steep/shallow split — the highest-value item, and nearly free here.** MeshCAM's
+- **Steep/shallow split — the highest-value item.** ⚠️ **This bullet said "and
+  nearly free here", which is half true and misled two sessions — see the
+  correction directly below it.** The *gradient* is nearly free; the thing you
+  split into is a build, because no Z-level finishing exists. MeshCAM's
   *Surface Angle Limit* machines only areas flatter than a threshold with the parallel
   raster, and only areas steeper than a minimum with waterline; their "Unified" finishing
   switches automatically. The reason is geometric: a raster stepping 0.15 mm in XY across
