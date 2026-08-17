@@ -139,4 +139,14 @@ test("applying a 3-D Relief writes a roughing + finishing pair, neither with a r
     { type: "relief-rough", rest: null },
     { type: "engrave", rest: null },
   ]);
+
+  // The list collapses the two passes into ONE grouped "3-D Relief" card with
+  // Roughing/Finishing child rows. `test/reliefGroupList.test.ts` pins the
+  // structure in happy-dom; this pins the real-browser rendering too.
+  const group = page.locator(".tp-op-item.tp-op-group");
+  await expect(group).toHaveCount(1);
+  await expect(page.locator(".tp-op-item")).toHaveCount(1); // one card, not two
+  await expect(group.locator(".tp-op-group-child")).toHaveCount(2);
+  await expect(group.locator(".tp-op-group-stage").first()).toHaveText("Roughing");
+  await expect(group.locator(".tp-op-group-stage").last()).toHaveText("Finishing");
 });
