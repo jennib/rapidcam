@@ -1271,7 +1271,7 @@ function reliefImage(
   // the same truth rather than on what the op merely claims.
   const enc = reliefEncodingFor(ent, rawOp);
   const op = enc.op;
-  if (op.toolType !== "ball-nose" && op.toolType !== "v-bit")
+  if (op.toolType !== "ball-nose" && op.toolType !== "v-bit" && op.toolType !== "tapered-ball-nose")
     return [
       `; NOTE: relief engrave needs a ball-nose or V-bit (got "${op.toolType}") — a flat end mill leaves blocky dots; image ${ent.id} skipped`,
     ];
@@ -1569,9 +1569,9 @@ function reliefRoughImage(
         `${n(rest.maxLeftoverMM)}mm`,
     );
 
-  if (op.toolType === "v-bit" || op.toolType === "ball-nose")
+  if (op.toolType === "v-bit" || op.toolType === "ball-nose" || op.toolType === "tapered-ball-nose")
     lines.push(
-      `; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the ball-nose for the finish pass)`,
+      `; NOTE: roughing with a ${op.toolType} works but is slow — a flat or bull-nose end mill clears bulk faster (save the finishing bit for the finish pass)`,
     );
 
   // Rough surface per cell. The allowance and the tool footprint are already in
@@ -2208,7 +2208,9 @@ export function generateGCode(
             ? "BallNose"
             : op.toolType === "drill"
               ? "Drill"
-              : "EndMill";
+              : op.toolType === "tapered-ball-nose"
+                ? "TaperedBallNose"
+                : "EndMill";
       return `T${t} ⌀${op.diameter}mm ${tl} ${op.spindleSpeed}rpm`;
     })
     .join(", ");
@@ -2320,7 +2322,9 @@ export function generateGCode(
           ? "Ball Nose"
           : op.toolType === "drill"
             ? `Drill(tip ${op.tipAngle ?? 118}°)`
-            : "End Mill";
+            : op.toolType === "tapered-ball-nose"
+              ? "Tapered Ball Nose"
+              : "End Mill";
     lines.push(
       `; --- ${typeLabel} "${op.name}"  T${op.toolNumber} ⌀${op.diameter}mm ${toolLabel}  depth:${op.depth}mm ---`,
     );

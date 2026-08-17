@@ -218,7 +218,9 @@ export function buildOpItem(
         ? "Drill"
         : op.toolType === "ball-nose"
           ? "Ball Nose"
-          : "End Mill";
+          : op.toolType === "tapered-ball-nose"
+            ? "Tapered Ball Nose"
+            : "End Mill";
 
   // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
   // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).

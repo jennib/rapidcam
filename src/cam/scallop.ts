@@ -99,7 +99,14 @@ export interface CuspReadout {
  * written twice — so "is this stepover sane" is decided here or nowhere.
  */
 export function cuspReadout(tool: ToolShape, spacing: number): CuspReadout {
-  const d = Math.max(0, tool.diameter);
+  // The cusp between two finish passes is carved by the TIP. For a ball-nose the
+  // tip IS the diameter; for a tapered ball-nose the tip is the ball (`tipDiameter`),
+  // not the major diameter the fraction/band would otherwise quote. Using the major
+  // here would suggest a stepover that leaves a huge ridge on the small tip.
+  const d = Math.max(
+    0,
+    tool.toolType === "tapered-ball-nose" ? (tool.tipDiameter ?? tool.diameter) : tool.diameter,
+  );
   const cusp = cuspHeight(tool, spacing);
   return {
     cusp,

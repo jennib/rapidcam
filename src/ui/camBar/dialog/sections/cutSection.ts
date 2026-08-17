@@ -217,7 +217,7 @@ export function buildCutSection(
     return {
       toolType: t?.toolType ?? state.toolType,
       vAngle: t?.vAngle ?? state.vAngle,
-      tipDiameter: t?.tipDiameter ?? 0,
+      tipDiameter: t?.tipDiameter ?? state.tipDiameter ?? 0,
       diameter: t?.diameter ?? state.diameter,
     };
   };
@@ -797,7 +797,7 @@ export function buildCutSection(
     // Image controls shared by finish + roughing (invert / tone curve / estimate).
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
       r.style.display = isFinish || isRough ? "" : "none";
-    if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit") {
+    if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit" && state.toolType !== "tapered-ball-nose") {
       events.emitSetToolType("ball-nose");
     }
     reliefGammaInp.title = halftoning ? HALFTONE_GAMMA_TIP : RELIEF_GAMMA_TIP;
@@ -864,7 +864,7 @@ export function buildCutSection(
     // The finish needs the depth-shaping bit; roughing does not.
     if (
       state.combo === "relief-rough" &&
-      (state.toolType === "ball-nose" || state.toolType === "v-bit")
+      (state.toolType === "ball-nose" || state.toolType === "v-bit" || state.toolType === "tapered-ball-nose")
     ) {
       events.emitSetToolType("end-mill");
     }

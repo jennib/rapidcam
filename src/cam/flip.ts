@@ -301,7 +301,7 @@ export function validateFlip(doc: CADDocument): string[] {
       const protoRaw = top[top.length - 1];
       const proto = protoRaw ? resolveOpTool(protoRaw, doc.tools) : undefined;
       if (proto) {
-        if (proto.toolType === "v-bit" || proto.toolType === "ball-nose") {
+        if (proto.toolType === "v-bit" || proto.toolType === "ball-nose" || proto.toolType === "tapered-ball-nose") {
           out.push(
             `The registration pins would be bored with the last top-side tool — a ${proto.toolType}, which can't cut a clean straight hole. Make the last top op use a flat end mill, or bore the pins in a separate setup.`,
           );

@@ -227,6 +227,7 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   toolNumber: flat("toolNumber", intAtLeast(1)),
   diameter: flat("diameter", atLeast(0.01)),
   vAngle: flat("vAngle", within(1, 179)),
+  tipDiameter: flat("tipDiameter", atLeast(0)),
   tipAngle: flat("tipAngle", within(1, 179)),
   feedrate: flat("feedrate", atLeast(1)),
   plungeRate: flat("plungeRate", atLeast(1)),

@@ -260,6 +260,36 @@ test("the Add Toolpath dialog fits its controls too", async ({ page }) => {
   expect(await unreachableControls(page)).toEqual([]);
 });
 
+test("the Add Toolpath dialog fits the tapered ball-nose's extra tip field", async ({ page }) => {
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  // Deliberately NOT crowdTheLayersPanel(): it switches the document to a LASER
+  // to make the beam rows render, and a laser has no cutter — the tool-type
+  // select is then correctly hidden, so selecting a milling tool in it can never
+  // succeed. (That is what this test did when it was written, and it timed out
+  // waiting for a control the app was right to hide.) The crowding is about the
+  // layers panel anyway; this test is about the DIALOG, which is a modal of its
+  // own and is swept whole below.
+
+  await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __app: { doc: { entities: { selected: boolean }[]; emitChange: () => void } };
+      }
+    ).__app.doc;
+    for (const e of doc.entities) e.selected = true;
+    doc.emitChange();
+    (document.querySelector(".cam-add-btn") as HTMLElement | null)?.click();
+  });
+
+  await expect(page.locator(".tp-dialog")).toBeVisible();
+  // The tapered tool reveals the V-angle and Ball-Tip rows — the one case the
+  // default end-mill dialog never renders, and the one only a real layout sweep
+  // (not a querySelector) can check.
+  await page.locator('[data-testid="tool-type-select"]').selectOption("tapered-ball-nose");
+  expect(await unreachableControls(page)).toEqual([]);
+});
+
 test("Delete Layer stays clickable — it is the control that was pushed out", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);

@@ -318,7 +318,7 @@ export function openToolLibraryDialog(unit: Unit): void {
       ),
     );
 
-    if (t.toolType === "v-bit") {
+    if (t.toolType === "v-bit" || t.toolType === "tapered-ball-nose") {
       editorWrap.appendChild(
         numField(
           "V Angle (°)",

@@ -135,6 +135,7 @@ export function buildToolSection(
       diameter: state.diameter,
       vAngle: state.vAngle,
       tipAngle: state.tipAngle,
+      tipDiameter: state.toolType === "tapered-ball-nose" ? state.tipDiameter : undefined,
       feedrate: state.feedrate,
       plungeRate: state.plungeRate,
       spindleSpeed: state.spindleSpeed,
@@ -147,6 +148,7 @@ export function buildToolSection(
   // --- tool type ---
   const toolTypeSelect = document.createElement("select");
   toolTypeSelect.className = "unit";
+  toolTypeSelect.dataset.testid = "tool-type-select";
   for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
     const o = document.createElement("option");
     o.value = v;
@@ -211,6 +213,18 @@ export function buildToolSection(
     undefined,
     { onFork: fork },
   );
+  const tipRow = paramRow(
+    doc,
+    state,
+    "tipDiameter",
+    `Ball Tip ⌀ (${doc.displayUnit})`,
+    () => state.tipDiameter,
+    (v) => {
+      state.tipDiameter = v;
+    },
+    "len",
+    { onFork: fork },
+  );
   const spindleRow = paramRow(
     doc,
     state,
@@ -264,6 +278,7 @@ export function buildToolSection(
   toolContent.appendChild(diamRow.el);
   toolContent.appendChild(vAngleRow.el);
   toolContent.appendChild(tipAngleRow.el);
+  toolContent.appendChild(tipRow.el);
   toolContent.appendChild(spindleRow.el);
   toolContent.appendChild(feedRow.el);
   toolContent.appendChild(plungeRow.el);
@@ -272,7 +287,8 @@ export function buildToolSection(
 
   const updateToolTypeVisibility = () => {
     const tt = state.toolType;
-    vAngleRow.el.style.display = tt === "v-bit" ? "" : "none";
+    vAngleRow.el.style.display = tt === "v-bit" || tt === "tapered-ball-nose" ? "" : "none";
+    tipRow.el.style.display = tt === "tapered-ball-nose" ? "" : "none";
     tipAngleRow.el.style.display = tt === "drill" ? "" : "none";
   };
 
@@ -287,6 +303,7 @@ export function buildToolSection(
     state.diameter = t.diameter;
     state.vAngle = t.vAngle ?? DEFAULTS.vAngle;
     state.tipAngle = t.tipAngle ?? DEFAULTS.tipAngle;
+    state.tipDiameter = t.tipDiameter ?? DEFAULTS.tipDiameter;
     state.feedrate = t.feedrate;
     state.plungeRate = t.plungeRate;
     state.spindleSpeed = t.spindleSpeed;
@@ -295,6 +312,7 @@ export function buildToolSection(
     diamRow.setValue(t.diameter);
     vAngleRow.setValue(state.vAngle);
     tipAngleRow.setValue(state.tipAngle);
+    tipRow.setValue(state.tipDiameter);
     spindleRow.setValue(t.spindleSpeed);
     feedRow.setValue(t.feedrate);
     plungeRow.setValue(t.plungeRate);
@@ -311,6 +329,13 @@ export function buildToolSection(
   toolTypeSelect.addEventListener("change", () => {
     fork();
     state.toolType = toolTypeSelect.value as ToolType;
+    // A tapered ball-nose's tip is a BALL; leaving it 0 would make it a sharp
+    // cone (i.e. a v-bit). Seed a real ball tip on first switch so the default is
+    // never silently the wrong shape.
+    if (state.toolType === "tapered-ball-nose" && !(state.tipDiameter > 0)) {
+      state.tipDiameter = 1;
+      tipRow.setValue(state.tipDiameter);
+    }
     updateToolTypeVisibility();
     events.emitUpdateVBitHint();
     events.emitToolTypeChanged(state.toolType);

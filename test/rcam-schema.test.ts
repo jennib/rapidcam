@@ -742,6 +742,20 @@ function kitchenSinkDoc(): CADDocument {
       chamferSide: "inside",
       sharpenCorners: true,
     },
+    {
+      // tapered-ball-nose: the CompositeCutter ToolType — its tip geometry
+      // (vAngle + tipDiameter) must round-trip through the schema enum, which is
+      // exactly the drift this fixture exists to catch.
+      id: "op-tapered",
+      name: "Tapered finish",
+      type: "engrave",
+      entityIds: [outer.id],
+      side: "outside",
+      toolType: "tapered-ball-nose",
+      vAngle: 6,
+      tipDiameter: 1,
+      ...base,
+    },
   ];
   doc.operations.push(...ops);
   // Cylindrical/rotary wrap setup — exercises the serialized `rotary` block.

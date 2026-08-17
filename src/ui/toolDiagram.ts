@@ -136,6 +136,35 @@ function drawBallNose(svg: SVGElement, t: ToolDef): void {
   label(svg, CX, bodyBottom + halfW + 12, `r = ${t.diameter / 2} (⌀/2)`, "middle", LBL);
 }
 
+/**
+ * A cone with a ball tip — the angle is drawn faithfully (like {@link drawVBit}),
+ * the ball radius and diameters are exaggerated but labelled with the real values.
+ */
+function drawTaperedBallNose(svg: SVGElement, t: ToolDef): void {
+  const vAngle = clamp(t.vAngle ?? 60, 2, 178);
+  const half = deg2rad(vAngle / 2);
+  const topY = 58;
+  const depth = 96;
+  const halfW = clamp(depth * Math.tan(half), 7, 86);
+  const lx = CX - halfW,
+    rx = CX + halfW;
+  // Ball tip radius, exaggerated (real ball tips are sub-mm) so it stays visible.
+  const tipMM = t.tipDiameter ?? 0;
+  const tipR = tipMM > 0 ? clamp(tipMM * 6, 3, halfW * 0.6) : clamp(halfW * 0.2, 3, 16);
+  const apexY = topY + depth;
+  const ballTopY = apexY - 2 * tipR; // the ball's flat side (chord) sits up here
+  const shankHalf = Math.min(halfW, 20);
+  svg.appendChild(
+    node("rect", { x: CX - shankHalf, y: 22, width: shankHalf * 2, height: topY - 22 }, OUTLINE),
+  );
+  // Flute body: the cone tapers from the flutes to the ball, which closes the tip.
+  const d = `M ${lx} ${topY} L ${CX - tipR} ${ballTopY} A ${tipR} ${tipR} 0 0 0 ${CX + tipR} ${ballTopY} L ${rx} ${topY} Z`;
+  svg.appendChild(node("path", { d }, OUTLINE));
+  dimH(svg, lx, rx, topY - 12, `⌀ ${t.diameter} mm`);
+  label(svg, CX, apexY - depth / 2, `${vAngle}°`, "middle", LBL_A);
+  label(svg, CX, apexY + 14, `tip ⌀ ${tipMM || "—"}`, "middle", LBL);
+}
+
 function drawDrill(svg: SVGElement, t: ToolDef): void {
   const topY = 44,
     bodyBottom = 120,
@@ -173,6 +202,9 @@ export function buildToolDiagram(t: ToolDef): SVGSVGElement {
       break;
     case "drill":
       drawDrill(svg, t);
+      break;
+    case "tapered-ball-nose":
+      drawTaperedBallNose(svg, t);
       break;
     default:
       drawEndMill(svg, t);
