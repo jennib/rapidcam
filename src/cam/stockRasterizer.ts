@@ -46,7 +46,7 @@ import {
 } from "./types";
 import { reliefSpacing, halfAngleRad } from "./halftone";
 import { reliefEncodingFor } from "./reliefEncoding";
-import { ballHeight, coneHeight, toolContactField } from "./toolProfile";
+import { ballHeight, coneHeight, taperedBallHeight, toolContactField } from "./toolProfile";
 import { depthPasses } from "./postprocessors/base";
 import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
@@ -321,7 +321,7 @@ function rasterizeOp(
       if (ent instanceof RasterImageEntity) {
         // Relief needs a depth-shaping bit (matches gcode.ts, which skips others),
         // or a laser which we simulate with a fake depth.
-        if (op.toolType === "ball-nose" || op.toolType === "v-bit" || isLaser)
+        if (op.toolType === "ball-nose" || op.toolType === "v-bit" || op.toolType === "tapered-ball-nose" || isLaser)
           rasRelief(ent, op, stamp, stockT, isLaser);
       } else if (ent instanceof LineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
@@ -787,6 +787,15 @@ function makeStampFn(
     );
     return (cx, cy, d) => stampVCone(data, w, h, cx - offX, cy - offY, tipHalfTan, d, stockT, R);
   }
+  if (tt === "tapered-ball-nose") {
+    // CompositeCutter: ball tip + cone body. Same flank law the toolpath is
+    // dilated by (taperedBallHeight) — not a second copy — so the preview cannot
+    // disagree with the program it previews.
+    const halfTan = Math.tan(halfAngleRad(op));
+    const r = Math.min(R, Math.max(0, op.tipDiameter ?? 0) / 2);
+    return (cx, cy, d) =>
+      stampTaperedBallNose(data, w, h, cx - offX, cy - offY, R, r, halfTan, d, stockT);
+  }
   // end-mill (and any unrecognised type): flat disc
   return (cx, cy, d) => stampDisc(data, w, h, cx - offX, cy - offY, Rcell, d);
 }
@@ -862,6 +871,45 @@ function stampBallNose(
       const d2 = dxMM * dxMM + dyMM * dyMM;
       if (d2 > R2) continue;
       const hAt = depth + ballHeight(Math.sqrt(d2), R_mm);
+      if (hAt < data[base + x]) data[base + x] = hAt;
+    }
+  }
+}
+
+/**
+ * Tapered ball-nose stamp: a ball tip flowing into a widening cone (the
+ * CompositeCutter envelope). Same flank law as {@link taperedBallHeight} in
+ * {@link ./toolProfile} — written there once, read here — so the preview cannot
+ * disagree with the toolpath it is previewing.
+ */
+function stampTaperedBallNose(
+  data: Float32Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  R_mm: number,
+  r_mm: number,
+  halfAngleTan: number,
+  depth: number,
+  stockT: number,
+): void {
+  const blend = r_mm / Math.sqrt(1 + halfAngleTan * halfAngleTan);
+  const dMaxMM = Math.min(R_mm, blend + (stockT - depth) * halfAngleTan);
+  const dMaxCell = dMaxMM * RES;
+  const dMax2 = dMaxMM * dMaxMM;
+  const x0 = Math.max(0, Math.floor(cx - dMaxCell));
+  const x1 = Math.min(w - 1, Math.ceil(cx + dMaxCell));
+  const y0 = Math.max(0, Math.floor(cy - dMaxCell));
+  const y1 = Math.min(h - 1, Math.ceil(cy + dMaxCell));
+  for (let y = y0; y <= y1; y++) {
+    const base = y * w;
+    for (let x = x0; x <= x1; x++) {
+      const dxMM = (x - cx) / RES;
+      const dyMM = (y - cy) / RES;
+      const d2 = dxMM * dxMM + dyMM * dyMM;
+      if (d2 > dMax2) continue;
+      const hAt = depth + taperedBallHeight(Math.sqrt(d2), R_mm, r_mm, halfAngleTan);
       if (hAt < data[base + x]) data[base + x] = hAt;
     }
   }

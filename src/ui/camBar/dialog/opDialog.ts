@@ -334,7 +334,9 @@ export function openOpDialog(options: OpDialogOptions): void {
       toolType: state.toolType,
       toolNumber: state.toolNumber,
       diameter: state.diameter,
-      vAngle: state.toolType === "v-bit" ? state.vAngle : undefined,
+      vAngle:
+        state.toolType === "v-bit" || state.toolType === "tapered-ball-nose" ? state.vAngle : undefined,
+      tipDiameter: state.toolType === "tapered-ball-nose" ? state.tipDiameter : undefined,
       tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
       feedrate: state.feedrate,
       plungeRate: state.plungeRate,

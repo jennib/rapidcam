@@ -16,7 +16,7 @@ export type CAMOpType =
 /** Which side of the contour a chamfer's bevel sits on ("on" = centred on the edge). */
 export type ChamferSide = "on" | "outside" | "inside";
 
-export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill";
+export type ToolType = "end-mill" | "ball-nose" | "v-bit" | "drill" | "tapered-ball-nose";
 
 /** Coolant mode emitted around an operation: off (none), mist (M7), or flood (M8). M9 turns it off. */
 export type CoolantMode = "off" | "mist" | "flood";
@@ -37,7 +37,9 @@ export type CoolantMode = "off" | "mist" | "flood";
  *           tipDiameter  (the small flat at the POINT; 0 = perfectly sharp)
  *
  * end-mill: flat, `diameter` only. ball-nose: round tip, radius = `diameter`/2.
- * drill: `diameter` + `tipAngle` (conical point, e.g. 118°).
+ * drill: `diameter` + `tipAngle` (conical point, e.g. 118°). tapered-ball-nose:
+ * a cone (half of `vAngle`) with a SPHERICAL tip of `tipDiameter` — the
+ * CompositeCutter shape opencamlib models, where the narrow end is a ball, not a flat.
  */
 export interface ToolDef {
   id: string;
@@ -45,7 +47,7 @@ export interface ToolDef {
   toolType: ToolType;
   diameter: number; // mm — cutting/major diameter (widest part; see diagram above)
   vAngle?: number; // V-bit included angle (total, not half), degrees
-  tipDiameter?: number; // V-bit flat tip diameter, mm (0 = sharp); the narrow end, ≠ diameter
+  tipDiameter?: number; // V-bit flat tip / tapered ball-nose ball tip diameter, mm (0 = sharp); the narrow end, ≠ diameter
   tipAngle?: number; // Drill tip angle, degrees
   feedrate: number; // mm/min
   plungeRate: number; // mm/min
@@ -126,7 +128,7 @@ export interface CAMOperation {
   toolNumber: number; // T-number for tool changer (1-based)
   diameter: number; // mm
   vAngle?: number; // V-bit included angle, degrees (default 60)
-  tipDiameter?: number; // V-bit flat tip, mm (default 0)
+  tipDiameter?: number; // V-bit flat tip / tapered ball-nose ball tip, mm (default 0)
   tipAngle?: number; // Drill tip angle, degrees (default 118)
   feedrate: number; // mm/min
   plungeRate: number; // mm/min
@@ -446,6 +448,7 @@ export const DEFAULTS = {
   toolNumber: 1,
   diameter: 6,
   vAngle: 60,
+  tipDiameter: 0,
   tipAngle: 118,
   feedrate: 1000,
   plungeRate: 300,
@@ -475,6 +478,7 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
   "ball-nose": "Ball Nose",
   "v-bit": "V-Bit",
   drill: "Drill",
+  "tapered-ball-nose": "Tapered Ball Nose",
 };
 
 /**

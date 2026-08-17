@@ -856,7 +856,7 @@ fit, where you want every contour biased the same way.
 
 A raster engrave is produced when an **Engrave** op's `entityIds` reference an `image` entity: the greyscale pixels are swept as horizontal scan rows, modulating beam power per dot (`laserPower` for black down to `rasterMinPower` for the lightest mark). `laserPower` is the *darkest* power; `laserPasses` repeats the whole sweep.
 
-On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose** (the smooth-relief tool, and the default) — a **V-bit** is allowed but carves an engraving-like result (a cone per dot) and is flagged with a note; a flat end mill is rejected. The default stepover is ~10% of the cutter diameter. `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead; `reliefGamma` applies a tone curve (`depth ∝ darkness^gamma`, default linear) to keep a photo from reading flat. (`laserPower`/`rasterMinPower` are ignored.)
+On a **mill** (machineKind `"mill"`), the same Engrave-op-targeting-an-image instead carves a **relief**: each dot's darkness maps to **Z depth** (darkest = `depth`, white = the surface), cut as continuous boustrophedon rows reached over `stepdown` passes. It needs a **ball-nose** (the smooth-relief tool, and the default) or a **tapered ball-nose** (the steep-wall choice) — a **V-bit** is allowed but carves an engraving-like result (a cone per dot) and is flagged with a note; a flat end mill is rejected. The default stepover is ~10% of the cutter diameter. `rasterLineInterval` is the stepover and `rasterDotPitch` the horizontal dot pitch; `rasterInvert` carves the light areas instead; `reliefGamma` applies a tone curve (`depth ∝ darkness^gamma`, default linear) to keep a photo from reading flat. (`laserPower`/`rasterMinPower` are ignored.)
 
 ### Steep areas: contours instead of rows
 
@@ -899,6 +899,16 @@ Each tool requires `id`, `name`, `toolType`, `diameter`, `feedrate`, `plungeRate
 `spindleSpeed`, and `safeZ`; `vAngle`, `tipDiameter`, and `tipAngle` are optional
 and type-specific (as on operations). The `id` is the target of an operation's
 `toolId`.
+
+`toolType` is one of `end-mill`, `ball-nose`, `v-bit`, `drill`, or
+`tapered-ball-nose`. A tapered ball-nose is a cone with a **spherical** tip —
+opencamlib's `CompositeCutter`, the steep-wall finish bit that Easel has no shape
+for (you enter it there as "other bit" and type a single diameter). `diameter` is
+the major (widest) cutting diameter, `vAngle` the included taper angle, and
+`tipDiameter` the ball-tip diameter — the narrow end, exactly as a V-bit's
+`tipDiameter` is its flat. The tool's profile, and therefore the gouge correction,
+the 3-D preview, and the scallop-to-stepover calculator, all follow from those
+three numbers.
 
 ```json
 { "id": "tool-em-6", "name": "6mm End Mill", "toolType": "end-mill",

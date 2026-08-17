@@ -8,7 +8,7 @@
  */
 import { test, expect, describe, vi } from "vitest";
 import { rasterField, type RasterField, type RasterGrid } from "../src/cam/rasterEngrave";
-import { ballHeight, coneHeight, toolContactField, toolProfile } from "../src/cam/toolProfile";
+import { ballHeight, coneHeight, taperedBallHeight, taperedBallReach, toolContactField, toolProfile } from "../src/cam/toolProfile";
 import type { CAMOperation } from "../src/cam/types";
 
 const op = (over: Partial<CAMOperation> = {}): CAMOperation => ({
@@ -67,6 +67,62 @@ describe("tool profiles", () => {
     expect(coneHeight(0.4, t30, 0.5)).toBe(0); // inside a 1mm flat tip
     expect(coneHeight(1.5, t30, 0.5)).toBeCloseTo(1 / t30, 12); // 1mm past the flat
     expect(coneHeight(1, t30)).toBeCloseTo(1 / t30, 12); // sharp bit: from the point
+  });
+
+  test("a tapered ball-nose is the ball near the tip, the cone beyond, tangent at the join", () => {
+    // ⌀6 major (R 3), ⌀1 ball tip (r 0.5), 12° included taper → 6° half-angle.
+    const R = 3;
+    const r = 0.5;
+    const tanHalf = Math.tan((6 * Math.PI) / 180);
+    const blend = r / Math.sqrt(1 + tanHalf * tanHalf); // r·cos(α)
+    const blendH = r * (1 - tanHalf / Math.sqrt(1 + tanHalf * tanHalf)); // r(1 − sin α)
+
+    // Inside the tangent offset the flank IS the ball law, exactly.
+    for (const d of [0, blend / 2, blend * 0.999]) {
+      expect(taperedBallHeight(d, R, r, tanHalf)).toBe(ballHeight(d, r));
+    }
+    // Beyond it, the cone law with the tangent's vertical offset.
+    for (const d of [blend * 1.001, blend + 0.5, R]) {
+      expect(taperedBallHeight(d, R, r, tanHalf)).toBeCloseTo(blendH + coneHeight(d, tanHalf, blend), 12);
+    }
+    // Past the major radius the shank has ended: no constraint.
+    expect(taperedBallHeight(R + 1e-6, R, r, tanHalf)).toBe(Infinity);
+
+    // Value continuity at the join.
+    expect(taperedBallHeight(blend, R, r, tanHalf)).toBeCloseTo(blendH, 12);
+    // Slope continuity — tangency is the whole point of a composite cutter. The
+    // ball's slope at the join is cot(α) = 1/tan(α); the cone's is the same. A
+    // kinked profile would fail this. (h small: the ball's second derivative
+    // blows up near the tangent, so a coarse step biases the one-sided secant.)
+    const h = 1e-8;
+    const left = (taperedBallHeight(blend, R, r, tanHalf) - taperedBallHeight(blend - h, R, r, tanHalf)) / h;
+    const right = (taperedBallHeight(blend + h, R, r, tanHalf) - taperedBallHeight(blend, R, r, tanHalf)) / h;
+    expect(right).toBeCloseTo(1 / tanHalf, 6); // the cone side is linear: exact
+    expect(left).toBeCloseTo(right, 4); // no kink at the join
+  });
+
+  test("a tapered ball-nose is neither the major-radius ball nor a sharp cone", () => {
+    // The defect to guard: a tapered bit computed as a plain ⌀6 ball, or as a
+    // sharp 6° V-bit. Its flank is governed by the ⌀1 BALL TIP, not the ⌀6 body.
+    const R = 3;
+    const r = 0.5;
+    const tanHalf = Math.tan((6 * Math.PI) / 180);
+    const d = 0.25; // well inside the ball tip
+    const h = taperedBallHeight(d, R, r, tanHalf);
+    expect(h).toBeCloseTo(ballHeight(d, r), 12); // the TIP ball …
+    expect(h).not.toBeCloseTo(ballHeight(d, R), 12); // … not the ⌀6 ball
+    expect(h).not.toBeCloseTo(coneHeight(d, tanHalf), 12); // … not a sharp cone
+    // reach() inverts it, so it too tracks the tip rather than the body.
+    expect(taperedBallReach(0.01, R, r, tanHalf)).toBeLessThan(R);
+  });
+
+  test("tapered reach inverts height, round-trip through the profile", () => {
+    const prof = toolProfile({ toolType: "tapered-ball-nose", diameter: 6, tipDiameter: 1, vAngle: 6 });
+    for (const h of [0.01, 0.05, 0.1, 0.3, 0.5, 1]) {
+      const d = prof.reach(h);
+      expect(d).toBeGreaterThan(0);
+      expect(prof.height(d)).toBeCloseTo(h, 9);
+    }
   });
 
   test("reach stops at the tool, or at the deepest the field goes — whichever is nearer", () => {

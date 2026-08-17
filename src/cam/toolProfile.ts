@@ -110,6 +110,38 @@ export function coneHeight(d: number, tanHalf: number, tipR = 0): number {
   return d <= tipR ? 0 : (d - tipR) / tanHalf;
 }
 
+/**
+ * Tapered ball-nose flank height above the tip at lateral offset `d` — a cone
+ * with a SPHERICAL tip (opencamlib's `CompositeCutter`), built from the ball and
+ * cone laws above rather than restating either.
+ *
+ * The ball of radius `r` occupies the tip out to the offset where the cone is
+ * tangent to it, `r·cos(α)`; beyond that the cone climbs at `1/tan(α)` the same
+ * way a V-bit's does. The two meet with the same VALUE and the same SLOPE at the
+ * join — that tangency is the entire point of a composite cutter, and a profile
+ * that stitches the two laws with a kink would describe a lip the tool doesn't
+ * have.
+ */
+export function taperedBallHeight(d: number, R: number, r: number, tanHalf: number): number {
+  if (d > R) return Infinity;
+  if (r <= 0) return coneHeight(d, tanHalf); // no ball: a sharp cone, like a V-bit
+  const blend = r / Math.sqrt(1 + tanHalf * tanHalf); // r·cos(α) — the tangent offset
+  if (d <= blend) return ballHeight(d, r);
+  const blendH = r * (1 - tanHalf / Math.sqrt(1 + tanHalf * tanHalf)); // r·(1 − sin α)
+  return blendH + coneHeight(d, tanHalf, blend);
+}
+
+/** Widest offset that can still bind at a cut `maxDepth` deep — the inverse of
+ *  {@link taperedBallHeight}. */
+export function taperedBallReach(maxDepth: number, R: number, r: number, tanHalf: number): number {
+  if (r <= 0) return Math.min(R, maxDepth * tanHalf);
+  const blend = r / Math.sqrt(1 + tanHalf * tanHalf);
+  const blendH = r * (1 - tanHalf / Math.sqrt(1 + tanHalf * tanHalf));
+  if (maxDepth <= blendH)
+    return Math.min(blend, Math.sqrt(Math.max(0, 2 * r * maxDepth - maxDepth * maxDepth)));
+  return Math.min(R, blend + (maxDepth - blendH) * tanHalf);
+}
+
 /** The cutting envelope of the tool an operation is running. */
 export function toolProfile(t: ToolShape): ToolProfile {
   const R = Math.max(0, t.diameter / 2);
@@ -139,6 +171,17 @@ export function toolProfile(t: ToolShape): ToolProfile {
       return {
         height: (d) => (d > R ? Infinity : coneHeight(d, tanHalf)),
         reach: (maxDepth) => Math.min(R, maxDepth * tanHalf),
+      };
+    }
+    case "tapered-ball-nose": {
+      // A cone with a ball tip: the ball governs near the tip, the cone (the same
+      // half-angle law as a V-bit) further out, tangent where they meet. Same
+      // three fields as a V-bit; only the tip's cross-section differs.
+      const tanHalf = Math.tan(halfAngleRad(t));
+      const tipR = Math.min(R, Math.max(0, t.tipDiameter ?? 0) / 2);
+      return {
+        height: (d) => taperedBallHeight(d, R, tipR, tanHalf),
+        reach: (maxDepth) => taperedBallReach(maxDepth, R, tipR, tanHalf),
       };
     }
     default:

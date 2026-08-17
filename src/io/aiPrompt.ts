@@ -32,7 +32,9 @@ function describeTools(doc: CADDocument): string {
         ? `Ø${t.diameter}mm, ${t.vAngle ?? 60}° included${t.tipDiameter ? `, ${t.tipDiameter}mm flat tip` : ""}`
         : t.toolType === "drill"
           ? `Ø${t.diameter}mm, ${t.tipAngle ?? 118}° tip`
-          : `Ø${t.diameter}mm`;
+          : t.toolType === "tapered-ball-nose"
+            ? `Ø${t.diameter}mm, ${t.vAngle ?? 60}° taper, ⌀${t.tipDiameter ?? 0}mm ball tip`
+            : `Ø${t.diameter}mm`;
     return `- id "${t.id}": ${t.name} — ${t.toolType}, ${geom}; feed ${t.feedrate} mm/min, plunge ${t.plungeRate} mm/min, ${t.spindleSpeed} rpm, safe Z ${t.safeZ} mm`;
   });
   return `Tool library (reference these by \`toolId\` in operations):\n${lines.join("\n")}`;

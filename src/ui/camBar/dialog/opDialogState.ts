@@ -35,6 +35,7 @@ export interface OpState {
   toolNumber: number;
   diameter: number;
   vAngle: number;
+  tipDiameter: number;
   tipAngle: number;
   feedrate: number;
   plungeRate: number;
@@ -164,6 +165,7 @@ export function createInitialOpState(
     toolNumber: existing?.toolNumber ?? DEFAULTS.toolNumber,
     diameter: existing?.diameter ?? DEFAULTS.diameter,
     vAngle: existing?.vAngle ?? DEFAULTS.vAngle,
+    tipDiameter: existing?.tipDiameter ?? DEFAULTS.tipDiameter,
     tipAngle: existing?.tipAngle ?? DEFAULTS.tipAngle,
     feedrate: existing?.feedrate ?? DEFAULTS.feedrate,
     plungeRate: existing?.plungeRate ?? DEFAULTS.plungeRate,

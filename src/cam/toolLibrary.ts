@@ -58,6 +58,18 @@ const BUILTIN_DEFAULTS: ToolDef[] = [
     safeZ: 5,
   },
   {
+    id: "builtin-tbn-1",
+    name: "1mm Tapered Ball Nose",
+    toolType: "tapered-ball-nose",
+    diameter: 6.35,
+    tipDiameter: 1,
+    vAngle: 6,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+  },
+  {
     id: "builtin-drill-3",
     name: "3mm Drill Bit",
     toolType: "drill",
