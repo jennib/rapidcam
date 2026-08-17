@@ -202,9 +202,15 @@ describe("rcam v3 schema — serialized real document", () => {
     expect(ok).toBe(true);
   });
 
-  it("emits the tool referenced by toolId (and only referenced tools)", () => {
+  it("emits every referenced tool — one per ToolType — and only referenced tools", () => {
     const data = serializeDoc(kitchenSinkDoc(), "kitchen-sink") as { tools?: unknown[] };
-    expect((data.tools ?? []).map((t: any) => t.id)).toEqual(["tool1"]);
+    expect((data.tools ?? []).map((t: any) => t.id)).toEqual([
+      "tool1",
+      "tool-bn",
+      "tool-vb",
+      "tool-dr",
+      "tool-tb",
+    ]);
   });
 
   // Drift guard for the parametric/metadata/image additions (the kitchen-sink
@@ -592,22 +598,36 @@ function kitchenSinkDoc(): CADDocument {
     ),
   );
 
-  // A library tool referenced by one op's toolId — exercises the tools array
-  // (and the used-tools filter) in serializeDoc.
-  const tool: ToolDef = {
-    id: "tool1",
-    name: "6mm flat",
-    toolType: "end-mill",
-    diameter: 6,
-    vAngle: 60,
-    tipDiameter: 0.5,
-    tipAngle: 118,
-    feedrate: 1000,
-    plungeRate: 300,
-    spindleSpeed: 18000,
-    safeZ: 5,
-  };
-  doc.tools.push(tool);
+  // One library tool per ToolType, each referenced by an op's toolId, so the
+  // serialized tools array (and the schema TOOL enum) meets every type — not just
+  // end-mill. A type missing here is the drift the used-tools filter + schema
+  // tool enum guard against, and it stays invisible until a tool of that type is
+  // actually referenced and serialized.
+  const toolFeeds = { feedrate: 1000, plungeRate: 300, spindleSpeed: 18000, safeZ: 5 };
+  const tools: ToolDef[] = [
+    { id: "tool1", name: "6mm flat", toolType: "end-mill", diameter: 6, ...toolFeeds },
+    { id: "tool-bn", name: "6mm ball nose", toolType: "ball-nose", diameter: 6, ...toolFeeds },
+    {
+      id: "tool-vb",
+      name: "60° V-bit",
+      toolType: "v-bit",
+      diameter: 6,
+      vAngle: 60,
+      tipDiameter: 0.5,
+      ...toolFeeds,
+    },
+    { id: "tool-dr", name: "6mm drill", toolType: "drill", diameter: 6, tipAngle: 118, ...toolFeeds },
+    {
+      id: "tool-tb",
+      name: "1mm tapered ball nose",
+      toolType: "tapered-ball-nose",
+      diameter: 6,
+      vAngle: 6,
+      tipDiameter: 1,
+      ...toolFeeds,
+    },
+  ];
+  doc.tools.push(...tools);
 
   const base = {
     toolNumber: 1,
@@ -651,6 +671,7 @@ function kitchenSinkDoc(): CADDocument {
       type: "engrave",
       entityIds: [outer.id],
       side: "outside",
+      toolId: "tool-vb",
       toolType: "v-bit",
       vAngle: 30,
       ...base,
@@ -672,6 +693,7 @@ function kitchenSinkDoc(): CADDocument {
       type: "drill",
       entityIds: [circle.id],
       side: "outside",
+      toolId: "tool-dr",
       toolType: "drill",
       tipAngle: 118,
       ...base,
@@ -743,6 +765,18 @@ function kitchenSinkDoc(): CADDocument {
       sharpenCorners: true,
     },
     {
+      // ball-nose: the smooth-relief tool, and the one ToolType with no op of its
+      // own in this fixture — without this the TOOL enum never meets it.
+      id: "op-relief-bn",
+      name: "Relief ball-nose",
+      type: "engrave",
+      entityIds: [outer.id],
+      side: "outside",
+      toolId: "tool-bn",
+      toolType: "ball-nose",
+      ...base,
+    },
+    {
       // tapered-ball-nose: the CompositeCutter ToolType — its tip geometry
       // (vAngle + tipDiameter) must round-trip through the schema enum, which is
       // exactly the drift this fixture exists to catch.
@@ -751,6 +785,7 @@ function kitchenSinkDoc(): CADDocument {
       type: "engrave",
       entityIds: [outer.id],
       side: "outside",
+      toolId: "tool-tb",
       toolType: "tapered-ball-nose",
       vAngle: 6,
       tipDiameter: 1,

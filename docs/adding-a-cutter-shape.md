@@ -33,7 +33,9 @@ Each entry answers: *what does the app say that is false if this site is missed?
 6. halftone gate — **deliberately leave it V-bit-only.** A ball-tip cone has no V-groove
    width law; adding it here would carve a halftone with no screen to derive.
 7. finish/roughing NOTE comments (`gcode.ts`) — skip and **the posted comment names the
-   wrong cutter** ("roughing with a ball-nose works but is slow").
+   wrong cutter** ("roughing with a ball-nose works but is slow"). Knowingly untested: it's
+   advisory prose, not behaviour — a miss here loses a hint, not a part — so no test pins the
+   wording.
 8. chamfer/vcarve gates (`gcode.ts`) — **deliberately leave V-bit-only**; the bevel/vcarve
    slope comes from the V, and a ball-tip cone isn't one.
 9. header tool summary + per-op `; ---` label (`gcode.ts`) — skip and **the G-code header
@@ -106,3 +108,14 @@ Each entry answers: *what does the app say that is false if this site is missed?
   `opItemBuilder.ts`, `TOOL_TYPE_LABELS`).
 - dom-tests-cannot-see-layout — a new dialog row can be laid out past a container edge;
   only `e2e/unreachable-controls.e2e.ts` (or a screenshot) sees it.
+- a-test-drove-a-control-the-app-was-right-to-hide — the Add-Toolpath case timed out:
+  `crowdTheLayersPanel()` switches the document to a LASER, and a laser has no cutter, so the
+  tool-type select is correctly hidden — the test asked a laser to pick a milling tool. Product
+  right, test wrong (recorded at `e2e/unreachable-controls.e2e.ts`); it only surfaced late
+  because `npm run validate` does not run Playwright.
+- a-long-running-process-held-stale-modules — `post_gcode`/`render_preview` reported the tool
+  as "End Mill" (the pre-change label), and it was diagnosed as "the MCP tools run a separate
+  reference build". They don't: `mcp/server.ts` → `cli/core` → `src/cam/gcode` is the same
+  source — a long-running server process was holding the modules it loaded before the change.
+  It could not be settled because no test read the emitted G-code; `test/taperedBallNoseGcode.test.ts`
+  now reads it, so the next unexpected output is a failing assertion, not a judgement call.

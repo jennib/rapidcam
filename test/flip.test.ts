@@ -449,6 +449,24 @@ test("validateFlip guards the pin-bore tool: non-flat bit and too-small pin", ()
   };
   expect(validateFlip(d1).some((w) => /can't cut a clean straight hole|v-bit/.test(w))).toBe(true);
 
+  // Same guard for a tapered ball-nose: its tip is a ball, so pins come out ragged.
+  // Drop "tapered-ball-nose" from flip.ts and this branch stops firing.
+  const dT = new CADDocument({ width: 200, height: 120 });
+  const rT = dT.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 100 }));
+  const hbT = dT.add(new CircleEntity({ x: 100, y: 60 }, 3));
+  dT.operations = [
+    profileOp("t", [rT.id], { toolType: "tapered-ball-nose", vAngle: 6, tipDiameter: 1 }),
+    drillOp("b", [hbT.id], "bottom"),
+  ];
+  dT.flip = {
+    axis: "h",
+    registration: "pins",
+    pinDiameter: 6,
+    pinDepth: 4,
+    pins: defaultPins(stockBox(dT), "h"),
+  };
+  expect(validateFlip(dT).some((w) => /tapered-ball-nose/.test(w))).toBe(true);
+
   // Pin narrower than the boring tool → hole comes out tool-sized (loose).
   const d2 = new CADDocument({ width: 200, height: 120 });
   const r2 = d2.add(new RectEntity({ x: 20, y: 20 }, { x: 80, y: 100 }));
