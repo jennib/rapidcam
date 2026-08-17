@@ -483,3 +483,94 @@ describe("Add-Toolpath dialog: the type caption", () => {
     expect(shown(pairs(dialog))).toBe(false);
   });
 });
+
+describe("Add-Toolpath dialog: the cusp calculator", () => {
+  /** A mill doc whose only entity is a selected greyscale image. */
+  function imageDoc(): CADDocument {
+    registerEmbeddedImage({
+      id: "cusp-dlg",
+      name: "cusp-dlg",
+      width: 2,
+      height: 2,
+      data: btoa(String.fromCharCode(0, 128, 200, 255)),
+    });
+    const doc = new CADDocument({ width: 300, height: 200 });
+    doc.stockThickness = 19.05;
+    const img = new RasterImageEntity("cusp-dlg", { x: 10, y: 10 }, 40, 40, 0);
+    doc.add(img);
+    img.selected = true;
+    return doc;
+  }
+
+  const input = (dialog: HTMLElement, label: string) =>
+    row(dialog, label).querySelector("input") as HTMLInputElement;
+
+  /** Open on a relief finish with a known bit, which is what the calculator reads. */
+  function reliefDialog(diameter: number): HTMLElement {
+    const dialog = openDialog(imageDoc());
+    selectType(dialog, "engrave");
+    const dia = input(dialog, "Diameter");
+    dia.value = String(diameter);
+    dia.dispatchEvent(new Event("change"));
+    return dialog;
+  }
+
+  test("the cusp row reports what the current stepover leaves", () => {
+    const dialog = reliefDialog(6);
+    // The stepover seeds at 10% of the bit, and a ⌀6 ball at 0.6mm leaves 15µm.
+    expect(parseFloat(input(dialog, "Relief stepover").value)).toBeCloseTo(0.6, 6);
+    expect(parseFloat(input(dialog, "Cusp height").value)).toBeCloseTo(0.015, 3);
+  });
+
+  test("typing a cusp drives the stepover, and it follows the bit", () => {
+    const dialog = reliefDialog(6);
+    const cusp = input(dialog, "Cusp height");
+    cusp.value = "0.01";
+    cusp.dispatchEvent(new Event("change"));
+    // 2·sqrt(R² − (R−h)²) for R=3, h=0.01 → 0.4899mm.
+    expect(parseFloat(input(dialog, "Relief stepover").value)).toBeCloseTo(0.49, 2);
+
+    // The point of holding the cusp rather than a percentage: the SAME finish on
+    // a smaller bit is a smaller stepover, and the user does not do that sum.
+    const small = reliefDialog(1);
+    const c2 = input(small, "Cusp height");
+    c2.value = "0.01";
+    c2.dispatchEvent(new Event("change"));
+    expect(parseFloat(input(small, "Relief stepover").value)).toBeCloseTo(0.196, 2);
+  });
+
+  test("changing the bit re-reads the cusp instead of leaving the old number up", () => {
+    const dialog = reliefDialog(6);
+    expect(parseFloat(input(dialog, "Cusp height").value)).toBeCloseTo(0.015, 3);
+    const dia = input(dialog, "Diameter");
+    dia.value = "1";
+    dia.dispatchEvent(new Event("change"));
+    // Stepover unchanged at 0.6, but on a ⌀1 that is past the equator: the
+    // passes still overlap (0.6 < 1), and the ridge is far taller.
+    expect(parseFloat(input(dialog, "Cusp height").value)).toBeCloseTo(0.1, 2);
+  });
+
+  test("a stepover wider than the bit reports no cusp at all", () => {
+    const dialog = reliefDialog(1);
+    const step = input(dialog, "Relief stepover");
+    step.value = "2";
+    step.dispatchEvent(new Event("change"));
+    const cusp = input(dialog, "Cusp height");
+    expect(cusp.value).toBe("");
+    expect(cusp.placeholder).toBe("passes don't overlap");
+  });
+
+  test("the cusp row hides with the stepover it mirrors", () => {
+    const dialog = reliefDialog(6);
+    expect(shown(row(dialog, "Cusp height"))).toBe(true);
+    const sel = row(dialog, "Tool Type").querySelector("select") as HTMLSelectElement;
+    sel.value = "v-bit";
+    sel.dispatchEvent(new Event("change"));
+    (
+      row(dialog, "V-carve halftone").querySelector("input[type=checkbox]") as HTMLInputElement
+    ).click();
+    // A halftone derives its row pitch, so neither end of the calculator applies.
+    expect(shown(row(dialog, "Relief stepover"))).toBe(false);
+    expect(shown(row(dialog, "Cusp height"))).toBe(false);
+  });
+});

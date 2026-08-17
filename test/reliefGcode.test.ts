@@ -291,3 +291,48 @@ test("output size: a gradient relief stays bounded by the dot grid × passes", (
   expect(moves).toBeLessThanOrEqual(cols * rows * passes); // bounded, not unbounded
   expect(moves).toBeGreaterThan(rows); // it does vary with tone
 });
+
+test("relief: the posted program states the cusp its stepover leaves", () => {
+  const id = registerGrid([
+    [0, 128],
+    [200, 255],
+  ]);
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+  const eid = doc.entities.find((e) => e.type === "image")!.id;
+  const g = generateGCode(
+    [reliefOp([eid], { diameter: 6, rasterLineInterval: 0.6, rasterDotPitch: 0.6 })],
+    doc,
+  );
+  // ⌀6 ball at 0.6mm → 15µm, and the percentage that makes it comparable. The
+  // post is ASCII-only, so "⌀" reaches the file as "dia".
+  expect(g).toMatch(
+    /; finish: dia 6mm ball-nose at 0\.6mm stepover \(10% of diameter\) leaves a 0\.015mm cusp/,
+  );
+
+  // A stepover wider than the bit is not a big cusp — say so instead of printing
+  // a number for a ridge that is really full-height stock.
+  const wide = generateGCode(
+    [reliefOp([eid], { diameter: 2, rasterLineInterval: 4, rasterDotPitch: 4 })],
+    doc,
+  );
+  expect(wide).toContain("adjacent passes never touch");
+  expect(wide).not.toMatch(/leaves a .* cusp/);
+});
+
+test("relief: a halftone gets no cusp line — its rows are grooves, not passes", () => {
+  const id = registerGrid([
+    [0, 128],
+    [200, 255],
+  ]);
+  const doc = new CADDocument({ width: 100, height: 100 });
+  doc.add(new RasterImageEntity(id, { x: 0, y: 0 }, 20, 20, 0));
+  const eid = doc.entities.find((e) => e.type === "image")!.id;
+  const g = generateGCode(
+    [reliefOp([eid], { toolType: "v-bit", diameter: 6, vAngle: 60, halftone: true })],
+    doc,
+  );
+  expect(g).not.toContain("; finish:");
+  // Positive control: the halftone DID post, and said its own thing.
+  expect(g).toContain("V-carve halftone:");
+});

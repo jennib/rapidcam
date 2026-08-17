@@ -437,6 +437,43 @@ test("relief mismatch: disagreeing about Invert carves the image and its negativ
   expect(f?.message).toContain("Invert");
 });
 
+// --- relief stepover wider than the bit --------------------------------------
+
+test("relief stepover: rows wider than the cutter leave uncut stripes", () => {
+  // ⌀3 ball, rows 4mm apart: the passes never meet, so what stands between them
+  // is not a cusp but full-height stock — a program that looks entirely normal.
+  const doc = reliefPair({ rasterLineInterval: 4 });
+  const f = lintGCode("G0 Z5", buildLintContext(doc)).find(
+    (x) => x.code === "relief-stepover-gap",
+  );
+  expect(f?.severity).toBe("warning");
+  expect(f?.message).toContain("never touch");
+  expect(f?.entityIds?.length).toBe(1);
+});
+
+test("relief stepover: a stepover inside the bit lints clean (positive control)", () => {
+  // 0.3mm on the same ⌀3 bit. Without this the test above would pass on a rule
+  // that fires for every relief op.
+  const doc = reliefPair({ rasterLineInterval: 0.3 });
+  expect(lintGCode("G0 Z5", buildLintContext(doc)).map((x) => x.code)).not.toContain(
+    "relief-stepover-gap",
+  );
+});
+
+test("relief stepover: a halftone is not measured against its bit's width", () => {
+  // A halftone DERIVES its row pitch from the groove width and ignores this
+  // field; grooves overlapping their neighbours is the printing mechanism.
+  const doc = reliefPair({
+    rasterLineInterval: 4,
+    toolType: "v-bit",
+    vAngle: 60,
+    halftone: true,
+  });
+  expect(lintGCode("G0 Z5", buildLintContext(doc)).map((x) => x.code)).not.toContain(
+    "relief-stepover-gap",
+  );
+});
+
 test("relief mismatch: matched passes lint clean (positive control)", () => {
   // Same depth, same invert — the pairing and the check both ran, and found
   // nothing. Without this the two tests above would pass on a rule that fires

@@ -21,6 +21,7 @@ import {
 } from "./halftone";
 import { reliefEncodingFor } from "./reliefEncoding";
 import { toolContactField } from "./toolProfile";
+import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
 import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
 import {
@@ -1341,6 +1342,22 @@ function reliefImage(
           `neighbours, so fine detail is replaced by whatever was darkest nearby. Turn on V-carve ` +
           `halftone to space the rows to the bit.`,
       );
+  }
+
+  if (!plan) {
+    // The finish this program will leave, stated before it is cut. Only the ROW
+    // spacing leaves a cusp — along a row the tool rides a continuous Z, so the
+    // dot pitch buys resolution, not smoothness.
+    const cusp = cuspReadout(op, lineInterval);
+    lines.push(
+      cusp.overlapping
+        ? `; finish: ⌀${n(op.diameter)}mm ${op.toolType} at ${n(lineInterval)}mm stepover ` +
+          `(${Math.round(cusp.fraction * 100)}% of diameter) leaves a ${n(cusp.cusp)}mm cusp between rows`
+        : `; NOTE: rows are ${n(lineInterval)}mm apart, wider than the ⌀${n(op.diameter)}mm bit — ` +
+          `adjacent passes never touch, so what stands between them is not a cusp but ` +
+          `full-height uncut stock. ${n(cusp.suggested)}mm (${FINISH_STEPOVER_FRACTION * 100}% of ⌀) ` +
+          `is the usual finish stepover.`,
+    );
   }
 
   for (let p = 1; p <= passes; p++) {
