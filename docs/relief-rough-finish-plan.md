@@ -290,15 +290,29 @@ catch. The skip test must therefore be **one shared predicate** called by both, 
 the same rule written twice — the defect class this whole document is about.
 
 One thing not to get wrong here, because it looks like a divergence risk and is the
-reverse: **the two already share the relief grid.** `rasRelief` builds its field from
-`reliefSpacing(op)` — the emitter's own resolver, chosen for exactly this reason
-("so the preview shows the depths the program will command") — then applies the same
-`toolContactField` and the same `steepSplit`. The adaptive, memory-budgeted `RES` in
-that file is the **stock height map** `stamp()` writes into, not the relief field. So
-the floor builder takes a field and returns the same floor for both callers by
-construction. Do not "fix" this by having each consumer derive its own floor on its
-own grid; that would reintroduce precisely the divergence `reliefSpacing` exists to
-prevent.
+reverse: **the two already share the relief grid.** `reliefImage` and `rasRelief` both
+call `reliefSpacing(op)` and both then run the same `toolContactField` and the same
+`steepSplit`. The adaptive, memory-budgeted `RES` in `stockRasterizer` is the scale
+factor on `stamp(w.x * RES, …)` — the **stock height map**, not the relief field. The
+relief field, which is where the skip predicate lives, is identical between them by
+construction.
+
+So the right shape is not "one shared predicate, two floors" and certainly not "each
+consumer derives its own floor on its own grid" — it is **one floor, computed once on
+the shared `reliefSpacing` field, passed to both callers.** That is simpler than
+either alternative, which is the usual tell.
+
+`reliefStockFloor` is then the third turn of a pattern this codebase already owns
+twice — `reliefSpacing` for the row/dot pitch, `reliefEncoding` for what the bytes
+mean. The latter's header states the rule and the reason:
+
+> Four consumers rasterise a relief … So the parameters are resolved HERE, from the
+> entity and the op, and the four consumers ask rather than restate. A rough pass and
+> its finish pass cannot disagree about the encoding, because neither of them owns it.
+
+Substitute "how much stock is left" for "how this image converts to depth" and the
+argument is unchanged. A floor neither the generator nor the preview owns is a floor
+they cannot disagree about.
 
 ### 4. Lints change meaning
 
