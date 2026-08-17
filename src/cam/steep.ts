@@ -179,7 +179,7 @@ export function steepSplit(
   for (let k = 1; k * zStep < maxDepth; k++) levels.push(-k * zStep);
   if (levels.length === 0) return { kind: "none" };
 
-  const paths = contourSteep(contact, maxDepth, steepFlag, slope, levels, op.diameter);
+  const paths = contourSteep(contact, maxDepth, steepFlag, slope, levels, zStep, op.diameter);
   if (paths.length === 0) return { kind: "none" };
 
   // The raster gives up a cell only where a contour DEMONSTRABLY runs — not
@@ -257,6 +257,7 @@ function contourSteep(
   steepFlag: Uint8Array,
   slope: Float32Array,
   levels: number[],
+  zStep: number,
   diameter: number,
 ): SteepPath[] {
   const { cols, colPitch, rows } = contact;
@@ -332,7 +333,17 @@ function contourSteep(
       const y0 = yAt(r);
       const y1 = yAt(r + 1);
 
-      for (let li = 0; li < levels.length; li++) {
+      // Only the levels between this cell's own lo and hi can cross it, and the
+      // levels are evenly spaced (`levels[k] = −(k+1)·zStep`), so that is an
+      // index RANGE rather than a search. Scanning all of them instead is the
+      // pass's dominant cost on any deep model — a 200 mm relief 20 mm deep has
+      // 133 levels and 1.8 M cells, i.e. 236 M iterations to find the ~2 that
+      // cross. The bounds are deliberately loose by one on each side and the
+      // exact test below still runs, so this narrows the loop without owning
+      // the decision.
+      const kLo = Math.max(0, Math.floor(-hi / zStep) - 1);
+      const kHi = Math.min(levels.length - 1, Math.ceil(-lo / zStep));
+      for (let li = kLo; li <= kHi; li++) {
         const z = levels[li];
         if (z <= lo || z >= hi) continue; // no crossing in this cell
 
@@ -496,6 +507,13 @@ function chainSegments(
  * Greedy nearest-first ordering. Open chains may be traversed either way; a
  * closed loop is rotated to begin at its nearest point, which turns a long
  * approach across the model into a step.
+ *
+ * A closed loop is scanned vertex by vertex to find that rotation, so the search
+ * is O(points × loops) per level — 245 M distance evaluations on the 200 mm
+ * model above. Each chain's bounding box gives an exact lower bound on how close
+ * any of its points can be, which skips the scan for every loop that is already
+ * further away than the best one found. The bound can only ever skip candidates
+ * that could not have won, so the chosen path and rotation are unchanged.
  */
 function orderPaths(
   chains: Chain[],
@@ -503,7 +521,23 @@ function orderPaths(
   z: number,
 ): SteepPath[] {
   const out: SteepPath[] = [];
-  const left = chains.slice();
+  // The box travels WITH its chain rather than in a second array indexed
+  // alongside it: one splice, nothing to keep in step. A parallel array here
+  // desyncs on the first removal and the bound then belongs to some other
+  // chain — which costs travel and nothing else, so no test would report it.
+  const left = chains.map((ch) => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of ch.pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return { ...ch, minX, minY, maxX, maxY };
+  });
   let at = from;
   const d2 = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
     (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
@@ -514,7 +548,11 @@ function orderPaths(
     let bestAt = 0;
     let bestRev = false;
     for (let i = 0; i < left.length; i++) {
-      const { pts, closed } = left[i];
+      const { pts, closed, minX, minY, maxX, maxY } = left[i];
+      // Nothing in this chain can beat what we have — skip its points entirely.
+      const bx = at.x < minX ? minX - at.x : at.x > maxX ? at.x - maxX : 0;
+      const by = at.y < minY ? minY - at.y : at.y > maxY ? at.y - maxY : 0;
+      if (bx * bx + by * by >= bestD) continue;
       if (closed) {
         for (let k = 0; k < pts.length - 1; k++) {
           const d = d2(at, pts[k]);

@@ -185,6 +185,91 @@ test("a cone's contours are closed rings at every level, shallow to deep", () =>
   }
 });
 
+test("the levels present run unbroken — no band of wall is skipped", () => {
+  // The contour loop does not test every level against every cell; it computes
+  // the index RANGE that can cross and scans only that, because scanning all of
+  // them is the pass's dominant cost on a deep model. An off-by-one there drops
+  // a level's ring silently: the cut simply misses a band of the wall, and
+  // every other assertion in this file still passes, because everything that IS
+  // posted stays perfectly valid.
+  //
+  // The moat is a wall of constant slope 2 between r=8 and r=13, so every level
+  // crosses it as one large ring — no stubs, nothing marginal.
+  //
+  // Only the two EXTREME levels may legitimately be absent, and both for the
+  // same physical reason rather than an arithmetic one: at the top the ball
+  // rounds the convex edge away, and at the foot it cannot enter the concave
+  // corner. So the assertion is that what survives is a CONTIGUOUS run — a hole
+  // anywhere in the middle is the bug this guards.
+  const moat = (x: number, y: number): number =>
+    Math.max(0, Math.min(DEPTH, DEPTH - 2 * (Math.hypot(x - mid, y - mid) - 8)));
+  for (const stepover of [1, 0.7, 0.35]) {
+    const s = split(moat, stepover);
+    if (s.kind !== "split") throw new Error("expected a split");
+    const want: number[] = [];
+    for (let k = 1; k * s.zStep < DEPTH; k++) want.push(-k * s.zStep);
+    const got = [...new Set(s.paths.map((p) => p.z))].sort((a, b) => b - a);
+
+    const first = want.findIndex((w) => Math.abs(w - got[0]) < 1e-9);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(got).toEqual(want.slice(first, first + got.length)); // unbroken, in order
+    expect(first).toBeLessThanOrEqual(1); // at most the top ring lost
+    expect(want.length - (first + got.length)).toBeLessThanOrEqual(1); // at most the foot
+    // Positive control: an empty `got` would satisfy every line above.
+    expect(got.length).toBeGreaterThan(5);
+  }
+});
+
+test("each contour is entered at the nearest point to the last one left", () => {
+  // Ordering is greedy nearest-first, and it is computed with a bounding-box
+  // early-out that skips scanning any chain already further away than the best
+  // found. That skip is claimed to be exact — it can only discard candidates
+  // that could not have won — and this is what makes the claim checkable:
+  // re-derive the greedy choice from the OUTPUT and require it to match.
+  //
+  // Without it, a bound that is merely too aggressive costs nothing a test can
+  // see: every contour is still posted, still closed, still at its own level,
+  // and only the rapid between them gets longer.
+  // FOUR cones, not one: a single cone is one ring per level, so there is
+  // nothing to order and the test passes without checking anything. (It did,
+  // until the positive control at the bottom said `checked` was 0.)
+  const bumps = (x: number, y: number): number => {
+    let h = 0;
+    for (const [cx, cy] of [
+      [16, 16],
+      [48, 16],
+      [16, 48],
+      [48, 48],
+    ])
+      h = Math.max(h, DEPTH - 2 * Math.hypot(x - cx, y - cy));
+    return Math.max(0, h);
+  };
+  const s = split(bumps, 0.5);
+  if (s.kind !== "split") throw new Error("expected a split");
+  const d2 = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
+    (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  let checked = 0;
+  // Levels are ordered top-down and never interleaved, so the greedy run is
+  // per level — which is also the only place a nearest-first claim applies.
+  for (const z of new Set(s.paths.map((p) => p.z))) {
+    const atLevel = s.paths.filter((p) => p.z === z);
+    for (let i = 1; i < atLevel.length; i++) {
+      const from = atLevel[i - 1].pts[atLevel[i - 1].pts.length - 1];
+      const chosen = d2(from, atLevel[i].pts[0]);
+      // Every path not yet emitted, at every point it could have been entered.
+      for (let j = i + 1; j < atLevel.length; j++) {
+        const cand = atLevel[j];
+        const entries = cand.closed
+          ? cand.pts.slice(0, -1)
+          : [cand.pts[0], cand.pts[cand.pts.length - 1]];
+        for (const e of entries) expect(d2(from, e)).toBeGreaterThanOrEqual(chosen - 1e-9);
+      }
+      checked++;
+    }
+  }
+  expect(checked).toBeGreaterThan(3); // positive control: choices really were made
+});
+
 test("no stubs: nothing shorter than the cutter is posted", () => {
   // The fragmentation finding. Before the smooth clip and this filter, a
   // hemisphere produced 628 contours of which 336 were under 1mm — one plunge
