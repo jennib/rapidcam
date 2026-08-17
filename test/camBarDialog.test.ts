@@ -92,6 +92,19 @@ describe("Add-Toolpath dialog: per-type field visibility", () => {
     expect(shown(row(dialog, "V-carve hop clearance"))).toBe(true);
   });
 
+  test("switching to 3-D Relief turns roughing on with its fields already populated", () => {
+    const dialog = openDialog(millDoc()); // defaults to a profile op
+
+    // The rough stage's rows are built for every type, so switching the dropdown
+    // to relief reveals them instead of an empty "Roughing" section.
+    expect(row(dialog, "Leave for finish").querySelector("input")).toBeTruthy();
+
+    selectType(dialog, "relief");
+
+    const cb = row(dialog, "Roughing pass").querySelector("input") as HTMLInputElement;
+    expect(cb.checked).toBe(true); // a relief job includes roughing by default
+  });
+
   test("switching to Pocket reveals Stepover and Clearing, and drops the V-carve rows", () => {
     const dialog = openDialog(millDoc());
     selectType(dialog, "vcarve");

@@ -215,6 +215,11 @@ export function openOpDialog(options: OpDialogOptions): void {
 
   typeSelect.addEventListener("change", () => {
     state.combo = typeSelect.value as OpCombo;
+    // A relief job includes its roughing pass by default. `includeRough` is only
+    // derived at open, so switching the type TO relief via this dropdown would
+    // otherwise leave it false (and the roughing rows hidden) even though the
+    // rough stage itself is always populated.
+    if (state.combo === "relief") state.includeRough = true;
     // If the name is still an untouched auto-generated default, rename it
     // to match the newly chosen type.
     if (AUTO_NAME_RE.test(state.name.trim())) {

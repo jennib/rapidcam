@@ -284,26 +284,29 @@ export function createInitialOpState(
     halftone: finish?.halftone ?? false,
     halftoneLand: finish?.halftoneLand ?? DEFAULTS.halftoneLand,
     reliefSteepPass: finish?.reliefSteepPass ?? false,
-    reliefRough: isRelief
-      ? {
-          toolId: rough?.toolId,
-          toolType: (rough?.toolType ?? "end-mill") as ToolType,
-          toolNumber: rough?.toolNumber ?? DEFAULTS.toolNumber,
-          diameter: rough?.diameter ?? DEFAULTS.diameter,
-          vAngle: rough?.vAngle ?? DEFAULTS.vAngle,
-          tipDiameter: rough?.tipDiameter ?? DEFAULTS.tipDiameter,
-          tipAngle: rough?.tipAngle ?? DEFAULTS.tipAngle,
-          feedrate: rough?.feedrate ?? DEFAULTS.feedrate,
-          plungeRate: rough?.plungeRate ?? DEFAULTS.plungeRate,
-          spindleSpeed: rough?.spindleSpeed ?? DEFAULTS.spindleSpeed,
-          safeZ: rough?.safeZ ?? DEFAULTS.safeZ,
-          stepdown: rough?.stepdown ?? DEFAULTS.stepdown,
-          stepover: rough?.stepover ?? DEFAULTS.stepover,
-          finishAllowance: rough?.finishAllowance ?? DEFAULTS.finishAllowance,
-          rampAngle: rough?.rampAngle,
-          paramExprs: rough?.paramExprs ? { ...rough.paramExprs } : {},
-        }
-      : null,
+    // Always populate the rough stage: the type dropdown can switch TO relief
+    // from any other type, and the section is built once against this object
+    // (it is hidden for non-relief by `reliefRoughSection.update`). Opening as
+    // relief carries the existing rough op's values; otherwise these are the
+    // default rough tool's.
+    reliefRough: {
+      toolId: rough?.toolId,
+      toolType: (rough?.toolType ?? "end-mill") as ToolType,
+      toolNumber: rough?.toolNumber ?? DEFAULTS.toolNumber,
+      diameter: rough?.diameter ?? DEFAULTS.diameter,
+      vAngle: rough?.vAngle ?? DEFAULTS.vAngle,
+      tipDiameter: rough?.tipDiameter ?? DEFAULTS.tipDiameter,
+      tipAngle: rough?.tipAngle ?? DEFAULTS.tipAngle,
+      feedrate: rough?.feedrate ?? DEFAULTS.feedrate,
+      plungeRate: rough?.plungeRate ?? DEFAULTS.plungeRate,
+      spindleSpeed: rough?.spindleSpeed ?? DEFAULTS.spindleSpeed,
+      safeZ: rough?.safeZ ?? DEFAULTS.safeZ,
+      stepdown: rough?.stepdown ?? DEFAULTS.stepdown,
+      stepover: rough?.stepover ?? DEFAULTS.stepover,
+      finishAllowance: rough?.finishAllowance ?? DEFAULTS.finishAllowance,
+      rampAngle: rough?.rampAngle,
+      paramExprs: rough?.paramExprs ? { ...rough.paramExprs } : {},
+    },
     // A new relief defaults to including the roughing pass; editing one reflects
     // whether a roughing op actually exists.
     includeRough: isRelief && (existing === null ? true : rough !== null),

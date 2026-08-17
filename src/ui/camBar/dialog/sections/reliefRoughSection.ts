@@ -22,20 +22,14 @@ export function buildReliefRoughSection(
   const roughEvents = new OpDialogEvents();
   const rr = state.reliefRough;
 
-  const includeRow = dField(
-    "Roughing pass",
-    (() => {
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = state.includeRough;
-      cb.addEventListener("change", () => {
-        state.includeRough = cb.checked;
-        update();
-      });
-      return cb;
-    })(),
-  );
-  sec.appendChild(includeRow);
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = state.includeRough;
+  cb.addEventListener("change", () => {
+    state.includeRough = cb.checked;
+    update();
+  });
+  sec.appendChild(dField("Roughing pass", cb));
 
   const body = document.createElement("div");
   sec.appendChild(body);
@@ -89,6 +83,9 @@ export function buildReliefRoughSection(
   const update = () => {
     const show = state.combo === "relief";
     sec.style.display = show ? "" : "none";
+    // The type dropdown can flip `includeRough` (a relief defaults to roughing
+    // on), so re-sync the checkbox instead of reading it only at build time.
+    cb.checked = state.includeRough;
     body.style.display = show && state.includeRough ? "" : "none";
   };
   update();

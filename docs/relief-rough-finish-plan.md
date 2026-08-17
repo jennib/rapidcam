@@ -443,6 +443,14 @@ kitchen-sink. Worth doing *after* Phases 1–2 prove the shape, and worth doing 
 only because leaving it means the op list, export filenames, G-code headers and lint
 messages all keep calling the 3-D finish pass "Engrave".
 
+**Decided: no (2026-08-17).** The rename is naming, not dispatch. The finish pass is
+an `engrave` on an image, told apart from a line engrave by the image check
+(`reliefImageIds`), not by a type of its own — and the two must stay one type because
+`.rcam` v3 does not record the machine kind. A saved image-engrave must read correctly
+whether it is opened as a laser raster or a mill relief, so splitting a `relief` type
+out of `engrave` would need the save-time machine kind back, which v3 dropped on
+purpose. The "Engrave" labelling is a cosmetic cost, not a dispatch cost.
+
 ## Open questions
 
 Two of the three this document opened are now closed and have moved into the design
