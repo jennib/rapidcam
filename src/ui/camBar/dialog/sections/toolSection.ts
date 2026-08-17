@@ -24,6 +24,15 @@ export function buildToolSection(
   events: OpDialogEvents,
   isNew: boolean,
   title = "Tool",
+  /**
+   * Test handle for this section's tool-type select. A 3-D Relief job builds this
+   * section TWICE — once for the finish tool, once for roughing — and the second
+   * one is built even while the stage is hidden, so a single shared id resolves to
+   * two elements in every document, relief or not. That took out four specs that
+   * had nothing to do with relief. One id per stage, and the default keeps the
+   * name every existing spec already uses.
+   */
+  toolTypeTestId = "tool-type-select",
 ): HTMLElement {
   const toolSec = dSection(title);
   const toolSectionTitle = toolSec.querySelector(".tp-dialog-section-title") as HTMLElement;
@@ -149,7 +158,7 @@ export function buildToolSection(
   // --- tool type ---
   const toolTypeSelect = document.createElement("select");
   toolTypeSelect.className = "unit";
-  toolTypeSelect.dataset.testid = "tool-type-select";
+  toolTypeSelect.dataset.testid = toolTypeTestId;
   for (const [v, l] of Object.entries(TOOL_TYPE_LABELS) as [ToolType, string][]) {
     const o = document.createElement("option");
     o.value = v;

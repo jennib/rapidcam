@@ -19,6 +19,11 @@ export function buildReliefRoughSection(
   isNew: boolean,
 ): ReliefRoughSectionController {
   const sec = dSection("Roughing");
+  // Marks the whole stage so a lookup can say which half of the dialog it means.
+  // Every row in here duplicates a label that also exists on the finishing side
+  // (Tool Type, Diameter, Stepdown, Stepover), and the rows exist in the DOM even
+  // while the stage is hidden — so "the Stepover field" is ambiguous without this.
+  sec.dataset.stage = "rough";
   const roughEvents = new OpDialogEvents();
   const rr = state.reliefRough;
 
@@ -35,7 +40,9 @@ export function buildReliefRoughSection(
   sec.appendChild(body);
 
   if (rr) {
-    body.appendChild(buildToolSection(doc, rr, roughEvents, isNew, "Roughing Tool"));
+    body.appendChild(
+      buildToolSection(doc, rr, roughEvents, isNew, "Roughing Tool", "rough-tool-type-select"),
+    );
     body.appendChild(
       paramRow(
         doc,

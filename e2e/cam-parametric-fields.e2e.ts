@@ -15,7 +15,7 @@
  *    silently did not work. SettingsBar now runs the same path a variable edit
  *    does (which also regenerates features sized to the material).
  */
-import { expect, openDoc, test } from "./appFixture";
+import { FINISH_FIELD, expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { RectEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
@@ -70,7 +70,7 @@ test("a CAM field clamps identically whether typed or driven, and tracks the sto
   // --- The shared clamp table, through the real input ---------------------
   await page.locator('[data-testid="op-type-select"]').selectOption("pocket");
   // "Stepover (0–1)" — the "Relief stepover (mm)" row also contains "stepover".
-  const stepover = dialog.locator(".tp-field", { hasText: "Stepover (0" }).locator("input");
+  const stepover = dialog.locator(FINISH_FIELD, { hasText: "Stepover (0" }).locator("input");
   await stepover.fill("5"); // above the 0..1 range
   await stepover.dispatchEvent("change");
   await expect(stepover).toHaveValue("1");
@@ -80,7 +80,7 @@ test("a CAM field clamps identically whether typed or driven, and tracks the sto
   await expect(stepover).toHaveValue("0.01");
 
   // --- A formula typed straight into the field ----------------------------
-  const depthRow = dialog.locator(".tp-field", { hasText: "Depth (mm)" });
+  const depthRow = dialog.locator(FINISH_FIELD, { hasText: "Depth (mm)" });
   const depth = depthRow.locator("input");
   await depth.fill("-stock");
   await depth.dispatchEvent("change");

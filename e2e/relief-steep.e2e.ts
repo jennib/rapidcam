@@ -7,7 +7,7 @@
  * matters — a persisted field that never reaches the emitter is the failure mode
  * this project has shipped before.
  */
-import { test, expect, openDoc } from "./appFixture";
+import { FINISH_FIELD, test, expect, openDoc } from "./appFixture";
 
 /** A cone height map: a 63° flank, which is unambiguously steep. */
 function coneDoc(): string {
@@ -67,7 +67,7 @@ async function openToolpathDialog(page: import("@playwright/test").Page): Promis
 }
 
 const fieldRow = (page: import("@playwright/test").Page, label: string) =>
-  page.locator(".tp-dialog .tp-field").filter({ hasText: label });
+  page.locator(`.tp-dialog ${FINISH_FIELD}`).filter({ hasText: label });
 
 test("ticking the steep pass persists it and posts contour passes", async ({ page }) => {
   await openDoc(page, coneDoc());

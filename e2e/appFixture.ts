@@ -63,6 +63,30 @@ export async function waitForApp(page: Page): Promise<void> {
  * keeps at `entities[0]`, so it means "the design loaded" rather than "the
  * document has some entities" — which is true even of an empty one.
  */
+/**
+ * A toolpath-dialog field row on the FINISHING/shared side — i.e. every row that
+ * is not part of the Roughing stage.
+ *
+ * A 3-D Relief job puts two tools in one dialog, so "Tool Type", "Diameter",
+ * "Stepdown" and "Stepover" each label two rows. The roughing rows are built even
+ * while the stage is hidden, so a bare `.tp-field` filter is ambiguous in EVERY
+ * document, relief or not — which is how a relief change broke `cam-units` and
+ * `cam-parametric-fields`. `cam-units` had already papered over one case with
+ * `.first()`, which reads as "whichever comes first" rather than "the one the
+ * user means".
+ *
+ * Say which stage instead. `[data-stage="rough"]` is set in `reliefRoughSection`;
+ * a spec that wants a roughing row asks for it by that attribute directly.
+ *
+ * `:visible` carries the other half, and it is not belt-and-braces: the LASER
+ * section builds a second "Feed (…/min)" row that sits hidden in every mill
+ * document, so that label was already ambiguous long before relief added a second
+ * tool. `cam-units` pinned it with `.first()`, which happened to be right and says
+ * nothing about why. Between them the two clauses state the actual predicate —
+ * *the row the user is looking at* — rather than a DOM position.
+ */
+export const FINISH_FIELD = '.tp-field:visible:not([data-stage="rough"] *)';
+
 export async function openDoc(page: Page, rcamText: string): Promise<void> {
   await page.goto(await buildOpenUrl(rcamText, APP_URL));
   await waitForApp(page);
