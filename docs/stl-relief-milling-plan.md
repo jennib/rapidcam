@@ -382,6 +382,11 @@ there is no second mode to switch to. The standing note says so instead.
 - **Rest pass between rough and finish** ✅ **SHIPPED 2026-08-16**, so the ball-nose isn't
   handed a full stepdown of material on a steep wall. This is the standing complaint on
   Easel's forum. **Not via `restRegions()` — that line was wrong**; see below.
+  ⚠️ **Scoped to rough→rough only.** The FINISH pass still knows nothing about what
+  roughing removed: it computes its staircase from `maxDepth`, so 62% of its feed can be
+  air, and where the roughing tool never reached it takes the lot in one bite (17 mm
+  measured, on a ⌀3 ball nose). Planned in
+  [relief-rough-finish-plan.md](relief-rough-finish-plan.md), with the UI half.
 - **Tapered ball-nose as a real `ToolType`.** Currently `ToolType` is
   `"end-mill" | "ball-nose" | "v-bit" | "drill"` ([types.ts:19](../src/cam/types.ts#L19)).
   Model it the way opencamlib does — a `CompositeCutter`, i.e. a cone with a ball tip, not
