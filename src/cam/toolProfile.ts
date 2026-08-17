@@ -263,20 +263,8 @@ function dilate(
     return out;
   });
 
-  const out = sweep(src, cols, nRows, colPitch, rowPitch, profile, maxDepth);
+  const out = sweep(src, cols, nRows, colPitch, rowPitch, profile, maxDepth, levelStep);
   if (!out) return backoff > 0 ? withLevels(field, rows, src) : field;
-
-  // Land back on the level ladder the field was quantised to, or the equal-Z run
-  // merging downstream stops merging and the program grows by orders of
-  // magnitude. Round DOWN — shallower is the safe side — and leave a cell no
-  // neighbour reached bit-identical, so a relief the tool can already cut posts
-  // exactly the G-code it posted before. In place: `sweep` allocated these.
-  for (let r = 0; r < nRows; r++) {
-    const own = src[r];
-    const levels = out[r];
-    for (let c = 0; c < cols; c++)
-      if (levels[c] !== own[c]) levels[c] = Math.floor(levels[c] / levelStep + 1e-9) * levelStep;
-  }
   return { ...field, rows: rows.map((row, r) => ({ y: row.y, levels: out[r] })) };
 }
 
@@ -298,7 +286,7 @@ function expand(field: RasterField, profile: ToolProfile, maxDepth: number): Ras
     for (let c = 0; c < cols; c++) out[c] = -row.levels[c];
     return out;
   });
-  const out = sweep(neg, cols, rows.length, colPitch, rowPitch, profile, maxDepth);
+  const out = sweep(neg, cols, rows.length, colPitch, rowPitch, profile, maxDepth, 0);
   if (!out) return field;
   for (const levels of out) for (let c = 0; c < cols; c++) levels[c] = -levels[c];
   return { ...field, rows: rows.map((row, r) => ({ y: row.y, levels: out[r] })) };
@@ -310,6 +298,25 @@ function expand(field: RasterField, profile: ToolProfile, maxDepth: number): Ras
  * Sign-agnostic on purpose — every bound below is stated in terms of `src` as
  * given, so feeding it a negated field yields the dilation (see {@link expand}).
  * Returns `null` when the tool is finer than one cell, i.e. nothing to correct.
+ *
+ * `levelStep > 0` lands each corrected cell back on the ladder the field was
+ * quantised to, or the equal-Z run merging downstream stops merging and the
+ * program grows by orders of magnitude. Round DOWN — shallower is the safe side
+ * — and leave a cell no neighbour reached bit-identical, so a relief the tool
+ * can already cut posts exactly the G-code it posted before.
+ *
+ * **It has to happen HERE, inside the loop, against the float64 `best`.** Doing
+ * it as a second pass over the output looks equivalent and is not: `best` is
+ * `src + pen` with a float64 penalty, so storing it first rounds it to float32,
+ * and a `best` that was strictly below `own` can round back onto it. The second
+ * pass then reads them as equal, skips the quantisation, and leaves the cell one
+ * whole level step DEEPER than this code has ever cut it — 11.8 µm on a 3 mm
+ * relief, in the un-conservative direction, on 3 cells out of 38.5 million.
+ * Measured, not reasoned about; `scripts/relief-dilation-cost.ts` is the sibling
+ * probe and the guard is in `test/toolProfile.test.ts`.
+ *
+ * `levelStep = 0` means no quantisation, which is what a swept floor wants: it is
+ * only ever compared, never commanded, so it has no run merging to protect.
  */
 function sweep(
   src: Float32Array[],
@@ -319,6 +326,7 @@ function sweep(
   rowPitch: number,
   profile: ToolProfile,
   maxDepth: number,
+  levelStep: number,
 ): Float32Array[] | null {
   const reach = profile.reach(maxDepth);
   // A sample stands for its whole cell, so a cell is in reach when its NEAR EDGE
@@ -387,7 +395,8 @@ function sweep(
           if (v < best) best = v;
         }
       }
-      levels[c] = best;
+      levels[c] =
+        levelStep > 0 && best !== own ? Math.floor(best / levelStep + 1e-9) * levelStep : best;
     }
     outRows[r] = levels;
   }

@@ -231,6 +231,167 @@ describe("toolContactField", () => {
 
 // --- the performance trap ---------------------------------------------------
 
+/**
+ * The optimised sweep against a brute-force oracle that shares none of its
+ * machinery: no footprint table, no box-min early-out, no negation duality, no
+ * band bookkeeping. Just the definition.
+ *
+ * This exists because extracting the shared `sweep()` kernel moved the level-ladder
+ * quantisation out of the per-cell loop, and a second pass over the output is NOT
+ * equivalent: `best` carries a float64 penalty, so storing it into a Float32Array
+ * first can round a `best` that was strictly below `own` back onto it. The second
+ * pass then sees them equal, skips the quantisation, and leaves the cell one whole
+ * level step deeper than this code has ever cut — 11.8 µm on a 3 mm relief, in the
+ * UN-conservative direction, on 3 cells out of 38.5 million. Green suite, green
+ * typecheck, and no assertion anywhere could see it.
+ */
+function bruteContactField(
+  f: RasterField,
+  profile: ReturnType<typeof toolProfile>,
+  maxDepth: number,
+  finishAllowance = 0,
+): number[][] {
+  // The allowance arrives in MILLIMETRES and the field is in level units; missing
+  // that conversion here is what made this oracle's first run disagree by 800 µm,
+  // and it disagreed in the direction that would have read as a shipped bug.
+  const backoff = Math.min(1, Math.max(0, finishAllowance) / maxDepth);
+  const reach = profile.reach(maxDepth);
+  const nRows = f.rows.length;
+  const src = f.rows.map((row) =>
+    Array.from({ length: f.cols }, (_, c) =>
+      backoff > 0 ? (row.levels[c] > backoff ? row.levels[c] - backoff : 0) : row.levels[c],
+    ),
+  );
+  const L = f.colPitch > 0 ? Math.floor(reach / f.colPitch + 0.5) : 0;
+  const K = f.rowPitch > 0 ? Math.floor(reach / f.rowPitch + 0.5) : 0;
+  if (L <= 0 && K <= 0) return src;
+
+  return src.map((row, r) =>
+    row.map((own, c) => {
+      let best = own;
+      for (let j = -K; j <= K; j++)
+        for (let i = -L; i <= L; i++) {
+          // Near-edge distance, and the border replicates — both are the field's
+          // stated conventions, restated here on purpose so a change to either
+          // has to be made twice and argued for once.
+          const vx = Math.max(0, Math.abs(i) * f.colPitch - f.colPitch / 2);
+          const vy = Math.max(0, Math.abs(j) * f.rowPitch - f.rowPitch / 2);
+          const d = Math.hypot(vx, vy);
+          if (d > reach) continue;
+          const h = profile.height(d);
+          if (!Number.isFinite(h)) continue;
+          const rr = Math.min(nRows - 1, Math.max(0, r + j));
+          const cc = Math.min(f.cols - 1, Math.max(0, c + i));
+          const v = src[rr][cc] + h / maxDepth;
+          if (v < best) best = v;
+        }
+      return best === own ? own : Math.floor(best / f.levelStep + 1e-9) * f.levelStep;
+    }),
+  );
+}
+
+test("the optimised sweep equals a brute-force drop-cutter, bit for bit", () => {
+  // Varied along every axis the sweep branches on: field character (a hard wall,
+  // a smooth ramp, and noise finer than any bit), tool TYPE (three different
+  // flank laws), cell size against the tool, cut depth, and the roughing
+  // allowance — which takes the separate backoff path.
+  const n = 24;
+  const fields: [string, number[][]][] = [
+    ["wall", wall(n)],
+    ["ramp", Array.from({ length: n }, () => Array.from({ length: n }, (_, x) => x / (n - 1)))],
+    [
+      "noise",
+      Array.from({ length: n }, (_, y) =>
+        Array.from({ length: n }, (_, x) => ((x * 37 + y * 11) % 256) / 255),
+      ),
+    ],
+  ];
+  let compared = 0;
+  for (const [label, rows] of fields)
+    for (const over of [
+      { toolType: "ball-nose" as const, diameter: 3 },
+      { toolType: "ball-nose" as const, diameter: 7 },
+      { toolType: "v-bit" as const, diameter: 6, vAngle: 60 },
+      { toolType: "v-bit" as const, diameter: 4, vAngle: 90, tipDiameter: 0.5 },
+      { toolType: "end-mill" as const, diameter: 5 },
+    ])
+      for (const maxDepth of [3, 25])
+        for (const allowance of [0, 0.4]) {
+          const f = field1mm(rows);
+          const o = op({ ...over, depth: -maxDepth });
+          const got = toolContactField(f, o, maxDepth, allowance);
+          const want = bruteContactField(f, toolProfile(o), maxDepth, allowance);
+          for (let r = 0; r < f.rows.length; r++)
+            for (let c = 0; c < f.cols; c++) {
+              const a = got.rows[r].levels[c];
+              const b = want[r][c];
+              if (!Object.is(a, Math.fround(b)))
+                throw new Error(
+                  `${label}/${over.toolType}⌀${over.diameter}/d${maxDepth}/a${allowance} ` +
+                    `cell ${r},${c}: optimised ${a} vs brute ${b} ` +
+                    `(${((a - b) * maxDepth * 1000).toFixed(1)} µm)`,
+                );
+              compared++;
+            }
+        }
+  // Positive control: the loop above passes trivially if it compared nothing.
+  expect(compared).toBe(3 * 5 * 2 * 2 * n * n);
+});
+
+test("quantisation happens against the float64 best, not the stored float32", () => {
+  // The knife-edge the oracle above cannot reach by sampling: `best` is
+  // `src + pen` with a float64 penalty, and here it lands strictly below 1 but
+  // within half a float32 ulp of it (the spacing below 1.0 is 2^-24 ≈ 6e-8). Store
+  // it before comparing and it rounds back onto `own`, the quantisation is skipped
+  // as a no-op, and the cell is left a full level step — 11.8 µm at this depth —
+  // DEEPER than the correction has ever cut it.
+  //
+  // It happens on 3 cells in 38.5 million, so it is not findable by widening a
+  // matrix; this is the configuration it was actually found in, kept verbatim.
+  // A resampled source is part of it — box-averaging is what produces the value.
+  const PX = 400;
+  const data = new Float32Array(PX * PX);
+  for (let y = 0; y < PX; y++)
+    for (let x = 0; x < PX; x++)
+      data[y * PX + x] = (x % 64 < 28 && y % 64 < 28) || (x % 97 < 40 && y % 53 < 22) ? 0 : 1;
+  const f = rasterField(
+    { width: PX, height: PX, data },
+    {
+      widthMM: 60,
+      heightMM: 60,
+      lineIntervalMM: 1.2,
+      dotPitchMM: 1.2,
+      gamma: 1,
+      tone: "encoded",
+      // A height map's threshold. Leaving it at the photo default of 0.96 blanks
+      // every cell at level <= 0.04 and moves the field out from under the case.
+      whiteThreshold: 1.01,
+    },
+  );
+  const o = op({ toolType: "ball-nose", diameter: 6, depth: -3 });
+  const got = toolContactField(f, o, 3);
+  const want = bruteContactField(f, toolProfile(o), 3);
+
+  // The three cells the bug moved, named — so a failure says which invariant went
+  // rather than just "a number changed".
+  for (const [r, c] of [
+    [23, 0],
+    [49, 2],
+    [49, 26],
+  ] as const)
+    expect(`cell ${r},${c} = ${got.rows[r].levels[c]}`).toBe(
+      // fround: the field stores float32, and `254/255` in source is a float64
+      // literal that does not compare equal to it.
+      `cell ${r},${c} = ${Math.fround(254 / 255)}`,
+    );
+
+  let moved = 0;
+  for (let r = 0; r < f.rows.length; r++)
+    for (let c = 0; c < f.cols; c++)
+      if (!Object.is(got.rows[r].levels[c], Math.fround(want[r][c]))) moved++;
+  expect(moved).toBe(0);
+});
+
 test("the footprint is priced once, not per cell (no trig in the inner loop)", () => {
   // The trap this repo has shipped twice: an O(n) loop with trigonometry inside
   // it. The tool profile is evaluated per FOOTPRINT OFFSET into a table, so the

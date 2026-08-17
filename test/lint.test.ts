@@ -447,6 +447,52 @@ test("relief mismatch: matched passes lint clean (positive control)", () => {
   );
 });
 
+/**
+ * Two ROUGHING passes on one image — the arrangement `restToolDiameter` invites.
+ * The rest pass works out what the earlier tool left by opening the same field
+ * with each tool, so a depth mismatch hands it two different surfaces to
+ * subtract and it answers confidently and wrongly.
+ */
+function reliefRoughRest(over: Partial<CAMOperation> = {}): CADDocument {
+  const doc = reliefPair();
+  doc.operations.pop(); // drop the engrave; this is rough-against-rough
+  const rough = doc.operations[0];
+  doc.operations.push({
+    ...rough,
+    id: "rest",
+    name: "Rest",
+    diameter: 3,
+    restToolDiameter: 6,
+    ...over,
+  });
+  return doc;
+}
+
+test("relief mismatch: a REST pass at a different depth from its roughing pass is flagged", () => {
+  const f = lintGCode("G0 Z5", buildLintContext(reliefRoughRest({ depth: -12 }))).find(
+    (x) => x.code === "relief-pass-mismatch",
+  );
+  expect(f?.severity).toBe("warning");
+  expect(f?.message).toContain("8mm");
+  expect(f?.message).toContain("12mm");
+  expect(f?.entityIds?.length).toBe(1);
+});
+
+test("relief mismatch: two roughing passes disagreeing about Invert are flagged", () => {
+  const f = lintGCode("G0 Z5", buildLintContext(reliefRoughRest({ rasterInvert: true }))).find(
+    (x) => x.code === "relief-pass-mismatch",
+  );
+  expect(f?.message).toContain("Invert");
+});
+
+test("relief mismatch: a correctly matched rest pass lints clean (positive control)", () => {
+  // Without this, the two above pass just as well for a rule that fires on any
+  // two relief-rough ops sharing an image — which is the normal arrangement.
+  expect(
+    lintGCode("G0 Z5", buildLintContext(reliefRoughRest())).map((x) => x.code),
+  ).not.toContain("relief-pass-mismatch");
+});
+
 test("relief mismatch: ops on DIFFERENT images are not paired", () => {
   const doc = reliefPair({ depth: -12 });
   doc.operations[1].entityIds = ["some-other-image"];
