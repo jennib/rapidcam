@@ -467,6 +467,32 @@ steep cell has under one cell of horizontal spacing between contours, by the sam
 inequality that defines steepness) and removes 0–17% of the mask in practice, depending
 on how lumpy the surface is.
 
+**The split does leave more material than the plain raster in places, and that had to be
+chased down rather than waved at.** Ticking the box has to be an improvement everywhere,
+because a user who gets a worse surface *somewhere* has no way to find out where. Simulated
+through the app's own cut model on a cone, a hemisphere and a moat wall, it leaves **less**
+material at 3–5× as many cells as it leaves more (hemisphere at 0.5 mm: 3424 cells better,
+1016 worse). What stands is bounded by about one cusp — 0.035–0.121 mm — and lands on a
+few **repeated** values (0.070 mm × 8, 0.121 mm × 8), which is the signature of the two
+finishes meeting on a seam rather than of a region nothing cut. Halving the stepover
+roughly halves it; a fixed sampling artifact would not move. The cause is phase: the
+raster's ridge crests and the contours' crests do not line up, so a cell on the boundary
+can sit on one strategy's crest and between the other's passes. Every package that ships a
+surface-angle split has this seam. `scripts/steep-vs-raster.ts` reproduces it.
+
+**Cost, and a measurement trap that nearly buried a 1.7× win.** The pass runs at op time on
+the UI thread — both `reliefImage` and the 3-D preview go through it — so it is a freeze the
+user feels. On a deliberately extreme model (200 mm, 20 mm deep, 63% steep, 0.15 mm
+stepover: 1.8 M cells, 133 levels) it costs **4.5 s**, about 1.9 µs per contour point, for a
+toolpath of 2.3 M points; a typical panel is well under a second. Two fixes got it there
+from 7.8 s: the marching-squares loop was testing all 133 levels against every cell to find
+the ~2 that cross (the levels are evenly spaced, so that is an index range), and the path
+ordering rescanned every vertex of every remaining loop per pick (a per-chain bounding box
+bounds it exactly). **Measure it bundled.** Under `npx tsx` the loader's own `__name`
+wrappers and TextDecoder work are 35% of the profile and are attributed to `steep.ts`,
+because that is the file being instrumented — which reported the 1.74× as 1.1× and nearly
+got it discarded as not worth the code. `scripts/steep-cost.ts`, which says so at the top.
+
 `scripts/steep-split-probe.ts` draws the mask and the contours for a cone, a hemisphere
 and two walls, and reports the path-length distribution that all of the above was
 measured on.
