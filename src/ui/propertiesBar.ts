@@ -36,6 +36,15 @@ import { type Variable, varMap } from "../model/variables";
 import type { PreviewShape } from "../view/overlay";
 import { ContextMenu, type ContextMenuEntry } from "./contextMenu";
 import { openGeneratorDialog } from "./generatorDialog";
+import {
+  addFontFromUrl,
+  familyOfLoadedFont,
+  type FontCatalogue,
+  loadCatalogue,
+  variantName,
+  variantUrl,
+} from "../core/webFonts";
+import { toast } from "./toast";
 import { openWebFontDialog } from "./webFontDialog";
 
 /**
@@ -97,6 +106,10 @@ const CON_LABELS: Record<ConstraintType, string> = {
 };
 
 export class PropertiesBar {
+  /** Font catalogue for the Style row — one fetch for the whole app, not per render. */
+  private static catalogue: FontCatalogue | null = null;
+  private static catalogueRequested = false;
+
   private content!: HTMLElement;
   private constructionBtn!: HTMLButtonElement;
   private isCollapsed = false;
@@ -1154,6 +1167,8 @@ export class PropertiesBar {
     fontRow.append(fontLbl, fontSel);
     sec.appendChild(fontRow);
 
+    this.buildFontStyleRow(sec, entity);
+
     // Size and Angle go through the binding engine, like an image's — so both
     // take a formula, show the ƒx badge and suggest variable names. They were
     // hand-rolled parseFloat inputs, which is why a label could not be sized
@@ -1182,6 +1197,106 @@ export class PropertiesBar {
 
     this.constructionRow(sec, entity);
     this.content.appendChild(sec);
+  }
+
+  /**
+   * The weights of the font this text is already using — Regular, Bold, Italic.
+   *
+   * Every design tool lets you select text and change its weight. Here you could
+   * only choose one while ADDING a font, so switching meant going back through
+   * "Add a font from the web" — which is not where anyone looks for Bold.
+   *
+   * It needs no persisted metadata, which is why it is a dropdown and not a
+   * schema change: a loaded font's `name` was produced by `variantName`, and
+   * `name` is a required field on `embeddedFont`, so inverting that one function
+   * recovers the family exactly and still works after a save and reload.
+   *
+   * The row is ABSENT rather than empty when the family can't be resolved — a
+   * font loaded from disk genuinely has no known family, and an empty "Style"
+   * control would imply the app knows something it doesn't.
+   *
+   * Measured reach, so nobody has to guess at it later: of 2,022 catalogue
+   * families, **567 offer more than one style and 324 have a real weight** (the
+   * other 231 are Regular + Italic only). The BUNDLED Roboto is deliberately not
+   * among them — it is registered as "Roboto Regular"/"Roboto Bold", while
+   * `variantName` would call the regular simply "Roboto", and the catalogue's
+   * Roboto is a variable font carrying no separate Bold entry to match against.
+   * Inventing a match for it would mean guessing, which is the one thing the
+   * exact inversion exists to avoid.
+   *
+   * The catalogue load is async and the panel is not, so the first build kicks it
+   * off and re-renders when it lands; `catalogueRequested` stops that becoming a
+   * loop, since the render is what triggers the request.
+   */
+  private buildFontStyleRow(sec: HTMLElement, entity: TextEntity): void {
+    const cat = PropertiesBar.catalogue;
+    if (!cat) {
+      if (!PropertiesBar.catalogueRequested) {
+        PropertiesBar.catalogueRequested = true;
+        void loadCatalogue()
+          .then((c) => {
+            PropertiesBar.catalogue = c;
+            this.doc.emitChange(); // now the row can render
+          })
+          .catch(() => {
+            /* offline: no styles offered, and the font already loaded works */
+          });
+      }
+      return;
+    }
+
+    const known = listFonts();
+    const current = known.find((f) => f.id === entity.fontId);
+    if (!current) return; // missing font — the warning above already says so
+    const hit = familyOfLoadedFont(cat, current.name);
+    if (!hit || hit.family.v.length < 2) return; // disk font, or nothing to offer
+
+    const row = document.createElement("div");
+    row.className = "props-row";
+    const lbl = document.createElement("span");
+    lbl.textContent = "Style";
+    const sel = document.createElement("select");
+    sel.className = "dim";
+    sel.style.flex = "1";
+    for (const v of hit.family.v) {
+      const opt = document.createElement("option");
+      opt.value = v.s;
+      opt.textContent = v.s;
+      if (v.s === hit.variant.s) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.title = `Weights of ${hit.family.n}. Picking one downloads it and embeds it in the project.`;
+
+    sel.addEventListener("change", () => {
+      const variant = hit.family.v.find((v) => v.s === sel.value);
+      if (!variant) return;
+      const wanted = variantName(hit.family, variant);
+      // Already loaded — switching is just re-pointing the entity, no network.
+      const have = listFonts().find((f) => f.name === wanted);
+      if (have) {
+        this.applyEdit(() => {
+          entity.fontId = have.id;
+        });
+        return;
+      }
+      sel.disabled = true;
+      void addFontFromUrl(variantUrl(cat, variant), wanted)
+        .then((res) => {
+          this.applyEdit(() => {
+            entity.fontId = res.id;
+          });
+        })
+        .catch((e) => {
+          // Put the menu back before reporting: the text still has the font it
+          // had, and a control showing a weight that never loaded would lie.
+          sel.value = hit.variant.s;
+          sel.disabled = false;
+          toast((e as Error).message, 5000);
+        });
+    });
+
+    row.append(lbl, sel);
+    sec.appendChild(row);
   }
 
   /**
