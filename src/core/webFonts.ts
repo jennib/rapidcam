@@ -132,6 +132,35 @@ export function variantName(family: CatalogueFamily, variant: CatalogueVariant):
 }
 
 /**
+ * The catalogue family a LOADED font came from, found by inverting
+ * {@link variantName}.
+ *
+ * This is exact, not a guess: the name was produced by that function, so the
+ * match is string equality against the same rule that generated it — no
+ * tokenising, no prefix heuristics, nothing that a family called "Sans Bold" or
+ * a weight called "Semi Condensed Italic" could confuse.
+ *
+ * That exactness is the whole reason switching an existing text from Regular to
+ * Bold needs no persisted metadata. A font's `name` is already a required field
+ * on `embeddedFont`, so this still resolves after a save and reload.
+ *
+ * Returns null for a font loaded from disk — its name never came from
+ * `variantName`, so its family is genuinely unknown and offering weights for it
+ * would be inventing them.
+ */
+export function familyOfLoadedFont(
+  cat: FontCatalogue,
+  loadedName: string,
+): { family: CatalogueFamily; variant: CatalogueVariant } | null {
+  for (const family of cat.families) {
+    for (const variant of family.v) {
+      if (variantName(family, variant) === loadedName) return { family, variant };
+    }
+  }
+  return null;
+}
+
+/**
  * Fetch font bytes from `url` and register them. Rejects with a message meant
  * for the user: a browser can't tell a blocked cross-origin request from an
  * unreachable host, so the failure is explained in terms of both.
