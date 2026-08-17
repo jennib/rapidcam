@@ -71,3 +71,80 @@ test("relief preview: invert carves the light areas instead", () => {
   const hm = setup(255, { rasterInvert: true }); // white→deep under invert
   expect(hm.stockT - Math.min(...hm.data)).toBeGreaterThan(2.8);
 });
+
+// --- steep/shallow split ------------------------------------------------------
+
+/** A 32×32 cone height map (255 = top of model = no cut). */
+function coneImage(slope: number, depth: number): string {
+  const N = 32;
+  const px: number[] = [];
+  for (let py = 0; py < N; py++)
+    for (let x = 0; x < N; x++) {
+      const h = Math.max(0, depth - slope * Math.hypot(x + 0.5 - 16, N - py - 0.5 - 16));
+      px.push(Math.round(255 * Math.min(1, h / depth)));
+    }
+  const id = `img-rp-${n++}`;
+  registerEmbeddedImage({ id, name: id, width: N, height: N, data: btoa(String.fromCharCode(...px)) });
+  return id;
+}
+
+function coneStock(over: Partial<CAMOperation> = {}) {
+  const doc = new CADDocument({ width: 60, height: 60 });
+  doc.stockThickness = 10;
+  doc.add(new RasterImageEntity(coneImage(2, 6), { x: 10, y: 10 }, 32, 32, 0));
+  const op = reliefOp([doc.entities.find((e) => e.type === "image")!.id], {
+    depth: -6,
+    stepdown: 6,
+    diameter: 3,
+    rasterLineInterval: 1,
+    rasterDotPitch: 1,
+    ...over,
+  });
+  return rasterizeStock([op], doc);
+}
+
+test("relief preview: the steep pass previews the passes it will actually cut", () => {
+  // Not a cosmetic difference: with the split on, the wall is cut by contours at
+  // discrete Z rather than by rows, so a preview that kept stamping the raster
+  // would be a picture of a program that is no longer posted.
+  const plain = coneStock();
+  const steep = coneStock({ reliefSteepPass: true });
+  expect(steep.data).not.toEqual(plain.data);
+
+  // Both still carve the cone to its full depth and no further — the split
+  // changes HOW the wall is reached, not where the surface is.
+  for (const hm of [plain, steep]) {
+    expect(hm.stockT - Math.min(...hm.data)).toBeGreaterThan(5.5);
+    expect(Math.min(...hm.data)).toBeGreaterThanOrEqual(hm.stockT - 6 - 1e-6);
+  }
+});
+
+test("relief preview: with nothing steep, the split leaves the picture untouched", () => {
+  // The mirror of the byte-identical G-code guard: a shallow model must preview
+  // exactly as before, or the split is perturbing something it shouldn't.
+  const doc = () => {
+    const d = new CADDocument({ width: 60, height: 60 });
+    d.stockThickness = 10;
+    d.add(new RasterImageEntity(coneImage(0.2, 3), { x: 10, y: 10 }, 32, 32, 0));
+    return d;
+  };
+  const shallow = (over: Partial<CAMOperation>) => {
+    const d = doc();
+    return rasterizeStock(
+      [
+        reliefOp([d.entities.find((e) => e.type === "image")!.id], {
+          depth: -3,
+          stepdown: 3,
+          diameter: 3,
+          rasterLineInterval: 1,
+          rasterDotPitch: 1,
+          ...over,
+        }),
+      ],
+      d,
+    );
+  };
+  const off = shallow({});
+  expect(shallow({ reliefSteepPass: true }).data).toEqual(off.data);
+  expect(off.stockT - Math.min(...off.data)).toBeGreaterThan(2); // it did carve
+});

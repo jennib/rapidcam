@@ -100,6 +100,7 @@ export interface OpState {
   // grooves whose width carries the tone. Row pitch is derived, not typed.
   halftone: boolean;
   halftoneLand: number;
+  reliefSteepPass: boolean;
   paramExprs: Record<string, string>;
 }
 
@@ -240,6 +241,7 @@ export function createInitialOpState(
     reliefGamma: existing?.reliefGamma ?? 1,
     halftone: existing?.halftone ?? false,
     halftoneLand: existing?.halftoneLand ?? DEFAULTS.halftoneLand,
+    reliefSteepPass: existing?.reliefSteepPass ?? false,
     paramExprs: existing?.paramExprs ? { ...existing.paramExprs } : {},
   };
 }

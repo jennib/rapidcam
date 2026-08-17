@@ -7,7 +7,7 @@
  * dialog at all. What has to hold in the app is that typing a surface finish
  * lands a stepover in the DOCUMENT — the field that is actually persisted.
  */
-import { test, expect, openDoc, APP_URL } from "./appFixture";
+import { test, expect, openDoc } from "./appFixture";
 
 /** A height map (`zRangeMM` present), which is what a relief finish targets. */
 function reliefDoc(): string {

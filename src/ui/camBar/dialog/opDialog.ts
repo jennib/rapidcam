@@ -443,6 +443,11 @@ export function openOpDialog(options: OpDialogOptions): void {
         !isLaser && imageEngrave && state.halftone && state.halftoneLand > 0
           ? state.halftoneLand
           : undefined,
+      // The steep pass belongs to the mill relief FINISH: roughing already cuts
+      // in flat Z-planes, and a halftone has no surface for a contour to mean
+      // anything on.
+      reliefSteepPass:
+        !isLaser && imageEngrave && !state.halftone && state.reliefSteepPass ? true : undefined,
       paramExprs:
         Object.keys(state.paramExprs).length > 0
           ? { ...state.paramExprs }

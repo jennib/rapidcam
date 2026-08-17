@@ -660,6 +660,10 @@ function kitchenSinkDoc(): CADDocument {
       reliefGamma: 1.8,
       halftone: true,
       halftoneLand: 0.15,
+      // Present for schema coverage; the emitter screens the pairing (a
+      // halftone has no surface for a contour to mean anything on), which
+      // `test/steepSplit.test.ts` asserts.
+      reliefSteepPass: true,
     },
     {
       // drill: peckDepth, tipAngle, coolant

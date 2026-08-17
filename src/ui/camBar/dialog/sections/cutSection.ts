@@ -358,6 +358,25 @@ export function buildCutSection(
     }
   });
 
+  // Steep/shallow split. Nothing to size — the contour spacing and the 45° split
+  // are both derived from the stepover above — so it is one checkbox, and the
+  // sentence beside it says what changes rather than naming a strategy.
+  const steepChk = document.createElement("input");
+  steepChk.type = "checkbox";
+  steepChk.className = "settings-checkbox";
+  steepChk.checked = state.reliefSteepPass;
+  steepChk.addEventListener("change", () => {
+    state.reliefSteepPass = steepChk.checked;
+  });
+  const steepRow = dField("Contour the steep areas", steepChk);
+  steepRow.title =
+    "A raster stepping across a near-vertical wall leaves ridges spaced by how far " +
+    "the wall climbs in one stepover, so the cusp above is not what you get there. " +
+    "With this on, anything steeper than 45° is cut by constant-Z contours spaced to " +
+    "the same cusp instead, and left out of the raster. Adds cutting time on models " +
+    "with walls; does nothing at all on a shallow one.";
+  cutSec.appendChild(steepRow);
+
   const reliefDotRow = paramRow(
     doc,
     state,
@@ -772,7 +791,8 @@ export function buildCutSection(
     // it is ignored is the same lie as a disabled control that looks live. The
     // cusp row is the same number from the other end, so it follows exactly.
     reliefLineRow.el.style.display = isFinish && !halftoning ? "" : "none";
-    for (const r of [cuspRow, cuspNoteRow]) r.style.display = isFinish && !halftoning ? "" : "none";
+    for (const r of [cuspRow, cuspNoteRow, steepRow])
+      r.style.display = isFinish && !halftoning ? "" : "none";
     reliefDotRow.el.style.display = isFinish ? "" : "none";
     // Image controls shared by finish + roughing (invert / tone curve / estimate).
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])

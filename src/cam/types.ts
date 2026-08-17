@@ -360,6 +360,20 @@ export interface CAMOperation {
    */
   halftoneLand?: number;
   /**
+   * Mill relief FINISH only: add constant-Z contouring passes on the steep areas
+   * and leave them out of the raster, instead of rastering the whole relief.
+   *
+   * A raster stepping `s` across a near-vertical wall leaves ridges spaced by how
+   * far the wall climbs in that `s`, so a stepover chosen for a fine cusp does
+   * not deliver one there. Where the wall is steep, contours at constant Z land
+   * closer together than the rows do and finish it properly.
+   *
+   * There is nothing to size: the contour spacing and the split angle are both
+   * derived from the stepover (see `cam/steep.ts`), so this is a plain on/off.
+   * Default false, and off the emitted program is byte-identical.
+   */
+  reliefSteepPass?: boolean;
+  /**
    * Laser only: cut this operation with its own inline beam settings, ignoring
    * any recipe on the layer its geometry sits on (see {@link LaserRecipe} and
    * {@link resolveOpLaser}). Set when the user edits a beam field on an op that
