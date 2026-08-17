@@ -306,3 +306,84 @@ test("Delete Layer stays clickable — it is the control that was pushed out", a
   if (!box || !panel) throw new Error("Delete button or panel has no box");
   expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width + 0.5);
 });
+
+/** A document with a single height-map image, so Add Toolpath can target it. */
+function reliefDoc(): string {
+  const W = 8;
+  const data = Buffer.from(Uint8Array.from(new Array(W * W).fill(255))).toString("base64");
+  return JSON.stringify({
+    version: 3,
+    name: "Relief reach",
+    canvas: { width: 100, height: 100 },
+    displayUnit: "mm",
+    stockThickness: 12,
+    origin: { x: "left", y: "front", z: "top" },
+    groups: [],
+    layers: [{ id: "layer-0", name: "Layer 0", visible: true, locked: false }],
+    activeLayerId: "layer-0",
+    entities: [
+      {
+        type: "image",
+        id: "img-ent-1",
+        imageId: "img-relief1",
+        position: { x: 10, y: 10 },
+        widthMM: 32,
+        heightMM: 32,
+        angle: 0,
+      },
+    ],
+    constraints: [],
+    dimensions: [],
+    variables: [],
+    bindings: [],
+    patterns: [],
+    operations: [],
+    tools: [],
+    images: [{ id: "img-relief1", name: "relief", width: W, height: W, data, zRangeMM: 10 }],
+  });
+}
+
+test("the 3-D Relief dialog keeps its roughing controls reachable on and off", async ({ page }) => {
+  // A relief needs an IMAGE: the finish fields (tone curve, dot pitch, …) only
+  // render when the op targets one. Load a height-map document and open Add
+  // Toolpath with the image selected — the path that defaults to relief.
+  await openDoc(page, reliefDoc());
+  await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __app: { doc: { entities: { selected: boolean; type: string }[]; emitChange: () => void } };
+      }
+    ).__app.doc;
+    for (const e of doc.entities) e.selected = e.type === "image";
+    doc.emitChange();
+    (document.querySelector(".cam-add-btn") as HTMLElement | null)?.click();
+  });
+  await expect(page.locator(".tp-dialog")).toBeVisible();
+
+  const dialog = page.locator(".tp-dialog");
+  const roughToggle = dialog
+    .locator(".tp-field")
+    .filter({ hasText: "Roughing pass" })
+    .locator("input[type=checkbox]");
+  const leaveForFinish = dialog.locator(".tp-field").filter({ hasText: "Leave for finish" });
+  const toneCurve = dialog.locator(".tp-field").filter({ hasText: "Tone curve" });
+
+  // A new relief targets the image: its finish fields render, roughing is on by
+  // default, and nothing is laid out past a hard edge.
+  await expect(toneCurve).toBeVisible();
+  await expect(roughToggle).toBeChecked();
+  await expect(leaveForFinish).toBeVisible();
+  expect(await unreachableControls(page)).toEqual([]);
+
+  // Turning the pass off hides only the roughing rows — the finish fields stay —
+  // and the dialog still fits.
+  await roughToggle.uncheck();
+  await expect(leaveForFinish).toBeHidden();
+  await expect(toneCurve).toBeVisible();
+  expect(await unreachableControls(page)).toEqual([]);
+
+  await roughToggle.check();
+  await expect(leaveForFinish).toBeVisible();
+  expect(await unreachableControls(page)).toEqual([]);
+});
+
