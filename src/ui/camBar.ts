@@ -21,13 +21,14 @@ import {
   openStitchWorkflow,
 } from "./camBar/camWorkflows";
 import { openOpDialog } from "./camBar/dialog/opDialog";
-import { buildOpItem } from "./camBar/opItemBuilder";
+import { buildOpItem, buildReliefGroupItem } from "./camBar/opItemBuilder";
+import { findReliefPair } from "../cam/reliefOps";
 
 export class CamBar {
   private content!: HTMLElement;
   private opsList!: HTMLElement;
   private isCollapsed = false;
-  private dragState = { srcIndex: null as number | null };
+  private dragState = { srcIndex: null as number | null, srcCount: 1 };
 
   private libBtn: HTMLButtonElement | null = null;
   private testBtn: HTMLButtonElement | null = null;
@@ -279,14 +280,34 @@ export class CamBar {
         this.doc.emitChange();
         this.renderOps();
       },
+      onDeleteOps: (ops: CAMOperation[]) => {
+        if (ops.length === 0) return;
+        this.pushHistory?.();
+        const ids = new Set(ops.map((o) => o.id));
+        for (const op of ops) {
+          if (this.highlighter.currentId === op.id) this.highlighter.highlightOp(null);
+        }
+        this.doc.operations = this.doc.operations.filter((o) => !ids.has(o.id));
+        this.doc.emitChange();
+        this.renderOps();
+      },
       onExportOp: (op: CAMOperation, index: number) => {
         void this.exportService.exportSingleOp(op, index);
       },
-      onReorderOps: (srcIndex: number, destIndex: number, insertBefore: boolean) => {
+      onReorderOps: (
+        srcIndex: number,
+        srcCount: number,
+        destIndex: number,
+        destCount: number,
+        insertBefore: boolean,
+      ) => {
         const ops = [...this.doc.operations];
-        const [moved] = ops.splice(srcIndex, 1);
-        const tgt = srcIndex < destIndex ? destIndex - 1 : destIndex;
-        ops.splice(insertBefore ? tgt : tgt + 1, 0, moved);
+        const moved = ops.splice(srcIndex, srcCount);
+        // Recompute the target's position after the removal, then land the moved
+        // run before or after the *whole* target (destCount covers a relief pair).
+        let tgt = destIndex;
+        if (srcIndex < destIndex) tgt -= srcCount;
+        ops.splice(insertBefore ? tgt : tgt + destCount, 0, ...moved);
         this.pushHistory?.();
         this.doc.operations = ops;
         this.doc.emitChange();
@@ -296,8 +317,28 @@ export class CamBar {
 
     for (let i = 0; i < this.doc.operations.length; i++) {
       const op = this.doc.operations[i];
-      const item = buildOpItem(op, i, opItemCtx);
-      if (op.id === this.highlighter.currentId) item.classList.add("tp-op-active");
+      let item: HTMLElement;
+      let groupedFinish: CAMOperation | null = null;
+      // A relief job is two adjacent ops (rough + finish). Present them as one
+      // parent card with child rows; the pair stays together when reordered.
+      if (op.type === "relief-rough") {
+        const finish = findReliefPair(op, this.doc);
+        if (finish && this.doc.operations[i + 1] === finish) {
+          item = buildReliefGroupItem(op, finish, i, opItemCtx);
+          groupedFinish = finish;
+          i++;
+        } else {
+          item = buildOpItem(op, i, opItemCtx);
+        }
+      } else {
+        item = buildOpItem(op, i, opItemCtx);
+      }
+      if (
+        op.id === this.highlighter.currentId ||
+        groupedFinish?.id === this.highlighter.currentId
+      ) {
+        item.classList.add("tp-op-active");
+      }
       this.opsList.appendChild(item);
     }
     this.estimateManager.scheduleOpEstimates();

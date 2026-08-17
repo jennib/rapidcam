@@ -27,8 +27,16 @@ export interface OpItemCallbacks {
   onToggleSelectOp: (id: string, selected: boolean) => void;
   onEditOp: (op: CAMOperation) => void;
   onDeleteOp: (op: CAMOperation) => void;
+  /** Delete several operations in one history step (a relief job's two passes). */
+  onDeleteOps: (ops: CAMOperation[]) => void;
   onExportOp: (op: CAMOperation, index: number) => void;
-  onReorderOps: (srcIndex: number, destIndex: number, insertBefore: boolean) => void;
+  onReorderOps: (
+    srcIndex: number,
+    srcCount: number,
+    destIndex: number,
+    destCount: number,
+    insertBefore: boolean,
+  ) => void;
 }
 
 export interface OpItemContext extends OpItemCallbacks {
@@ -36,7 +44,7 @@ export interface OpItemContext extends OpItemCallbacks {
   opsList: HTMLElement;
   selectedOpIds: Set<string>;
   highlightedOpId: string | null;
-  dragState: { srcIndex: number | null };
+  dragState: { srcIndex: number | null; srcCount: number };
   estimateManager: OpEstimateManager;
 }
 
@@ -60,6 +68,19 @@ export function reliefRoughGougeWarning(op: CAMOperation, doc: CADDocument): str
   const finishDepth = Math.min(...finishDepths);
   if (roughFloor <= finishDepth + 1e-6) return null;
   return `Roughing clears to ${roughFloor.toFixed(2)} ${doc.displayUnit} but the finish op only reaches ${finishDepth.toFixed(2)} ${doc.displayUnit} — it will gouge below the final surface. Lower this op's depth or raise its finish allowance.`;
+}
+
+/** Human name for a tool type — one place, so the list and the group card agree. */
+export function toolLabelOf(op: CAMOperation): string {
+  return op.toolType === "v-bit"
+    ? `V-Bit(${op.vAngle ?? 60}°)`
+    : op.toolType === "drill"
+      ? "Drill"
+      : op.toolType === "ball-nose"
+        ? "Ball Nose"
+        : op.toolType === "tapered-ball-nose"
+          ? "Tapered Ball Nose"
+          : "End Mill";
 }
 
 export function buildOpItem(
@@ -88,6 +109,7 @@ export function buildOpItem(
 
   item.addEventListener("dragstart", (e) => {
     dragState.srcIndex = index;
+    dragState.srcCount = 1;
     e.dataTransfer!.effectAllowed = "move";
     item.classList.add("tp-dragging");
   });
@@ -121,7 +143,7 @@ export function buildOpItem(
     if (src === null || src === index) return;
     const insertBefore =
       e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
-    onReorderOps(src, index, insertBefore);
+    onReorderOps(src, dragState.srcCount, index, 1, insertBefore);
   });
 
   item.addEventListener("click", (e) => {
@@ -205,16 +227,7 @@ export function buildOpItem(
   info.className = "tp-op-info";
   const params = document.createElement("div");
   params.className = "tp-op-params";
-  const toolLabel =
-    op.toolType === "v-bit"
-      ? `V-Bit(${op.vAngle ?? 60}°)`
-      : op.toolType === "drill"
-        ? "Drill"
-        : op.toolType === "ball-nose"
-          ? "Ball Nose"
-          : op.toolType === "tapered-ball-nose"
-            ? "Tapered Ball Nose"
-            : "End Mill";
+  const toolLabel = toolLabelOf(op);
 
   // Laser ops have no tool/Z — summarise by power/passes/feed instead of the
   // mill's ⌀/depth (which read as a meaningless "⌀0mm … -3mm" for a laser).
@@ -377,4 +390,151 @@ export function buildOpItem(
   item.appendChild(botRow);
 
   return item;
+}
+
+const ICON_EDIT =
+  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">` +
+  `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
+  `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>` +
+  `</svg>`;
+const ICON_DELETE =
+  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">` +
+  `<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>` +
+  `<path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>` +
+  `</svg>`;
+
+/**
+ * Grouped card for a relief job: one parent "3-D Relief" entry wrapping its
+ * roughing and finishing passes as child rows. The parent drags as a single
+ * unit (srcCount 2); each child row edits the merged dialog and the roughing
+ * row can be deleted on its own (the finish then recomputes in place).
+ */
+export function buildReliefGroupItem(
+  rough: CAMOperation,
+  finish: CAMOperation,
+  index: number,
+  ctx: OpItemContext,
+): HTMLElement {
+  const {
+    doc,
+    opsList,
+    highlightedOpId,
+    dragState,
+    estimateManager,
+    onHighlightOp,
+    onEditOp,
+    onDeleteOp,
+    onDeleteOps,
+    onReorderOps,
+  } = ctx;
+
+  const item = document.createElement("div");
+  item.className = "tp-op-item tp-op-group";
+  item.draggable = true;
+  item.style.setProperty("--tp-color", TP_PALETTE[index % TP_PALETTE.length]);
+
+  item.addEventListener("dragstart", (e) => {
+    dragState.srcIndex = index;
+    dragState.srcCount = 2;
+    e.dataTransfer!.effectAllowed = "move";
+    item.classList.add("tp-dragging");
+  });
+  item.addEventListener("dragend", () => {
+    dragState.srcIndex = null;
+    dragState.srcCount = 1;
+    item.classList.remove("tp-dragging");
+    opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach((el) => {
+      el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+    });
+  });
+  item.addEventListener("dragover", (e) => {
+    if (dragState.srcIndex === null) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    opsList.querySelectorAll(".tp-drag-over-top,.tp-drag-over-bottom").forEach((el) => {
+      el.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+    });
+    const rect = item.getBoundingClientRect();
+    item.classList.add(
+      e.clientY < rect.top + rect.height / 2 ? "tp-drag-over-top" : "tp-drag-over-bottom",
+    );
+  });
+  item.addEventListener("dragleave", (e) => {
+    if (!item.contains(e.relatedTarget as Node))
+      item.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+  });
+  item.addEventListener("drop", (e) => {
+    e.preventDefault();
+    item.classList.remove("tp-drag-over-top", "tp-drag-over-bottom");
+    const src = dragState.srcIndex;
+    if (src === null || src === index) return;
+    const insertBefore =
+      e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
+    onReorderOps(src, dragState.srcCount, index, 2, insertBefore);
+  });
+
+  // Header: the whole job, with a single edit and a delete-both.
+  const header = document.createElement("div");
+  header.className = "tp-op-top";
+  const handle = document.createElement("span");
+  handle.className = "tp-drag-handle";
+  handle.textContent = "⠿";
+  handle.title = "Drag to reorder";
+  header.appendChild(handle);
+  const badge = document.createElement("span");
+  badge.className = "tp-badge tp-badge-relief";
+  badge.textContent = "3D";
+  header.appendChild(badge);
+  const nameEl = document.createElement("div");
+  nameEl.className = "tp-op-name";
+  nameEl.textContent = finish.name;
+  nameEl.title = finish.name;
+  header.appendChild(nameEl);
+  const actions = document.createElement("div");
+  actions.className = "tp-op-actions";
+  actions.appendChild(iconButton("Edit", ICON_EDIT, () => onEditOp(finish)));
+  actions.appendChild(iconButton("Delete both passes", ICON_DELETE, () => onDeleteOps([rough, finish])));
+  header.appendChild(actions);
+  item.appendChild(header);
+
+  item.appendChild(passRow("Roughing", rough, true));
+  item.appendChild(passRow("Finishing", finish, false));
+
+  return item;
+
+  function passRow(stage: string, op: CAMOperation, canDelete: boolean): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "tp-op-group-child";
+    row.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".tp-icon-btn")) return;
+      onHighlightOp(highlightedOpId === op.id ? null : op.id);
+    });
+    const stageEl = document.createElement("span");
+    stageEl.className = "tp-op-group-stage";
+    stageEl.textContent = stage;
+    row.appendChild(stageEl);
+    const tool = document.createElement("span");
+    tool.className = "tp-op-group-tool";
+    tool.textContent = `T${op.toolNumber} ⌀${formatLength(op.diameter, doc.displayUnit)} ${toolLabelOf(op)}`;
+    row.appendChild(tool);
+    const est = document.createElement("span");
+    est.className = "tp-op-group-est";
+    const cached = estimateManager.getCached(op);
+    est.textContent = cached !== undefined ? `⏱ ~${formatDuration(cached)}` : "⏱ …";
+    est.title = "Estimated run time (constant-feed ballpark; excludes accel/dwell).";
+    estimateManager.registerElement(op.id, est);
+    row.appendChild(est);
+    row.appendChild(iconButton("Edit", ICON_EDIT, () => onEditOp(op)));
+    if (canDelete) row.appendChild(iconButton("Delete roughing pass", ICON_DELETE, () => onDeleteOp(rough)));
+    return row;
+  }
+
+  function iconButton(title: string, svg: string, onClick: () => void): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.className = "tp-icon-btn";
+    btn.title = title;
+    btn.innerHTML = svg;
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
 }
