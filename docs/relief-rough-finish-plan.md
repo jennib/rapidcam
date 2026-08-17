@@ -13,6 +13,25 @@ system" is a design, and this project's relief plans have been **wrong three tim
 already** (see the sibling doc's own correction sections). Assume a fourth. The
 places most likely to be wrong are flagged inline as ⚠️.
 
+**Revised 2026-08-17 after review, and the review found the fourth.** Three of this
+document's own claims were wrong and are corrected in place rather than quietly
+edited out, because the reasoning that produced them will otherwise be produced
+again:
+
+1. **"Measure the fine-grid cost first; coarse+upsample is the fallback."** Backwards.
+   The box-min early-out cannot fire for a flat end mill at all — see the mechanism
+   under §1 — so the coarse path is the primary algorithm and the fine grid is out of
+   scope. Cost of believing a doc comment's "short-circuits on flat ground" without
+   checking which sense of "flat" it meant.
+2. **"The contour half probably needs the stock floor too, same predicate."** No. A
+   waterline is not a re-traced staircase. §2d.
+3. **The empty-`priorOps` seed.** Not stated at all in the first draft, and it is the
+   one line that decides whether the byte-identical guarantee holds or inverts. §1.
+
+One review finding was itself wrong and is answered in §3: the preview and the
+generator do **not** rasterise the relief on different grids — `reliefSpacing` is
+shared and exists for that reason.
+
 ---
 
 ## The complaint
@@ -172,16 +191,48 @@ this image — which is Fusion's rule and needs no new persisted field. `restToo
 becomes a derived value, and can be demoted to an override that a hand-written `.rcam`
 may still set.
 
-⚠️ **Cost is the open risk and must be measured before building on it.** `dilate` is
-already bounded by a sliding-window box-min that short-circuits on flat ground, but
-today `toolSweptFloor` only ever runs on the *roughing* grid (pitch = stepover ×
-diameter, e.g. 4.8 mm). Running it on the *finish* grid is a different problem: a
-300 mm relief at 0.1 mm pitch is 9M cells, and a ⌀12 footprint is a 60-cell radius.
-Measure that first. If it is too slow, the fix is available and principled — the
-roughing floor's finest feature is one rough-tool radius, so it carries no
-information below the rough grid pitch: compute it on the coarse grid and upsample,
-**taking the highest (least-removed) neighbour** so the error is always in the safe
-direction.
+⚠️ **With no prior ops the floor is the uncut blank — level 0 everywhere — not the
+target field.** This is the easiest thing here to get backwards, and getting it
+backwards inverts the guarantee Phase 1 rests on: a floor seeded from the *target*
+gives `maxRemaining = 0` for a lone relief op, collapsing every existing single-op
+relief to one pass. Seed at the stock top and let each prior op *deepen* it. This is a
+requirement with a test, not a comment: `reliefStockFloor(field, [], maxDepth)`
+returns all zeroes, and a lone relief op posts byte-identical G-code to today.
+
+#### Compute it on the COARSE grid and upsample. This is the primary algorithm, not a fallback.
+
+An earlier draft of this plan called fine-grid `toolSweptFloor` the default and the
+coarse path a fallback "if it is too slow", on the strength of `dilate`'s doc comment
+saying the box-min bound "short-circuits on flat ground". **That reassurance does not
+apply to this case, and the reasoning inverts.** Measured 2026-08-17:
+
+| field | cells | `toolSweptFloor`, ⌀12 flat |
+|---|---|---|
+| 300 mm @ 0.3 mm | 1.0M | 6.8 s |
+| 100 mm @ 0.1 mm | 1.0M | 22.7 s |
+| 300 mm @ 0.1 mm | 9.0M | **234 s** |
+| 300 mm @ 0.1 mm, flat ground | 9.0M | 0.71 s |
+
+The mechanism is what matters, because it is stable under any future tuning. The
+early-out in `sweep` is `if (best <= bm + pen[base]) break` — it can only fire early
+when the footprint penalty `pen` is positive, i.e. **when the tool has a flank**. A
+flat end mill's profile is `height: (d) => (d > R ? Infinity : 0)`, so `pen = 0`
+across its whole footprint and the test degenerates to `best <= bm`: the sweep runs
+until it finds the true box minimum, which on a smooth surface sits at the far edge
+of the footprint. "Flat ground" in that comment means *locally flat*, and a relief is
+the opposite. `scripts/relief-dilation-cost.ts` shows the same inversion from the
+other side — smooth "photo" fields are its *slowest* case, hard-edged "logo"/"noise"
+fields 3–8× faster. The roughing grid has been hiding all of this: at a 4.8 mm pitch
+the ⌀12 footprint is about one cell.
+
+So the coarse path is the design, and its safety argument is stronger than "carries no
+information below the rough grid pitch". The roughing floor is **staircase-quantised**
+(its values come only from the `−p·stepdown` ladder) *and* **opening-smoothed by the
+rough tool radius**, so it is piecewise-constant on the coarse grid. Nearest-neighbour
+upsampling taking the **highest (least-removed)** neighbour is therefore *exact*
+except at staircase edges, and at those edges it over-states the remaining stock —
+the finish cuts a little extra air along a wall, and never under-cuts. Conservative
+by construction.
 
 ### 2. The finish pass consumes it
 
@@ -195,7 +246,11 @@ feed across a gap. A skipped-because-already-cleared cell breaks the run identic
 
 **b. Size the staircase to the stock, not to the model.**
 `passes = ceil(maxRemaining / stepdown)` rather than `ceil(maxDepth / stepdown)`,
-where `maxRemaining = max(stockFloor − target)` over the cells this op will cut.
+where `maxRemaining = max(stockFloor − target)` over the cells this op will cut —
+**the raster's own cells, excluding the steep ones**. The raster already skips steep
+cells via `steep.steep(r, c)`; letting them into the max would let one 17 mm channel
+that only the contours ever visit multiply the pass count for a raster that never
+goes near it.
 
 Together these reinterpret `stepdown` from *a global Z schedule* into *a cap on
 axial engagement* — which is what a user setting it always meant. When roughing did
@@ -214,12 +269,36 @@ readouts, in the same voice:
 
 That line is the whole feature, visible before the machine moves.
 
+**d. The contour half needs none of this.** An earlier draft guessed "probably yes,
+same predicate". It is *no*, and the code settles it. The raster's air problem is
+specific to a **re-traced staircase**: passes 2…N re-walk ground pass 1 already
+reached. A contour pass is a waterline, not a depth schedule — `steep.ts:178` emits
+one ring per level `−k·zStep` for `k = 1…⌊maxDepth/zStep⌋`, each ring distinct and
+never re-traced. Every ring rides the contact field, so its points sit on the target
+surface; the rough floor is everywhere at or above `target + allowance`, because
+roughing never cuts below the target. So no contour point is ever above the roughed
+floor, and there is no air for a predicate to skip. Its axial engagement is capped by
+`zStep = rowPitch` independently of the raster's `stepdown`, so it does not share the
+"17 mm in one bite" hazard either. **This shrinks Phase 1: the stock floor and the
+skip predicate are raster-half-only.**
+
 ### 3. The preview must not diverge
 
 `stockRasterizer.rasRelief` mirrors `reliefImage`'s path construction, and its own
 header says a preview that disagrees with the program is the bug that file exists to
 catch. The skip test must therefore be **one shared predicate** called by both, not
 the same rule written twice — the defect class this whole document is about.
+
+One thing not to get wrong here, because it looks like a divergence risk and is the
+reverse: **the two already share the relief grid.** `rasRelief` builds its field from
+`reliefSpacing(op)` — the emitter's own resolver, chosen for exactly this reason
+("so the preview shows the depths the program will command") — then applies the same
+`toolContactField` and the same `steepSplit`. The adaptive, memory-budgeted `RES` in
+that file is the **stock height map** `stamp()` writes into, not the relief field. So
+the floor builder takes a field and returns the same floor for both callers by
+construction. Do not "fix" this by having each consumer derive its own floor on its
+own grid; that would reintroduce precisely the divergence `reliefSpacing` exists to
+prevent.
 
 ### 4. Lints change meaning
 
@@ -319,10 +398,15 @@ Each ships on its own and is independently useful.
 
 ### Phase 1 — the stock model (the actual bug) — no schema change
 
-`reliefStockFloor()`, the two changes in `reliefImage`, the shared skip predicate for
-the preview, the header line, the new engagement lint. Ship the naming and the UI
-untouched. **Measure the fine-grid cost first** — it decides whether the upsample
-fallback is needed, and that is the one thing here that could be badly wrong.
+`reliefStockFloor()` on the coarse grid with a conservative upsample, the two changes
+in `reliefImage`'s raster half, the shared skip predicate for the preview, the header
+line, the new engagement lint. Ship the naming and the UI untouched. The gating cost
+question is **answered, not open** — see the table above — so the coarse path is in
+scope from the start and fine-grid `toolSweptFloor` is out of it.
+
+Add a `toolSweptFloor`-on-a-dome row to `scripts/relief-dilation-cost.ts`. The
+330× spread between the flat-ground and smooth-dome cases is the kind of thing a
+committed probe should pin, and that file already exists to pin the rest of it.
 
 Verification, per the standing discipline: rasterise the emitted path and *look* at
 it; a corpus sweep of before/after feed distance and max engagement; a positive
@@ -347,14 +431,18 @@ messages all keep calling the 3-D finish pass "Engrave".
 
 ## Open questions
 
-1. **Fine-grid `toolSweptFloor` cost** — the gating measurement for Phase 1.
-2. **Does the finish's steep/shallow contour half need the stock floor too?** The
-   constant-Z contours are emitted top-down over the whole depth; they have the same
-   air problem and it is not measured above. Probably yes, same predicate.
-3. **A second finishing tool** (pencil/corner finishing, listed as deferred in the
-   sibling plan) drops out almost free once the stock model is derived from job
-   order — it is the same query with a third op in the chain. Worth confirming
-   before designing anything that would foreclose it.
+Two of the three this document opened are now closed and have moved into the design
+above: the fine-grid cost (measured — coarse+upsample is the algorithm) and the
+contour half (no — it is a waterline, not a staircase).
+
+1. **A third op in the chain is not free, and the non-free piece is the rest mask.**
+   A second *finishing* tool is the easy case, since a finish op cuts to target
+   everywhere it runs, so its floor is just its own swept floor. A `rough → rest →
+   finish` chain is not: `reliefRest` returns a `kind: "mask"` and `reliefRoughImage`
+   only emits inside it, so `reliefStockFloor` must apply a rest op's floor **only
+   within that mask** rather than taking a plain min of swept floors. That is real
+   plumbing. Don't design anything in Phase 1 that forecloses threading the mask
+   through, and don't cost pencil finishing as free.
 
 ## Sources
 
