@@ -100,6 +100,36 @@ describe("createInitialOpState: loading a relief pair", () => {
     expect(s.reliefRough?.toolType).toBe("end-mill");
     expect(s.toolType).toBe("ball-nose");
   });
+
+  test("the two stages default to DIFFERENT tools — the program pauses for the swap", () => {
+    // Both stages used to take DEFAULTS.toolNumber, so a new relief job posted
+    // T1 for a d6 end mill AND T1 for a d6 ball nose. gcode.ts emits a tool
+    // change only where the NUMBER changes, so the machine ran the roughing pass
+    // and continued straight into the finish with the wrong cutter fitted, with
+    // no pause and nothing to warn on (checkMissingToolChange looks for a
+    // manual-change marker, and none was emitted).
+    const { doc, image } = imageDoc();
+    image.selected = true;
+    const s = createInitialOpState(null, doc, [image]);
+    expect(s.reliefRough).not.toBeNull();
+    expect(s.reliefRough?.toolNumber).not.toBe(s.toolNumber);
+    // ...and the rougher is the bigger tool, or there is no bulk advantage and
+    // the stock model degenerates: its opening is what the finish would cut.
+    expect(s.reliefRough?.diameter).toBeGreaterThan(s.diameter);
+  });
+
+  test("...but an EXISTING pair keeps the numbers it was saved with", () => {
+    // The mirror. Without it the assertion above is satisfied by a rule that
+    // overwrites whatever the user chose every time the dialog opens.
+    const { doc, image } = imageDoc();
+    doc.operations.push(
+      roughOp([image.id], { toolNumber: 7 }),
+      finishOp([image.id], { toolNumber: 9 }),
+    );
+    const s = createInitialOpState(doc.operations[1], doc, []);
+    expect(s.toolNumber).toBe(9);
+    expect(s.reliefRough?.toolNumber).toBe(7);
+  });
 });
 
 describe("Add-Toolpath dialog: a relief writes two ops", () => {

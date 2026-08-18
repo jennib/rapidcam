@@ -128,16 +128,19 @@ test("...while emitting dramatically less motion — the surface match is not va
 });
 
 test("with no roughing ahead of it the floor is the uncut blank, so nothing is skipped", () => {
+  // Generated ONCE. An earlier draft posted this program three times to also
+  // check determinism, which pushed the file past the 30s timeout under parallel
+  // load — a benchmark with an assertion on it, and the config comment says not
+  // to write one. Determinism is not what is at risk here anyway; the staircase
+  // is.
   const a = buildDoc();
-  const b = buildDoc();
-  // Two identical lone-finish jobs: the stock model must be a no-op here, which is
-  // what keeps every pre-existing single-op relief posting what it always posted.
-  expect(generateGCode([finishOp(a.entId)], a.doc)).toBe(
-    generateGCode([finishOp(b.entId)], b.doc),
-  );
   const lone = generateGCode([finishOp(a.entId)], a.doc);
+
+  // The unconditional staircase, still unconditional: with no prior op the stock
+  // floor is the uncut blank, so every pass runs and nothing is skipped. If the
+  // floor were seeded from the target instead, this collapses to one pass.
   const passes = Math.ceil(DEPTH / 2);
-  // The unconditional staircase: every pass reaches the plinth, which is at full
-  // depth across most of the image.
-  expect(lone.split("\n").filter((l) => l.startsWith("G0 Z")).length).toBeGreaterThan(passes);
+  const approaches = lone.split(/\r?\n/).filter((l) => l.startsWith("G0 Z")).length;
+  expect(approaches).toBeGreaterThan(passes);
+  expect(countG1(lone)).toBeGreaterThan(50_000);
 });
