@@ -1,4 +1,4 @@
-import { test, expect, waitForApp } from "./appFixture";
+import { test, expect, waitForApp } from "../e2e/appFixture";
 
 /** Perforated plate: every hole pinned except hole 0, which stays draggable. */
 function plate(holes: number) {
