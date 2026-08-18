@@ -67,9 +67,28 @@ jobs:
       # timeout and one retry, so a stuck mirror costs ~3 minutes and recovers
       # instead of wedging the job. The system libraries are NOT cached — they
       # install into the runner image, not into ~/.cache.
-      - name: Install Playwright system deps
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium || (sleep 15 && npx playwright install-deps chromium)
+      # Best effort, and the timeout is INSIDE the step on purpose: a
+      # `timeout-minutes:` kills the whole step, so an `||` fallback after it can
+      # never run — which is useless here, because hanging IS the failure mode.
+      # `timeout(1)` bounds each attempt instead, so the retry is reachable.
+      #
+      # Non-fatal because the ubuntu-latest image already ships most of what
+      # Chromium needs; this step is topping up, not bootstrapping. If a library
+      # really is missing, the E2E step fails immediately with a launch error —
+      # a clear failure in seconds, rather than a 20-minute stall on an apt
+      # mirror that has nothing to do with the code under test.
+      - name: Install Playwright system deps (best effort)
+        timeout-minutes: 8
+        run: |
+          for attempt in 1 2; do
+            if timeout 150 npx playwright install-deps chromium; then
+              echo "system deps ok (attempt $attempt)"
+              exit 0
+            fi
+            echo "attempt $attempt failed or timed out after 150s"
+            sleep 10
+          done
+          echo "::warning::playwright install-deps did not complete; continuing. If Chromium is missing a shared library, the E2E step will fail with a launch error."
 
       # Cached above; on a hit this is a no-op that just verifies the binary.
       - name: Install Playwright browser
