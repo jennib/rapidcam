@@ -176,3 +176,87 @@ test("the stock model cuts feed: the finish no longer re-traces ground the rough
   const afterFinish = cut >= 0 ? after.slice(cut) : after;
   expect(countG1(afterFinish)).toBeLessThan(countG1(before));
 });
+
+// --- rest machining inside the stock model -----------------------------------
+
+/**
+ * A dome on a plinth, with a 6mm channel cut through it.
+ *
+ * The channel is what makes the ⌀3 pass a genuine REST pass — a ⌀12 cannot enter
+ * it — but the DOME is what makes this fixture discriminating. A plinth-and-
+ * channel shape alone has only two regimes: flat ground both tools reach
+ * identically, and a channel only the small one enters. Outside the mask the two
+ * tools then land on exactly the same staircase plane, the over-credit is
+ * invisible, and a test built on it passes whether the mask is honoured or not.
+ * A curved flank puts a continuum of leftovers between those extremes, so cells
+ * outside the mask still cross plane boundaries.
+ */
+function domeChannelDoc() {
+  const W = 48;
+  const rows: number[][] = [];
+  for (let y = 0; y < W; y++) {
+    const row: number[] = [];
+    for (let x = 0; x < W; x++) {
+      if (x >= 21 && x < 27) {
+        row.push(0); // full-depth channel, narrower than the ⌀12
+        continue;
+      }
+      const r = Math.hypot(x - W / 2, y - W / 2) / (W / 2);
+      const h = Math.max(0, 1 - r); // dome, 1 at centre
+      row.push(Math.round(255 * h));
+    }
+    rows.push(row);
+  }
+  const id = registerGrid(rows);
+  return imageDoc(id, W, W);
+}
+
+/** The stock floor left by `ops`, on the finish op's own grid. */
+function floorFor(ent: RasterImageEntity, ops: CAMOperation[], depth: number) {
+  const grid = getImageGrid(ent.imageId)!;
+  const fin = reliefOp([ent.id], { depth: -depth });
+  const enc = reliefEncodingFor(ent, fin);
+  const field = rasterField(grid, enc.field(0.5, 0.5));
+  return reliefStockFloor(field, grid, enc, ops, depth);
+}
+
+test("a REST rough is credited only inside its mask, never as full coverage", () => {
+  const { doc, ent } = domeChannelDoc();
+  void doc;
+  const DEPTH = 8;
+  const big = roughOp([ent.id], { id: "big", diameter: 12, depth: -DEPTH, stepdown: 2 });
+  // The same small tool, twice: once declared as a rest pass, once as an
+  // ordinary full-coverage rough. The old model could not tell them apart —
+  // it stamped the rest pass everywhere its opening reached.
+  const asRest = roughOp([ent.id], {
+    id: "small", diameter: 3, depth: -DEPTH, stepdown: 0.5, restToolDiameter: 12,
+  });
+  const asFull = roughOp([ent.id], { id: "small", diameter: 3, depth: -DEPTH, stepdown: 0.5 });
+
+  const restFloor = floorFor(ent, [big, asRest], DEPTH);
+  const fullFloor = floorFor(ent, [big, asFull], DEPTH);
+  const bigOnly = floorFor(ent, [big], DEPTH);
+
+  let deeperThanFull = 0;
+  let shallowerThanFull = 0;
+  let deeperThanBigAlone = 0;
+  for (let r = 0; r < restFloor.rows.length; r++)
+    for (let c = 0; c < restFloor.cols; c++) {
+      const rest = restFloor.rows[r].levels[c];
+      const full = fullFloor.rows[r].levels[c];
+      const only = bigOnly.rows[r].levels[c];
+      if (rest > full + 1e-6) deeperThanFull++;
+      if (rest < full - 1e-6) shallowerThanFull++;
+      if (rest > only + 1e-6) deeperThanBigAlone++;
+    }
+
+  // A rest pass can never be credited with MORE removal than the same tool run
+  // over the whole image. This is the direction that under-cuts.
+  expect(deeperThanFull).toBe(0);
+  // ...and it must be credited with strictly less somewhere, or the mask is
+  // being ignored and this test is passing on an identity.
+  expect(shallowerThanFull).toBeGreaterThan(0);
+  // ...while still contributing something inside the channel it exists to cut,
+  // or "credited less" would be satisfied by crediting it nothing at all.
+  expect(deeperThanBigAlone).toBeGreaterThan(0);
+});
