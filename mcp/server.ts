@@ -204,8 +204,48 @@ server.registerTool(
   },
 );
 
+/**
+ * A stdio server's life is its PEER's life, and nothing here used to say so.
+ *
+ * `server.connect()` resolves and `main()` returns, but the process stays up on
+ * the open stdin handle forever. When the client goes away — or when the server
+ * is started by hand from a shell that later closes, which is how it usually
+ * happens here — nothing tells it to leave. One such orphan was found holding
+ * **165% of a core after 24 hours**, stealing enough machine to time out three
+ * 30-second tests while CI on the same commit was green. See
+ * `scripts/doctor.ts`, which exists to catch that class from the outside; this
+ * is the same bug fixed at the source.
+ *
+ * `process.exit(0)` and not a graceful drain: by the time the peer is gone
+ * there is no one left to answer, and an orphan that lingers politely is the
+ * exact failure being fixed.
+ */
+function installShutdown(transport: StdioServerTransport): void {
+  let leaving = false;
+  const leave = (why: string): void => {
+    if (leaving) return; // stdin end + close both fire; say it once.
+    leaving = true;
+    console.error(`[rapidcam-mcp] ${why} — exiting`);
+    process.exit(0);
+  };
+
+  // The peer closed the pipe, or died and took it with them.
+  process.stdin.on("end", () => leave("stdin ended"));
+  process.stdin.on("close", () => leave("stdin closed"));
+  process.stdin.on("error", (e) => leave(`stdin error: ${e.message}`));
+
+  // The SDK noticed first (protocol-level close).
+  transport.onclose = () => leave("transport closed");
+
+  // Ctrl-C / a supervisor stopping us.
+  process.on("SIGINT", () => leave("SIGINT"));
+  process.on("SIGTERM", () => leave("SIGTERM"));
+}
+
 async function main(): Promise<void> {
-  await server.connect(new StdioServerTransport());
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  installShutdown(transport);
   console.error("[rapidcam-mcp] ready (stdio)");
 }
 

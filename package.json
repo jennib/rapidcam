@@ -21,8 +21,10 @@
     "//probe": "Measurement probes in scripts/*.e2e.ts — NOT tests, not in validate. `npm run probe -- scripts/load-probe.e2e.ts` runs one.",
     "probe": "playwright test --config probe.config.ts",
     "//validate": "Ends with `vite build`, not `npm run build`, so tsc runs once. Do NOT 'simplify' this the other two ways: stripping tsc from `build` would let a manual/host deploy ship type-broken code (CI only runs validate, so it would not notice), and dropping the separate typecheck would push type errors behind the 35s test run instead of surfacing them in 4s.",
-    "validate": "npm run lint && npm run typecheck && npm test && vite build",
+    "validate": "npm run doctor -- --quiet && npm run lint && npm run typecheck && npm test && vite build",
     "validate:all": "npm run validate && npm run test:e2e",
+    "//doctor": "Guards every measured run: repo-local processes are sampled twice and reported by CPU RATE, because total CPU cannot tell a spinning process from one that worked hard an hour ago. `-- --kill` terminates them. Skipped on CI.",
+    "doctor": "tsx scripts/doctor.ts",
     "clean": "node clean.js",
     "fonts:catalogue": "tsx scripts/build-font-catalogue.ts"
   },
