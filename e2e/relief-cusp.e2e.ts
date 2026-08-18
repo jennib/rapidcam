@@ -7,7 +7,7 @@
  * dialog at all. What has to hold in the app is that typing a surface finish
  * lands a stepover in the DOCUMENT — the field that is actually persisted.
  */
-import { test, expect, openDoc } from "./appFixture";
+import { FINISH_FIELD, test, expect, openDoc } from "./appFixture";
 
 /** A height map (`zRangeMM` present), which is what a relief finish targets. */
 function reliefDoc(): string {
@@ -63,7 +63,7 @@ async function openToolpathDialog(page: import("@playwright/test").Page): Promis
 }
 
 const fieldRow = (page: import("@playwright/test").Page, label: string) =>
-  page.locator(".tp-dialog .tp-field").filter({ hasText: label });
+  page.locator(`.tp-dialog ${FINISH_FIELD}`).filter({ hasText: label });
 
 test("a cusp typed on a relief finish lands as a stepover in the document", async ({ page }) => {
   await openDoc(page, reliefDoc());

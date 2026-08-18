@@ -1,4 +1,4 @@
-import { expect, openDoc, test } from "./appFixture";
+import { FINISH_FIELD, expect, openDoc, test } from "./appFixture";
 import { CADDocument } from "../src/model/document";
 import { LineEntity } from "../src/model/entities";
 import { serializeDoc } from "../src/io/fileio";
@@ -40,15 +40,15 @@ test("CAM Add-Toolpath dialog labels and inputs use displayUnit (in)", async ({ 
 
   // Verify formatted values (no long float tail like 0.23622047244094488)
   // Default tool diameter is 6mm -> "0.236"
-  const diamInput = dialog.locator(".tp-field", { hasText: "Diameter (in)" }).locator("input");
+  const diamInput = dialog.locator(FINISH_FIELD, { hasText: "Diameter (in)" }).locator("input");
   await expect(diamInput).toHaveValue("0.236");
 
   // Default feedrate is 1000mm/min -> "39.4"
-  const feedInput = dialog.locator(".tp-field", { hasText: "Feed (in/min)" }).first().locator("input");
+  const feedInput = dialog.locator(FINISH_FIELD, { hasText: "Feed (in/min)" }).locator("input");
   await expect(feedInput).toHaveValue("39.4");
 
   // Default depth is -3mm -> "-0.118"
-  const depthInput = dialog.locator(".tp-field", { hasText: "Depth (in)" }).locator("input");
+  const depthInput = dialog.locator(FINISH_FIELD, { hasText: "Depth (in)" }).locator("input");
   await expect(depthInput).toHaveValue("-0.118");
 
   // Edit Depth to -0.75 in (which is -19.05 mm)
