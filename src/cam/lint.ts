@@ -24,6 +24,7 @@
 import type { CADDocument } from "../model/document";
 import { resolveOrigin, stockFootprint, isLaser } from "../model/document";
 import { RasterImageEntity } from "../model/entities";
+import type { CAMOperation } from "./types";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { lexWords } from "./gcodeWords";
 import { isHalftone } from "./halftone";
@@ -378,6 +379,64 @@ function checkFastPlunge(moves: Move[]): LintFinding | null {
 }
 
 /** WARNING: a manual tool change is required but nothing pauses the machine for it. */
+/**
+ * ERROR: two operations share a tool number but are not the same tool.
+ *
+ * `gcode.ts` emits `T… M6` — or the manual-change pause — only where
+ * `op.toolNumber` CHANGES between operations. A tool number is therefore a claim
+ * that the same cutter is still in the spindle, and nothing has ever checked it
+ * against the geometry the ops actually describe.
+ *
+ * The 3-D Relief job made that claim wrong by default: both stages took
+ * `DEFAULTS.toolNumber`, so a ⌀6 end mill roughing pass ran straight into a ⌀6
+ * ball-nose finish with no pause, on a job whose own blurb says "one model, two
+ * tools". {@link checkMissingToolChange} cannot see it — that one fires when a
+ * manual-change MARKER exists without an active pause, and here no marker is
+ * emitted at all, because from the emitter's point of view the tool never
+ * changed. The defaults are fixed; this catches the class, including a
+ * hand-authored `.rcam`, an AI-written one, and anyone who renumbers by hand.
+ *
+ * Severity is `error`: unlike a wrong feed this one is not recoverable by
+ * watching the machine. The first plunge of the finish pass happens with the
+ * roughing cutter still fitted.
+ */
+function checkToolNumberCollision(doc: CADDocument): LintFinding | null {
+  const byNumber = new Map<number, CAMOperation[]>();
+  for (const op of doc.operations) {
+    const list = byNumber.get(op.toolNumber);
+    if (list) list.push(op);
+    else byNumber.set(op.toolNumber, [op]);
+  }
+
+  const clashes: string[] = [];
+  const ids = new Set<string>();
+  for (const [num, ops] of byNumber) {
+    if (ops.length < 2) continue;
+    // Same number is only a problem when the CUTTER differs. Several profiles
+    // sharing one end mill is the normal, correct arrangement.
+    const shape = (o: CAMOperation) =>
+      `${o.toolType}|${Math.round(o.diameter * 1000)}|${Math.round((o.vAngle ?? 0) * 100)}|${Math.round((o.tipDiameter ?? 0) * 1000)}`;
+    const distinct = new Map<string, CAMOperation>();
+    for (const o of ops) if (!distinct.has(shape(o))) distinct.set(shape(o), o);
+    if (distinct.size < 2) continue;
+    const describe = (o: CAMOperation) => `"${o.name}" (⌀${o.diameter}mm ${o.toolType})`;
+    clashes.push(`T${num}: ${[...distinct.values()].map(describe).join(" and ")}`);
+    for (const o of ops) for (const id of o.entityIds) ids.add(id);
+  }
+  if (clashes.length === 0) return null;
+
+  return {
+    code: "tool-number-collision",
+    severity: "error",
+    message:
+      `${clashes.length} tool number${clashes.length > 1 ? "s are" : " is"} used by more than one ` +
+      `cutter (${clashes.join("; ")}). The program only pauses where the tool NUMBER changes, so ` +
+      `it will run straight from one cutter into the next without stopping for the swap. ` +
+      `Give each cutter its own number.`,
+    entityIds: [...ids],
+  };
+}
+
 function checkMissingToolChange(gcode: string): LintFinding | null {
   const lines = gcode.split(/\r?\n/);
   let manualMarker: number | null = null;
@@ -934,6 +993,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   // Empty-toolpath is doc-level and machine-agnostic (an empty cut/engrave on a
   // laser cuts nothing too); the move stream can't see it since it emits none.
   if (ctx.doc) findings.push(checkEmptyOps(ctx.doc));
+  if (ctx.doc) findings.push(checkToolNumberCollision(ctx.doc));
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefPassMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefStepoverGap(ctx.doc));

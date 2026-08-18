@@ -589,3 +589,52 @@ test("relief engagement: a finish stepped within the bit's radius lints clean (p
     "relief-engagement",
   );
 });
+
+// --- tool-number collisions --------------------------------------------------
+
+/** Two profile ops on the same rect, so only the TOOL differs between them. */
+function twoOpDoc(a: Partial<CAMOperation>, b: Partial<CAMOperation>): CADDocument {
+  const doc = new CADDocument({ width: 100, height: 80 });
+  doc.stockThickness = 10;
+  const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 60, y: 50 }));
+  const base: CAMOperation = {
+    id: "o1", name: "one", type: "profile", entityIds: [r.id], side: "outside",
+    toolType: "end-mill", toolNumber: 1, diameter: 6, feedrate: 1000, plungeRate: 300,
+    spindleSpeed: 18000, safeZ: 5, depth: -2, stepdown: 1, stepover: 0.4,
+  };
+  doc.operations = [
+    { ...base, ...a },
+    { ...base, id: "o2", name: "two", ...b },
+  ];
+  return doc;
+}
+
+const docCodes = (doc: CADDocument): string[] =>
+  lintGCode(generateGCode(doc.operations, doc), buildLintContext(doc)).map((f) => f.code);
+
+test("tool-number-collision: one T-number, two different cutters is an error", () => {
+  const doc = twoOpDoc({ toolType: "end-mill", diameter: 6 }, { toolType: "ball-nose", diameter: 6 });
+  expect(docCodes(doc)).toContain("tool-number-collision");
+
+  // The relief default that shipped: same number, same diameter, different type.
+  const finding = lintGCode(generateGCode(doc.operations, doc), buildLintContext(doc)).find(
+    (f) => f.code === "tool-number-collision",
+  );
+  expect(finding?.severity).toBe("error");
+  expect(finding?.message).toContain("T1");
+});
+
+test("tool-number-collision: a different DIAMETER on one number is caught too", () => {
+  const doc = twoOpDoc({ diameter: 6 }, { diameter: 3 });
+  expect(docCodes(doc)).toContain("tool-number-collision");
+});
+
+test("POSITIVE CONTROL: two ops sharing one number AND one cutter is normal, not a finding", () => {
+  // Without this the assertions above pass just as well for a check that fires
+  // on every job with more than one operation.
+  const doc = twoOpDoc({}, {});
+  expect(docCodes(doc)).not.toContain("tool-number-collision");
+  // ...and different cutters on different numbers is the correct arrangement.
+  const ok = twoOpDoc({ toolNumber: 1, diameter: 6 }, { toolNumber: 2, diameter: 3 });
+  expect(docCodes(ok)).not.toContain("tool-number-collision");
+});

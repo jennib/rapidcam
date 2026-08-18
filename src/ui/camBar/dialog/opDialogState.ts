@@ -292,8 +292,21 @@ export function createInitialOpState(
     reliefRough: {
       toolId: rough?.toolId,
       toolType: (rough?.toolType ?? "end-mill") as ToolType,
-      toolNumber: rough?.toolNumber ?? DEFAULTS.toolNumber,
-      diameter: rough?.diameter ?? DEFAULTS.diameter,
+      // Derived from the FINISH tool, never from DEFAULTS, because both stages
+      // defaulting to DEFAULTS is what made them collide. A relief job is two
+      // physical tools, and `gcode.ts` emits a tool change only where
+      // `toolNumber` differs — so two stages sharing T1 post a program that runs
+      // the roughing pass with an end mill and continues straight into the
+      // ball-nose finish with no pause and no warning. `checkMissingToolChange`
+      // cannot catch it either: with one number there is no manual-change marker
+      // to find.
+      toolNumber: rough?.toolNumber ?? (finish?.toolNumber ?? DEFAULTS.toolNumber) + 1,
+      // Twice the finisher. Roughing exists to move bulk, and a rougher the same
+      // size as the finish tool also makes the stock model degenerate — the
+      // opening it leaves is the one the finish would have cut anyway, so there
+      // is nothing for the finish to skip. 2x matches the tier's own advice
+      // (Easel pairs a 1/4in or 1/8in rougher with a 1/8in ball nose).
+      diameter: rough?.diameter ?? (finish?.diameter ?? DEFAULTS.diameter) * 2,
       vAngle: rough?.vAngle ?? DEFAULTS.vAngle,
       tipDiameter: rough?.tipDiameter ?? DEFAULTS.tipDiameter,
       tipAngle: rough?.tipAngle ?? DEFAULTS.tipAngle,
