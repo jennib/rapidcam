@@ -1613,6 +1613,7 @@ export class CADDocument {
     // the first entity drawn and abort the frame, leaving a canvas with grid,
     // stock and origin but no geometry at all.
     this.layers = s.layers?.length ? s.layers.map(cloneLayer) : [defaultLayer()];
+    for (const l of this.layers) updateCounter(l.id);
     // Likewise the active layer must name one that exists: a file listing only
     // "l-cut" and no activeLayerId would otherwise point at the absent
     // "layer-0", and every entity drawn next would be filed onto nothing.
@@ -1775,6 +1776,7 @@ export class CADDocument {
       return { ...v };
     });
     this.bindings = [...(s.bindings || []).map((b) => ({ ...b })), ...legacyImageBindings];
+    for (const b of this.bindings) updateCounter(b.id);
 
     this.isConstructionMode = s.isConstructionMode;
     this.selectedPoints = s.selectedPoints.map((p) => ({ ...p }));
@@ -1816,6 +1818,9 @@ export class CADDocument {
           ...(op.paramExprs ? { paramExprs: { ...op.paramExprs } } : {}),
         }))
       : [];
+    for (const op of this.operations) updateCounter(op.id);
+    // Tools need no reconciliation: their ids are `builtin-*` or `tool-<timestamp>`,
+    // never nextId-generated, so updateCounter's /^[a-zA-Z]+\d+$/ pattern never matches.
     this.tools = s.tools ? s.tools.map((t) => ({ ...t })) : [];
     // Always ensure the WCS origin entity is present after loading.
     if (!this.entities.find((e) => e.id === ORIGIN_ENTITY_ID))
