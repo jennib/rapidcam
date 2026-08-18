@@ -457,14 +457,34 @@ Two of the three this document opened are now closed and have moved into the des
 above: the fine-grid cost (measured — coarse+upsample is the algorithm) and the
 contour half (no — it is a waterline, not a staircase).
 
-1. **A third op in the chain is not free, and the non-free piece is the rest mask.**
-   A second *finishing* tool is the easy case, since a finish op cuts to target
-   everywhere it runs, so its floor is just its own swept floor. A `rough → rest →
-   finish` chain is not: `reliefRest` returns a `kind: "mask"` and `reliefRoughImage`
-   only emits inside it, so `reliefStockFloor` must apply a rest op's floor **only
-   within that mask** rather than taking a plain min of swept floors. That is real
-   plumbing. Don't design anything in Phase 1 that forecloses threading the mask
-   through, and don't cost pencil finishing as free.
+1. ~~**A third op in the chain is not free, and the non-free piece is the rest
+   mask.**~~ **CLOSED — shipped, and it was not a missing feature but a live
+   defect.** A rest rough was being credited as full coverage, so the finish
+   believed up to a stepdown more stock was gone than was and UNDER-CUT. That ran
+   in the unsafe direction on exactly the documents the rest pass had just
+   created: before the stock model existed the finish re-cut the whole depth and
+   merely wasted time, so Phase 1 turned wasteful-but-safe into silently wrong for
+   that one document shape.
+
+   Two corrections to how this was sized here. The plumbing was **over-priced** —
+   the mask is computed on the op's own coarse grid, which is the grid the swept
+   floor is already on, so it threads through as a predicate rather than a second
+   geometry pass. And the risk was **under-stated**: this section called it a
+   scheduling question ("don't cost pencil finishing as free") when it was a
+   correctness one.
+
+   A second *finishing* tool remains the easy case, as stated — a finish op cuts
+   to target everywhere it runs, so its floor is just its own swept floor.
+
+   ⚠️ **The trap this left, for whoever writes the next test here.** The obvious
+   fixture — a plinth with a channel the big tool cannot enter — **passes before
+   the fix exists**. A plinth has two regimes only: ground both tools reach
+   identically, and a channel only the small tool enters. Outside the mask both
+   land on the same staircase plane, so the over-credit is invisible. The shipped
+   fixture is a *dome* with a channel, because a curved flank puts a continuum of
+   leftovers between the extremes and cells outside the mask still cross plane
+   boundaries. Quantisation hides differences smaller than one plane; a fixture
+   with no gradients hides all of them.
 
 ## Sources
 
