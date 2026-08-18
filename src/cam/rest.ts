@@ -417,15 +417,18 @@ export function reliefRest(
  * `finishField`'s grid. That is what keeps a single-op relief byte-identical to
  * the G-code this code posted before the stock model existed.
  *
- * Scope: every prior `relief-rough` op is modelled as FULL coverage. A
- * rest-machined rough (one with `restToolDiameter`, which cuts only its rest
- * mask) would be over-credited here — its opening is stamped everywhere it
- * reaches, not just where the mask said to cut — which makes the finish believe
- * up to a stepdown more stock is gone than is, and can under-cut. Threading the
- * rest mask through is deferred (see the plan's open question on the three-op
- * chain); until then a rest rough ahead of a finish is mis-modelled in the
- * UNSAFE direction (it can under-cut), so treat it as unsupported rather than
- * silently wrong.
+ * A REST-machined rough (one carrying `restToolDiameter`) is credited only
+ * inside its own mask. It has to be: a rest pass cuts nothing outside the mask,
+ * so stamping its opening everywhere the tool could reach credits removal that
+ * never happened, the finish skips cells that still hold stock, and the part
+ * comes out UNDER-CUT. That was live for every document saved between the rest
+ * pass shipping and this — the mis-modelling ran in the unsafe direction on
+ * exactly the files the feature had just created.
+ *
+ * At a mask boundary a fine cell can overlap both cut and uncut coarse cells;
+ * those are credited to nobody. That under-states removal, which costs the
+ * finish a little air and never leaves a bump — the same direction every other
+ * approximation in this function is rounded.
  */
 export function reliefStockFloor(
   finishField: RasterField,
@@ -454,7 +457,17 @@ export function reliefStockFloor(
     const coarse = rasterField(grid, enc.field(pitch, pitch));
     if (coarse.rows.length === 0) continue;
     const swept = toolSweptFloor(coarse, { toolType: op.toolType, diameter: op.diameter }, maxDepth, allowance);
-    stampStaircase(floor, swept, stepdown, maxDepth, allowance);
+    // A REST rough cuts only inside its own mask, so it may only be credited
+    // there. Modelling it as full coverage credits removal that never happened
+    // wherever the earlier, bigger tool had already reached — the finish then
+    // skips cells that still hold stock, and UNDER-CUTS. The mask is computed on
+    // this op's own coarse grid, which is the grid `swept` is on.
+    const rest = reliefRest(coarse, op, maxDepth, stepdown, allowance);
+    const keep = rest.kind === "mask" ? rest.keep : null;
+    // "clear" means the earlier tool already reached everything this one could:
+    // the op cuts nothing, so it contributes no floor at all.
+    if (rest.kind === "clear") continue;
+    stampStaircase(floor, swept, stepdown, maxDepth, allowance, keep);
   }
   return floor;
 }
@@ -472,6 +485,13 @@ function stampStaircase(
   stepdown: number,
   maxDepth: number,
   allowance: number,
+  /**
+   * Rest machining: the coarse cells this op is allowed to cut, or `null` for an
+   * ordinary full-coverage rough. A fine cell is stamped only when EVERY coarse
+   * cell it overlaps is in the mask — partial overlap at a mask boundary is
+   * credited to nobody, which under-states removal and so errs the safe way.
+   */
+  keep: ((row: number, col: number) => boolean) | null = null,
 ): void {
   const { cols, colPitch, rowPitch, rows } = floor;
   const maxCut = maxDepth - allowance; // deepest plane −(maxDepth − allowance)
@@ -490,11 +510,17 @@ function stampStaircase(
       const cc0 = clampIdx(Math.floor(x0 / cColPitch), cCols);
       const cc1 = clampIdx(Math.floor((x1 - 1e-9) / cColPitch), cCols);
       let s = Infinity;
-      for (let cr = cr0; cr <= cr1; cr++)
+      let allKept = true;
+      for (let cr = cr0; cr <= cr1 && allKept; cr++)
         for (let cc = cc0; cc <= cc1; cc++) {
+          if (keep && !keep(cr, cc)) {
+            allKept = false;
+            break;
+          }
           const v = swept.rows[cr].levels[cc];
           if (v < s) s = v;
         }
+      if (!allKept) continue; // outside this op's rest mask — it cut nothing here
       // Deepest staircase plane still at-or-above the swept surface. A cell whose
       // swept surface reaches the roughing's floor takes the clamped final plane
       // `−maxCut`, not a `stepdown` multiple.
