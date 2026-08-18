@@ -126,6 +126,21 @@ export interface VCarveParams {
   tipDiameter?: number;
   /** Miter limit passed to Clipper when insetting (keeps sharp corners sharp). */
   miterLimit?: number;
+  /**
+   * Sink the whole V profile this far below the surface, mm (positive, default 0).
+   *
+   * This is the INLAY GLUE GAP, and it is the one number that makes a plug fit.
+   * With a start depth `g`, reaching depth `d` needs only
+   * `r = (d − g)·tan(½·vAngle)` instead of `d·tan(½·vAngle)`, so the standing
+   * material is **narrower by exactly `g·tan(½·vAngle)` at every depth**. A male
+   * plug cut this way seats on its FLANKS with a void at the apex — which is
+   * where the glue goes, and why the plug can bottom out at all.
+   *
+   * It lives here rather than in `inlay.ts` because `depth(r)` is stated once,
+   * below; a second copy of the V law is exactly the drift this codebase keeps
+   * paying for.
+   */
+  startDepth?: number;
 }
 
 /**
@@ -230,6 +245,7 @@ export function vcarveRegion(
   // Flat-tip bit: the tip flat (radius tipR) rides the surface, so only the part
   // of the radial distance beyond the flat goes below the surface.
   const tipR = Math.max(0, (params.tipDiameter ?? 0) / 2);
+  const startDepth = Math.max(0, params.startDepth ?? 0);
 
   // Peel on the requested pitch first. This is the answer for any region deep
   // enough to afford it, and it brackets the collapse for everything else.
@@ -274,7 +290,7 @@ export function vcarveRegion(
   for (let i = 1; i <= wholeRings + 1; i++) {
     const ridge = i > wholeRings;
     const r = ridge ? rMax : tipR + i * step;
-    let depth = (r - tipR) / tanHalf;
+    let depth = startDepth + (r - tipR) / tanHalf;
     const clamped = maxDepth > 0 && depth > maxDepth;
     if (clamped) depth = maxDepth;
     if (clamped && !ridge && r - lastFloorR < stepMM - 1e-9) continue;
