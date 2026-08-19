@@ -1910,9 +1910,15 @@ function inlayRegionGcode(
 ): string[] {
   const entityMap = machinableEntityMap(doc);
   const contours: Vec2[][] = [];
+  // A drawn boundary can only come from explicit entities: a picked region is
+  // the design itself, and text glyphs cannot be a boundary. When neither is
+  // the source, force a generated boundary so a counter (hole) inside the
+  // design is not mistaken for one.
+  let canCarryBoundary = true;
 
   // Picked regions take precedence (they carry counters as holes).
   if (op.regions && op.regions.length > 0) {
+    canCarryBoundary = false;
     const loops = collectClosedLoops(doc.entities);
     for (const ref of op.regions) {
       const region = resolveRegion(ref, loops);
@@ -1938,6 +1944,7 @@ function inlayRegionGcode(
       const ent = entityMap.get(id);
       if (!ent || ent.isConstruction) continue;
       if (ent instanceof TextEntity) {
+        canCarryBoundary = false;
         contours.push(...textToContours(ent).map((c) => c.points));
       } else if (ent instanceof RectEntity) {
         contours.push(ent.outlinePoints());
@@ -1964,7 +1971,9 @@ function inlayRegionGcode(
     ];
 
   const lines: string[] = [];
-  for (const region of inlayRegions(contours, side, inlayMarginForOp(op))) {
+  for (const region of inlayRegions(contours, side, inlayMarginForOp(op), {
+    forceBoundary: !canCarryBoundary,
+  })) {
     lines.push(
       ...emitVCarvePasses(
         vcarveRegion(region.outer, region.holes, inlayParamsForOp(op, side)),

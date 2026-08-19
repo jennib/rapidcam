@@ -76,4 +76,32 @@ describe("v-carve inlay G-code", () => {
     expect(out).toMatch(/inlay requires a V-bit/);
     expect(cutDepths(out)).toEqual([]);
   });
+
+  it("a picked region carves the face, and the male clears the field around it", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const outer = doc.add(new PolylineEntity(square(20), true)); // 10..30
+    doc.add(
+      new PolylineEntity(
+        square(10).map((p) => ({ x: p.x + 5, y: p.y + 5 })),
+        true,
+      ),
+    ); // 15..25 — a counter (island) inside the face
+    const op = inlayOp([]); // no entityIds — the design is the picked region
+    op.regions = [{ containingLoops: [[outer.id]] }];
+    doc.operations.push(op);
+
+    const { female, male } = generateInlayPrograms(doc.operations, doc);
+    const xs = (g: string): number[] =>
+      [...g.matchAll(/G1 X(-?\d+(?:\.\d+)?)/g)].map((m) => parseFloat(m[1]));
+
+    expect(xs(female).length).toBeGreaterThan(0);
+    expect(xs(male).length).toBeGreaterThan(0);
+
+    // The female carves the face itself — nothing left of the outer square.
+    expect(Math.min(...xs(female))).toBeGreaterThanOrEqual(10 - 1e-6);
+    // The male clears the FIELD around the face, so its cuts reach the generated
+    // boundary left of the design. Without forceBoundary the outer square would
+    // be mistaken for a drawn boundary and this would fail.
+    expect(Math.min(...xs(male))).toBeLessThan(10);
+  });
 });
