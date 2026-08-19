@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { generateGCode, generateInlayPrograms } from "../src/cam/gcode";
+import { estimateOpSeconds, generateGCode, generateInlayPrograms } from "../src/cam/gcode";
 import { textToContours } from "../src/cam/textOutlines";
+import { estimateGCodeTime } from "../src/cam/timeEstimate";
 import type { CAMOperation } from "../src/cam/types";
 import { loadFromFile } from "../src/core/fontManager";
 import type { Vec2 } from "../src/core/vec2";
@@ -159,5 +160,18 @@ describe("v-carve inlay G-code", () => {
     // to a generated margin.
     expect(Math.min(...xs(male))).toBeGreaterThanOrEqual(-1e-6);
     expect(Math.max(...xs(male))).toBeLessThanOrEqual(100 + 1e-6);
+  });
+
+  it("an inlay's run-time estimate counts both boards", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    const op = inlayOp([poly.id]);
+
+    const femaleOnly = estimateGCodeTime(generateGCode([op], doc)).seconds;
+    expect(femaleOnly).toBeGreaterThan(0);
+
+    // The male adds its own carve, so the inlay estimate is larger than the
+    // female board alone (which is what the op-list estimate used to show).
+    expect(estimateOpSeconds(op, doc)).toBeGreaterThan(femaleOnly);
   });
 });

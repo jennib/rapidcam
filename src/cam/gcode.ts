@@ -67,7 +67,7 @@ import {
   restRegions,
 } from "./rest";
 import { computeTabRegions, pathLengths, resolveTabCount, splitPathForTabs } from "./tabs";
-import { insertTimeEstimateComment } from "./timeEstimate";
+import { estimateGCodeTime, insertTimeEstimateComment } from "./timeEstimate";
 import {
   type CarveRegion,
   groupContoursIntoRegions,
@@ -2373,6 +2373,24 @@ export function generateInlayPrograms(
   const female = generateGCode(ops, doc, opts);
   const male = generateGCode(inlayOps, doc, { ...opts, inlaySide: "male" });
   return { female, male };
+}
+
+/**
+ * Ballpark run time (seconds) for one op. An inlay posts two boards, so it
+ * sums both programs; every other op is its single posted program. Lives here
+ * (not in the UI estimate manager) so the op-list estimate and any other
+ * caller share one definition.
+ */
+export function estimateOpSeconds(
+  op: CAMOperation,
+  doc: CADDocument,
+  opts: GCodeOptions = {},
+): number {
+  if (op.type === "inlay") {
+    const { female, male } = generateInlayPrograms([op], doc, opts);
+    return estimateGCodeTime(female).seconds + estimateGCodeTime(male).seconds;
+  }
+  return estimateGCodeTime(generateGCode([op], doc, opts)).seconds;
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
