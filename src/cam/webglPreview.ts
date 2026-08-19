@@ -9,6 +9,7 @@ precision highp float;
 
 uniform sampler2D uHeightMap;
 uniform vec2 uStockXZ;   // stock width (X) and depth (Z) in mm
+uniform vec2 uGridSpan;  // world mm spanned by the grid (cell 0 → last cell)
 uniform float uStockT;   // stock thickness in mm
 uniform mat4 uMVP;
 
@@ -22,10 +23,13 @@ void main() {
   float h = texture(uHeightMap, aUV).r;
   vUV = aUV;
   vHeight = h;
-  float wx = (aUV.x - 0.5) * uStockXZ.x;
+  // Cell 0 sits on the stock's front-left corner; each cell is uGridSpan/(grid-1)
+  // mm wide, so a cell maps to its true physical position instead of being
+  // stretched to fill the stock when the grid isn't an exact multiple of it.
+  float wx = aUV.x * uGridSpan.x - uStockXZ.x * 0.5;
   // UV.y=0 = world Y=0 (canvas bottom) → near side; flip so canvas top = far side,
   // matching the Y-up 2D canvas orientation when viewed from the default camera.
-  float wz = (0.5 - aUV.y) * uStockXZ.y;
+  float wz = uStockXZ.y * 0.5 - aUV.y * uGridSpan.y;
   vec3 pos = vec3(wx, h, wz);
   vWorldPos = pos;
   gl_Position = uMVP * vec4(pos, 1.0);
@@ -116,6 +120,7 @@ uniform vec2 uTexelSize;  // 1/gridW, 1/gridH
 uniform vec2 uCellMM;     // mm per texel in X and Z
 uniform float uStockT;
 uniform vec2 uStockXZ;    // stock width (X) and depth (Z) in mm
+uniform vec2 uGridSpan;   // world mm spanned by the grid (cell 0 → last cell)
 uniform int uLaserMode;   // 1 = shade removed material as a laser burn, 0 = milled cut
 uniform float uBurnDepth; // mm of removed depth mapped to a full-black char (laser mode)
 
@@ -152,8 +157,8 @@ void main() {
 
   // Wood grain modulation — reconstruct world XZ (mm) from UV. Shared by both
   // surface modes so the grain reads through a light laser scorch too.
-  float wx = (vUV.x - 0.5) * uStockXZ.x;
-  float wz = (0.5 - vUV.y) * uStockXZ.y;
+  float wx = vUV.x * uGridSpan.x - uStockXZ.x * 0.5;
+  float wz = uStockXZ.y * 0.5 - vUV.y * uGridSpan.y;
   float grain = woodTone(vec2(wx, wz));
 
   vec3 albedo = surfaceAlbedo(cutDepth, grain, uStockT, uLaserMode, uBurnDepth);
@@ -638,6 +643,9 @@ export class WebGLPreview {
   private stockT = 0;
   /** Shade the flat top surface as a laser burn rather than a milled cut. */
   private laserMode = false;
+  /** World mm spanned by the grid (cell 0 → last cell), per axis — see render(). */
+  private gridSpanX = 0;
+  private gridSpanY = 0;
 
   // Orbit state
   private yaw = DEFAULT_YAW;
@@ -773,6 +781,11 @@ export class WebGLPreview {
     this.stockW = hm.stockW;
     this.stockH = hm.stockH;
     this.stockT = hm.stockT;
+    // The rasterizer stamps cells at a uniform mm-per-cell size; use that exact
+    // size so the surface matches the grid. Fall back to the legacy stockW/(gridW-1)
+    // mapping only for synthetic height maps (tests) that don't carry cellMM.
+    this.gridSpanX = hm.cellMM !== undefined ? (this.gridW - 1) * hm.cellMM : this.stockW;
+    this.gridSpanY = hm.cellMM !== undefined ? (this.gridH - 1) * hm.cellMM : this.stockH;
     this.laserMode = hm.laser ?? false;
     this.rotary = rotary;
     this.rotaryRadius = rotary ? rotary.diameter / 2 : 0;
@@ -1129,7 +1142,8 @@ export class WebGLPreview {
     gl.uniformMatrix4fv(gl.getUniformLocation(surf, "uMVP"), false, MVP);
     set("uStockT", this.stockT);
     set("uTexelSize", 1 / this.gridW, 1 / this.gridH);
-    set("uCellMM", this.stockW / (this.gridW - 1), this.stockH / (this.gridH - 1));
+    set("uCellMM", this.gridSpanX / (this.gridW - 1), this.gridSpanY / (this.gridH - 1));
+    set("uGridSpan", this.gridSpanX, this.gridSpanY);
     if (this.rotary) {
       const wrapX = this.rotary.wrapAxis === "x";
       set("uRadius", this.rotaryRadius);

@@ -108,6 +108,14 @@ export interface HeightMap {
   stockT: number; // stock thickness   (mm)
   /** Shade the surface as a laser burn (scorch/char) rather than a milled cut. */
   laser?: boolean;
+  /**
+   * Physical size of one grid cell (mm). The rasterizer stamps at a uniform
+   * `1/RES` mm per cell; the WebGL preview must map cells back to world mm with
+   * THIS size (not `stockW/(gridW-1)` per axis) or a square cut on non-square
+   * stock renders squished. Omitted only by synthetic height maps (tests) that
+   * build the field by hand — the preview then falls back to the legacy mapping.
+   */
+  cellMM?: number;
 }
 
 export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap {
@@ -147,7 +155,7 @@ export function rasterizeStock(ops: CAMOperation[], doc: CADDocument): HeightMap
     );
   }
 
-  return { data, gridW, gridH, stockW, stockH, stockT, laser: isLaser };
+  return { data, gridW, gridH, stockW, stockH, stockT, laser: isLaser, cellMM: 1 / RES };
 }
 
 // ---------------------------------------------------------------------------
