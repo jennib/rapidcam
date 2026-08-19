@@ -1,9 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, expect, it } from "vitest";
 import { generateGCode, generateInlayPrograms } from "../src/cam/gcode";
+import { textToContours } from "../src/cam/textOutlines";
 import type { CAMOperation } from "../src/cam/types";
+import { loadFromFile } from "../src/core/fontManager";
 import type { Vec2 } from "../src/core/vec2";
 import { CADDocument } from "../src/model/document";
-import { PolylineEntity } from "../src/model/entities";
+import { PolylineEntity, RectEntity, TextEntity } from "../src/model/entities";
+
+let fontId: string;
+beforeAll(async () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const bytes = readFileSync(join(here, "..", "public", "fonts", "roboto-regular.woff"));
+  const fakeFile = {
+    name: "roboto.woff",
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as File;
+  ({ id: fontId } = await loadFromFile(fakeFile));
+});
 
 const square = (s: number): Vec2[] => [
   { x: 10, y: 10 },
@@ -103,5 +120,44 @@ describe("v-carve inlay G-code", () => {
     // boundary left of the design. Without forceBoundary the outer square would
     // be mistaken for a drawn boundary and this would fail.
     expect(Math.min(...xs(male))).toBeLessThan(10);
+  });
+
+  it("a single letter with a counter clears the field, not the stroke", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const text = doc.add(new TextEntity("o", fontId, 40, { x: 20, y: 20 }, 0));
+    const op = inlayOp([text.id]);
+    doc.operations.push(op);
+
+    const { male } = generateInlayPrograms(doc.operations, doc);
+    const xs = (g: string): number[] =>
+      [...g.matchAll(/G1 X(-?\d+(?:\.\d+)?)/g)].map((m) => parseFloat(m[1]));
+    const glyphLeft = Math.min(
+      ...textToContours(text)
+        .flatMap((c) => c.points)
+        .map((p) => p.x),
+    );
+
+    // The male clears the FIELD, so its cuts reach the generated boundary well
+    // left of the glyph. If the glyph's outer ring were mistaken for a boundary,
+    // the male would carve only the stroke and never reach this far left.
+    expect(Math.min(...xs(male))).toBeLessThan(glyphLeft - 1);
+  });
+
+  it("a drawn boundary rectangle is honoured even with text in the design", () => {
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const rect = doc.add(new RectEntity({ x: 0, y: 0 }, { x: 100, y: 100 }));
+    const text = doc.add(new TextEntity("x", fontId, 20, { x: 30, y: 30 }, 0));
+    const op = inlayOp([rect.id, text.id]);
+    doc.operations.push(op);
+
+    const { male } = generateInlayPrograms(doc.operations, doc);
+    const xs = (g: string): number[] =>
+      [...g.matchAll(/G1 X(-?\d+(?:\.\d+)?)/g)].map((m) => parseFloat(m[1]));
+
+    // The male clears the field inside the drawn rectangle — nothing beyond it.
+    // With the boundary forced (the regression), cuts would spill past the rect
+    // to a generated margin.
+    expect(Math.min(...xs(male))).toBeGreaterThanOrEqual(-1e-6);
+    expect(Math.max(...xs(male))).toBeLessThanOrEqual(100 + 1e-6);
   });
 });

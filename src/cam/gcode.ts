@@ -1910,15 +1910,14 @@ function inlayRegionGcode(
 ): string[] {
   const entityMap = machinableEntityMap(doc);
   const contours: Vec2[][] = [];
-  // A drawn boundary can only come from explicit entities: a picked region is
-  // the design itself, and text glyphs cannot be a boundary. When neither is
-  // the source, force a generated boundary so a counter (hole) inside the
-  // design is not mistaken for one.
-  let canCarryBoundary = true;
+  // A drawn boundary can only come from a closed, explicit (non-text) entity.
+  // Regions, text glyphs and chained open curves cannot be one, so for those
+  // sources force a generated boundary — otherwise a counter (hole) inside the
+  // design is mistaken for a drawn boundary and the male clears the design.
+  let canCarryBoundary = false;
 
   // Picked regions take precedence (they carry counters as holes).
   if (op.regions && op.regions.length > 0) {
-    canCarryBoundary = false;
     const loops = collectClosedLoops(doc.entities);
     for (const ref of op.regions) {
       const region = resolveRegion(ref, loops);
@@ -1944,13 +1943,15 @@ function inlayRegionGcode(
       const ent = entityMap.get(id);
       if (!ent || ent.isConstruction) continue;
       if (ent instanceof TextEntity) {
-        canCarryBoundary = false;
         contours.push(...textToContours(ent).map((c) => c.points));
       } else if (ent instanceof RectEntity) {
+        canCarryBoundary = true;
         contours.push(ent.outlinePoints());
       } else if (ent instanceof PolylineEntity && ent.closed) {
+        canCarryBoundary = true;
         contours.push(ent.outlinePoints());
       } else if (ent instanceof CircleEntity) {
+        canCarryBoundary = true;
         const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
         contours.push(
           Array.from({ length: nSegs }, (_, i) => {
