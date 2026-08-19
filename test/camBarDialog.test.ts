@@ -92,6 +92,16 @@ describe("Add-Toolpath dialog: per-type field visibility", () => {
     expect(shown(row(dialog, "V-carve hop clearance"))).toBe(true);
   });
 
+  test("switching to Inlay reveals the Boundary mode (regions) picker", () => {
+    const dialog = openDialog(millDoc());
+    // A profile op has no flood-fill region concept.
+    expect(shown(row(dialog, "Boundary mode"))).toBe(false);
+
+    selectType(dialog, "inlay");
+
+    expect(shown(row(dialog, "Boundary mode"))).toBe(true);
+  });
+
   test("switching to 3-D Relief turns roughing on with its fields already populated", () => {
     const dialog = openDialog(millDoc()); // defaults to a profile op
 

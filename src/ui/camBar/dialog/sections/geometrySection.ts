@@ -1,31 +1,28 @@
 /**
  * Geometry section: entity/region picking, canvas pick-mode, and the live entity list.
  */
-import type { CADDocument, GroupDef } from "../../../../model/document";
-import {
-  type Entity,
-  TextEntity,
-  LineEntity,
-  ArcEntity,
-  BezierEntity,
-} from "../../../../model/entities";
-import type { Vec2 } from "../../../../core/vec2";
-import { formatLength } from "../../../../core/units";
+
 import {
   collectClosedLoops,
   groupLinesIntoClosedChains,
   pointInPolygon,
 } from "../../../../cam/loops";
-import { regionAtPoint, interiorPoint } from "../../../../cam/regions";
-import { groupContoursIntoRegions } from "../../../../cam/vcarve";
+import { interiorPoint, regionAtPoint } from "../../../../cam/regions";
 import { textToContours } from "../../../../cam/textOutlines";
+import { groupContoursIntoRegions } from "../../../../cam/vcarve";
+import { formatLength } from "../../../../core/units";
+import type { Vec2 } from "../../../../core/vec2";
+import type { CADDocument, GroupDef } from "../../../../model/document";
 import {
-  describeEntity,
-  isValidFor,
-  findContiguousChain,
-} from "../../../camBarHelpers";
-import type { OpState, OpDialogEvents } from "../opDialogState";
-import { dSection, dField } from "../dialogDom";
+  ArcEntity,
+  BezierEntity,
+  type Entity,
+  LineEntity,
+  TextEntity,
+} from "../../../../model/entities";
+import { describeEntity, findContiguousChain, isValidFor } from "../../../camBarHelpers";
+import { dField, dSection } from "../dialogDom";
+import type { OpDialogEvents, OpState } from "../opDialogState";
 
 export interface GeometrySectionController {
   root: HTMLElement;
@@ -67,7 +64,8 @@ export function buildGeometrySection(
   });
 
   const modeRow = dField("Boundary mode", modeSelect);
-  modeRow.style.display = state.combo === "pocket" || state.combo === "vcarve" ? "" : "none";
+  modeRow.style.display =
+    state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay" ? "" : "none";
   geoSec.appendChild(modeRow);
 
   // Geometry toolbar
@@ -86,7 +84,7 @@ export function buildGeometrySection(
   fromSelBtn.textContent = "+ From Selection";
   fromSelBtn.addEventListener("click", () => {
     if (
-      (state.combo === "pocket" || state.combo === "vcarve") &&
+      (state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay") &&
       state.pocketBoundaryMode === "regions"
     ) {
       const docLoops = collectClosedLoops(doc.entities);
@@ -187,7 +185,7 @@ export function buildGeometrySection(
     pickHint.style.display = "block";
 
     if (
-      (state.combo === "pocket" || state.combo === "vcarve") &&
+      (state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay") &&
       state.pocketBoundaryMode === "regions"
     ) {
       // Flood-fill region pick: hover previews the enclosed face under the
@@ -221,8 +219,7 @@ export function buildGeometrySection(
 
     pickHint.textContent = "Click entities on the canvas to add them";
     for (const e of doc.entities) {
-      if (!e.isConstruction && isValidFor(e, state.combo) && e.selected)
-        state.entityIds.add(e.id);
+      if (!e.isConstruction && isValidFor(e, state.combo) && e.selected) state.entityIds.add(e.id);
     }
     renderEntities();
     unsubPickMode = doc.onChange(() => {
@@ -335,7 +332,7 @@ export function buildGeometrySection(
   renderEntities = () => {
     events.emitRefreshBeamLayer();
     if (
-      (state.combo === "pocket" || state.combo === "vcarve") &&
+      (state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay") &&
       (state.regionSeeds.length > 0 || pickModeActive)
     ) {
       renderRegionList();
@@ -624,7 +621,10 @@ export function buildGeometrySection(
       if (unsubPickMode) unsubPickMode();
     },
     updateModeVisibility: () => {
-      modeRow.style.display = state.combo === "pocket" || state.combo === "vcarve" ? "" : "none";
+      modeRow.style.display =
+        state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay"
+          ? ""
+          : "none";
     },
   };
 }

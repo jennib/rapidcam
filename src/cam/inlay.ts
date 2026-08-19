@@ -141,28 +141,40 @@ export function mirrorX(contours: readonly Vec2[][]): Vec2[][] {
   return contours.map((c) => c.map((p) => ({ x: axis - p.x, y: p.y })).reverse());
 }
 
+export interface InlayOptions {
+  /**
+   * On the male, always generate the boundary at the margin instead of
+   * honouring a drawn enclosing contour. Set when the contours come from a
+   * source that cannot carry a drawn boundary — a picked region or text glyphs
+   * — so a counter (hole) inside the design is not mistaken for one.
+   */
+  forceBoundary?: boolean;
+}
+
 /**
  * The contours to carve for one side of an inlay.
  *
  * Female: the design as drawn. Male: the design inside a boundary — the user's
- * own if they drew one, otherwise a generated rectangle — and then mirrored, so
- * the plug is the correct hand once flipped.
+ * own if they drew one (unless forceBoundary), otherwise a generated rectangle
+ * — and then mirrored, so the plug is the correct hand once flipped.
  */
 export function inlayContours(
   contours: readonly Vec2[][],
   mode: InlayMode,
   marginMM: number,
+  opts: InlayOptions = {},
 ): Vec2[][] {
   const rings = contours.filter((c) => c.length >= 3);
   if (mode === "female") return rings.map((c) => c.map((p) => ({ ...p })));
   if (rings.length === 0) return [];
 
-  const withBoundary = enclosingContour(rings)
-    ? rings.map((c) => c.map((p) => ({ ...p })))
-    : (() => {
-        const rect = boundaryRect(rings, marginMM);
-        return rect ? [rect, ...rings.map((c) => c.map((p) => ({ ...p })))] : [];
-      })();
+  const withBoundary =
+    !opts.forceBoundary && enclosingContour(rings)
+      ? rings.map((c) => c.map((p) => ({ ...p })))
+      : (() => {
+          const rect = boundaryRect(rings, marginMM);
+          return rect ? [rect, ...rings.map((c) => c.map((p) => ({ ...p })))] : [];
+        })();
 
   return mirrorX(withBoundary);
 }
@@ -172,8 +184,9 @@ export function inlayRegions(
   contours: readonly Vec2[][],
   mode: InlayMode,
   marginMM: number,
+  opts: InlayOptions = {},
 ): CarveRegion[] {
-  return groupContoursIntoRegions(inlayContours(contours, mode, marginMM));
+  return groupContoursIntoRegions(inlayContours(contours, mode, marginMM, opts));
 }
 
 /**

@@ -269,7 +269,7 @@ export function openOpDialog(options: OpDialogOptions): void {
     let ids = [...state.entityIds];
 
     const regionBased =
-      (state.combo === "pocket" || state.combo === "vcarve") &&
+      (state.combo === "pocket" || state.combo === "vcarve" || state.combo === "inlay") &&
       state.pocketBoundaryMode === "regions";
     if (regionBased) {
       const loops = collectClosedLoops(doc.entities);
