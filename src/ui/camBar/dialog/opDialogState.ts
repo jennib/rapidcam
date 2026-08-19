@@ -2,7 +2,10 @@
  * Form state definition and event coordination for the Add/Edit Toolpath dialog.
  * Replaces loose late-bound DialogHooks with typed event management and cohesive OpState.
  */
-import type { CADDocument } from "../../../model/document";
+
+import type { DitherMode } from "../../../cam/dither";
+import { findReliefPair } from "../../../cam/reliefOps";
+import { FINISH_STEPOVER_FRACTION } from "../../../cam/scallop";
 import type {
   CAMOperation,
   ChamferSide,
@@ -11,18 +14,16 @@ import type {
   ToolType,
 } from "../../../cam/types";
 import { DEFAULTS } from "../../../cam/types";
-import { FINISH_STEPOVER_FRACTION } from "../../../cam/scallop";
-import type { DitherMode } from "../../../cam/dither";
-import { type Entity, RasterImageEntity } from "../../../model/entities";
 import { heightfieldMeta } from "../../../core/imageManager";
 import type { Vec2 } from "../../../core/vec2";
-import { findReliefPair } from "../../../cam/reliefOps";
+import type { CADDocument } from "../../../model/document";
+import { type Entity, RasterImageEntity } from "../../../model/entities";
 import {
-  type OpCombo,
   autoName,
   comboOf,
   defaultCombo,
   legacyPocketSeeds,
+  type OpCombo,
   seedsFromRegions,
 } from "../../camBarHelpers";
 
@@ -86,6 +87,10 @@ export interface OpState {
   sharpenCorners: boolean;
   vStep: number;
   vHopClearance: number;
+  pocketDepth: number;
+  glueGap: number;
+  sawAllowance: number;
+  inlayMargin: number;
   coolant: CoolantMode;
   entityIds: Set<string>;
   islandIds: Set<string>;
@@ -185,9 +190,17 @@ export function createInitialOpState(
   // its pair (and vice versa).
   const isRelief = initialCombo === "relief";
   const finish: CAMOperation | null =
-    isRelief && existing ? (existing.type === "engrave" ? existing : findReliefPair(existing, doc)) : existing;
+    isRelief && existing
+      ? existing.type === "engrave"
+        ? existing
+        : findReliefPair(existing, doc)
+      : existing;
   const rough: CAMOperation | null =
-    isRelief && existing ? (existing.type === "relief-rough" ? existing : findReliefPair(existing, doc)) : null;
+    isRelief && existing
+      ? existing.type === "relief-rough"
+        ? existing
+        : findReliefPair(existing, doc)
+      : null;
 
   return {
     name: finish?.name ?? autoOpName(initialCombo, doc),
@@ -228,6 +241,10 @@ export function createInitialOpState(
     sharpenCorners: finish?.sharpenCorners ?? false,
     vStep: finish?.vStep ?? DEFAULTS.vStep,
     vHopClearance: finish?.vHopClearance ?? 0,
+    pocketDepth: finish?.pocketDepth ?? DEFAULTS.pocketDepth,
+    glueGap: finish?.glueGap ?? DEFAULTS.glueGap,
+    sawAllowance: finish?.sawAllowance ?? DEFAULTS.sawAllowance,
+    inlayMargin: finish?.inlayMargin ?? DEFAULTS.inlayMargin,
     coolant: (finish?.coolant ?? DEFAULTS.coolant) as CoolantMode,
     entityIds: new Set<string>(finish?.entityIds ?? [...preSelected]),
     islandIds: new Set<string>(finish?.islandIds ?? []),
@@ -249,8 +266,7 @@ export function createInitialOpState(
     // New profiles default to climb (best on rigid CNC); an existing profile
     // without the field defaults to whatever its raw winding already cuts, so
     // re-applying an old op doesn't silently flip its direction.
-    cutDirection:
-      finish?.cutDirection ?? (finish?.side === "outside" ? "conventional" : "climb"),
+    cutDirection: finish?.cutDirection ?? (finish?.side === "outside" ? "conventional" : "climb"),
     rampAngle: finish?.rampAngle,
     pocketStrategy: (finish?.pocketStrategy ?? "offset") as "offset" | "adaptive" | "raster",
     leadInType: (finish?.leadIn?.type ?? "none") as LeadType,

@@ -1,9 +1,9 @@
+import type { CAMOperation } from "../cam/types";
+import { evalExpr, type VarMap } from "../core/expr";
 import type { Unit } from "../core/units";
 import { parseLength } from "../core/units";
-import { evalExpr, type VarMap } from "../core/expr";
-import { nextId } from "./ids";
 import type { Dimension } from "./dimensions";
-import type { CAMOperation } from "../cam/types";
+import { nextId } from "./ids";
 
 export interface Variable {
   id: string;
@@ -81,7 +81,11 @@ function referencedVars(expr: string, names: Set<string>): string[] {
  * dimension formulas). Variables caught in a reference cycle (incl. self-ref) are
  * left at their previous value — no infinite loop. O(V+E) Kahn's sort.
  */
-export function evaluateVariables(variables: Variable[], displayUnit: Unit, stockThickness?: number): void {
+export function evaluateVariables(
+  variables: Variable[],
+  displayUnit: Unit,
+  stockThickness?: number,
+): void {
   const byName = new Map(variables.map((v) => [v.name, v]));
   const names = new Set(byName.keys());
 
@@ -206,6 +210,10 @@ const OP_PARAMS: Record<string, OpParamSpec> = {
   rampAngle: flat("rampAngle", within(0.5, 45)),
   vStep: flat("vStep", atLeast(0.01)),
   vHopClearance: flat("vHopClearance", atLeast(0)),
+  pocketDepth: flat("pocketDepth", atLeast(0.01)),
+  glueGap: flat("glueGap", atLeast(0)),
+  sawAllowance: flat("sawAllowance", atLeast(0)),
+  inlayMargin: flat("inlayMargin", atLeast(0)),
   reliefGamma: flat("reliefGamma", atLeast(0.01)),
   // V-carve halftone: surface left standing between grooves at full depth. 0 is
   // the normal answer (grooves touch), and a negative land would mean overlapping

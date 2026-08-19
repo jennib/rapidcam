@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, test } from "vitest";
-import { CamBar } from "../src/ui/camBar";
+import type { CAMOperation } from "../src/cam/types";
+import { registerEmbeddedImage } from "../src/core/imageManager";
 import { CADDocument } from "../src/model/document";
 import { RasterImageEntity, RectEntity } from "../src/model/entities";
-import { registerEmbeddedImage } from "../src/core/imageManager";
 import { applyOpParam, makeVariable } from "../src/model/variables";
-import type { CAMOperation } from "../src/cam/types";
+import { CamBar } from "../src/ui/camBar";
 
 /**
  * DOM-level cover for the Add-Toolpath dialog, which until now was guarded only
@@ -289,9 +289,9 @@ describe("Add-Toolpath dialog: laser documents", () => {
     doc.machineKind = "laser";
     const dialog = openDialog(doc);
 
-    const values = [
-      ...dialog.querySelectorAll('[data-testid="op-type-select"] option'),
-    ].map((o) => (o as HTMLOptionElement).value);
+    const values = [...dialog.querySelectorAll('[data-testid="op-type-select"] option')].map(
+      (o) => (o as HTMLOptionElement).value,
+    );
 
     expect(values).toContain("score"); // laser-only
     // Volumetric ops mean nothing to a beam and must not be offerable.
@@ -304,12 +304,12 @@ describe("Add-Toolpath dialog: laser documents", () => {
     // Positive control for the negative assertions above: proves the option
     // list is really being read, and that those values exist to be excluded.
     const dialog = openDialog(millDoc());
-    const values = [
-      ...dialog.querySelectorAll('[data-testid="op-type-select"] option'),
-    ].map((o) => (o as HTMLOptionElement).value);
+    const values = [...dialog.querySelectorAll('[data-testid="op-type-select"] option')].map(
+      (o) => (o as HTMLOptionElement).value,
+    );
 
     expect(values).toEqual(
-      expect.arrayContaining(["pocket", "drill", "vcarve", "chamfer", "relief"]),
+      expect.arrayContaining(["pocket", "drill", "vcarve", "inlay", "chamfer", "relief"]),
     );
     expect(values).not.toContain("score");
   });
@@ -449,10 +449,8 @@ describe("Add-Toolpath dialog: V-carve halftone", () => {
 });
 
 describe("Add-Toolpath dialog: the type caption", () => {
-  const caption = (dialog: HTMLElement) =>
-    dialog.querySelector(".tp-type-hint") as HTMLElement;
-  const pairs = (dialog: HTMLElement) =>
-    dialog.querySelector(".tp-type-pairs") as HTMLElement;
+  const caption = (dialog: HTMLElement) => dialog.querySelector(".tp-type-hint") as HTMLElement;
+  const pairs = (dialog: HTMLElement) => dialog.querySelector(".tp-type-pairs") as HTMLElement;
 
   test("describes the type the dialog opened on", () => {
     const dialog = openDialog(millDoc());

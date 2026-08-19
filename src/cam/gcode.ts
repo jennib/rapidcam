@@ -1,40 +1,35 @@
+import { getImageGrid } from "../core/imageManager";
 import type { Vec2 } from "../core/vec2";
-import { type CADDocument, resolveOrigin, stockFootprint, stockBox } from "../model/document";
-import { machinableEntityMap } from "./machinable";
+import { type CADDocument, resolveOrigin, stockBox, stockFootprint } from "../model/document";
 import {
+  ArcEntity,
+  BezierEntity,
+  CircleEntity,
   type Entity,
   LineEntity,
-  CircleEntity,
-  RectEntity,
   PolylineEntity,
-  BezierEntity,
-  TextEntity,
-  ArcEntity,
   RasterImageEntity,
+  RectEntity,
+  TextEntity,
 } from "../model/entities";
-import { rasterField, makeRasterXf, xfPoint, levelDepthEps } from "./rasterEngrave";
-import {
-  reliefSpacing,
-  grooveWidth,
-  grooveOverlapRatio,
-  OVERLAP_WARN_RATIO,
-} from "./halftone";
+import { addCornerReliefs } from "./dogbone";
+import { grooveOverlapRatio, grooveWidth, OVERLAP_WARN_RATIO, reliefSpacing } from "./halftone";
+import { machinableEntityMap } from "./machinable";
+import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
+import { levelDepthEps, makeRasterXf, rasterField, xfPoint } from "./rasterEngrave";
 import { reliefEncodingFor } from "./reliefEncoding";
-import { toolContactField } from "./toolProfile";
-import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
+import { cuspReadout, FINISH_STEPOVER_FRACTION } from "./scallop";
 import { steepSplit } from "./steep";
-import { getImageGrid } from "../core/imageManager";
 import { textToContours } from "./textOutlines";
+import { toolContactField } from "./toolProfile";
 import {
   type CAMOperation,
   type CoolantMode,
-  DEFAULTS,
   chamferDepth,
   chamferSharpSequence,
+  DEFAULTS,
   resolveOpTool,
 } from "./types";
-import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
-import { addCornerReliefs } from "./dogbone";
 
 /**
  * Reorient a profile toolpath loop so it travels in the requested cut direction,
@@ -49,27 +44,37 @@ function orientForCut(loop: Vec2[], op: CAMOperation): Vec2[] {
   const isCCW = signedArea(loop) >= 0;
   return isCCW === wantCCW ? loop : [...loop].reverse();
 }
-import { contourParallelClear, clearCentreRegion, type ClearingMove } from "./clearing";
+
 import { adaptiveClear } from "./adaptive";
-import { restRegions, restCentreRegions, restArea, reliefRest, reliefStockFloor, reliefMaxRemaining } from "./rest";
+import { fitArcs } from "./arcfit";
+import { type ClearingMove, clearCentreRegion, contourParallelClear } from "./clearing";
 import { facePlan, type Rect } from "./facing";
-import { n, X, Y, Z, depthPasses, toAsciiGcode, type PostProcessor } from "./postprocessors/base";
-import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
-import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { inlayMarginForOp, inlayParamsForOp, inlayRegions } from "./inlay";
+import { generateLaserGCode } from "./lasergcode";
 import { chainLinesIntoPolygons, chainOpenCurvesIntoLoops, collectClosedLoops } from "./loops";
+import { expandOpPatternTargets } from "./patternExpand";
+import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { depthPasses, n, type PostProcessor, toAsciiGcode, X, Y, Z } from "./postprocessors/base";
+import { Grbl } from "./postprocessors/grbl";
+import { LinuxCNC } from "./postprocessors/linuxcnc";
 import { resolveRegion } from "./regions";
 import {
-  vcarveRegion,
-  vcarveParamsForOp,
-  groupContoursIntoRegions,
-  type CarveRegion,
-} from "./vcarve";
-import { fitArcs } from "./arcfit";
-import { expandOpPatternTargets } from "./patternExpand";
-import { LinuxCNC } from "./postprocessors/linuxcnc";
-import { Grbl } from "./postprocessors/grbl";
-import { generateLaserGCode } from "./lasergcode";
+  reliefMaxRemaining,
+  reliefRest,
+  reliefStockFloor,
+  restArea,
+  restCentreRegions,
+  restRegions,
+} from "./rest";
+import { computeTabRegions, pathLengths, resolveTabCount, splitPathForTabs } from "./tabs";
 import { insertTimeEstimateComment } from "./timeEstimate";
+import {
+  type CarveRegion,
+  groupContoursIntoRegions,
+  type VCarvePass,
+  vcarveParamsForOp,
+  vcarveRegion,
+} from "./vcarve";
 
 export function getPostProcessor(name: string): PostProcessor {
   switch (name) {
@@ -320,7 +325,9 @@ function profilePolygon(
   const dogbone = op.cornerStyle === "dogbone" || op.cornerStyle === "tbone";
   const dogboneSide = op.type === "profile" && op.side === "outside" ? "outside" : "inside";
   const prep = (raw: Vec2[]): Vec2[] => {
-    const db = dogbone ? addCornerReliefs(raw, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone") : raw;
+    const db = dogbone
+      ? addCornerReliefs(raw, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone")
+      : raw;
     const dir = orientForCut(db, op);
     return useLead ? startAtLongestEdgeMid(dir) : dir;
   };
@@ -695,7 +702,9 @@ function pocketWallFinish(
   const dogboneSide = op.type === "profile" && op.side === "outside" ? "outside" : "inside";
   const wallLoops =
     op.cornerStyle === "dogbone" || op.cornerStyle === "tbone"
-      ? walls.map((w) => addCornerReliefs(w, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone"))
+      ? walls.map((w) =>
+          addCornerReliefs(w, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone"),
+        )
       : walls;
 
   const lines: string[] = [`; finishing pass (full-depth wall) Z${n(op.depth)}`];
@@ -1397,11 +1406,11 @@ function reliefImage(
     lines.push(
       cusp.overlapping
         ? `; finish: ⌀${n(op.diameter)}mm ${op.toolType} at ${n(lineInterval)}mm stepover ` +
-          `(${Math.round(cusp.fraction * 100)}% of diameter) leaves a ${n(cusp.cusp)}mm cusp between rows`
+            `(${Math.round(cusp.fraction * 100)}% of diameter) leaves a ${n(cusp.cusp)}mm cusp between rows`
         : `; NOTE: rows are ${n(lineInterval)}mm apart, wider than the ⌀${n(op.diameter)}mm bit — ` +
-          `adjacent passes never touch, so what stands between them is not a cusp but ` +
-          `full-height uncut stock. ${n(cusp.suggested)}mm (${FINISH_STEPOVER_FRACTION * 100}% of ⌀) ` +
-          `is the usual finish stepover.`,
+            `adjacent passes never touch, so what stands between them is not a cusp but ` +
+            `full-height uncut stock. ${n(cusp.suggested)}mm (${FINISH_STEPOVER_FRACTION * 100}% of ⌀) ` +
+            `is the usual finish stepover.`,
     );
   }
 
@@ -1837,14 +1846,13 @@ function chamferCircle(
  * fixture standing above the stock within the carve's footprint — which is why it
  * is off unless asked for. The first approach and final park always use `safeZ`.
  */
-function vcarveRegionGcode(
-  region: CarveRegion,
+function emitVCarvePasses(
+  passes: VCarvePass[],
   op: CAMOperation,
   ox: number,
   oy: number,
   zOff: number,
 ): string[] {
-  const passes = vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op));
   if (passes.length === 0) return [];
   const lines: string[] = [];
   // In-region hop height: the opted-in low clearance, else a full safe-Z retract.
@@ -1869,6 +1877,107 @@ function vcarveRegionGcode(
   return lines;
 }
 
+function vcarveRegionGcode(
+  region: CarveRegion,
+  op: CAMOperation,
+  ox: number,
+  oy: number,
+  zOff: number,
+): string[] {
+  return emitVCarvePasses(
+    vcarveRegion(region.outer, region.holes, vcarveParamsForOp(op)),
+    op,
+    ox,
+    oy,
+    zOff,
+  );
+}
+
+/**
+ * Carve one side of a v-carve inlay. The female is the design as drawn; the male
+ * is the same design wrapped in a boundary (drawn or generated) and mirrored, so
+ * the plug is the correct hand once flipped. Both flanks come off the same
+ * V-bit, so the params differ only by the fit (startDepth/maxDepth) that
+ * inlayParamsForOp states.
+ */
+function inlayRegionGcode(
+  op: CAMOperation,
+  doc: CADDocument,
+  side: "female" | "male",
+  ox: number,
+  oy: number,
+  zOff: number,
+): string[] {
+  const entityMap = machinableEntityMap(doc);
+  const contours: Vec2[][] = [];
+
+  // Picked regions take precedence (they carry counters as holes).
+  if (op.regions && op.regions.length > 0) {
+    const loops = collectClosedLoops(doc.entities);
+    for (const ref of op.regions) {
+      const region = resolveRegion(ref, loops);
+      if (region) {
+        contours.push(region.outer);
+        contours.push(...region.holes);
+      }
+    }
+  } else {
+    const chainedIds = new Set<string>();
+    const curveEnts = op.entityIds
+      .map((id) => entityMap.get(id))
+      .filter((e): e is Entity => !!e && !(e as Entity).isConstruction);
+    if (curveEnts.length > 0) {
+      const { loops } = chainOpenCurvesIntoLoops(curveEnts);
+      for (const { verts, ids } of loops) {
+        contours.push(verts);
+        for (const id of ids) chainedIds.add(id);
+      }
+    }
+    for (const id of op.entityIds) {
+      if (chainedIds.has(id)) continue;
+      const ent = entityMap.get(id);
+      if (!ent || ent.isConstruction) continue;
+      if (ent instanceof TextEntity) {
+        contours.push(...textToContours(ent).map((c) => c.points));
+      } else if (ent instanceof RectEntity) {
+        contours.push(ent.outlinePoints());
+      } else if (ent instanceof PolylineEntity && ent.closed) {
+        contours.push(ent.outlinePoints());
+      } else if (ent instanceof CircleEntity) {
+        const nSegs = Math.max(64, Math.ceil((2 * Math.PI * ent.radius) / 0.5));
+        contours.push(
+          Array.from({ length: nSegs }, (_, i) => {
+            const a = (i / nSegs) * 2 * Math.PI;
+            return {
+              x: ent.center.x + ent.radius * Math.cos(a),
+              y: ent.center.y + ent.radius * Math.sin(a),
+            };
+          }),
+        );
+      }
+    }
+  }
+
+  if (contours.length === 0)
+    return [
+      "; NOTE: v-carve inlay needs closed shapes (text, rect, circle, closed polyline, or a picked region) — nothing to carve",
+    ];
+
+  const lines: string[] = [];
+  for (const region of inlayRegions(contours, side, inlayMarginForOp(op))) {
+    lines.push(
+      ...emitVCarvePasses(
+        vcarveRegion(region.outer, region.holes, inlayParamsForOp(op, side)),
+        op,
+        ox,
+        oy,
+        zOff,
+      ),
+    );
+  }
+  return lines;
+}
+
 // --- toolpath body (no spindle/tool-change preamble) -------------------------
 
 function toolpathBody(
@@ -1881,6 +1990,8 @@ function toolpathBody(
   pp: PostProcessor,
   /** Machine travel envelope, for facing the bed. Absent when unconfigured. */
   bed?: { width: number; height: number } | null,
+  /** Inlay only: which board this pass emits. Default "female". */
+  inlaySide: "female" | "male" = "female",
 ): string[] {
   const lines: string[] = [];
   const entityMap = machinableEntityMap(doc);
@@ -1910,6 +2021,13 @@ function toolpathBody(
   // A v-carve needs a V-bit — the slope of the cut comes from the bit's angle.
   if (op.type === "vcarve" && op.toolType !== "v-bit")
     return [`; NOTE: v-carve requires a V-bit tool — skipped`];
+
+  // An inlay is two carves from one op — this pass emits the requested board.
+  if (op.type === "inlay") {
+    if (op.toolType !== "v-bit") return ["; NOTE: v-carve inlay requires a V-bit tool — skipped"];
+    lines.push(...inlayRegionGcode(op, doc, inlaySide, ox, oy, zOff));
+    return lines;
+  }
 
   /** Human/AI-readable summary of a region ref for skip NOTEs. */
   const describeRegionRef = (ref: { containingLoops: string[][] }): string =>
@@ -2057,7 +2175,10 @@ function toolpathBody(
       if (op.type === "vcarve" || op.type === "pocket") {
         for (const region of groupContoursIntoRegions(contours.map((c) => c.points))) {
           if (op.type === "vcarve") lines.push(...vcarveRegionGcode(region, op, ox, oy, zOff));
-          else lines.push(...pocketPolygon(region.outer, [...region.holes, ...islands], op, ox, oy, zOff));
+          else
+            lines.push(
+              ...pocketPolygon(region.outer, [...region.holes, ...islands], op, ox, oy, zOff),
+            );
         }
         continue;
       }
@@ -2213,11 +2334,35 @@ export interface GCodeOptions {
   /** Rotary only: chord tolerance (mm) for flattening arcs into the wrap. */
   arcTolerance?: number;
   /**
+   * Inlay only, emit-time hint (never persisted): which board an inlay op emits.
+   * "female" (default) carves the pocket; "male" carves the complemented,
+   * mirrored plug. generateInlayPrograms sets this on its second pass.
+   */
+  inlaySide?: "female" | "male";
+  /**
    * Machine travel envelope (mm), or null/absent when the user hasn't set one.
    * Not used to GENERATE anything — it reaches the pre-flight fit check, which
    * is part of producing a program, so it rides the same machine channel.
    */
   bed?: { width: number; height: number } | null;
+}
+
+/**
+ * The two boards of a v-carve inlay: the female pocket program (the given ops,
+ * inlay ops emitting their pocket inline) and the male plug program (only the
+ * inlay ops, flipped to the complemented, mirrored plug). Mirrors
+ * generateFlipPrograms' side-A/side-B split, but both programs come from the
+ * SAME op. Takes an ops list so callers can post a full document or a selection.
+ */
+export function generateInlayPrograms(
+  ops: CAMOperation[],
+  doc: CADDocument,
+  opts: GCodeOptions = {},
+): { female: string; male: string } {
+  const inlayOps = ops.filter((op) => op.type === "inlay");
+  const female = generateGCode(ops, doc, opts);
+  const male = generateGCode(inlayOps, doc, { ...opts, inlaySide: "male" });
+  return { female, male };
 }
 
 /** Split a multi-line custom block into trimmed, non-empty-trailing lines. */
@@ -2380,11 +2525,13 @@ export function generateGCode(
             ? "Engrave"
             : op.type === "vcarve"
               ? "V-Carve"
-              : op.type === "chamfer"
-                ? "Chamfer"
-                : op.type === "relief-rough"
-                  ? "Relief Roughing"
-                  : "Drill";
+              : op.type === "inlay"
+                ? "Inlay"
+                : op.type === "chamfer"
+                  ? "Chamfer"
+                  : op.type === "relief-rough"
+                    ? "Relief Roughing"
+                    : "Drill";
     const toolLabel =
       op.toolType === "v-bit"
         ? `V-Bit(${op.vAngle ?? 60}°)`
@@ -2403,7 +2550,18 @@ export function generateGCode(
       const width = (2 * Math.abs(op.depth) * Math.tan(halfAngle)).toFixed(3);
       lines.push(`; V-Bit effective cut width at ${op.depth}mm: ${width}mm`);
     }
-    for (const l of toolpathBody(op, ops.slice(0, i), doc, ox, oy, zOffset, pp, opts.bed)) lines.push(l); // not spread: a relief op can emit 100k+ lines
+    for (const l of toolpathBody(
+      op,
+      ops.slice(0, i),
+      doc,
+      ox,
+      oy,
+      zOffset,
+      pp,
+      opts.bed,
+      opts.inlaySide ?? "female",
+    ))
+      lines.push(l); // not spread: a relief op can emit 100k+ lines
     lines.push("");
   }
 

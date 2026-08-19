@@ -83,3 +83,47 @@ test("3D preview: pocket and profile on positioned stockRect render inside stock
   const centerIdx = Math.round(stockCenterY) * hm.gridW + Math.round(stockCenterX);
   expect(hm.data[centerIdx]).toBeLessThan(doc.stockThickness - 1e-6);
 });
+
+test("3D preview: exposes a uniform cell size so a square cut stays square", () => {
+  // 2:1 non-square stock — the case where the old per-axis mm-per-cell
+  // (stockW/(gridW-1) vs stockH/(gridH-1)) disagreed and squished the cut.
+  const doc = new CADDocument({ width: 200, height: 100 });
+  doc.stockThickness = 10;
+  const rect = doc.add(new RectEntity({ x: 80, y: 30 }, { x: 120, y: 70 })); // 40x40
+
+  const op: CAMOperation = {
+    id: "op3",
+    name: "square pocket",
+    type: "pocket",
+    side: "inside",
+    entityIds: [rect.id],
+    toolType: "end-mill",
+    toolNumber: 1,
+    diameter: 4,
+    feedrate: 300,
+    plungeRate: 300,
+    spindleSpeed: 3000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 3,
+    stepover: 0.4,
+  };
+
+  const hm = rasterizeStock([op], doc);
+
+  // The rasterizer stamps at a uniform 1/RES (= 0.25mm) cell size and exposes it
+  // so the WebGL preview maps cells back to world mm with the SAME size.
+  expect(hm.cellMM).toBeCloseTo(0.25, 10);
+
+  // The old per-axis interpretation disagreed on non-square stock…
+  const oldCellX = hm.stockW / (hm.gridW - 1);
+  const oldCellZ = hm.stockH / (hm.gridH - 1);
+  expect(oldCellX / oldCellZ).not.toBeCloseTo(1, 3);
+
+  // …whereas the preview's grid span (cells−1)·cellMM lands within one cell of
+  // the stock on each axis, so a 40mm square spans equal world mm in X and Z.
+  const spanX = (hm.gridW - 1) * hm.cellMM!;
+  const spanY = (hm.gridH - 1) * hm.cellMM!;
+  expect(Math.abs(spanX - hm.stockW)).toBeLessThanOrEqual(hm.cellMM!);
+  expect(Math.abs(spanY - hm.stockH)).toBeLessThanOrEqual(hm.cellMM!);
+});

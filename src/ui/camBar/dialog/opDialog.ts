@@ -2,33 +2,35 @@
  * Toolpath Add/Edit Dialog Orchestrator.
  * Assembles header, name/type controls, tool, cut, laser, tabs, lead, and geometry sections.
  */
+
+import { collectClosedLoops } from "../../../cam/loops";
+import { regionAtPoint } from "../../../cam/regions";
+import { findReliefPair } from "../../../cam/reliefOps";
+import type { CAMOperation, CAMOpType } from "../../../cam/types";
 import type { CADDocument } from "../../../model/document";
 import { RasterImageEntity } from "../../../model/entities";
-import type { CAMOperation, CAMOpType } from "../../../cam/types";
-import { registerModal } from "../../modal";
-import { toast } from "../../toast";
+import { nextId } from "../../../model/ids";
 import {
-  type OpCombo,
   AUTO_NAME_RE,
   autoName,
   checkOpSelection,
+  type OpCombo,
   refsFromSeeds,
 } from "../../camBarHelpers";
-import { collectClosedLoops } from "../../../cam/loops";
-import { OP_TYPE_BY_COMBO, labelFor, opTypesFor } from "../opTypeInfo";
+import { registerModal } from "../../modal";
+import { toast } from "../../toast";
 import { opTypeDiagram } from "../opTypeDiagram";
-import { regionAtPoint } from "../../../cam/regions";
-import { nextId } from "../../../model/ids";
-import { findReliefPair } from "../../../cam/reliefOps";
-import { type OpState, OpDialogEvents, createInitialOpState } from "./opDialogState";
-import { dField, buildDialogShell } from "./dialogDom";
-import { buildToolSection } from "./sections/toolSection";
+import { labelFor, OP_TYPE_BY_COMBO, opTypesFor } from "../opTypeInfo";
+import { buildDialogShell, dField } from "./dialogDom";
+import { createInitialOpState, OpDialogEvents, type OpState } from "./opDialogState";
 import { buildCutSection } from "./sections/cutSection";
-import { buildReliefRoughSection } from "./sections/reliefRoughSection";
-import { buildLaserSection } from "./sections/laserSection";
-import { buildTabsSection } from "./sections/tabsSection";
-import { buildLeadSection } from "./sections/leadSection";
 import { buildGeometrySection } from "./sections/geometrySection";
+import { buildInlaySection } from "./sections/inlaySection";
+import { buildLaserSection } from "./sections/laserSection";
+import { buildLeadSection } from "./sections/leadSection";
+import { buildReliefRoughSection } from "./sections/reliefRoughSection";
+import { buildTabsSection } from "./sections/tabsSection";
+import { buildToolSection } from "./sections/toolSection";
 
 export interface OpDialogOptions {
   doc: CADDocument;
@@ -37,7 +39,6 @@ export interface OpDialogOptions {
   renderOps?: () => void;
   highlightOp?: (op: CAMOperation | null) => void;
 }
-
 
 export function openOpDialog(options: OpDialogOptions): void {
   const { doc, existing, pushHistory, renderOps, highlightOp } = options;
@@ -143,6 +144,10 @@ export function openOpDialog(options: OpDialogOptions): void {
   const cut = buildCutSection(doc, state, events);
   body.appendChild(cut.root);
 
+  // V-carve inlay fit — the four numbers that make a plug seat in a pocket.
+  const inlay = buildInlaySection(doc, state, events);
+  body.appendChild(inlay.root);
+
   // Roughing stage — a 3-D Relief's second tool + stepdown/stepover/allowance.
   const rough = buildReliefRoughSection(doc, state, isNew);
   body.appendChild(rough.root);
@@ -204,6 +209,7 @@ export function openOpDialog(options: OpDialogOptions): void {
 
   const updateAllSections = () => {
     cut.update();
+    inlay.update();
     rough.update();
     if (isLaser) laser.update();
     if (!isLaser) {
@@ -306,6 +312,9 @@ export function openOpDialog(options: OpDialogOptions): void {
     } else if (state.combo === "vcarve") {
       type = "vcarve";
       side = "outside";
+    } else if (state.combo === "inlay") {
+      type = "inlay";
+      side = "outside";
     } else if (state.combo === "engrave") {
       type = "engrave";
       side = "outside";
@@ -363,19 +372,20 @@ export function openOpDialog(options: OpDialogOptions): void {
       toolNumber: state.toolNumber,
       diameter: state.diameter,
       vAngle:
-        state.toolType === "v-bit" || state.toolType === "tapered-ball-nose" ? state.vAngle : undefined,
+        state.toolType === "v-bit" || state.toolType === "tapered-ball-nose"
+          ? state.vAngle
+          : undefined,
       tipDiameter: state.toolType === "tapered-ball-nose" ? state.tipDiameter : undefined,
       tipAngle: state.toolType === "drill" ? state.tipAngle : undefined,
       feedrate: state.feedrate,
       plungeRate: state.plungeRate,
       spindleSpeed: state.spindleSpeed,
       safeZ: state.safeZ,
-      depth: state.depth,
+      depth: type === "inlay" ? -Math.abs(state.pocketDepth) : state.depth,
       stepdown: state.stepdown,
       stepover: state.stepover,
       peckDepth: type === "drill" && state.peckDepth > 0 ? state.peckDepth : undefined,
-      finishPass:
-        (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
+      finishPass: (type === "profile" || type === "pocket") && state.finishPass ? true : undefined,
       // Dog-bone corner relief applies to female corners (inside pocket, or concave corners on outside profile).
       cornerStyle:
         (state.combo.startsWith("profile") || state.combo === "pocket") &&
@@ -390,19 +400,25 @@ export function openOpDialog(options: OpDialogOptions): void {
       cutDirection: type === "profile" && !isLaser ? state.cutDirection : undefined,
       // A finishing lap leaves a wall skin for the finish pass.
       finishAllowance:
-        (type === "profile" || type === "pocket") && state.finishPass ? state.finishAllowance : undefined,
+        (type === "profile" || type === "pocket") && state.finishPass
+          ? state.finishAllowance
+          : undefined,
       chamferWidth: type === "chamfer" ? state.chamferWidth : undefined,
       chamferSide: type === "chamfer" ? state.chamferSide : undefined,
       sharpenCorners: type === "chamfer" && state.sharpenCorners ? true : undefined,
       vStep: type === "vcarve" ? state.vStep : undefined,
-      vHopClearance:
-        type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
+      vHopClearance: type === "vcarve" && state.vHopClearance > 0 ? state.vHopClearance : undefined,
+      pocketDepth: type === "inlay" ? state.pocketDepth : undefined,
+      glueGap: type === "inlay" ? state.glueGap : undefined,
+      sawAllowance: type === "inlay" ? state.sawAllowance : undefined,
+      inlayMargin: type === "inlay" ? state.inlayMargin : undefined,
       coolant: state.coolant !== "off" ? state.coolant : undefined,
       pocketStrategy: type === "pocket" ? state.pocketStrategy : undefined,
       faceTarget: type === "face" ? state.faceTarget : undefined,
       faceOverhang: type === "face" && state.faceOverhang > 0 ? state.faceOverhang : undefined,
       faceDirection: type === "face" ? state.faceDirection : undefined,
-      restToolDiameter: type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
+      restToolDiameter:
+        type === "pocket" && state.restToolDiameter > 0 ? state.restToolDiameter : undefined,
       regions: regionBased ? refsFromSeeds(doc, state.regionSeeds) : undefined,
       tabs: isProfile
         ? {
@@ -459,9 +475,7 @@ export function openOpDialog(options: OpDialogOptions): void {
       // V-carve halftone: the relief FINISH pass only (roughing clears bulk with
       // a flat tool — there is no groove to widen), and only with a V-bit.
       halftone:
-        !isLaser && imageEngrave && state.toolType === "v-bit" && state.halftone
-          ? true
-          : undefined,
+        !isLaser && imageEngrave && state.toolType === "v-bit" && state.halftone ? true : undefined,
       halftoneLand:
         !isLaser && imageEngrave && state.halftone && state.halftoneLand > 0
           ? state.halftoneLand
@@ -471,10 +485,7 @@ export function openOpDialog(options: OpDialogOptions): void {
       // anything on.
       reliefSteepPass:
         !isLaser && imageEngrave && !state.halftone && state.reliefSteepPass ? true : undefined,
-      paramExprs:
-        Object.keys(state.paramExprs).length > 0
-          ? { ...state.paramExprs }
-          : undefined,
+      paramExprs: Object.keys(state.paramExprs).length > 0 ? { ...state.paramExprs } : undefined,
     };
 
     if (existingFinish) {
@@ -501,7 +512,9 @@ export function openOpDialog(options: OpDialogOptions): void {
               toolNumber: rr.toolNumber,
               diameter: rr.diameter,
               vAngle:
-                rr.toolType === "v-bit" || rr.toolType === "tapered-ball-nose" ? rr.vAngle : undefined,
+                rr.toolType === "v-bit" || rr.toolType === "tapered-ball-nose"
+                  ? rr.vAngle
+                  : undefined,
               tipDiameter: rr.toolType === "tapered-ball-nose" ? rr.tipDiameter : undefined,
               tipAngle: rr.toolType === "drill" ? rr.tipAngle : undefined,
               feedrate: rr.feedrate,
@@ -525,7 +538,9 @@ export function openOpDialog(options: OpDialogOptions): void {
           : null;
 
       if (roughOp) {
-        const ridx = existingRough ? doc.operations.findIndex((o) => o.id === existingRough.id) : -1;
+        const ridx = existingRough
+          ? doc.operations.findIndex((o) => o.id === existingRough.id)
+          : -1;
         if (ridx >= 0) {
           doc.operations[ridx] = roughOp;
         } else {

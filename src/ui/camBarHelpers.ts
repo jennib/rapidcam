@@ -3,26 +3,27 @@
  * Extracted from camBar.ts so the operation-matching / region-seeding logic can
  * be unit-tested and reasoned about independently of the dialog UI.
  */
-import type { CADDocument } from "../model/document";
-import {
-  type Entity,
-  CircleEntity,
-  LineEntity,
-  PolylineEntity,
-  RectEntity,
-  ArcEntity,
-  BezierEntity,
-  TextEntity,
-  RasterImageEntity,
-} from "../model/entities";
-import type { Vec2 } from "../core/vec2";
-import { dist } from "../core/vec2";
-import { formatLength } from "../core/units";
-import type { CAMOperation, RegionRef } from "../cam/types";
+
 import { collectClosedLoops } from "../cam/loops";
-import { OP_TYPES, OP_TYPE_BY_COMBO } from "./camBar/opTypeInfo";
 import { interiorPoint, resolveRegion, seedsFromEntityIds } from "../cam/regions";
 import { reliefImageIds } from "../cam/reliefOps";
+import type { CAMOperation, RegionRef } from "../cam/types";
+import { formatLength } from "../core/units";
+import type { Vec2 } from "../core/vec2";
+import { dist } from "../core/vec2";
+import type { CADDocument } from "../model/document";
+import {
+  ArcEntity,
+  BezierEntity,
+  CircleEntity,
+  type Entity,
+  LineEntity,
+  PolylineEntity,
+  RasterImageEntity,
+  RectEntity,
+  TextEntity,
+} from "../model/entities";
+import { OP_TYPE_BY_COMBO, OP_TYPES } from "./camBar/opTypeInfo";
 
 export type OpCombo =
   | "profile-outside"
@@ -32,6 +33,7 @@ export type OpCombo =
   | "drill"
   | "chamfer"
   | "vcarve"
+  | "inlay"
   | "relief"
   | "score"
   | "face";
@@ -61,7 +63,6 @@ export function autoName(combo: OpCombo, doc: CADDocument): string {
   const n = doc.operations.filter((o) => comboOf(o, doc) === combo).length + 1;
   return `${OP_TYPE_BY_COMBO[combo].name} ${n}`;
 }
-
 
 /**
  * The op-type a freshly opened toolpath dialog should start on:
@@ -198,6 +199,10 @@ export function isValidFor(e: Entity, combo: OpCombo): boolean {
     case "vcarve":
       // V-carve fills closed regions (text is the main use case), but takes the
       // same chained-open-curve path as profile — see isContourTarget.
+      return isContourTarget(e);
+    case "inlay":
+      // An inlay carves the same closed shapes as a v-carve: text and closed
+      // contours (the male adds a boundary, not a different target kind).
       return isContourTarget(e);
     case "relief":
       // A relief (rough + finish) only targets a greyscale image.
