@@ -45,7 +45,13 @@
  * supplies one when the selection has not already drawn it.
  */
 import type { Vec2 } from "../core/vec2";
-import { groupContoursIntoRegions, type CarveRegion, type VCarveParams } from "./vcarve";
+import type { CAMOperation } from "./types";
+import {
+  type CarveRegion,
+  groupContoursIntoRegions,
+  type VCarveParams,
+  vcarveParamsForOp,
+} from "./vcarve";
 
 export type InlayMode = "female" | "male";
 
@@ -66,6 +72,9 @@ export const DEFAULT_INLAY_FIT: InlayFit = {
   glueGap: 0.25,
   sawAllowance: 1.5,
 };
+
+/** Margin (mm) around the design for the male's auto-generated boundary. */
+export const DEFAULT_INLAY_MARGIN = 10;
 
 /** Axis-aligned bounds of a set of contours. */
 function boundsOf(contours: readonly Vec2[][]): { min: Vec2; max: Vec2 } | null {
@@ -191,4 +200,27 @@ export function inlayParams(base: VCarveParams, mode: InlayMode, fit: InlayFit):
  */
 export function radialClearance(glueGap: number, vAngleDeg: number): number {
   return Math.max(0, glueGap) * Math.tan((vAngleDeg / 2) * (Math.PI / 180));
+}
+
+/** The fit fields read off an inlay op, defaulting to {@link DEFAULT_INLAY_FIT}. */
+export function inlayFitForOp(op: CAMOperation): InlayFit {
+  return {
+    pocketDepth: op.pocketDepth ?? DEFAULT_INLAY_FIT.pocketDepth,
+    glueGap: op.glueGap ?? DEFAULT_INLAY_FIT.glueGap,
+    sawAllowance: op.sawAllowance ?? DEFAULT_INLAY_FIT.sawAllowance,
+  };
+}
+
+/** The male boundary margin read off an inlay op, defaulting to {@link DEFAULT_INLAY_MARGIN}. */
+export function inlayMarginForOp(op: CAMOperation): number {
+  return op.inlayMargin ?? DEFAULT_INLAY_MARGIN;
+}
+
+/**
+ * The peel params for one side of an inlay, derived from the op the way
+ * `vcarveParamsForOp` derives a plain v-carve's. Single source for the G-code
+ * generator and the preview rasterizer, so the two agree on the cut.
+ */
+export function inlayParamsForOp(op: CAMOperation, mode: InlayMode): VCarveParams {
+  return inlayParams(vcarveParamsForOp(op), mode, inlayFitForOp(op));
 }

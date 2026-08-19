@@ -435,7 +435,9 @@ describe("polyline corner radii round-trip", () => {
     p.cornerRadii.set("3", 2.5);
     p.cornerType = "chamfer";
 
-    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    const back = reopen(doc).entities.find(
+      (e): e is PolylineEntity => e instanceof PolylineEntity,
+    )!;
     expect(Object.fromEntries(back.cornerRadii)).toEqual({ "1": 5, "3": 2.5 });
     expect(back.cornerType).toBe("chamfer");
     // The boundary is what actually gets cut — compare that, not just the fields.
@@ -453,7 +455,9 @@ describe("polyline corner radii round-trip", () => {
     p.spliceVertices(0, 0, { x: -10, y: -10 });
     expect(p.points[3]).toEqual(shapedAt); // it really did move along
 
-    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    const back = reopen(doc).entities.find(
+      (e): e is PolylineEntity => e instanceof PolylineEntity,
+    )!;
     const i = back.points.findIndex((q) => q.x === shapedAt.x && q.y === shapedAt.y);
     expect(back.cornerValueAt(i)).toBe(5);
   });
@@ -466,7 +470,9 @@ describe("polyline corner radii round-trip", () => {
     p.setAllCornerValues(40);
     expect(p.effectiveCornerValues()[0]).toBeLessThan(40);
 
-    const back = reopen(doc).entities.find((e): e is PolylineEntity => e instanceof PolylineEntity)!;
+    const back = reopen(doc).entities.find(
+      (e): e is PolylineEntity => e instanceof PolylineEntity,
+    )!;
     expect(back.cornerRadii.get("0")).toBe(40);
   });
 
@@ -616,7 +622,14 @@ function kitchenSinkDoc(): CADDocument {
       tipDiameter: 0.5,
       ...toolFeeds,
     },
-    { id: "tool-dr", name: "6mm drill", toolType: "drill", diameter: 6, tipAngle: 118, ...toolFeeds },
+    {
+      id: "tool-dr",
+      name: "6mm drill",
+      toolType: "drill",
+      diameter: 6,
+      tipAngle: 118,
+      ...toolFeeds,
+    },
     {
       id: "tool-tb",
       name: "1mm tapered ball nose",
@@ -763,6 +776,23 @@ function kitchenSinkDoc(): CADDocument {
       chamferWidth: 3,
       chamferSide: "inside",
       sharpenCorners: true,
+    },
+    {
+      // inlay: pocketDepth, glueGap, sawAllowance, inlayMargin — the four
+      // numbers that make a plug seat, plus the shared V-bit fields.
+      id: "op-inlay",
+      name: "Inlay",
+      type: "inlay",
+      entityIds: [outer.id],
+      side: "outside",
+      toolType: "v-bit",
+      vAngle: 60,
+      ...base,
+      vStep: 0.4,
+      pocketDepth: 3,
+      glueGap: 0.25,
+      sawAllowance: 1.5,
+      inlayMargin: 10,
     },
     {
       // ball-nose: the smooth-relief tool, and the one ToolType with no op of its

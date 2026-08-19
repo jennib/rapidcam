@@ -2,39 +2,40 @@
  * G-code generation, pre-flight linting, file export, and machine sender integration.
  * Extracted from camBar.ts to decouple CAM file/communication orchestration from UI view rendering.
  */
-import type { CADDocument } from "../../model/document";
-import { stockFootprint } from "../../model/document";
+
+import { track } from "../../analytics";
+import { formatExportName, timeStamp } from "../../cam/exportName";
+import { generateFlipPrograms, opFace } from "../../cam/flip";
+import { type GCodeOptions, generateGCode, generateInlayPrograms } from "../../cam/gcode";
+import { generateRotaryProgram } from "../../cam/klein";
+import { buildLintContext, lintGCode } from "../../cam/lint";
 import type { CAMOperation } from "../../cam/types";
 import { selectedOpsInOrder } from "../../cam/types";
-import { TextEntity } from "../../model/entities";
-import { generateGCode, type GCodeOptions } from "../../cam/gcode";
-import { generateRotaryProgram } from "../../cam/klein";
-import { generateFlipPrograms, opFace } from "../../cam/flip";
-import { lintGCode, buildLintContext } from "../../cam/lint";
-import { formatLength } from "../../core/units";
-import { timeStamp, formatExportName } from "../../cam/exportName";
-import { zipStore } from "../../io/zip";
 import { isFontResolvable } from "../../core/fontManager";
-import { confirmDialog } from "../modal";
-import { openExportPreview } from "../exportPreviewDialog";
-import { showSenderDialog, type SendTarget } from "../senderDialog";
-import { toast } from "../toast";
-import { maybeShowSharePrompt } from "../sharePrompt";
-import { track } from "../../analytics";
 import {
-  getCustomGcode,
-  getMachineHasCoolant,
-  getHasToolChanger,
-  getRotaryAxisWord,
   getArcTolerance,
   getBed,
+  getCustomGcode,
   getGsenderUrl,
+  getHasToolChanger,
+  getMachineHasCoolant,
   getNcsenderUrl,
   getPostFor,
+  getRotaryAxisWord,
 } from "../../core/prefs";
+import { formatLength } from "../../core/units";
+import { openInGeditor } from "../../io/geditor";
 import { sendToGsender } from "../../io/gsender";
 import { sendToNcsender } from "../../io/ncsender";
-import { openInGeditor } from "../../io/geditor";
+import { zipStore } from "../../io/zip";
+import type { CADDocument } from "../../model/document";
+import { stockFootprint } from "../../model/document";
+import { TextEntity } from "../../model/entities";
+import { openExportPreview } from "../exportPreviewDialog";
+import { confirmDialog } from "../modal";
+import { type SendTarget, showSenderDialog } from "../senderDialog";
+import { maybeShowSharePrompt } from "../sharePrompt";
+import { toast } from "../toast";
 
 export interface CamExportContext {
   doc: CADDocument;
@@ -123,6 +124,10 @@ export class CamExportService {
     // rotary job (flip and the wrap are mutually exclusive).
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
       await this.generateFlip();
+      return;
+    }
+    if (!isRotary && this.doc.operations.some((op) => op.type === "inlay")) {
+      await this.generateInlay();
       return;
     }
     // Rotary jobs wrap the flat program around a cylinder (single program).
@@ -247,6 +252,32 @@ export class CamExportService {
     maybeShowSharePrompt();
   }
 
+  /** Export a v-carve inlay: two boards (pocket + plug) as two files in a zip. */
+  public async generateInlay(): Promise<void> {
+    const { female, male } = generateInlayPrograms(this.doc, this.gcodeOpts());
+    if (!(await this.preflight(female))) return;
+    if (!(await this.preflight(male))) return;
+    track("gcode_generated", { operation_count: this.doc.operations.length, inlay: true });
+    const project = this.projectName();
+    const stamp = timeStamp();
+    const nameA = formatExportName({ project, scope: "female", stamp });
+    const nameB = formatExportName({ project, scope: "male", stamp });
+    const zipName = formatExportName({ project, scope: "inlay", stamp, ext: "zip" });
+    const bytes = zipStore([
+      { name: nameA, data: female },
+      { name: nameB, data: male },
+    ]);
+    const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = zipName;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exported inlay pocket + plug → ${zipName}`);
+    maybeShowSharePrompt();
+  }
+
   /** Hand the whole program to a running sender app. */
   public async sendToMachine(): Promise<void> {
     if (this.doc.operations.length === 0) {
@@ -293,6 +324,13 @@ export class CamExportService {
     // the operator flips the stock. (Not for a rotary job.)
     if (!isRotary && this.doc.flip && this.doc.operations.some((op) => opFace(op) === "bottom")) {
       await this.sendFlip(app);
+      return;
+    }
+    if (!isRotary && this.doc.operations.some((op) => op.type === "inlay")) {
+      // An inlay is two boards and a machine send is one program at a time, so
+      // export the pair and let the user send each.
+      toast("A v-carve inlay posts two programs (pocket + plug). Export to get both files.");
+      await this.generateInlay();
       return;
     }
     let gcode: string;

@@ -2,20 +2,17 @@
  * Cut / Milling parameters section (depth, stepdown, stepover, peck, v-carve,
  * chamfer, plunge ramp, finishing allowance, coolant, 3D relief).
  */
+
+import { halftonePlan } from "../../../../cam/halftone";
+import { cuspReadout, FINISH_STEPOVER_BAND, spacingForCusp } from "../../../../cam/scallop";
+import type { ToolShape } from "../../../../cam/toolProfile";
+import { type ChamferSide, type CoolantMode, DEFAULTS } from "../../../../cam/types";
+import { getMachineHasCoolant } from "../../../../core/prefs";
+import { formatLength, toMM } from "../../../../core/units";
 import type { CADDocument } from "../../../../model/document";
 import { RasterImageEntity } from "../../../../model/entities";
-import {
-  DEFAULTS,
-  type ChamferSide,
-  type CoolantMode,
-} from "../../../../cam/types";
-import { halftonePlan } from "../../../../cam/halftone";
-import type { ToolShape } from "../../../../cam/toolProfile";
-import { FINISH_STEPOVER_BAND, cuspReadout, spacingForCusp } from "../../../../cam/scallop";
-import { formatLength, toMM } from "../../../../core/units";
-import { getMachineHasCoolant } from "../../../../core/prefs";
-import type { OpState, OpDialogEvents } from "../opDialogState";
-import { dSection, dField, lenU, paramRow } from "../dialogDom";
+import { dField, dSection, lenU, paramRow } from "../dialogDom";
+import type { OpDialogEvents, OpState } from "../opDialogState";
 
 export interface CutSectionController {
   root: HTMLElement;
@@ -64,8 +61,7 @@ export function buildCutSection(
 
   // V-bit effective width hint
   const vbitHint = document.createElement("div");
-  vbitHint.style.cssText =
-    "font-size:11px;color:var(--accent);padding:3px 0 4px 0;display:none;";
+  vbitHint.style.cssText = "font-size:11px;color:var(--accent);padding:3px 0 4px 0;display:none;";
   cutSec.appendChild(vbitHint);
 
   const updateVBitHint = () => {
@@ -255,8 +251,7 @@ export function buildCutSection(
     },
     "len",
     {
-      title:
-        "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.",
+      title: "Spacing between scan rows (the stepover). Finer = smoother but much longer to cut.",
       onChange: () => {
         syncCusp();
         updateReliefEstimate();
@@ -792,7 +787,12 @@ export function buildCutSection(
     // Image controls (invert / tone curve / estimate) belong to the relief finish.
     for (const r of [reliefInvRow, reliefGammaRow, reliefEstRow])
       r.style.display = isFinish ? "" : "none";
-    if (isFinish && state.toolType !== "ball-nose" && state.toolType !== "v-bit" && state.toolType !== "tapered-ball-nose") {
+    if (
+      isFinish &&
+      state.toolType !== "ball-nose" &&
+      state.toolType !== "v-bit" &&
+      state.toolType !== "tapered-ball-nose"
+    ) {
       events.emitSetToolType("ball-nose");
     }
     reliefGammaInp.title = halftoning ? HALFTONE_GAMMA_TIP : RELIEF_GAMMA_TIP;
@@ -811,7 +811,9 @@ export function buildCutSection(
       return;
     }
     cutSec.style.display = "";
-    stepRow.el.style.display = state.combo === "drill" || state.combo === "vcarve" ? "none" : "";
+    depthRow.el.style.display = state.combo === "inlay" ? "none" : "";
+    stepRow.el.style.display =
+      state.combo === "drill" || state.combo === "vcarve" || state.combo === "inlay" ? "none" : "";
     peckRow.el.style.display = state.combo === "drill" ? "" : "none";
     stepoverRow.el.style.display = state.combo === "pocket" ? "" : "none";
     strategyRow.style.display = state.combo === "pocket" ? "" : "none";
@@ -827,8 +829,8 @@ export function buildCutSection(
     // — it was showing on a profile, where it would have been read as a promise
     // and done nothing. The emitter honours it for exactly these two.
     restRow.el.style.display = state.combo === "pocket" ? "" : "none";
-    vStepRow.el.style.display = state.combo === "vcarve" ? "" : "none";
-    vHopRow.el.style.display = state.combo === "vcarve" ? "" : "none";
+    vStepRow.el.style.display = state.combo === "vcarve" || state.combo === "inlay" ? "" : "none";
+    vHopRow.el.style.display = state.combo === "vcarve" || state.combo === "inlay" ? "" : "none";
 
     const showFinish = state.combo.startsWith("profile") || state.combo === "pocket";
     finishRow.style.display = showFinish ? "" : "none";

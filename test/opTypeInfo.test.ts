@@ -1,15 +1,10 @@
 import { describe, expect, test } from "vitest";
-import {
-  OP_TYPES,
-  OP_TYPE_BY_COMBO,
-  labelFor,
-  opTypesFor,
-} from "../src/ui/camBar/opTypeInfo";
-import { AUTO_NAME_RE, autoName, isValidFor, type OpCombo } from "../src/ui/camBarHelpers";
-import { CADDocument } from "../src/model/document";
-import { CircleEntity, RectEntity } from "../src/model/entities";
 import { generateGCode } from "../src/cam/gcode";
 import type { CAMOperation } from "../src/cam/types";
+import { CADDocument } from "../src/model/document";
+import { CircleEntity, RectEntity } from "../src/model/entities";
+import { labelFor, OP_TYPE_BY_COMBO, OP_TYPES, opTypesFor } from "../src/ui/camBar/opTypeInfo";
+import { AUTO_NAME_RE, autoName, isValidFor, type OpCombo } from "../src/ui/camBarHelpers";
 
 /**
  * The op-type table is the single source for every name the CAM UI shows, and
@@ -34,6 +29,7 @@ const ALL_COMBOS: OpCombo[] = [
   "pocket",
   "chamfer",
   "vcarve",
+  "inlay",
   "engrave",
   "relief",
   "drill",

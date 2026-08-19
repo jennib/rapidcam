@@ -85,6 +85,15 @@ const DRAW: Record<OpCombo, (svg: SVGSVGElement) => void> = {
     svg.appendChild(node("path", { d: "M66 24 L75 38 L84 24 z" }, CUT));
     svg.appendChild(node("path", { d: "M94 24 L99 31 L104 24 z" }, CUT));
   },
+  // Two boards from one design: the pocket on board A, and — on board B — the
+  // field cleared to leave the plug standing proud, ready to flip and seat.
+  inlay: (svg) => {
+    slab(svg);
+    svg.appendChild(node("path", { d: "M14 24 L28 46 L42 24 z" }, CUT));
+    svg.appendChild(node("rect", { x: 62, y: 30, width: 50, height: 24 }, CUT));
+    svg.appendChild(node("path", { d: "M91 24 L78 54 L104 54 z" }, STOCK));
+    svg.appendChild(node("path", { d: "M56 24 V16" }, HINT));
+  },
   // One groove of constant depth, following a line.
   engrave: (svg) => {
     slab(svg);

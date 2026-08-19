@@ -16,7 +16,7 @@ import { isFontResolvable } from "../core/fontManager";
 import type { CADDocument } from "../model/document";
 import { TextEntity } from "../model/entities";
 import { generateFlipPrograms } from "./flip";
-import { type GCodeOptions, generateGCode } from "./gcode";
+import { type GCodeOptions, generateGCode, generateInlayPrograms } from "./gcode";
 import { generateRotaryProgram } from "./klein";
 import { buildLintContext, type LintFinding, lintGCode } from "./lint";
 
@@ -58,6 +58,7 @@ export function postPrograms(
   const programs: PostedProgram[] = [];
   const isRotary = doc.isRotary;
   const hasBottom = !!doc.flip && doc.operations.some((op) => (op.face ?? "top") === "bottom");
+  const hasInlay = doc.operations.some((op) => op.type === "inlay");
 
   if (isRotary) {
     const { program, warnings: w } = generateRotaryProgram(doc, opts);
@@ -76,7 +77,10 @@ export function postPrograms(
       gcode: sideA,
       lint: lintGCode(
         sideA,
-        buildLintContext(doc, { bed: opts.bed, ...(hasPins ? { extraDepthBelowBottom: flip.pinDepth } : {}) }),
+        buildLintContext(doc, {
+          bed: opts.bed,
+          ...(hasPins ? { extraDepthBelowBottom: flip.pinDepth } : {}),
+        }),
       ),
     });
     if (sideB) {
@@ -86,6 +90,18 @@ export function postPrograms(
         lint: lintGCode(sideB, buildLintContext(doc, { bed: opts.bed })),
       });
     }
+  } else if (hasInlay) {
+    const { female, male } = generateInlayPrograms(doc, opts);
+    programs.push({
+      name: `${baseName}-female.nc`,
+      gcode: female,
+      lint: lintGCode(female, buildLintContext(doc, { bed: opts.bed })),
+    });
+    programs.push({
+      name: `${baseName}-male.nc`,
+      gcode: male,
+      lint: lintGCode(male, buildLintContext(doc, { bed: opts.bed })),
+    });
   } else {
     const gcode = generateGCode(doc.operations, doc, opts);
     programs.push({

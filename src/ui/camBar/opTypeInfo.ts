@@ -71,8 +71,7 @@ export const OP_TYPES: readonly OpTypeInfo[] = [
     combo: "pocket",
     name: "Pocket",
     label: "Pocket (interior clear)",
-    blurb:
-      "Clears out everything inside a closed shape, down to depth, in stepped passes.",
+    blurb: "Clears out everything inside a closed shape, down to depth, in stepped passes.",
     machines: ["mill"],
   },
   {
@@ -89,6 +88,16 @@ export const OP_TYPES: readonly OpTypeInfo[] = [
     label: "V-Carve (text/shape)",
     blurb:
       "Carves a shape with a V-bit so the groove widens where the shape is wide and comes to a point where it narrows — the sign-lettering look. Needs a V-bit.",
+    machines: ["mill"],
+  },
+  {
+    combo: "inlay",
+    name: "Inlay",
+    label: "V-Carve Inlay (two boards)",
+    // The male is the complement of the pocket: same design, field cleared, plug
+    // mirrored so it flips and seats — with a glue gap the user can feel.
+    blurb:
+      "V-carves a design into one board as a pocket and a mirrored plug into a second board, so the plug flips and seats in the pocket with a glue gap. Needs a V-bit.",
     machines: ["mill"],
   },
   {

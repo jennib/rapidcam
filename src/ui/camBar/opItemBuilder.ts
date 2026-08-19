@@ -1,13 +1,14 @@
 /**
  * Builds individual operation cards for the toolpaths list in the CAM bar.
  */
-import type { CADDocument } from "../../model/document";
+
 import { opFace } from "../../cam/flip";
 import { opPatternTargetCount } from "../../cam/patternExpand";
-import { type CAMOperation, resolveOpLaser, DEFAULTS } from "../../cam/types";
 import { shareReliefImage } from "../../cam/reliefOps";
-import { formatLength, formatFeed } from "../../core/units";
 import { formatDuration } from "../../cam/timeEstimate";
+import { type CAMOperation, DEFAULTS, resolveOpLaser } from "../../cam/types";
+import { formatFeed, formatLength } from "../../core/units";
+import type { CADDocument } from "../../model/document";
 import { getBeamLayer } from "./dialog/dialogDom";
 import type { OpEstimateManager } from "./opEstimateManager";
 
@@ -83,11 +84,7 @@ export function toolLabelOf(op: CAMOperation): string {
           : "End Mill";
 }
 
-export function buildOpItem(
-  op: CAMOperation,
-  index: number,
-  ctx: OpItemContext,
-): HTMLElement {
+export function buildOpItem(op: CAMOperation, index: number, ctx: OpItemContext): HTMLElement {
   const {
     doc,
     opsList,
@@ -198,13 +195,15 @@ export function buildOpItem(
             ? "CHM"
             : op.type === "vcarve"
               ? "VCV"
-              : op.type === "relief-rough"
-                ? "RUF"
-                : op.type === "score"
-                  ? "SCR"
-                  : op.type === "face"
-                    ? "FCE"
-                    : "DRL";
+              : op.type === "inlay"
+                ? "INL"
+                : op.type === "relief-rough"
+                  ? "RUF"
+                  : op.type === "score"
+                    ? "SCR"
+                    : op.type === "face"
+                      ? "FCE"
+                      : "DRL";
   topRow.appendChild(badge);
 
   // Double-sided: mark bottom-face ops so they're distinguishable in the list.
@@ -235,13 +234,12 @@ export function buildOpItem(
   // mm otherwise leaked as "-19.0499999…mm").
   // Summarise the numbers the machine will actually run: when the op's layer
   // carries a beam recipe, those are the layer's, not the op's own fields.
-  const beam = doc.isLaser
-    ? resolveOpLaser(op, doc.layers, doc.entities)
-    : op;
+  const beam = doc.isLaser ? resolveOpLaser(op, doc.layers, doc.entities) : op;
   const beamLayer =
     doc.isLaser && beam !== op ? getBeamLayer(doc, op.entityIds, op.laserOverride) : null;
   const lenU = (mm: number) => formatLength(mm, doc.displayUnit);
-  const feedU = (mmPerMin: number) => `${formatFeed(mmPerMin, doc.displayUnit)} ${doc.displayUnit}/min`;
+  const feedU = (mmPerMin: number) =>
+    `${formatFeed(mmPerMin, doc.displayUnit)} ${doc.displayUnit}/min`;
 
   params.textContent = doc.isLaser
     ? `${beam.laserPower ?? DEFAULTS.laserPower}% · ${beam.laserPasses ?? DEFAULTS.laserPasses}× · ${feedU(beam.feedrate)}` +
@@ -258,12 +256,7 @@ export function buildOpItem(
   // A laser only cuts/scores/engraves: a milling-only op (pocket/drill/vcarve/
   // chamfer) left in a laser document won't produce a toolpath — flag it here
   // rather than letting it surface only as a "; NOTE:" buried in the G-code.
-  if (
-    doc.isLaser &&
-    op.type !== "profile" &&
-    op.type !== "engrave" &&
-    op.type !== "score"
-  ) {
+  if (doc.isLaser && op.type !== "profile" && op.type !== "engrave" && op.type !== "score") {
     params.textContent = "⚠ no laser equivalent — use Cut, Score, or Engrave";
     params.style.color = "var(--warn, #e0a85a)";
     item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
@@ -273,10 +266,7 @@ export function buildOpItem(
   // Estimated run time
   const cuts = op.type === "face" || (op.regions?.length ?? 0) + (op.entityIds?.length ?? 0) > 0;
   const laserSkips =
-    doc.isLaser &&
-    op.type !== "profile" &&
-    op.type !== "engrave" &&
-    op.type !== "score";
+    doc.isLaser && op.type !== "profile" && op.type !== "engrave" && op.type !== "score";
   if (cuts && !laserSkips) {
     const est = document.createElement("div");
     est.className = "tp-op-params tp-op-time";
@@ -493,7 +483,9 @@ export function buildReliefGroupItem(
   const actions = document.createElement("div");
   actions.className = "tp-op-actions";
   actions.appendChild(iconButton("Edit", ICON_EDIT, () => onEditOp(finish)));
-  actions.appendChild(iconButton("Delete both passes", ICON_DELETE, () => onDeleteOps([rough, finish])));
+  actions.appendChild(
+    iconButton("Delete both passes", ICON_DELETE, () => onDeleteOps([rough, finish])),
+  );
   header.appendChild(actions);
   item.appendChild(header);
 
@@ -525,7 +517,8 @@ export function buildReliefGroupItem(
     estimateManager.registerElement(op.id, est);
     row.appendChild(est);
     row.appendChild(iconButton("Edit", ICON_EDIT, () => onEditOp(op)));
-    if (canDelete) row.appendChild(iconButton("Delete roughing pass", ICON_DELETE, () => onDeleteOp(rough)));
+    if (canDelete)
+      row.appendChild(iconButton("Delete roughing pass", ICON_DELETE, () => onDeleteOp(rough)));
     return row;
   }
 

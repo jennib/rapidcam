@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import { generateGCode, generateInlayPrograms } from "../src/cam/gcode";
+import type { CAMOperation } from "../src/cam/types";
+import type { Vec2 } from "../src/core/vec2";
+import { CADDocument } from "../src/model/document";
+import { PolylineEntity } from "../src/model/entities";
+
+const square = (s: number): Vec2[] => [
+  { x: 10, y: 10 },
+  { x: 10 + s, y: 10 },
+  { x: 10 + s, y: 10 + s },
+  { x: 10, y: 10 + s },
+];
+
+function inlayOp(entityIds: string[], over: Partial<CAMOperation> = {}): CAMOperation {
+  return {
+    id: "i1",
+    name: "inlay",
+    type: "inlay",
+    entityIds,
+    side: "outside",
+    toolType: "v-bit",
+    toolNumber: 1,
+    diameter: 12,
+    vAngle: 90,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    vStep: 1,
+    pocketDepth: 3,
+    glueGap: 0.5,
+    sawAllowance: 1,
+    inlayMargin: 10,
+    ...over,
+  };
+}
+
+const cutDepths = (lines: string): number[] =>
+  [...lines.matchAll(/G1 Z(-?\d+(?:\.\d+)?)/g)].map((m) => parseFloat(m[1]));
+
+describe("v-carve inlay G-code", () => {
+  it("carves the female pocket, clamped to the pocket floor", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    const out = generateGCode([inlayOp([poly.id])], doc);
+
+    expect(out).toContain('; --- Inlay "inlay"');
+    const depths = cutDepths(out);
+    expect(depths.length).toBeGreaterThan(0);
+    for (const z of depths) expect(z).toBeGreaterThanOrEqual(-3 - 1e-6);
+    expect(Math.min(...depths)).toBeCloseTo(-3, 6);
+  });
+
+  it("posts two programs from one op, the male deeper by the saw allowance", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    doc.operations.push(inlayOp([poly.id]));
+
+    const { female, male } = generateInlayPrograms(doc);
+    expect(female).toContain("; --- Inlay");
+    expect(male).toContain("; --- Inlay");
+    expect(male.length).toBeGreaterThan(0);
+
+    expect(Math.min(...cutDepths(female))).toBeCloseTo(-3, 6);
+    expect(Math.min(...cutDepths(male))).toBeCloseTo(-4, 6); // pocket 3 + saw 1
+  });
+
+  it("requires a V-bit", () => {
+    const doc = new CADDocument({ width: 100, height: 100 });
+    const poly = doc.add(new PolylineEntity(square(20), true));
+    const out = generateGCode([inlayOp([poly.id], { toolType: "end-mill" })], doc);
+    expect(out).toMatch(/inlay requires a V-bit/);
+    expect(cutDepths(out)).toEqual([]);
+  });
+});

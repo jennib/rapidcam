@@ -20,56 +20,54 @@
  * exists to catch.
  */
 
+import { flattenBezier } from "../core/geom";
+import { getImageGrid } from "../core/imageManager";
 import type { Vec2 } from "../core/vec2";
-import { machinableEntityMap } from "./machinable";
-import { laserFillGeometry } from "./lasergcode";
 import { type CADDocument, stockFootprint } from "../model/document";
+import type { Entity } from "../model/entities";
 import {
-  LineEntity,
-  CircleEntity,
-  RectEntity,
-  PolylineEntity,
   ArcEntity,
   BezierEntity,
-  TextEntity,
+  CircleEntity,
+  LineEntity,
+  PolylineEntity,
   RasterImageEntity,
+  RectEntity,
+  TextEntity,
 } from "../model/entities";
-import { textToContours } from "./textOutlines";
-import { rasterField, makeRasterXf, xfPoint, levelDepthEps } from "./rasterEngrave";
-import { getImageGrid } from "../core/imageManager";
-import {
-  type CAMOperation,
-  DEFAULTS,
-  chamferDepth,
-  chamferSharpSequence,
-  resolveOpTool,
-} from "./types";
-import { reliefSpacing, halfAngleRad } from "./halftone";
-import { reliefEncodingFor } from "./reliefEncoding";
-import { ballHeight, coneHeight, taperedBallHeight, toolContactField } from "./toolProfile";
-import { depthPasses } from "./postprocessors/base";
-import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { addCornerReliefs } from "./dogbone";
-import { pathLengths, computeTabRegions, resolveTabCount, splitPathForTabs } from "./tabs";
-import { rasterRows, rasterRowsWithIslands } from "./pocket";
-import { restCentreRegions, reliefRest } from "./rest";
-import { steepSplit } from "./steep";
 import { facePlan } from "./facing";
 import { finishAllowance } from "./gcode";
-import {
-  chainOpenCurvesIntoLoops,
-  collectClosedLoops,
-} from "./loops";
+import { halfAngleRad, reliefSpacing } from "./halftone";
+import { inlayFitForOp } from "./inlay";
+import { laserFillGeometry } from "./lasergcode";
+import { chainOpenCurvesIntoLoops, collectClosedLoops } from "./loops";
+import { machinableEntityMap } from "./machinable";
+import { offsetPolygon, signedArea, startAtLongestEdgeMid } from "./offset";
 import { expandOpPatternTargets } from "./patternExpand";
+import { rasterRows, rasterRowsWithIslands } from "./pocket";
+import { depthPasses } from "./postprocessors/base";
+import { levelDepthEps, makeRasterXf, rasterField, xfPoint } from "./rasterEngrave";
 import { resolveRegion } from "./regions";
+import { reliefEncodingFor } from "./reliefEncoding";
+import { reliefRest, restCentreRegions } from "./rest";
+import { steepSplit } from "./steep";
+import { computeTabRegions, pathLengths, resolveTabCount, splitPathForTabs } from "./tabs";
+import { textToContours } from "./textOutlines";
+import { ballHeight, coneHeight, taperedBallHeight, toolContactField } from "./toolProfile";
 import {
-  vcarveRegion,
-  vcarveParamsForOp,
-  groupContoursIntoRegions,
+  type CAMOperation,
+  chamferDepth,
+  chamferSharpSequence,
+  DEFAULTS,
+  resolveOpTool,
+} from "./types";
+import {
   type CarveRegion,
+  groupContoursIntoRegions,
+  vcarveParamsForOp,
+  vcarveRegion,
 } from "./vcarve";
-import type { Entity } from "../model/entities";
-import { flattenBezier } from "../core/geom";
 
 /**
  * Grid cells per millimetre for the preview height field.
@@ -182,6 +180,22 @@ function rasterizeOp(
     return;
   }
 
+  if (op.type === "inlay") {
+    // The female pocket is exactly a v-carve to the pocket floor; the male is a
+    // second board, so the 3D preview shows board A (the design's board).
+    rasVcarve(
+      { ...op, depth: -inlayFitForOp(op).pocketDepth },
+      entityMap,
+      data,
+      gridW,
+      gridH,
+      stockT,
+      offX,
+      offY,
+    );
+    return;
+  }
+
   const stamp = makeStampFn(op, data, gridW, gridH, stockT, isLaser, offX, offY);
   const stepR = effectiveToolR(op, isLaser);
   const lineSegIds = new Set<string>();
@@ -289,7 +303,7 @@ function rasterizeOp(
         if (op.type === "pocket")
           rasPocketPolygon(verts, islands, op, data, gridW, gridH, stockT, stamp, stepR);
         else rasProfilePolygon(verts, op, data, gridW, gridH, stockT, stamp, stepR);
-        
+
         for (const id of ids) lineSegIds.add(id);
       }
     }
@@ -304,7 +318,17 @@ function rasterizeOp(
     if (ent instanceof TextEntity) {
       if (op.type === "pocket") {
         for (const region of groupContoursIntoRegions(textToContours(ent).map((c) => c.points)))
-          rasPocketPolygon(region.outer, [...region.holes, ...islands], op, data, gridW, gridH, stockT, stamp, stepR);
+          rasPocketPolygon(
+            region.outer,
+            [...region.holes, ...islands],
+            op,
+            data,
+            gridW,
+            gridH,
+            stockT,
+            stamp,
+            stepR,
+          );
         continue;
       }
       const contours = textToContours(ent);
@@ -329,7 +353,12 @@ function rasterizeOp(
       if (ent instanceof RasterImageEntity) {
         // Relief needs a depth-shaping bit (matches gcode.ts, which skips others),
         // or a laser which we simulate with a fake depth.
-        if (op.toolType === "ball-nose" || op.toolType === "v-bit" || op.toolType === "tapered-ball-nose" || isLaser)
+        if (
+          op.toolType === "ball-nose" ||
+          op.toolType === "v-bit" ||
+          op.toolType === "tapered-ball-nose" ||
+          isLaser
+        )
           rasRelief(ent, op, stamp, stockT, isLaser);
       } else if (ent instanceof LineEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, [ent.a, ent.b], false, stamp, stepR);
@@ -349,7 +378,17 @@ function rasterizeOp(
       else if (ent instanceof RectEntity)
         sweepPolyline(op, data, gridW, gridH, stockT, ent.outlinePoints(), true, stamp, stepR);
       else if (ent instanceof PolylineEntity)
-        sweepPolyline(op, data, gridW, gridH, stockT, ent.outlinePoints(), ent.closed, stamp, stepR);
+        sweepPolyline(
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          ent.outlinePoints(),
+          ent.closed,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof ArcEntity)
         sweepArc(
           op,
@@ -393,9 +432,29 @@ function rasterizeOp(
           stepR,
         );
       else if (ent instanceof RectEntity)
-        rasPocketPolygon(ent.outlinePoints(), islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon(
+          ent.outlinePoints(),
+          islands,
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          stamp,
+          stepR,
+        );
       else if (ent instanceof PolylineEntity && ent.closed)
-        rasPocketPolygon(ent.outlinePoints(), islands, op, data, gridW, gridH, stockT, stamp, stepR);
+        rasPocketPolygon(
+          ent.outlinePoints(),
+          islands,
+          op,
+          data,
+          gridW,
+          gridH,
+          stockT,
+          stamp,
+          stepR,
+        );
     } else {
       // profile
       if (ent instanceof CircleEntity)
@@ -623,7 +682,13 @@ function rasVcarve(
  * (scallop and all), which the per-dot tip-Z G-code only approximates. Mirrors
  * `reliefImage` in gcode.ts (same rasterField, same level→depth mapping).
  */
-function rasRelief(ent: RasterImageEntity, rawOp: CAMOperation, stamp: StampFn, stockT: number, isLaser: boolean = false): void {
+function rasRelief(
+  ent: RasterImageEntity,
+  rawOp: CAMOperation,
+  stamp: StampFn,
+  stockT: number,
+  isLaser: boolean = false,
+): void {
   // The emitter's encoding resolver, so the preview shows the depths the program
   // will command — including "this image is a height map, do not tone-curve it".
   const enc = reliefEncodingFor(ent, rawOp);
@@ -1105,7 +1170,9 @@ function rasProfilePolygon(
     if (rawPath.length < 2) continue;
     // Mirror the G-code: dog-bone the wall, then mid-side start only for a lead.
     const dogboneSide = op.type === "profile" && op.side === "outside" ? "outside" : "inside";
-    const db = dogbone ? addCornerReliefs(rawPath, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone") : rawPath;
+    const db = dogbone
+      ? addCornerReliefs(rawPath, toolR, dogboneSide, op.cornerStyle as "dogbone" | "tbone")
+      : rawPath;
     const path = useLead ? startAtLongestEdgeMid(db) : db;
     const np = path.length;
 

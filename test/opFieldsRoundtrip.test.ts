@@ -1,8 +1,8 @@
-import { test, expect } from "vitest";
+import { expect, test } from "vitest";
+import type { CAMOperation } from "../src/cam/types";
+import { applyFile, parseRcam, serializeDoc } from "../src/io/fileio";
 import { CADDocument } from "../src/model/document";
 import { CircleEntity } from "../src/model/entities";
-import { serializeDoc, parseRcam, applyFile } from "../src/io/fileio";
-import type { CAMOperation } from "../src/cam/types";
 
 // Per-operation CAM fields must survive a save/load round-trip (they're part of
 // the .rcam format). Covers the fields added for the toolpath-quality work.
@@ -67,7 +67,29 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
     chamferSide: "outside",
     sharpenCorners: true,
   };
-  doc.operations.push(op, drill, chamfer);
+  const inlay: CAMOperation = {
+    id: "op4",
+    name: "Inlay",
+    type: "inlay",
+    entityIds: [a.id],
+    side: "outside",
+    toolType: "v-bit",
+    vAngle: 60,
+    toolNumber: 4,
+    diameter: 12,
+    feedrate: 900,
+    plungeRate: 250,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    pocketDepth: 3,
+    glueGap: 0.3,
+    sawAllowance: 2,
+    inlayMargin: 12,
+  };
+  doc.operations.push(op, drill, chamfer, inlay);
 
   const reloaded = new CADDocument({ width: 1, height: 1 });
   applyFile(reloaded, parseRcam(JSON.stringify(serializeDoc(doc, "t"))));
@@ -80,4 +102,10 @@ test("operation finishPass + peckDepth round-trip through save/load", () => {
   expect(ch?.chamferWidth).toBe(3);
   expect(ch?.chamferSide).toBe("outside");
   expect(ch?.sharpenCorners).toBe(true);
+  const il = reloaded.operations.find((o) => o.id === "op4");
+  expect(il?.type).toBe("inlay");
+  expect(il?.pocketDepth).toBe(3);
+  expect(il?.glueGap).toBe(0.3);
+  expect(il?.sawAllowance).toBe(2);
+  expect(il?.inlayMargin).toBe(12);
 });

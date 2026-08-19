@@ -1,5 +1,5 @@
-import type { EntityId } from "../model/entities";
 import type { Vec2 } from "../core/vec2";
+import type { EntityId } from "../model/entities";
 import type { DitherMode } from "./dither";
 
 export type CAMOpType =
@@ -9,6 +9,7 @@ export type CAMOpType =
   | "pocket"
   | "chamfer"
   | "vcarve"
+  | "inlay"
   | "relief-rough"
   | "score"
   | "face";
@@ -216,6 +217,27 @@ export interface CAMOperation {
    * bevel comes to a crisp point instead of a rounded fillet. Default false.
    */
   sharpenCorners?: boolean;
+  /**
+   * V-carve inlay only: the female pocket's flat floor depth, mm (positive).
+   * The male plug runs this deep plus `sawAllowance`.
+   */
+  pocketDepth?: number;
+  /**
+   * V-carve inlay only: clearance for glue, mm (positive). Sinks the male's V
+   * profile by this depth, shrinking the plug by `glueGap · tan(½·vAngle)` at
+   * every depth — the void at the apex is where the glue goes.
+   */
+  glueGap?: number;
+  /**
+   * V-carve inlay only: extra depth on the MALE (mm), so the plug stands proud
+   * of the pocket floor and there is stock to saw and plane flush after gluing.
+   */
+  sawAllowance?: number;
+  /**
+   * V-carve inlay only: margin (mm) around the design for the male's generated
+   * boundary rectangle. Ignored when the design already encloses itself.
+   */
+  inlayMargin?: number;
   tabs?: TabDef; // profile only
   // pocket
   stepover: number; // fraction of tool diameter (default 0.4)
@@ -463,6 +485,10 @@ export const DEFAULTS = {
   chamferWidth: 3,
   chamferSide: "on" as ChamferSide,
   vStep: 0.4,
+  pocketDepth: 3,
+  glueGap: 0.25,
+  sawAllowance: 1.5,
+  inlayMargin: 10,
   laserPower: 80,
   laserPasses: 1,
   kerfWidth: 0,
@@ -559,7 +585,10 @@ export function chamferSharpSequence(ccw: Vec2[], width: number): ChamferPathPt[
  * The operations selected for a combined export, in **document order** (so the
  * single file runs them top-to-bottom regardless of the order they were ticked).
  */
-export function selectedOpsInOrder(operations: CAMOperation[], ids: ReadonlySet<string> | Set<string>): CAMOperation[] {
+export function selectedOpsInOrder(
+  operations: CAMOperation[],
+  ids: ReadonlySet<string> | Set<string>,
+): CAMOperation[] {
   return operations.filter((op) => ids.has(op.id));
 }
 
@@ -680,4 +709,3 @@ export function getAssociatedOperations(
   }
   return associated;
 }
-
