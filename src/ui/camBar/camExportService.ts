@@ -172,6 +172,11 @@ export class CamExportService {
   public async exportSelected(selectedOpIds: ReadonlySet<string>): Promise<void> {
     const ops = selectedOpsInOrder(this.doc.operations, selectedOpIds);
     if (ops.length === 0) return;
+    // An inlay in the selection is two boards — post the pair, not one program.
+    if (ops.some((op) => op.type === "inlay")) {
+      await this.exportInlayPrograms(ops, `selected-${ops.length}`);
+      return;
+    }
     const gcode = generateGCode(ops, this.doc, this.gcodeOpts());
     if (!(await this.preflight(gcode))) return;
     track("gcode_generated", { operation_count: ops.length, subset: true });
@@ -184,6 +189,10 @@ export class CamExportService {
 
   /** Export a single operation. */
   public async exportSingleOp(op: CAMOperation, index: number): Promise<void> {
+    if (op.type === "inlay") {
+      await this.exportInlayPrograms([op], `op${index + 1}-${op.name}`);
+      return;
+    }
     const code = generateGCode([op], this.doc, this.gcodeOpts());
     if (!(await this.preflight(code))) return;
     // Prefix with the toolpath's 1-based list position so two same-named ops
@@ -254,18 +263,43 @@ export class CamExportService {
 
   /** Export a v-carve inlay: two boards (pocket + plug) as two files in a zip. */
   public async generateInlay(): Promise<void> {
-    const { female, male } = generateInlayPrograms(this.doc, this.gcodeOpts());
+    await this.exportInlayPrograms(this.doc.operations, "inlay");
+  }
+
+  /**
+   * Post `ops` (which must include an inlay) as its two boards, pre-flight each,
+   * and download the pair as a zip. `scope` names the zip and its two files.
+   */
+  private async exportInlayPrograms(ops: CAMOperation[], scope: string): Promise<void> {
+    const { female, male } = generateInlayPrograms(ops, this.doc, this.gcodeOpts());
     if (!(await this.preflight(female))) return;
     if (!(await this.preflight(male))) return;
-    track("gcode_generated", { operation_count: this.doc.operations.length, inlay: true });
+    track("gcode_generated", { operation_count: ops.length, inlay: true });
     const project = this.projectName();
     const stamp = timeStamp();
-    const nameA = formatExportName({ project, scope: "female", stamp });
-    const nameB = formatExportName({ project, scope: "male", stamp });
-    const zipName = formatExportName({ project, scope: "inlay", stamp, ext: "zip" });
+    const zipName = formatExportName({ project, scope, stamp, ext: "zip" });
+    this.downloadPair(
+      formatExportName({ project, scope: `${scope}-female`, stamp }),
+      female,
+      formatExportName({ project, scope: `${scope}-male`, stamp }),
+      male,
+      zipName,
+      `Exported inlay pocket + plug → ${zipName}`,
+    );
+  }
+
+  /** Zip two programs and download the pair as one file. */
+  private downloadPair(
+    aName: string,
+    aData: string,
+    bName: string,
+    bData: string,
+    zipName: string,
+    toastMessage: string,
+  ): void {
     const bytes = zipStore([
-      { name: nameA, data: female },
-      { name: nameB, data: male },
+      { name: aName, data: aData },
+      { name: bName, data: bData },
     ]);
     const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
     const url = URL.createObjectURL(blob);
@@ -274,7 +308,7 @@ export class CamExportService {
     a.download = zipName;
     a.click();
     URL.revokeObjectURL(url);
-    toast(`Exported inlay pocket + plug → ${zipName}`);
+    toast(toastMessage);
     maybeShowSharePrompt();
   }
 
@@ -327,10 +361,7 @@ export class CamExportService {
       return;
     }
     if (!isRotary && this.doc.operations.some((op) => op.type === "inlay")) {
-      // An inlay is two boards and a machine send is one program at a time, so
-      // export the pair and let the user send each.
-      toast("A v-carve inlay posts two programs (pocket + plug). Export to get both files.");
-      await this.generateInlay();
+      await this.sendInlay(app);
       return;
     }
     let gcode: string;
@@ -478,6 +509,82 @@ export class CamExportService {
     });
     if (dl) {
       const f = this.download(sideB, nameB);
+      toast(`Exported → ${f}`);
+    }
+  }
+
+  private async sendInlay(app: SendTarget): Promise<void> {
+    const { female, male } = generateInlayPrograms(this.doc.operations, this.doc, this.gcodeOpts());
+    if (!(await this.preflight(female))) return;
+    if (!(await this.preflight(male))) return;
+
+    const project = this.projectName();
+    const stamp = timeStamp();
+    const nameA = formatExportName({ project, scope: "inlay-female", stamp });
+    const nameB = formatExportName({ project, scope: "inlay-male", stamp });
+
+    toast(app === "GEditor" ? "Opening the pocket in GEditor…" : `Sending the pocket to ${app}…`);
+    const resA = await this.sendProgram(app, nameA, female);
+    track("gcode_sent_machine", { app, ok: resA.ok, hint: resA.hint, inlay: "female" });
+    if (!resA.ok) {
+      const dl = await confirmDialog({
+        title: `Couldn't ${this.sendVerb(app)} the pocket`,
+        message: `${resA.error}\n\nDownload the pocket + plug files instead?`,
+        confirmLabel: "Download files",
+        cancelLabel: "Close",
+      });
+      if (dl) await this.generateInlay();
+      return;
+    }
+
+    const goB = await confirmDialog(
+      app === "GEditor"
+        ? {
+            title: "Pocket open in GEditor",
+            message:
+              "The pocket (board A) is open in GEditor.\n\n" +
+              "Open the plug (board B) too? It replaces the pocket in the same editor tab.",
+            confirmLabel: "Open plug",
+            cancelLabel: "Not now",
+          }
+        : {
+            title: "Pocket sent",
+            message:
+              `The pocket (board A) is loaded in ${app} — press Play there to run it.\n\n` +
+              "When it finishes: mount board B, re-zero Z on the new top face, then send the plug.",
+            confirmLabel: "Send plug",
+            cancelLabel: "Later",
+          },
+    );
+    if (!goB) {
+      toast(
+        app === "GEditor"
+          ? "Plug not opened — Send G-code again when you want it."
+          : `Plug not sent — reopen and Send to ${app} when ready.`,
+      );
+      return;
+    }
+    if (!(await this.preflight(male))) return;
+    toast(app === "GEditor" ? "Opening the plug in GEditor…" : `Sending the plug to ${app}…`);
+    const resB = await this.sendProgram(app, nameB, male);
+    track("gcode_sent_machine", { app, ok: resB.ok, hint: resB.hint, inlay: "male" });
+    if (resB.ok) {
+      if (app === "GEditor") {
+        toast("Plug open in GEditor.");
+        return;
+      }
+      toast(`Plug loaded — press Play in ${app} to run it.`);
+      maybeShowSharePrompt();
+      return;
+    }
+    const dl = await confirmDialog({
+      title: `Couldn't ${this.sendVerb(app)} the plug`,
+      message: `${resB.error}\n\nDownload the plug file instead?`,
+      confirmLabel: "Download file",
+      cancelLabel: "Close",
+    });
+    if (dl) {
+      const f = this.download(male, nameB);
       toast(`Exported → ${f}`);
     }
   }

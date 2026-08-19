@@ -2348,17 +2348,19 @@ export interface GCodeOptions {
 }
 
 /**
- * The two boards of a v-carve inlay: the female pocket program (all ops, inlay
- * emitting its pocket inline) and the male plug program (only the inlay ops,
- * flipped to the complemented, mirrored plug). Mirrors generateFlipPrograms'
- * side-A/side-B split, but both programs come from the SAME op.
+ * The two boards of a v-carve inlay: the female pocket program (the given ops,
+ * inlay ops emitting their pocket inline) and the male plug program (only the
+ * inlay ops, flipped to the complemented, mirrored plug). Mirrors
+ * generateFlipPrograms' side-A/side-B split, but both programs come from the
+ * SAME op. Takes an ops list so callers can post a full document or a selection.
  */
 export function generateInlayPrograms(
+  ops: CAMOperation[],
   doc: CADDocument,
   opts: GCodeOptions = {},
 ): { female: string; male: string } {
-  const inlayOps = doc.operations.filter((op) => op.type === "inlay");
-  const female = generateGCode(doc.operations, doc, opts);
+  const inlayOps = ops.filter((op) => op.type === "inlay");
+  const female = generateGCode(ops, doc, opts);
   const male = generateGCode(inlayOps, doc, { ...opts, inlaySide: "male" });
   return { female, male };
 }

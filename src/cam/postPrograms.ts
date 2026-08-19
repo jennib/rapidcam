@@ -91,7 +91,7 @@ export function postPrograms(
       });
     }
   } else if (hasInlay) {
-    const { female, male } = generateInlayPrograms(doc, opts);
+    const { female, male } = generateInlayPrograms(doc.operations, doc, opts);
     programs.push({
       name: `${baseName}-female.nc`,
       gcode: female,

@@ -60,7 +60,7 @@ describe("v-carve inlay G-code", () => {
     const poly = doc.add(new PolylineEntity(square(20), true));
     doc.operations.push(inlayOp([poly.id]));
 
-    const { female, male } = generateInlayPrograms(doc);
+    const { female, male } = generateInlayPrograms(doc.operations, doc);
     expect(female).toContain("; --- Inlay");
     expect(male).toContain("; --- Inlay");
     expect(male.length).toBeGreaterThan(0);
