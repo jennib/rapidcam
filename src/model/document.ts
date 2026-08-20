@@ -269,6 +269,48 @@ export function deriveSheet(
   const { width, height } = stockFootprint(doc);
   return { width: width + SHEET_MARGIN * 2, height: height + SHEET_MARGIN * 2 };
 }
+
+/**
+ * The document state the built-in parametric keywords resolve against — see
+ * {@link ../model/variables.StockContext} and
+ * {@link ../model/variables.builtinKeywords}. Built here (not in variables.ts) so
+ * the keyword layer stays a plain-data consumer and never imports the document,
+ * keeping the model import graph acyclic.
+ */
+export function builtinContext(doc: CADDocument): StockContext {
+  const { ox, oy, zOffset } = resolveOrigin(doc);
+  const base = {
+    stockThickness: doc.stockThickness,
+    sheetWidth: isRotary(doc.machineKind) ? null : doc.canvas.width,
+    sheetHeight: isRotary(doc.machineKind) ? null : doc.canvas.height,
+    originX: ox,
+    originY: oy,
+    originZ: zOffset,
+    counter: doc.counter,
+  };
+  if (isRotary(doc.machineKind)) {
+    const s = doc.stock as { kind: "cylinder"; length: number; diameter: number; wall: number };
+    return {
+      ...base,
+      stockWidth: null,
+      stockHeight: null,
+      diameter: s.diameter,
+      length: s.length,
+      circumference: Math.PI * s.diameter,
+      wall: s.wall,
+    };
+  }
+  const s = doc.stock as { kind: "box"; width: number; height: number; thickness: number };
+  return {
+    ...base,
+    stockWidth: s.width,
+    stockHeight: s.height,
+    diameter: null,
+    length: null,
+    circumference: null,
+    wall: null,
+  };
+}
 import {
   Entity,
   type EntityId,
@@ -452,7 +494,7 @@ import {
   type Geo,
 } from "./constraints";
 import { type Dimension, dimensionHitDistance } from "./dimensions";
-import type { Variable } from "./variables";
+import type { Variable, StockContext } from "./variables";
 import type { ScalarBinding } from "./bindings";
 import { type PatternDef, clonePatternDef } from "./patterns";
 import { updateCounter, nextId } from "./ids";
@@ -677,6 +719,8 @@ export interface DocSnapshot {
   // absent in snapshots deserialized from old .rcam files (handled in restore)
   canvas?: CanvasSize;
   stockThickness?: number;
+  /** Incrementing serial counter. Default 1 when absent (older files). */
+  counter?: number;
   stockRect?: StockRect | null;
   origin?: OriginDef;
   machineKind?: MachineKind;
@@ -706,6 +750,12 @@ export class CADDocument {
   displayUnit: Unit;
   /** Thickness of the stock material in mm — used as a reference for through-cuts. */
   stockThickness = 10;
+  /**
+   * Incrementing serial counter (the `counter`/`serial`/`seq` built-in keywords).
+   * A user-facing serial number: bumped by the Settings "+1" button, serialized in
+   * `.rcam` projects and undo snapshots. Default 1.
+   */
+  counter = 1;
   /**
    * Optional positioned flat stock within the work area (`canvas`). `null` (the
    * default/legacy) = the stock fills the work area. When set, the material is this
@@ -941,6 +991,7 @@ export class CADDocument {
     this.toolChangePosition = null;
     this.flip = null;
     this.metadata = {};
+    this.counter = 1;
     this.isConstructionMode = false;
     this.selectedPoints = [];
     this.selectedSegments = [];
@@ -1577,6 +1628,7 @@ export class CADDocument {
       selectedDimensionId: this.selectedDimensionId,
       canvas: { ...this.canvas },
       stockThickness: this.stockThickness,
+      counter: this.counter,
       stockRect: this.stockRect ? { ...this.stockRect } : null,
       origin: { ...this.origin },
       machineKind: this.machineKind,
@@ -1784,6 +1836,7 @@ export class CADDocument {
     this.selectedDimensionId = s.selectedDimensionId ?? null;
     if (s.canvas) this.canvas = { ...s.canvas };
     if (s.stockThickness !== undefined) this.stockThickness = s.stockThickness;
+    if (s.counter !== undefined) this.counter = s.counter;
     this.stockRect = s.stockRect ? { ...s.stockRect } : null;
     if (s.origin) this.origin = { ...s.origin };
     this.machineKind = s.machineKind ?? "mill";

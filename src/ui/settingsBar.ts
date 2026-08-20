@@ -34,6 +34,7 @@ export class SettingsBar {
   private jobInput!: HTMLInputElement;
   private revisionInput!: HTMLInputElement;
   private notesInput!: HTMLTextAreaElement;
+  private counterInput!: HTMLInputElement;
   private unitSelect!: HTMLSelectElement;
   private content!: HTMLElement;
   private isCollapsed = true;
@@ -196,6 +197,23 @@ export class SettingsBar {
     this.notesInput.rows = 2;
     this.notesInput.placeholder = "notes (optional)";
     jobGroup.appendChild(this.field("Notes", this.notesInput));
+    // Serial counter — exposed to formulas as `counter`/`serial`/`seq`. The +1
+    // button bumps it; the number field lets you set it directly.
+    const counterRow = document.createElement("div");
+    counterRow.style.cssText = "display:flex;gap:4px;align-items:center;";
+    this.counterInput = document.createElement("input");
+    this.counterInput.className = "dim";
+    this.counterInput.type = "number";
+    this.counterInput.min = "0";
+    this.counterInput.step = "1";
+    this.counterInput.style.width = "64px";
+    counterRow.appendChild(this.counterInput);
+    const counterBtn = document.createElement("button");
+    counterBtn.className = "btn";
+    counterBtn.textContent = "+1";
+    counterBtn.title = "Increment the serial counter (available in formulas as `counter` / `serial` / `seq`)";
+    counterRow.appendChild(counterBtn);
+    jobGroup.appendChild(this.field("Counter", counterRow));
     this.content.appendChild(jobGroup);
 
     // Units
@@ -302,6 +320,23 @@ export class SettingsBar {
     this.jobInput.addEventListener("change", commitMeta);
     this.revisionInput.addEventListener("change", commitMeta);
     this.notesInput.addEventListener("change", commitMeta);
+    const commitCounter = (): void => {
+      const v = Math.max(0, Math.trunc(this.counterInput.valueAsNumber) || 0);
+      if (v === this.doc.counter) return;
+      this.pushHistory();
+      this.doc.counter = v;
+      // A serial number is a formula input (like `stock`), so a change must
+      // re-drive anything referencing `counter`/`serial`/`seq`.
+      this.onStockChanged();
+      this.doc.emitChange();
+    };
+    this.counterInput.addEventListener("change", commitCounter);
+    counterBtn.addEventListener("click", () => {
+      this.pushHistory();
+      this.doc.counter += 1;
+      this.onStockChanged();
+      this.doc.emitChange();
+    });
     this.unitSelect.addEventListener("change", () => {
       const next = this.unitSelect.value as Unit;
       if (next === this.doc.displayUnit) return;
@@ -600,6 +635,8 @@ export class SettingsBar {
     if (document.activeElement !== this.jobInput) this.jobInput.value = md.job ?? "";
     if (document.activeElement !== this.revisionInput) this.revisionInput.value = md.revision ?? "";
     if (document.activeElement !== this.notesInput) this.notesInput.value = md.notes ?? "";
+    if (document.activeElement !== this.counterInput)
+      this.counterInput.value = String(this.doc.counter);
     this.unitSelect.value = u;
   }
 }

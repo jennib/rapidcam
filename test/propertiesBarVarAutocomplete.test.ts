@@ -112,10 +112,14 @@ describe("other parametric fields", () => {
     rect.selected = true;
     const host = mount(bare);
 
-    // `stock` is always in scope, so there IS something to offer even here —
-    // asserting the count is non-zero keeps this honest rather than asserting
+    // Built-in keywords are always in scope, so there IS something to offer even
+    // here — asserting a non-empty list keeps this honest rather than asserting
     // an absence that would pass if the feature were removed entirely.
     const offered = suggestions(host, field(host, "W"));
-    expect(offered).toEqual(["stock"]);
+    expect(offered).toContain("stock");
+    expect(offered).toContain("pi");
+    expect(offered).toContain("counter");
+    // With no user variables, none of the document's own names appear.
+    expect(offered).not.toContain("width");
   });
 });

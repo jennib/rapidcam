@@ -1,4 +1,4 @@
-import type { CADDocument } from "../model/document";
+import { builtinContext, type CADDocument } from "../model/document";
 import { makeVariable, isValidName, isDuplicateName, varMap } from "../model/variables";
 import { parseLength } from "../core/units";
 import { evalExpr } from "../core/expr";
@@ -132,7 +132,7 @@ export class VariablesBar {
       // Flag a formula that no longer resolves (e.g. references a deleted variable).
       if (
         parseLength(v.expr, this.doc.displayUnit) === null &&
-        evalExpr(v.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null
+        evalExpr(v.expr, varMap(this.doc.variables, builtinContext(this.doc))) === null
       ) {
         valInput.style.borderColor = "var(--danger, #e05555)";
         valInput.title = "⚠ Formula error — unknown variable or invalid expression";

@@ -11,7 +11,7 @@
  * survive a count/spacing change, and growing 5→10 keeps the first copies intact.
  */
 
-import type { CADDocument } from "./document";
+import { builtinContext, type CADDocument } from "./document";
 import type { Entity, EntityId } from "./entities";
 import { applyRotate } from "../core/transform";
 import { varMap } from "./variables";
@@ -49,7 +49,7 @@ function resolveExpr(
 }
 
 function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPatternParams {
-  const vm = varMap(doc.variables, doc.stockThickness);
+  const vm = varMap(doc.variables, builtinContext(doc));
   return {
     ...p,
     countX: Math.max(1, Math.round(resolveExpr(p.countXExpr, p.countX, vm))),
@@ -60,7 +60,7 @@ function resolveLinearParams(doc: CADDocument, p: LinearPatternParams): LinearPa
 }
 
 function resolveCircularParams(doc: CADDocument, p: CircularPatternParams): CircularPatternParams {
-  const vm = varMap(doc.variables, doc.stockThickness);
+  const vm = varMap(doc.variables, builtinContext(doc));
   return { ...p, count: Math.max(2, Math.round(resolveExpr(p.countExpr, p.count, vm))) };
 }
 

@@ -10,7 +10,7 @@
  * document variables (e.g. "pitch", "pitch * 2").
  */
 
-import type { CADDocument } from "../model/document";
+import { builtinContext, type CADDocument } from "../model/document";
 import type { Entity } from "../model/entities";
 import type { PatternDef, LinearPatternParams, CircularPatternParams } from "../model/patterns";
 import {
@@ -270,7 +270,7 @@ function findPatternInSelection(doc: CADDocument, kind: "linear" | "circular"): 
 function resolveSpacing(raw: string, doc: CADDocument): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const vm = varMap(doc.variables, doc.stockThickness);
+  const vm = varMap(doc.variables, builtinContext(doc));
   const exprVal = evalExpr(trimmed, vm);
   if (exprVal !== null && Number.isFinite(exprVal)) return exprVal;
   const num = parseFloat(trimmed);

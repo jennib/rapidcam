@@ -22,7 +22,7 @@ import {
   lineRefEntityId,
 } from "../model/constraints";
 import { dimensionResiduals } from "../model/dimensions";
-import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
+import { builtinContext, type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
 import { ArcEntity, CircleEntity, type Entity, RasterImageEntity } from "../model/entities";
 import { varMap } from "../model/variables";
@@ -133,7 +133,7 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
   // it, so `stock/2` is offered and accepted). Building the map without it left
   // any binding naming `stock` evaluating to null forever — no residual, so the
   // field showed a formula the geometry silently never followed.
-  const bindingVars = varMap(doc.variables, doc.stockThickness);
+  const bindingVars = varMap(doc.variables, builtinContext(doc));
   const bindingTargets = doc.bindings.map((b) => bindingTarget(b, bindingVars));
 
   const fixed = new Set<string>();
@@ -905,7 +905,7 @@ export function computeEntityDofStatus(
   const active = doc.constraints.filter((c) => c.type !== "fixed");
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const bTargets = doc.bindings.map((b) =>
-    bindingTarget(b, varMap(doc.variables, doc.stockThickness)),
+    bindingTarget(b, varMap(doc.variables, builtinContext(doc))),
   );
 
   // Same partition the solver uses, for the same reason: this pass builds a
@@ -1057,7 +1057,7 @@ export function constraintJacobianRankChange(
   const drivingDims = doc.dimensions.filter((d) => d.driving);
   const extraActive = extras.filter((c) => c.type !== "fixed");
   const bTargets = doc.bindings.map((b) =>
-    bindingTarget(b, varMap(doc.variables, doc.stockThickness)),
+    bindingTarget(b, varMap(doc.variables, builtinContext(doc))),
   );
 
   const buildEvalR =

@@ -14,7 +14,7 @@ import { GENERATORS } from "../generators/index";
 import { findBinding } from "../model/bindings";
 import type { Constraint, ConstraintType, PointRef } from "../model/constraints";
 import { type Dimension, type DimensionType, makeDimension } from "../model/dimensions";
-import { ORIGIN_ENTITY_ID, type CADDocument, type GroupDef } from "../model/document";
+import { builtinContext, ORIGIN_ENTITY_ID, type CADDocument, type GroupDef } from "../model/document";
 import {
   ArcEntity,
   BezierEntity,
@@ -459,7 +459,7 @@ export class PropertiesBar {
     // Flag a driving dimension whose formula no longer evaluates (a deleted variable) —
     // it silently keeps its last value otherwise, which would post a wrong toolpath.
     const broken =
-      !!dim.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
+      !!dim.expr && evalExpr(dim.expr, varMap(this.doc.variables, builtinContext(this.doc))) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     inp.addEventListener("change", () => {
       const raw = inp.value.trim();
@@ -470,7 +470,7 @@ export class PropertiesBar {
       } else {
         v = parseLength(raw, this.doc.displayUnit);
         if (v === null) {
-          const ev = evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness));
+          const ev = evalExpr(raw, varMap(this.doc.variables, builtinContext(this.doc)));
           if (ev !== null) {
             v = ev;
             expr = raw;
@@ -703,7 +703,7 @@ export class PropertiesBar {
    * it along with everything else; there is no separate cleanup to forget.
    */
   private attachVarAutocomplete(input: HTMLInputElement, row: HTMLElement): void {
-    const names = [...varMap(this.doc.variables, this.doc.stockThickness).keys()];
+    const names = [...varMap(this.doc.variables, builtinContext(this.doc)).keys()];
     if (names.length === 0) return;
     const dl = document.createElement("datalist");
     dl.id = `_pv-${Math.random().toString(36).slice(2)}`;
@@ -808,7 +808,7 @@ export class PropertiesBar {
     this.attachVarAutocomplete(inp, row);
     // A binding whose formula no longer evaluates (e.g. a referenced variable was
     // deleted) is flagged red — the value silently held its last number otherwise.
-    const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
+    const broken = !!binding && evalExpr(binding.expr, varMap(this.doc.variables, builtinContext(this.doc))) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const b = findBinding(this.doc.bindings, entityId, scalarKey);
@@ -854,7 +854,7 @@ export class PropertiesBar {
         });
         return;
       }
-      const ev = evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness));
+      const ev = evalExpr(raw, varMap(this.doc.variables, builtinContext(this.doc)));
       if (ev === null) {
         this.flashInput(inp);
         reset();
@@ -952,7 +952,7 @@ export class PropertiesBar {
     inp.value = dim?.expr ?? fmtLit(currentValue);
     inp.title = "Enter a number, or a formula over variables (e.g. width/2) to drive it";
     this.attachVarAutocomplete(inp, row);
-    const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, this.doc.stockThickness)) === null;
+    const broken = !!dim?.expr && evalExpr(dim.expr, varMap(this.doc.variables, builtinContext(this.doc))) === null;
     if (broken) inp.style.borderColor = "var(--danger, #e05555)";
     const reset = () => {
       const d = findDim();
@@ -1014,7 +1014,7 @@ export class PropertiesBar {
         });
         return;
       }
-      if (evalExpr(raw, varMap(this.doc.variables, this.doc.stockThickness)) === null) {
+      if (evalExpr(raw, varMap(this.doc.variables, builtinContext(this.doc))) === null) {
         this.flashInput(inp);
         reset();
         return;

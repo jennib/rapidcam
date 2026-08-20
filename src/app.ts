@@ -33,7 +33,7 @@ import { ProjectManager } from "./io/projectManager";
 import { consumeSharedDesign } from "./io/shareLink";
 import type { Geo } from "./model/constraints";
 import { type Dimension, dimensionLayout, dimensionHitDistance } from "./model/dimensions";
-import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "./model/document";
+import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, builtinContext, stockRefEntity } from "./model/document";
 import type { Bounds, Entity, EntityId } from "./model/entities";
 import { nextId } from "./model/ids";
 import { varMap } from "./model/variables";
@@ -1175,7 +1175,7 @@ export class App {
       container: this.canvas.parentElement!,
       screenPos: this.view.worldToScreen(layout.textPos),
       displayUnit: this.doc.displayUnit,
-      vars: varMap(this.doc.variables, this.doc.stockThickness),
+      vars: varMap(this.doc.variables, builtinContext(this.doc)),
       onCommit: (v, expr) => this.commitDimValue(dim, v, expr),
       onError: (msg) => this.statusBar.flash(msg),
       commitFailureReason: () => this.dimCommitFailure,

@@ -16,7 +16,7 @@
  * feature auto-regenerates when a referenced variable changes.
  */
 
-import type { CADDocument, FeatureInstance } from "../model/document";
+import { builtinContext, type CADDocument, type FeatureInstance } from "../model/document";
 import {
   centreOffset,
   type Generator,
@@ -273,7 +273,7 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
 
   /** Best-effort params from the current field texts (invalid → declared default). */
   const currentParams = (): Record<string, number> => {
-    const vm = varMap(doc.variables, doc.stockThickness);
+    const vm = varMap(doc.variables, builtinContext(doc));
     const out: Record<string, number> = {};
     for (const spec of specs) {
       const text = inputs.get(spec.name)!.value.trim();
@@ -327,7 +327,7 @@ export function openGeneratorDialog(opts: GeneratorDialogOptions): void {
   reprobe();
 
   const { cancelBtn, applyBtn } = addFooter(dialog, backdrop, editing ? "Update" : "Insert", () => {
-    const vm = varMap(doc.variables, doc.stockThickness);
+    const vm = varMap(doc.variables, builtinContext(doc));
     const params: Record<string, number> = {};
     const paramExprs: Record<string, string> = {};
     for (const spec of specs) {

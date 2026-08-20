@@ -54,6 +54,7 @@ test("clear() resets every mutable document field", () => {
   doc.tools.push({ id: "t1", name: "6mm", type: "end-mill", diameter: 6 } as any);
   doc.endPosition = { x: 0, y: 0 };
   doc.metadata = { job: "Bracket", revision: "A", notes: "n" };
+  doc.counter = 42;
   doc.isConstructionMode = true;
   doc.toolpathHighlightIds = new Set([rect.id]);
   doc.toolpathHighlightColor = "#f00";
@@ -73,6 +74,7 @@ test("clear() resets every mutable document field", () => {
   expect(doc.operations).toEqual([]);
   expect(doc.tools).toEqual([]);
   expect(doc.metadata).toEqual({});
+  expect(doc.counter).toBe(1);
   expect(doc.endPosition).toBeNull();
   expect(doc.isConstructionMode).toBe(false);
 
