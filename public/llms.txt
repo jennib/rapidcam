@@ -31,7 +31,9 @@ integration guide, inlined as one plain-text document.
   box-joint, spur gear, ...) that stays re-editable — `{id, generatorId,
   params, paramExprs?, groupId, offset}`.
 - `paramExprs` (optional) holds an expression per param, evaluated against
-  document `variables` and `stock` (the stock thickness); `params` holds the
+  document `variables` and the built-in keywords (`stock`, `stock_width`,
+  `origin_x`, `pi`, `counter`, …; a user variable of the same name overrides a
+  built-in); `params` holds the
   last resolved values as cache/fallback for params with no expression, or
   whose expression fails to evaluate.
 - Features regenerate automatically when a variable they reference changes
@@ -48,7 +50,7 @@ integration guide, inlined as one plain-text document.
 
 - `operations[]` may carry `paramExprs` too — an expression per **numeric op
   field**, keyed by field name: `{"depth": "-stock", "feedrate": "baseFeed*1.2"}`.
-  Evaluated against `variables` and `stock` before every solve, then clamped to
+  Evaluated against `variables` and the built-in keywords before every solve, then clamped to
   the field's valid range.
 - Always also emit the plain numeric field (`depth`, `feedrate`, ...): it is the
   last resolved value and the fallback when a field has no expression or its
