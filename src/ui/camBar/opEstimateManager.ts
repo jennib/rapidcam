@@ -2,11 +2,12 @@
  * Debounced, chunked background time estimation for toolpath operations.
  * Extracted from camBar.ts to isolate event loop chunking and caching.
  */
-import type { CADDocument } from "../../model/document";
+
+import { estimateOpSeconds, type GCodeOptions } from "../../cam/gcode";
+import { formatDuration } from "../../cam/timeEstimate";
 import type { CAMOperation } from "../../cam/types";
-import { estimateGCodeTime, formatDuration } from "../../cam/timeEstimate";
-import { generateGCode, type GCodeOptions } from "../../cam/gcode";
 import { measure } from "../../core/longTasks";
+import type { CADDocument } from "../../model/document";
 
 export class OpEstimateManager {
   public static readonly OP_EST_CHUNK = 3;
@@ -104,7 +105,7 @@ export class OpEstimateManager {
           // expensive one — kumiko's inside-profile carries one target per
           // opening. Labelled by kind and target count so the record says which.
           secs = measure(`cam:estimate:${op.type}:${op.entityIds.length}`, () =>
-            estimateGCodeTime(generateGCode([op], this.doc, this.getGcodeOpts())).seconds,
+            estimateOpSeconds(op, this.doc, this.getGcodeOpts()),
           );
         } catch {
           secs = 0; // a bad/empty op shouldn't break the list
