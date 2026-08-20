@@ -1,7 +1,7 @@
 /**
  * Shared DOM builders, layout helpers, and unit formatting for the Add/Edit Toolpath dialog.
  */
-import type { CADDocument, LayerDef } from "../../../model/document";
+import { builtinContext, type CADDocument, type LayerDef } from "../../../model/document";
 import { StorageKeys } from "../../../core/storageKeys";
 import { formatLength, formatFeed, toMM } from "../../../core/units";
 import { evalExpr } from "../../../core/expr";
@@ -74,7 +74,7 @@ export function attachVarAutocomplete(
   input: HTMLInputElement,
   container: HTMLElement,
 ): void {
-  const names = [...varMap(doc.variables, doc.stockThickness).keys()];
+  const names = [...varMap(doc.variables, builtinContext(doc)).keys()];
   if (names.length === 0) return;
   const dl = document.createElement("datalist");
   dl.id = `_camv-${Math.random().toString(36).slice(2)}`;
@@ -135,7 +135,7 @@ export function paramRow(
   const updateBadge = () => {
     const expr = state.paramExprs[paramKey];
     if (expr !== undefined && expr.trim() !== "") {
-      const vm = varMap(doc.variables, doc.stockThickness);
+      const vm = varMap(doc.variables, builtinContext(doc));
       const ev = evalExpr(expr, vm);
       const broken = ev === null || !Number.isFinite(ev);
       badge.textContent = broken ? "⚠" : "ƒx";
@@ -177,7 +177,7 @@ export function paramRow(
   const setValue = (exprOrVal: string | number) => {
     if (typeof exprOrVal === "string" && !isPlainNumber(exprOrVal)) {
       state.paramExprs[paramKey] = exprOrVal.trim();
-      const ev = evalExpr(exprOrVal, varMap(doc.variables, doc.stockThickness));
+      const ev = evalExpr(exprOrVal, varMap(doc.variables, builtinContext(doc)));
       // Bare numbers inside a formula are already internal mm (as in variable
       // and dimension formulas), so no display-unit conversion here.
       if (ev !== null) commitNumber(ev);

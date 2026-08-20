@@ -255,7 +255,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         tips: [
           "Supported operators: + - * / and ^ (exponentiation), with parentheses for grouping. There are no functions (no sqrt/sin/min) and no modulo.",
           "A value can be a plain number, a length with units (50mm, 3.5in, 1/2in, 3 1/4in), or a formula referencing other variables. Variables may reference each other in any order — the solver resolves them in dependency order.",
-          "`stock` is always available and resolves to the project's stock thickness, so a design can track the material it's cut from.",
+          "Built-in keywords are available in any formula: `stock` (material thickness), `stock_width` / `stock_height` (the blank), `sheet_width` / `sheet_height` (the work area), `origin_x` / `origin_y` / `origin_z` (the WCS datum), `pi` and `e`, and `counter` / `serial` (an incrementing serial number). A rotary job offers `stock_diameter`, `stock_length`, `stock_circumference` and `stock_wall` instead of the flat width/height. A user variable with the same name overrides a built-in.",
           "Inside a FORMULA a bare number is millimetres, regardless of the project's display unit — the same rule dimension and CAM formulas use. A bare number entered on its own is read in the display unit, so write `12.7mm` or `0.5in` when you mean a specific length.",
           "Any numeric field with an ƒx badge can be driven by a formula too — click the badge to pick a variable, or type an expression straight into the field.",
           "Global propagation: updating a variable re-solves the sketch, regenerates parametric features, and re-evaluates CAM operation formulas.",

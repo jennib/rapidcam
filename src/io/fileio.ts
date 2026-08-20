@@ -22,6 +22,8 @@ export interface RcamFile {
   canvas: { width: number; height: number };
   displayUnit: string;
   stockThickness?: number;
+  /** Incrementing serial counter. Omitted/absent = 1. */
+  counter?: number;
   /** Optional positioned flat stock within the work area (canvas). Omitted = fills the work area. */
   stockRect?: { x: number; y: number; width: number; height: number } | null;
   origin?: { x: string; y: string; z: string };
@@ -248,6 +250,7 @@ export function serializeDoc(doc: CADDocument, name: string): RcamFile {
     canvas: { ...doc.canvas },
     displayUnit: doc.displayUnit,
     stockThickness: doc.stockThickness,
+    counter: doc.counter,
     ...(doc.stockRect ? { stockRect: { ...doc.stockRect } } : {}),
     origin: { x: doc.origin.x, y: doc.origin.y, z: doc.origin.z },
     ...(doc.machineKind !== "mill" ? { machineKind: doc.machineKind } : {}),
@@ -336,6 +339,7 @@ export function applyFile(doc: CADDocument, fileIn: RcamFile): void {
     activeLayerId: file.activeLayerId,
     canvas: file.canvas,
     stockThickness: file.stockThickness,
+    counter: file.counter,
     stockRect: file.stockRect ?? null,
     origin: file.origin as DocSnapshot["origin"],
     machineKind: file.machineKind as DocSnapshot["machineKind"],

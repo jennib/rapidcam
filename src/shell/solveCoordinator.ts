@@ -18,7 +18,7 @@
 
 import { track } from "../analytics";
 import { regenerateStaleFeatures, regenerateStockPlacedFeatures } from "../generators/index";
-import type { CADDocument } from "../model/document";
+import { builtinContext, type CADDocument } from "../model/document";
 import { regenerateAllStalePatterns, regenerateStalePatterns } from "../model/patternEngine";
 import { computeSourceSnapshot } from "../model/patterns";
 import { evaluateAll } from "../model/variables";
@@ -133,7 +133,7 @@ export class SolveCoordinator {
       this.doc.variables,
       this.doc.dimensions,
       this.doc.displayUnit,
-      this.doc.stockThickness,
+      builtinContext(this.doc),
       this.doc.operations,
     );
     const res = solve(this.doc, pins);

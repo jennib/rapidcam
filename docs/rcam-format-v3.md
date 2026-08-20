@@ -81,6 +81,7 @@ vocabularies is unchanged.
   "canvas": { "width": 120, "height": 80 },   // mm
   "displayUnit": "mm",                          // "mm" | "in" (display only)
   "stockThickness": 10,                         // mm, default 10
+  "counter": 1,                                 // incrementing serial counter, default 1
   "origin": { "x": "left", "y": "front", "z": "top" },
   "machineKind": "mill",                         // "mill" | "laser" | "mill-rotary" | "laser-rotary", default "mill"
   "endPosition": null,                          // optional park position; see below
@@ -120,6 +121,7 @@ that loads cleanly and draws a circle:
 ```
 
 Defaults applied when omitted: `stockThickness` → 10,
+`counter` → 1,
 `origin` → front-left-top, `machineKind` → `"mill"`,
 `endPosition` → `null`, `layers` → one `"layer-0"` "Default" layer,
 `groups`/`variables`/`patterns`/`operations`/`tools`/`fonts` → empty.
@@ -548,6 +550,23 @@ self-reference) leaves those variables at their last value rather than looping.
 Bare numbers inside a formula are millimetres (like dimension formulas).
 
 The global constant `stock` (or `$stock`) is always available to expressions and evaluates to the project's `stockThickness` in mm. This allows parametric designs (e.g. box joints) to automatically scale to the material thickness.
+
+Beyond `stock`, every expression also has a set of built-in keywords, evaluated
+live from the document (a user-defined variable of the same name overrides the
+built-in). The set present depends on the machine kind:
+
+| Group | Keywords | Meaning |
+|---|---|---|
+| Math constants | `pi`, `PI` · `e`, `E` | π ≈ 3.141592653589793 · Euler's number ≈ 2.718281828459045 |
+| Flat stock | `stock`, `stock_thickness`, `stockThickness`, `stock_t` | material thickness (mm) |
+| | `stock_width`, `stockWidth`, `stock_w` · `stock_height`, `stockHeight`, `stock_h` | blank width/height (mm) |
+| Rotary stock (rotary only) | `stock_diameter`, `stockDiameter`, `stock_dia`, `stock_d` | cylinder diameter (mm) |
+| | `stock_length`, `stockLength`, `stock_len` | cylinder length (mm) |
+| | `stock_circumference`, `stockCircumference` | π·diameter (mm of surface per revolution) |
+| | `stock_wall`, `stockWall` | radial wall / max cut depth (mm) |
+| Sheet | `sheet_width`, `sheetWidth`, `sheet_w` · `sheet_height`, `sheetHeight`, `sheet_h` | work-area (canvas) size (mm); absent for rotary |
+| Origin | `origin_x`, `originX`, `ox` · `origin_y`, `originY`, `oy` · `origin_z`, `originZ`, `oz` | WCS origin datum (mm) |
+| Counter | `counter`, `count`, `serial`, `serial_number`, `serialNumber`, `seq` | the project's incrementing serial counter |
 
 ```json
 { "id": "var1", "name": "pcd", "expr": "60mm", "value": 60 }

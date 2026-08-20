@@ -33,6 +33,10 @@
       "exclusiveMinimum": 0,
       "description": "Stock thickness in mm. Default 10 if omitted."
     },
+    "counter": {
+      "type": "number",
+      "description": "Incrementing serial counter, exposed to expressions as the counter/serial/seq keyword. Default 1 if omitted."
+    },
     "stockRect": {
       "oneOf": [
         {

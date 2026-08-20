@@ -13,6 +13,7 @@
  */
 
 import {
+  builtinContext,
   type CADDocument,
   type FeatureInstance,
   type GroupDef,
@@ -506,7 +507,7 @@ export function regenerateFeature(
 export function resolveFeatureParams(doc: CADDocument, f: FeatureInstance): Record<string, number> {
   const resolved: Record<string, number> = { ...f.params };
   if (!f.paramExprs) return resolved;
-  const vm = varMap(doc.variables, doc.stockThickness);
+  const vm = varMap(doc.variables, builtinContext(doc));
   for (const [k, expr] of Object.entries(f.paramExprs)) {
     const v = evalExpr(expr, vm);
     if (v !== null && Number.isFinite(v)) resolved[k] = v;

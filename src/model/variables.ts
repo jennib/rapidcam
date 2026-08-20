@@ -52,11 +52,92 @@ export function pinVariableUnits(variables: Variable[], authoredUnit: Unit): voi
   }
 }
 
-/** Build a name→value map suitable for evalExpr(). */
-export function varMap(variables: Variable[], stockThickness?: number): Map<string, number> {
+/**
+ * Document state the built-in keywords resolve against. A plain-data view — no
+ * {@link CADDocument} import here, which would cycle model/document → patterns →
+ * variables. {@link builtinContext} in document.ts builds one from a live doc.
+ */
+export interface StockContext {
+  /** Material thickness in mm — the legacy `stock` keyword, also `stock_t`. */
+  stockThickness: number;
+  /** Flat blank width/height in mm; null for a rotary cylinder (no box). */
+  stockWidth: number | null;
+  stockHeight: number | null;
+  /** Work-area (drawing sheet) size in mm; null for a rotary document. */
+  sheetWidth: number | null;
+  sheetHeight: number | null;
+  /** WCS origin (resolveOrigin). */
+  originX: number;
+  originY: number;
+  originZ: number;
+  /** Incrementing serial counter. */
+  counter: number;
+  /** Rotary cylinder — null for a flat blank. */
+  diameter: number | null;
+  length: number | null;
+  circumference: number | null;
+  wall: number | null;
+}
+
+const PI = Math.PI;
+const E = Math.E;
+
+/**
+ * Every built-in keyword (and its aliases) as a name→value map. Built first so
+ * {@link varMap} / {@link evaluateVariables} can layer user variables on top —
+ * a user-defined `pi` or `stock` overrides the built-in.
+ */
+export function builtinKeywords(ctx: StockContext): Map<string, number> {
   const m = new Map<string, number>();
+  m.set("pi", PI).set("PI", PI);
+  m.set("e", E).set("E", E);
+  m.set("stock", ctx.stockThickness);
+  m.set("stock_thickness", ctx.stockThickness);
+  m.set("stockThickness", ctx.stockThickness);
+  m.set("stock_t", ctx.stockThickness);
+  if (ctx.stockWidth !== null) {
+    m.set("stock_width", ctx.stockWidth).set("stockWidth", ctx.stockWidth).set("stock_w", ctx.stockWidth);
+  }
+  if (ctx.stockHeight !== null) {
+    m.set("stock_height", ctx.stockHeight).set("stockHeight", ctx.stockHeight).set("stock_h", ctx.stockHeight);
+  }
+  if (ctx.sheetWidth !== null) {
+    m.set("sheet_width", ctx.sheetWidth).set("sheetWidth", ctx.sheetWidth).set("sheet_w", ctx.sheetWidth);
+  }
+  if (ctx.sheetHeight !== null) {
+    m.set("sheet_height", ctx.sheetHeight).set("sheetHeight", ctx.sheetHeight).set("sheet_h", ctx.sheetHeight);
+  }
+  m.set("origin_x", ctx.originX).set("originX", ctx.originX).set("ox", ctx.originX);
+  m.set("origin_y", ctx.originY).set("originY", ctx.originY).set("oy", ctx.originY);
+  m.set("origin_z", ctx.originZ).set("originZ", ctx.originZ).set("oz", ctx.originZ);
+  m.set("counter", ctx.counter).set("count", ctx.counter).set("serial", ctx.counter);
+  m.set("serial_number", ctx.counter).set("serialNumber", ctx.counter).set("seq", ctx.counter);
+  if (ctx.diameter !== null) {
+    m.set("stock_diameter", ctx.diameter).set("stockDiameter", ctx.diameter);
+    m.set("stock_dia", ctx.diameter).set("stock_d", ctx.diameter);
+  }
+  if (ctx.length !== null) {
+    m.set("stock_length", ctx.length).set("stockLength", ctx.length).set("stock_len", ctx.length);
+  }
+  if (ctx.circumference !== null) {
+    m.set("stock_circumference", ctx.circumference).set("stockCircumference", ctx.circumference);
+  }
+  if (ctx.wall !== null) {
+    m.set("stock_wall", ctx.wall).set("stockWall", ctx.wall);
+  }
+  return m;
+}
+
+/**
+ * Build a name→value map suitable for evalExpr(). `ctx` is either the legacy
+ * stock-thickness number (adds only `stock`) or a full {@link StockContext}.
+ * User variables are layered on TOP, so a user definition overrides a built-in.
+ */
+export function varMap(variables: Variable[], ctx?: number | StockContext): Map<string, number> {
+  const m = new Map<string, number>();
+  if (typeof ctx === "number") m.set("stock", ctx);
+  else if (ctx) for (const [k, v] of builtinKeywords(ctx)) m.set(k, v);
   for (const v of variables) m.set(v.name, v.value);
-  if (stockThickness !== undefined) m.set("stock", stockThickness);
   return m;
 }
 
@@ -84,7 +165,7 @@ function referencedVars(expr: string, names: Set<string>): string[] {
 export function evaluateVariables(
   variables: Variable[],
   displayUnit: Unit,
-  stockThickness?: number,
+  ctx?: number | StockContext,
 ): void {
   const byName = new Map(variables.map((v) => [v.name, v]));
   const names = new Set(byName.keys());
@@ -106,8 +187,9 @@ export function evaluateVariables(
 
   const ready = variables.filter((v) => indeg.get(v.name) === 0).map((v) => v.name);
   const vm = new Map<string, number>();
-  for (const v of variables) vm.set(v.name, v.value); // seed (cyclic vars keep these)
-  if (stockThickness !== undefined) vm.set("stock", stockThickness);
+  if (typeof ctx === "number") vm.set("stock", ctx);
+  else if (ctx) for (const [k, v] of builtinKeywords(ctx)) vm.set(k, v);
+  for (const v of variables) vm.set(v.name, v.value); // seed (cyclic vars keep these); user wins
 
   while (ready.length) {
     const name = ready.shift()!;
@@ -311,9 +393,9 @@ export function applyOpParam(op: CAMOperation, key: string, v: number): boolean 
 export function evaluateOperations(
   ops: CAMOperation[],
   variables: Variable[],
-  stockThickness?: number,
+  ctx?: number | StockContext,
 ): boolean {
-  const vm = varMap(variables, stockThickness);
+  const vm = varMap(variables, ctx);
   let changed = false;
   for (const op of ops) {
     if (!op.paramExprs) continue;
@@ -336,16 +418,16 @@ export function evaluateAll(
   variables: Variable[],
   dims: Dimension[],
   displayUnit: Unit,
-  stockThickness?: number,
+  ctx?: number | StockContext,
   ops?: CAMOperation[],
 ): boolean {
   let changed = false;
 
   // Phase 1: evaluate variables in dependency order
-  evaluateVariables(variables, displayUnit, stockThickness);
+  evaluateVariables(variables, displayUnit, ctx);
 
   // Phase 2: update dimension values from their expressions
-  const vm: VarMap = varMap(variables, stockThickness);
+  const vm: VarMap = varMap(variables, ctx);
   for (const d of dims) {
     if (!d.expr) continue;
     const v = evalExpr(d.expr, vm);
@@ -356,7 +438,7 @@ export function evaluateAll(
   }
 
   // Phase 3: update CAM operation values from their parametric expressions
-  if (ops && ops.length > 0 && evaluateOperations(ops, variables, stockThickness)) {
+  if (ops && ops.length > 0 && evaluateOperations(ops, variables, ctx)) {
     changed = true;
   }
 
