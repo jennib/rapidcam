@@ -286,11 +286,12 @@ export interface CAMOperation {
   faceDirection?: "x" | "y";
   islandIds?: EntityId[]; // pocket only (legacy): entities to treat as islands (excluded from fill)
   /**
-   * Pocket only: the enclosed regions to clear, identified *parametrically* so
-   * they reflow with the model. Each region records the loops that enclose it
-   * (by the entity ids whose live geometry forms each loop); the actual fill is
-   * recomputed from current geometry at toolpath time — see {@link RegionRef}.
-   * When present, these define the pocket instead of entityIds/islandIds.
+   * Pocket, v-carve and v-carve inlay: the enclosed regions to clear,
+   * identified *parametrically* so they reflow with the model. Each region
+   * records the loops that enclose it (by the entity ids whose live geometry
+   * forms each loop); the actual fill is recomputed from current geometry at
+   * toolpath time — see {@link RegionRef}. When present, these define the
+   * region instead of entityIds/islandIds.
    */
   regions?: RegionRef[];
   // lead-in / lead-out (profile only)

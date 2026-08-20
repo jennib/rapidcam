@@ -802,7 +802,7 @@
         "regions": {
           "type": "array",
           "items": { "$ref": "#/$defs/regionRef" },
-          "description": "Pocket only: the enclosed regions to clear, identified parametrically (by the loops that enclose each) so they reflow with the model. Resolved against live geometry at toolpath time. Supersedes the older absolute-coordinate seeds."
+          "description": "Pocket, v-carve and v-carve inlay: the enclosed regions to clear, identified parametrically (by the loops that enclose each) so they reflow with the model. Resolved against live geometry at toolpath time. Supersedes the older absolute-coordinate seeds."
         },
         "tabs": { "$ref": "#/$defs/tabDef" },
         "leadIn": { "$ref": "#/$defs/leadDef" },

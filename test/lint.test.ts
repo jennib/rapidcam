@@ -638,3 +638,69 @@ test("POSITIVE CONTROL: two ops sharing one number AND one cutter is normal, not
   const ok = twoOpDoc({ toolNumber: 1, diameter: 6 }, { toolNumber: 2, diameter: 3 });
   expect(docCodes(ok)).not.toContain("tool-number-collision");
 });
+
+test("inlay: pocket depth + saw allowance deeper than stock warns", () => {
+  const doc = new CADDocument({ width: 100, height: 80 });
+  doc.stockThickness = 10;
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 40, y: 40 }));
+  const op: CAMOperation = {
+    id: "in1",
+    name: "Inlay",
+    type: "inlay",
+    entityIds: [rect.id],
+    side: "outside",
+    toolType: "v-bit",
+    vAngle: 90,
+    toolNumber: 1,
+    diameter: 12,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -8,
+    stepdown: 1.5,
+    stepover: 0.4,
+    vStep: 1,
+    pocketDepth: 8,
+    glueGap: 0.5,
+    sawAllowance: 4,
+    inlayMargin: 10,
+  };
+  doc.operations.push(op);
+  const g = generateGCode([op], doc);
+  const found = lintGCode(g, buildLintContext(doc)).map((f) => f.code);
+  expect(found).toContain("inlay-through-stock"); // 8 + 4 = 12 > 10
+});
+
+test("inlay: a sane fit is not flagged", () => {
+  const doc = new CADDocument({ width: 100, height: 80 });
+  doc.stockThickness = 10;
+  const rect = doc.add(new RectEntity({ x: 10, y: 10 }, { x: 40, y: 40 }));
+  const op: CAMOperation = {
+    id: "in1",
+    name: "Inlay",
+    type: "inlay",
+    entityIds: [rect.id],
+    side: "outside",
+    toolType: "v-bit",
+    vAngle: 90,
+    toolNumber: 1,
+    diameter: 12,
+    feedrate: 1000,
+    plungeRate: 300,
+    spindleSpeed: 18000,
+    safeZ: 5,
+    depth: -3,
+    stepdown: 1.5,
+    stepover: 0.4,
+    vStep: 1,
+    pocketDepth: 3,
+    glueGap: 0.5,
+    sawAllowance: 1,
+    inlayMargin: 10,
+  };
+  doc.operations.push(op);
+  const g = generateGCode([op], doc);
+  const found = lintGCode(g, buildLintContext(doc)).map((f) => f.code);
+  expect(found).not.toContain("inlay-through-stock");
+});
