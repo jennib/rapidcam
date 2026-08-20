@@ -98,9 +98,7 @@ export const TOOLS: Record<string, ToolReference> = {
   // App.onKeyDown) and intercepts it first. Pick a free key if Text needs one.
   text: {
     label: "Text",
-    // Not "stamp": the tool places ONE text and hands back to Select, so a word
-    // implying repeated stamping now describes behaviour that was removed.
-    hint: "Set the text in the dialog, then click the canvas to place it",
+    hint: "Click where to place the text, then type it and set the font in the dialog",
   },
   fillet: {
     key: "f",
