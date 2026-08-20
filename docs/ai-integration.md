@@ -178,9 +178,14 @@ highest-leverage habits:
   drill needs none of them.
 - **`depth` is negative for cuts** (mm below the stock surface). A through
   cut goes slightly past the stock thickness.
-- **`$stock` (or `stock`) is available in expressions.** It evaluates to the
-  global `stockThickness` in mm. If you want a parametric depth (e.g. for a box
-  joint), use `"expr": "stock"` or `"expr": "stock + 0.1"` rather than a hardcoded number.
+- **Built-in keywords are available in any expression.** `stock` (or `$stock`)
+  is the material thickness in mm — use `"expr": "stock"` or `"expr": "stock + 0.1"`
+  for a parametric depth (e.g. a box joint) instead of a hardcoded number. The
+  full set is in the format guide's Variables section: `stock_width`/`stock_height`
+  (the blank), `sheet_width`/`sheet_height` (the work area), `origin_x`/`origin_y`/
+  `origin_z` (the WCS datum), `pi`/`e`, `counter`/`serial`/`seq`, and — on a rotary
+  job — `stock_diameter`/`stock_length`/`stock_circumference`/`stock_wall`. A
+  user-defined variable of the same name overrides a built-in.
 - **T-Bones and Dog-bones are supported.** Use `"cornerStyle": "tbone"` or `"dogbone"`
   on `profile` and `pocket` operations if the tool needs to reach sharp inside
   corners for mating parts.

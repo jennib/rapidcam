@@ -21,6 +21,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Panels saved before this keep their pattern, their entity ids and their
   toolpath links.
 
+- **Built-in parametric keywords for formulas.** Expressions now resolve a set
+  of built-in keywords evaluated live from the document, alongside user
+  variables: `stock`/`stock_width`/`stock_height` (the material),
+  `sheet_width`/`sheet_height` (the work area), `origin_x`/`origin_y`/
+  `origin_z` (the WCS datum), `pi`/`e`, and — on a rotary job —
+  `stock_diameter`/`stock_length`/`stock_circumference`/`stock_wall`. A serial
+  counter (`counter`/`serial`/`seq`, editable in Settings under Job with a `+1`
+  button and persisted as a top-level `.rcam` `counter` field) stamps a part
+  number or drives spacing per job. A user variable of the same name overrides
+  a built-in.
+
 ### Fixed
 
 - **Shrinking a Kumiko panel no longer blanks the pattern.** A pitch coarser
