@@ -28,6 +28,7 @@ import type { CAMOperation } from "./types";
 import { fixturePolygons, type Fixture } from "./fixtures";
 import { lexWords } from "./gcodeWords";
 import { isHalftone } from "./halftone";
+import { inlayFitForOp } from "./inlay";
 import { FINISH_STEPOVER_FRACTION, cuspReadout } from "./scallop";
 import { hiddenOpEntityIds, isMachinable } from "./machinable";
 import { sharedReliefImageIds } from "./reliefOps";
@@ -751,6 +752,30 @@ function checkRestToolMismatch(doc: CADDocument): LintFinding | null {
  * legitimate reason for them to differ: a relief op's depth is the image's whole
  * Z mapping, not how much of it this pass removes.
  */
+/**
+ * An inlay's male board clears its field to pocketDepth + sawAllowance; when
+ * that exceeds the document's stock thickness, a same-thickness board is cut
+ * through — the one inlay mistake nothing downstream recovers from.
+ */
+function checkInlayFit(doc: CADDocument): LintFinding[] {
+  const findings: LintFinding[] = [];
+  for (const op of doc.operations) {
+    if (op.type !== "inlay") continue;
+    const fit = inlayFitForOp(op);
+    const through = fit.pocketDepth + fit.sawAllowance;
+    if (through <= doc.stockThickness + EPS) continue;
+    findings.push({
+      code: "inlay-through-stock",
+      severity: "warning",
+      message:
+        "Inlay " + op.name + ": pocket depth + saw allowance = " + through +
+        "mm exceeds the " + doc.stockThickness +
+        "mm stock — the male board is cut through. Use thicker stock or reduce the saw allowance.",
+    });
+  }
+  return findings;
+}
+
 function checkReliefPassMismatch(doc: CADDocument): LintFinding | null {
   const roughs = doc.operations.filter((o) => o.type === "relief-rough");
   const finishes = doc.operations.filter((o) => o.type === "engrave");
@@ -996,6 +1021,7 @@ export function lintGCode(gcode: string, ctx: LintContext): LintFinding[] {
   if (ctx.doc) findings.push(checkToolNumberCollision(ctx.doc));
   if (ctx.doc) findings.push(checkRestToolMismatch(ctx.doc));
   if (ctx.doc) findings.push(checkReliefPassMismatch(ctx.doc));
+  if (ctx.doc) findings.push(...checkInlayFit(ctx.doc));
   if (ctx.doc) findings.push(checkReliefStepoverGap(ctx.doc));
   if (ctx.doc) findings.push(checkReliefEngagement(ctx.doc));
   if (ctx.doc) findings.push(checkSpoilboardMixed(ctx.doc));
