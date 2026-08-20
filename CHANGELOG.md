@@ -32,6 +32,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   number or drives spacing per job. A user variable of the same name overrides
   a built-in.
 
+### Changed
+
+- **The Text tool places first, then edits.** It no longer asks you to fill in a
+  dialog and then click the canvas to "stamp" the result. Now the first canvas
+  click sets where the text goes, the Place Text dialog docks to the side, and
+  the glyph outlines preview live on the canvas as you type and change the font,
+  height or angle — the Fusion / SolidWorks / LightBurn flow. Clicking the
+  canvas again while the dialog is open moves the anchor; Place commits, and
+  Cancel or Escape drops it.
+
 ### Fixed
 
 - **Shrinking a Kumiko panel no longer blanks the pattern.** A pitch coarser

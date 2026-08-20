@@ -33,11 +33,17 @@ export interface TextDialogOptions {
    */
   displayUnit: Unit;
   /**
-   * What a click on the backdrop means. Defaults to "cancel", the usual
-   * dismiss. The placement flow needs "apply": its whole instruction is to
-   * click the canvas, and the backdrop is what the canvas is wearing.
+   * Dock the dialog to the right with no dimming, so the canvas stays visible
+   * and clicks pass through to it (the `tp-backdrop--peek` variant). The create
+   * flow uses this so the glyphs preview live at the anchor and a canvas click
+   * can move that anchor; the edit flow stays a normal modal.
    */
-  backdropAction?: "cancel" | "apply";
+  peek?: boolean;
+  /**
+   * Fired (debounced) as the user edits the fields, so a live canvas preview
+   * can follow what is typed. Only the create flow needs it.
+   */
+  onChange?: (p: TextParams) => void;
   onApply: (p: TextParams) => void;
   onCancel?: () => void;
 }
@@ -48,12 +54,14 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
     applyLabel,
     title,
     displayUnit,
-    backdropAction = "cancel",
+    peek = false,
+    onChange,
     onApply,
     onCancel,
   } = opts;
   const backdrop = document.createElement("div");
-  backdrop.className = "tp-backdrop";
+  backdrop.className = peek ? "tp-backdrop tp-backdrop--peek" : "tp-backdrop";
+  let changeTimer: number | undefined;
 
   const dialog = document.createElement("div");
   dialog.className = "tp-dialog";
@@ -114,7 +122,12 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
     if (!fontSel.value && fonts.length) fontSel.value = fonts[0].id;
   };
   refreshFonts();
-  void initBundledFonts(() => refreshFonts());
+  void initBundledFonts(() => {
+    refreshFonts();
+    // Opened before the bundled fonts finished loading: the select just gained
+    // a value, so let the live preview pick it up.
+    emitChange();
+  });
 
   // Load font button
   const loadRow = document.createElement("div");
@@ -135,6 +148,7 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
         const { id, name, embeddable } = await loadFromFile(file);
         refreshFonts();
         fontSel.value = id;
+        emitChange();
         if (!embeddable) {
           showError(
             `"${name}" loaded — but its license does not permit embedding. ` +
@@ -165,6 +179,7 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
     openWebFontDialog((fontId) => {
       refreshFonts();
       fontSel.value = fontId;
+      emitChange();
     });
   });
   webRow.appendChild(webBtn);
@@ -195,12 +210,32 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
     inp.style.width = "90px";
   });
 
+  // Live preview: report the current fields (debounced) so the caller can
+  // redraw the glyphs as they are typed. Reads the same fields apply() commits,
+  // through the same length parse.
+  const snapshot = (): TextParams => ({
+    text: textInp.value.trim(),
+    fontId: fontSel.value,
+    sizeMM: Math.max(0.5, parseLength(sizeInp.value, displayUnit) ?? initial.sizeMM ?? 10),
+    angle: ((parseFloat(angleInp.value) || 0) * Math.PI) / 180,
+  });
+  const emitChange = (): void => {
+    if (!onChange) return;
+    window.clearTimeout(changeTimer);
+    changeTimer = window.setTimeout(() => onChange(snapshot()), 150);
+  };
+  textInp.addEventListener("input", emitChange);
+  fontSel.addEventListener("change", emitChange);
+  sizeInp.addEventListener("input", emitChange);
+  angleInp.addEventListener("input", emitChange);
+
   // Footer
   const ftr = document.createElement("div");
   ftr.className = "tp-dialog-footer";
 
   let unregister: () => void = () => {};
   const close = () => {
+    window.clearTimeout(changeTimer);
     unregister();
     backdrop.remove();
   };
@@ -215,9 +250,6 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
   cancelBtn.className = "btn";
   cancelBtn.textContent = "Cancel";
   cancelBtn.addEventListener("click", () => cancel());
-
-  /** True when the fields hold enough to commit — i.e. Apply would succeed. */
-  const complete = (): boolean => textInp.value.trim() !== "" && fontSel.value !== "";
 
   const apply = (): void => {
     const text = textInp.value.trim();
@@ -255,14 +287,9 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
 
   backdrop.addEventListener("click", (e) => {
     if (e.target !== backdrop) return;
-    // For the placement flow this click IS the user following the instruction
-    // to click the canvas — the backdrop just happens to be in front of it. It
-    // must keep what they typed rather than throw it away. With nothing typed
-    // there is nothing to keep, so it falls through to an ordinary dismiss.
-    if (backdropAction === "apply" && complete()) {
-      apply();
-      return;
-    }
+    // Under the peek variant the backdrop is pointer-events: none, so this
+    // handler never sees a click (it passes through to the canvas). Under the
+    // normal modal it is the conventional click-away-to-cancel.
     cancel();
   });
 
@@ -272,8 +299,14 @@ export function openTextDialog(opts: TextDialogOptions): () => void {
   backdrop.appendChild(dialog);
   unregister = registerModal(backdrop, cancel);
   document.body.appendChild(backdrop);
-  // Synchronously — a deferred focus steals typed input (see ui/modal.ts).
+  // The create flow opens this dialog from a canvas pointerdown, whose default
+  // action moves focus to the body AFTER this handler returns — so a focus()
+  // here would be undone before the user can type. Re-assert it on the next
+  // tick. (Deferring is safe here, unlike the button-opened dialogs: the user
+  // just clicked the canvas and has typed nothing, so there is nothing for a
+  // delayed focus to steal from — see ui/modal.ts for the case where it is not.)
   textInp.focus();
+  setTimeout(() => textInp.focus(), 0);
 
   return close;
 }

@@ -13,20 +13,17 @@ vi.mock("../src/core/fontManager", async (importActual) => ({
 }));
 
 /**
- * The placement dialog's backdrop dismissal.
+ * The shared text dialog's two modes.
  *
- * The Text tool's button used to read "Stamp (click canvas)" while the dialog's
- * own backdrop covered the canvas. A user who followed that instruction hit the
- * backdrop, which cancelled — silently discarding everything they had typed.
- * The button now says "Place" and a backdrop click on the placement dialog
- * COMMITS instead of destroying.
- *
- * Editing an existing text keeps the conventional dismiss, so both behaviours
- * are pinned here: getting either one wrong is invisible to a type-check and to
- * every other test in the suite.
+ * The create flow opens it with `peek: true` — docked to the side, no dimming,
+ * with a live `onChange` so the glyphs preview as the fields are edited. The
+ * edit flow (double-click) opens it as a normal modal, where a backdrop click
+ * still abandons the edit. Both are pinned here: a wrong backdrop or a dead
+ * onChange is invisible to a type-check and to every other test in the suite.
  */
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = "";
 });
 
@@ -54,28 +51,56 @@ function clickBackdrop(): void {
   backdrop.dispatchEvent(new Event("click", { bubbles: true }));
 }
 
-test("placement: clicking the backdrop keeps the typed text", () => {
-  const onApply = vi.fn<(p: TextParams) => void>();
-  const onCancel = vi.fn();
+test("peek docks the dialog without dimming; the edit modal does not", () => {
   openTextDialog({
     initial: {},
     applyLabel: "Place",
     title: "Place Text",
     displayUnit: "mm",
-    backdropAction: "apply",
-    onApply,
-    onCancel,
+    peek: true,
+    onApply: () => {},
+  });
+  expect(
+    document.querySelector(".tp-backdrop")?.classList.contains("tp-backdrop--peek"),
+  ).toBe(true);
+  document.body.innerHTML = "";
+
+  openTextDialog({
+    initial: { text: "before" },
+    applyLabel: "Apply",
+    title: "Edit Text",
+    displayUnit: "mm",
+    onApply: () => {},
+  });
+  expect(
+    document.querySelector(".tp-backdrop")?.classList.contains("tp-backdrop--peek"),
+  ).toBe(false);
+});
+
+test("onChange fires (debounced) with the edited fields", () => {
+  vi.useFakeTimers();
+  const onChange = vi.fn<(p: TextParams) => void>();
+  openTextDialog({
+    initial: {},
+    applyLabel: "Place",
+    title: "Place Text",
+    displayUnit: "mm",
+    peek: true,
+    onChange,
+    onApply: () => {},
   });
   seedFont();
-  typeText("Warning: Pew Pew Pew");
+  const inp = document.querySelector<HTMLInputElement>(".tp-dialog input")!;
+  inp.value = "Warning: Pew Pew Pew";
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
 
-  clickBackdrop();
+  expect(onChange).not.toHaveBeenCalled(); // debounced
 
-  expect(onCancel).not.toHaveBeenCalled();
-  expect(onApply).toHaveBeenCalledTimes(1);
-  expect(onApply.mock.calls[0][0].text).toBe("Warning: Pew Pew Pew");
-  // And the dialog is gone, so the canvas underneath is reachable.
-  expect(document.querySelector(".tp-backdrop")).toBeNull();
+  vi.advanceTimersByTime(150);
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange.mock.calls[0][0].text).toBe("Warning: Pew Pew Pew");
+  expect(onChange.mock.calls[0][0].fontId).toBe("test-font");
+  vi.useRealTimers();
 });
 
 test("editing: clicking the backdrop still abandons the edit", () => {
@@ -91,27 +116,6 @@ test("editing: clicking the backdrop still abandons the edit", () => {
   });
   seedFont();
   typeText("after");
-
-  clickBackdrop();
-
-  expect(onApply).not.toHaveBeenCalled();
-  expect(onCancel).toHaveBeenCalledTimes(1);
-});
-
-test("placement: an empty dialog dismissed by backdrop cancels, and does not error", () => {
-  const onApply = vi.fn<(p: TextParams) => void>();
-  const onCancel = vi.fn();
-  openTextDialog({
-    initial: {},
-    applyLabel: "Place",
-    title: "Place Text",
-    displayUnit: "mm",
-    backdropAction: "apply",
-    onApply,
-    onCancel,
-  });
-  seedFont();
-  // nothing typed
 
   clickBackdrop();
 

@@ -117,7 +117,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Bezier Curve Tool (B): Create smooth cubic Bezier splines. Click the start and end anchors — or type the chord's exact length and angle — then click the two tangent control handles. The handles are mouse-only: a control arm has no dimension to type.",
           "Slot Tool (U): Create elongated obround slots. Click two centre points, then drag the width out or type it exactly.",
           "Polygon Tool (N): Generate regular polygons (triangles, pentagons, hexagons, octagons, etc.). Type the side count and an exact diameter — measured across the flats, the machinist convention — or click the centre then a vertex.",
-          "Text Tool: Place text in any outline font (TrueType, OpenType or WOFF). Roboto ships with the app; add more from a file on your computer or from the web.",
+          "Text Tool: Click where you want the text, then enter it and pick the font in the dialog that opens — the glyphs preview live on the canvas. Any outline font (TrueType, OpenType or WOFF) works: Roboto ships with the app; add more from a file on your computer or from the web.",
         ],
       },
       {

@@ -1,4 +1,5 @@
-import { beforeAll, expect, test, vi } from "vitest";
+// @vitest-environment happy-dom
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,17 +10,25 @@ import { SnapEngine } from "../src/input/snapping";
 import { TextTool } from "../src/tools/textTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
 
+// Opening the dialog kicks off the bundled-font load (a real fetch that never
+// resolves under happy-dom). Nothing under test depends on it — the font the
+// dialog shows is the one loaded in beforeAll below — so neutralise it.
+vi.mock("../src/core/fontManager", async (importActual) => ({
+  ...(await importActual<typeof import("../src/core/fontManager")>()),
+  initBundledFonts: vi.fn(async () => {}),
+}));
+
 /**
- * Placing text is a FINISHED gesture.
+ * The Text tool places first, then edits (Fusion / SolidWorks / LightBurn).
  *
- * The tool used to stay armed after a stamp, dropping another copy on every
- * subsequent click — not what any other CAD does, and it turned a stray click
- * into a duplicate the user had to notice and delete. It now hands back to
- * Select, which also leaves the new text ready to move or align.
+ * The tool used to open a dialog on activation and then "stamp" the prepared
+ * text onto the canvas on the next click. Now the first canvas click sets the
+ * baseline-left anchor and opens the Place Text dialog; the glyphs preview live
+ * at that anchor; a further canvas click moves it; Place commits and hands back
+ * to Select; Cancel/Escape drops it.
  *
  * `activateTool` must never be called from `cancel()`: ToolManager.activate
- * cancels the outgoing tool first, so that would recurse forever. These pin the
- * call to the paths where it is safe.
+ * cancels the outgoing tool first, so that would recurse forever.
  */
 
 let fontId: string;
@@ -33,6 +42,11 @@ beforeAll(async () => {
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as File;
   ({ id: fontId } = await loadFromFile(fakeFile));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.body.innerHTML = "";
 });
 
 function makeCtx(doc: CADDocument) {
@@ -55,13 +69,17 @@ function makeCtx(doc: CADDocument) {
   return { ctx, activateTool };
 }
 
-/** Arm the tool the way the dialog's Apply does, without opening any DOM. */
-function arm(tool: TextTool, ctx: ToolContext, text = "PEW"): void {
-  (tool as unknown as Record<string, unknown>).pendingText = text;
-  (tool as unknown as Record<string, unknown>).pendingFontId = fontId;
-  (tool as unknown as Record<string, unknown>).pendingSizeMM = 10;
-  (tool as unknown as Record<string, unknown>).pendingAngle = 0;
-  tool.onPointerMove(evt({ x: 5, y: 5 }), ctx);
+/** The dialog's text field is the first `<input>` it builds. */
+function textField(): HTMLInputElement {
+  return document.querySelector<HTMLInputElement>(".tp-dialog input")!;
+}
+
+function clickButton(label: string): void {
+  const btn = [...document.querySelectorAll<HTMLButtonElement>(".tp-dialog button")].find(
+    (b) => b.textContent === label,
+  );
+  if (!btn) throw new Error(`no dialog button "${label}"`);
+  btn.click();
 }
 
 function evt(pos: { x: number; y: number }): ToolPointerEvent {
@@ -81,29 +99,7 @@ function texts(doc: CADDocument): TextEntity[] {
   return doc.entities.filter((e): e is TextEntity => e instanceof TextEntity);
 }
 
-test("placing text hands back to the Select tool", () => {
-  const doc = new CADDocument({ width: 200, height: 200 }, "mm");
-  const { ctx, activateTool } = makeCtx(doc);
-  const tool = new TextTool();
-  arm(tool, ctx);
-
-  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
-
-  expect(texts(doc)).toHaveLength(1);
-  expect(activateTool).toHaveBeenCalledWith("select");
-});
-
-test("the placed text is left selected, ready to move", () => {
-  const doc = new CADDocument({ width: 200, height: 200 }, "mm");
-  const { ctx } = makeCtx(doc);
-  const tool = new TextTool();
-  arm(tool, ctx);
-
-  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
-  expect(doc.selected.map((e) => e.id)).toEqual([texts(doc)[0].id]);
-});
-
-test("a click with nothing armed places nothing and switches nothing", () => {
+test("the first click opens the Place Text dialog and places nothing yet", () => {
   const doc = new CADDocument({ width: 200, height: 200 }, "mm");
   const { ctx, activateTool } = makeCtx(doc);
   const tool = new TextTool();
@@ -112,32 +108,75 @@ test("a click with nothing armed places nothing and switches nothing", () => {
 
   expect(texts(doc)).toHaveLength(0);
   expect(activateTool).not.toHaveBeenCalled();
-  // Positive control: the same tool DOES place and switch once armed, so the
-  // assertion above is about the missing pending text, not a dead tool.
-  arm(tool, ctx);
-  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
-  expect(texts(doc)).toHaveLength(1);
-  expect(activateTool).toHaveBeenCalledWith("select");
+  expect(document.querySelector(".tp-dialog h3")?.textContent).toBe("Place Text");
 });
 
-test("Escape while armed hands back to Select instead of stranding the tool", () => {
+test("Place commits a TextEntity at the anchor and returns to Select", () => {
   const doc = new CADDocument({ width: 200, height: 200 }, "mm");
   const { ctx, activateTool } = makeCtx(doc);
   const tool = new TextTool();
-  arm(tool, ctx);
 
-  // Node has no KeyboardEvent and this file needs no DOM otherwise — the tool
-  // only reads `.key`.
-  tool.onKeyDown({ key: "Escape" } as KeyboardEvent, ctx);
+  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
+  textField().value = "PEW";
+  clickButton("Place");
+
+  expect(texts(doc)).toHaveLength(1);
+  expect(texts(doc)[0].text).toBe("PEW");
+  expect(texts(doc)[0].position).toEqual({ x: 5, y: 5 });
   expect(activateTool).toHaveBeenCalledWith("select");
+});
+
+test("a canvas click while the dialog is open moves the anchor", () => {
+  const doc = new CADDocument({ width: 200, height: 200 }, "mm");
+  const { ctx } = makeCtx(doc);
+  const tool = new TextTool();
+
+  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx); // open + anchor (5, 5)
+  tool.onPointerDown(evt({ x: 20, y: 30 }), ctx); // reposition
+  textField().value = "HI";
+  clickButton("Place");
+
+  expect(texts(doc)[0].position).toEqual({ x: 20, y: 30 });
+});
+
+test("Cancel hands back to Select with nothing placed", () => {
+  const doc = new CADDocument({ width: 200, height: 200 }, "mm");
+  const { ctx, activateTool } = makeCtx(doc);
+  const tool = new TextTool();
+
+  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
+  clickButton("Cancel");
+
   expect(texts(doc)).toHaveLength(0);
+  expect(activateTool).toHaveBeenCalledWith("select");
+});
+
+test("the live preview shows glyph outlines at the anchor as the text changes", () => {
+  vi.useFakeTimers();
+  const doc = new CADDocument({ width: 200, height: 200 }, "mm");
+  const { ctx } = makeCtx(doc);
+  const tool = new TextTool();
+
+  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
+  // The font the dialog would show is the one loaded in beforeAll.
+  const fontSel = document.querySelector<HTMLSelectElement>(".tp-dialog select")!;
+  fontSel.value = fontId;
+  const inp = textField();
+  inp.value = "PEW";
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
+  vi.advanceTimersByTime(150); // flush the debounced onChange
+
+  const previews = tool.getOverlay().previews;
+  expect(previews.some((p) => p.kind === "point")).toBe(true);
+  // Real glyph outlines (post overlap-union), not just a bounding box.
+  expect(previews.filter((p) => p.kind === "polyline").length).toBeGreaterThan(0);
 });
 
 test("cancel() never switches tools — that would recurse through activate()", () => {
   const doc = new CADDocument({ width: 200, height: 200 }, "mm");
   const { ctx, activateTool } = makeCtx(doc);
   const tool = new TextTool();
-  arm(tool, ctx);
+  tool.onPointerDown(evt({ x: 5, y: 5 }), ctx);
 
   // ToolManager.activate calls the outgoing tool's cancel BEFORE switching, so a
   // cancel that switched tools would call activate again, forever.
