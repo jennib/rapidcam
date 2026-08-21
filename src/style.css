@@ -83,7 +83,6 @@ body {
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
   flex-shrink: 1;
 }
 
@@ -292,6 +291,11 @@ button.cbtn.solve {
   align-items: center;
   padding: 8px 0;
   gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .tool-btn {
@@ -3688,3 +3692,226 @@ body.design-tree-open #design-tree-toggle {
   color: var(--accent-text, #9dc0ff);
   opacity: 1;
 }
+
+/* ---------- Responsive Height Modes for Toolbars ---------- */
+@media (max-height: 850px) {
+  #topbar {
+    height: 38px;
+    gap: 12px;
+  }
+  #topbar .brand img {
+    height: 28px;
+  }
+  #topbar .btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .topbar-sep {
+    height: 18px;
+  }
+  #subbar {
+    height: 38px;
+    padding: 0 10px;
+    gap: 3px;
+  }
+  button.cbtn {
+    height: 28px;
+    min-width: 30px;
+    padding: 0 6px;
+    font-size: 14px;
+  }
+  .cbtn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .cb-sep {
+    height: 20px;
+    margin: 0 6px;
+  }
+
+  /* Two-column tool palette: comfortable button size instead of tiny glyphs */
+  #toolpalette {
+    width: 88px;
+    display: grid;
+    grid-template-columns: repeat(2, 36px);
+    justify-content: center;
+    align-content: flex-start;
+    padding: 6px 4px;
+    gap: 4px;
+  }
+  .tool-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+  }
+  .tool-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  .tool-sep {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 1px;
+    margin: 3px 0;
+  }
+}
+
+@media (max-height: 700px) {
+  #topbar {
+    height: 34px;
+    gap: 8px;
+    padding: 0 8px;
+  }
+  #topbar .brand img {
+    height: 24px;
+  }
+  #topbar .btn {
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+  .topbar-filename {
+    font-size: 11px;
+    max-width: 260px;
+  }
+  .topbar-sep {
+    height: 16px;
+  }
+  #subbar {
+    height: 34px;
+    padding: 0 8px;
+    gap: 2px;
+  }
+  .cb-label {
+    font-size: 10px;
+    margin-right: 4px;
+    letter-spacing: 0.4px;
+  }
+  button.cbtn {
+    height: 25px;
+    min-width: 26px;
+    padding: 0 4px;
+    font-size: 12px;
+    border-radius: 4px;
+  }
+  .cbtn svg {
+    width: 15px;
+    height: 15px;
+  }
+  .cb-sep {
+    height: 16px;
+    margin: 0 4px;
+  }
+  .cb-msg {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+
+  /* Two-column layout remains clean, comfortable, and easy to click */
+  #toolpalette {
+    width: 84px;
+    display: grid;
+    grid-template-columns: repeat(2, 34px);
+    justify-content: center;
+    align-content: flex-start;
+    padding: 4px;
+    gap: 4px;
+  }
+  .tool-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 5px;
+  }
+  .tool-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .tool-sep {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 1px;
+    margin: 2px 0;
+  }
+  #statusbar {
+    height: 24px;
+    font-size: 10px;
+    gap: 12px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-height: 580px) {
+  #topbar {
+    height: 30px;
+    gap: 6px;
+    padding: 0 6px;
+  }
+  #topbar .brand img {
+    height: 20px;
+  }
+  #topbar .btn {
+    padding: 2px 5px;
+    font-size: 10px;
+  }
+  .topbar-filename {
+    font-size: 10px;
+    max-width: 200px;
+  }
+  .topbar-sep {
+    height: 14px;
+  }
+  #subbar {
+    height: 30px;
+    padding: 0 6px;
+    gap: 2px;
+  }
+  .cb-label {
+    font-size: 9px;
+    margin-right: 3px;
+  }
+  button.cbtn {
+    height: 22px;
+    min-width: 22px;
+    padding: 0 3px;
+    font-size: 11px;
+    border-radius: 3px;
+  }
+  .cbtn svg {
+    width: 13px;
+    height: 13px;
+  }
+  .cb-sep {
+    height: 14px;
+    margin: 0 3px;
+  }
+  #toolpalette {
+    width: 78px;
+    display: grid;
+    grid-template-columns: repeat(2, 32px);
+    justify-content: center;
+    align-content: flex-start;
+    padding: 3px;
+    gap: 3px;
+  }
+  .tool-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+  }
+  .tool-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+  .tool-sep {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 1px;
+    margin: 1px 0;
+  }
+  #statusbar {
+    height: 22px;
+    font-size: 10px;
+    gap: 8px;
+    padding: 0 6px;
+  }
+}
+

@@ -69,15 +69,12 @@ export class TopBar {
     this.host.appendChild(this.undoBtn);
     this.host.appendChild(this.redoBtn);
 
-    // Project name + dirty marker centered to the right of undo/redo.
-    const spacerLeft = el("div", "topbar-spacer");
-    this.host.appendChild(spacerLeft);
-
+    // Project name + dirty marker directly beside undo/redo.
     this.nameEl = el("div", "topbar-filename");
     this.host.appendChild(this.nameEl);
 
-    const spacerRight = el("div", "topbar-spacer");
-    this.host.appendChild(spacerRight);
+    const spacer = el("div", "topbar-spacer");
+    this.host.appendChild(spacer);
 
     const fullscreenBtn = button("", () => {
       if (!document.fullscreenElement) {

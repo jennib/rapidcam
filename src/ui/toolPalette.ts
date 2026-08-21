@@ -5,7 +5,7 @@ import { shortcutForTool } from "../tools/shortcuts";
 import { ICONS } from "../tools/icons";
 
 // Tool IDs after which a visual separator is inserted.
-const SEP_AFTER = new Set(["select", "text", "measure"]);
+const SEP_AFTER = new Set(["select", "bezier"]);
 
 export class ToolPalette {
   private buttons = new Map<string, HTMLButtonElement>();
@@ -15,8 +15,7 @@ export class ToolPalette {
     private manager: ToolManager,
     onToggleTree?: () => void,
   ) {
-    // The design-tree toggle isn't a tool — it opens a panel — so it sits above
-    // the separator and never participates in the active-tool highlight.
+    // The design-tree toggle pairs with Select at the top of the palette.
     if (onToggleTree) {
       const treeBtn = document.createElement("button");
       treeBtn.id = "design-tree-toggle";
@@ -26,10 +25,6 @@ export class ToolPalette {
       treeBtn.innerHTML = ICONS.tree;
       treeBtn.addEventListener("click", () => onToggleTree());
       host.appendChild(treeBtn);
-
-      const topSep = document.createElement("div");
-      topSep.className = "tool-sep";
-      host.appendChild(topSep);
     }
 
     const tools = manager.list();

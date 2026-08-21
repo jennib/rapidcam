@@ -97,18 +97,22 @@
     },
     {
       "id": "con3",
-      "type": "fixedPoint",
+      "type": "midpoint",
       "points": [
         {
           "entityId": "ent3",
-          "key": "pos"
+          "key": "center"
+        },
+        {
+          "entityId": "ent2",
+          "key": "c"
+        },
+        {
+          "entityId": "ent1",
+          "key": "mid_r"
         }
       ],
-      "entities": [],
-      "params": [
-        33,
-        19
-      ]
+      "entities": []
     }
   ],
   "dimensions": [
