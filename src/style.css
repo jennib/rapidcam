@@ -2375,6 +2375,13 @@ button.btn.btn-primary:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(74, 163, 255, 0.15);
 }
 
+.welcome-card:focus-visible,
+.welcome-recent-item:focus-visible,
+.welcome-example-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .welcome-card-icon {
   width: 32px;
   height: 32px;

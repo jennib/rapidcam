@@ -18,6 +18,23 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
+/**
+ * Make a click-only card reachable from the keyboard: role=button plus
+ * Enter/Space activation, so a keyboard user can start or open a project from
+ * the welcome screen. The cards stay <div>s because a <button> cannot hold the
+ * block-level icon/details markup.
+ */
+function makeFocusable(card: HTMLElement): void {
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      card.click();
+    }
+  });
+}
+
 export function showWelcomeScreen(
   onNew: () => void,
   onOpen: () => void,
@@ -120,6 +137,7 @@ export function showWelcomeScreen(
       closeSplash();
       onRestoreDraft();
     });
+    makeFocusable(restoreCard);
     cards.appendChild(restoreCard);
   }
 
@@ -143,6 +161,7 @@ export function showWelcomeScreen(
       closeSplash();
       onOpenRecent(lastProject);
     });
+    makeFocusable(resumeCard);
     cards.appendChild(resumeCard);
   }
 
@@ -186,7 +205,9 @@ export function showWelcomeScreen(
     onOpen();
   });
 
+  makeFocusable(newCard);
   cards.appendChild(newCard);
+  makeFocusable(openCard);
   cards.appendChild(openCard);
   leftCol.appendChild(cards);
 
@@ -237,6 +258,7 @@ export function showWelcomeScreen(
         onOpenRecent(r);
       });
 
+      makeFocusable(item);
       recentsContainer.appendChild(item);
     }
     rightCol.appendChild(recentsContainer);
@@ -290,6 +312,7 @@ export function showWelcomeScreen(
         onOpenExample(ex);
       });
 
+      makeFocusable(card);
       exContainer.appendChild(card);
     }
     rightCol.appendChild(exContainer);

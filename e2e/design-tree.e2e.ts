@@ -229,7 +229,7 @@ test("live: hidden geometry is dropped from the program, and pre-flight says so"
   });
 
   await page.locator(".tree-row", { hasText: "Circle" }).first().locator("button[title='Hide']").click();
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
   await page.locator(".cam-gen-btn").click();
 
   const body = await page.locator(".tp-backdrop").first().innerText();

@@ -42,7 +42,7 @@ test("live: bed set in the dialog refuses a job that needs more travel", async (
   await expect(dlg).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem("rapidcam:machine:bed"))).toBe("120x120");
 
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
   await page.locator(".cam-gen-btn").click();
   const body = await page.locator(".tp-backdrop").first().innerText();
   // Matched on the specific sentence, not the word "travel": the out-of-bounds

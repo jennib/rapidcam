@@ -114,7 +114,7 @@ async function btnShown(page: Page, label: RegExp): Promise<boolean[]> {
 
 async function openCamTab(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const t = [...document.querySelectorAll(".rtab")].find((x) => /CAM/i.test(x.textContent ?? ""));
+    const t = [...document.querySelectorAll(".rtab")].find((x) => /Toolpaths/i.test(x.textContent ?? ""));
     (t as HTMLElement | undefined)?.click();
   });
 }

@@ -14,7 +14,7 @@ test("Tool Library dialog labels and inputs use displayUnit (in)", async ({ page
   await openDoc(page, makeInchDoc());
 
   // Switch to CAM tab
-  const camTab = page.locator(".rtab", { hasText: "CAM" });
+  const camTab = page.locator(".rtab", { hasText: "Toolpaths" });
   await camTab.click();
   await expect(camTab).toHaveClass(/active/);
 

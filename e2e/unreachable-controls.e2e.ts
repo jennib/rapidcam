@@ -147,7 +147,7 @@ test("no control is laid out beyond a container that cannot scroll", async ({ pa
   // The CAM panel, which the beam summary writes into.
   await page.evaluate(() => {
     const tab = [...document.querySelectorAll(".rtab")].find((t) =>
-      /CAM/i.test(t.textContent ?? ""),
+      /Toolpaths/i.test(t.textContent ?? ""),
     );
     (tab as HTMLElement | undefined)?.click();
   });

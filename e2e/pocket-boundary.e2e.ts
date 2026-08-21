@@ -55,7 +55,7 @@ test("Pocket boundary mode respects explicit entities over region flood-fill", a
   }, rectId);
   expect(selected, "the rectangle must survive the save/load round trip").toBe(true);
 
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
   await page.locator(".cam-add-btn", { hasText: "+ Add Toolpath" }).click();
 
   const dialog = page.locator(".tp-dialog");

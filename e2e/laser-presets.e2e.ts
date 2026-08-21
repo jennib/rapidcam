@@ -29,7 +29,7 @@ test("a preset saved through the native prompt loads back and reaches the manage
   page,
 }) => {
   await openDoc(page, laserDoc());
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
 
   await page.evaluate(() => {
     for (const e of (window as any).__app.project.doc.entities) e.selected = true;

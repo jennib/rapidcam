@@ -24,9 +24,9 @@ test("app boots and the editor shell is interactive", async ({ page }) => {
   await expect(page.locator("#scene")).toBeAttached();
   await expect(page.locator("#topbar")).toBeVisible();
 
-  // Draw is the default active panel.
-  const drawTab = page.locator(".rtab", { hasText: "Draw" });
-  const camTab = page.locator(".rtab", { hasText: "CAM" });
+  // Design is the default active panel.
+  const drawTab = page.locator(".rtab", { hasText: "Design" });
+  const camTab = page.locator(".rtab", { hasText: "Toolpaths" });
   await expect(drawTab).toHaveClass(/active/);
   await expect(page.locator('.rtab-content[data-panel="draw"]')).toHaveClass(/active/);
 

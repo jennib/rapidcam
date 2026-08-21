@@ -62,7 +62,7 @@ test("a CAM field clamps identically whether typed or driven, and tracks the sto
     for (const e of doc.entities) e.selected = true;
   });
 
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
   await page.locator("button.cam-add-btn", { hasText: "+ Add Toolpath" }).click();
   const dialog = page.locator(".tp-dialog");
   await expect(dialog).toBeVisible();

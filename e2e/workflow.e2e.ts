@@ -62,7 +62,7 @@ test("a full workflow: draw, dimension, toolpath, export, save, reopen", async (
     for (const e of app.doc.entities) e.selected = e.type === "rectangle";
     app.doc.emitChange();
   });
-  await page.locator(".rtab", { hasText: "CAM" }).click();
+  await page.locator(".rtab", { hasText: "Toolpaths" }).click();
   await page.locator(".cam-add-btn", { hasText: "+ Add Toolpath" }).click();
   const dlg = page.locator(".tp-dialog");
   await expect(dlg).toBeVisible();

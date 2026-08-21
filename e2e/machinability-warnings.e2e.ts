@@ -98,7 +98,7 @@ test("machinability linter correctly flags unreachable and hairline pockets", as
   await openDoc(page, makeDoc());
 
   // Switch to CAM tab
-  const camTab = page.locator(".rtab", { hasText: "CAM" });
+  const camTab = page.locator(".rtab", { hasText: "Toolpaths" });
   await camTab.click();
   await expect(camTab).toHaveClass(/active/);
 
