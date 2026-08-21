@@ -2,6 +2,7 @@
 
 import type { ToolManager } from "../tools/tool";
 import { shortcutForTool } from "../tools/shortcuts";
+import { ICONS } from "../tools/icons";
 
 // Tool IDs after which a visual separator is inserted.
 const SEP_AFTER = new Set(["select", "text", "measure"]);
@@ -22,7 +23,7 @@ export class ToolPalette {
       treeBtn.className = "tool-btn tree-toggle-btn";
       treeBtn.dataset.tip = "Design Tree (^B)";
       treeBtn.setAttribute("aria-label", "Toggle the design tree");
-      treeBtn.textContent = "🌳";
+      treeBtn.innerHTML = ICONS.tree;
       treeBtn.addEventListener("click", () => onToggleTree());
       host.appendChild(treeBtn);
 
@@ -36,7 +37,9 @@ export class ToolPalette {
       const btn = document.createElement("button");
       btn.className = "tool-btn";
       const key = shortcutForTool(tool.id);
-      btn.dataset.tip = key ? `${tool.label} (${key})` : tool.label;
+      const tip = key ? `${tool.label} (${key})` : tool.label;
+      btn.dataset.tip = tip;
+      btn.setAttribute("aria-label", tip);
       btn.innerHTML = tool.icon;
       btn.addEventListener("click", () => manager.activate(tool.id));
       host.appendChild(btn);

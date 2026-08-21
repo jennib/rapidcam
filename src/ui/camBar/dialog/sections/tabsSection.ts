@@ -4,6 +4,7 @@
 import type { CADDocument } from "../../../../model/document";
 import type { OpState } from "../opDialogState";
 import { dSection, dField, paramRow } from "../dialogDom";
+import { CAM_TERMS } from "../../../../cam/camTerms";
 
 export function buildTabsSection(
   doc: CADDocument,
@@ -38,7 +39,7 @@ export function buildTabsSection(
     tabStrategySel.appendChild(o);
   }
   tabStrategySel.value = state.tabStrategy;
-  const tabStrategyRow = dField("Tabs by", tabStrategySel);
+  const tabStrategyRow = dField("Tabs by", tabStrategySel, CAM_TERMS.tabs);
 
   const tabCountRow = paramRow(
     doc,

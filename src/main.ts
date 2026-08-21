@@ -3,6 +3,7 @@ import { installErrorCapture, showConsentBannerIfNeeded } from "./analytics";
 import { App } from "./app";
 import { installLongTaskWatch, longTasks } from "./core/longTasks";
 import { syncColorsFromTheme } from "./view/colors";
+import { initTooltips } from "./ui/tooltip";
 
 declare global {
   interface Window {
@@ -62,6 +63,7 @@ function showMobileWarning(): boolean {
 function bootApp(): void {
   // Pull the CSS theme tokens into the canvas palette before anything renders.
   syncColorsFromTheme();
+  initTooltips();
 
   const canvas = document.getElementById("scene") as HTMLCanvasElement | null;
   const palette = document.getElementById("toolpalette");

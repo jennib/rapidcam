@@ -334,6 +334,8 @@ export class App {
       onRedo: () => this.project.undoRedo("redo"),
       canUndo: () => this.project.history.canUndo,
       canRedo: () => this.project.history.canRedo,
+      getProjectName: () => this.project.currentFileName,
+      isDirty: () => this.project.isDirty,
       onSettings: () =>
         showMachineSettingsDialog({
           doc: this.doc,

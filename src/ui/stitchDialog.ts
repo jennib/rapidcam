@@ -159,7 +159,7 @@ export function openStitchDialog(params: StitchDialogParams): void {
 
   if (unsupported.length) {
     const warn = document.createElement("div");
-    warn.style.cssText = "margin-top:8px;font-size:12px;color:var(--warn, #e5a13a);line-height:1.4;";
+    warn.style.cssText = "margin-top:8px;font-size:12px;color:var(--warn);line-height:1.4;";
     warn.textContent = `This job uses ${unsupported.join(", ")}, which Stitch can't tile. Re-post with the GRBL processor (or avoid bezier engraving) first.`;
     body.appendChild(warn);
   }

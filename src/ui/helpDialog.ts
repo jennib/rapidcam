@@ -11,6 +11,35 @@ import {
 } from "../docs/helpContent";
 import { registerModal } from "./modal";
 
+/**
+ * Inline SVG icons for the Help viewer, drawn in the same 24x24 currentColor
+ * stroke style as tools/icons.ts and ui/stateIcons.ts. They replace the emoji
+ * this surface used to show (lightbulb / info / warning / star / search /
+ * copy), which rendered differently on every platform; a stroked icon inherits
+ * the surrounding colour instead and can never clash with the theme. See
+ * stateIcons.ts for the same migration on the eye/lock toggles.
+ */
+const helpIcon = (inner: string): string =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
+const HELP_ICONS = {
+  search: helpIcon(`<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>`),
+  copy: helpIcon(`<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>`),
+  check: helpIcon(`<path d="M20 6 9 17l-5-5"/>`),
+  // Callout icons, one per HelpCallout type (tip / note / warning / best-practice).
+  tip: helpIcon(`<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>`),
+  note: helpIcon(`<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6h.01"/>`),
+  warning: helpIcon(`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>`),
+  star: helpIcon(`<path d="M12 3.5 14.6 8.8l5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8-4.3-4.1 5.9-.9z"/>`),
+} as const;
+
+const CALLOUT_ICONS: Record<string, string> = {
+  tip: HELP_ICONS.tip,
+  note: HELP_ICONS.note,
+  warning: HELP_ICONS.warning,
+  "best-practice": HELP_ICONS.star,
+};
+
 let open = false;
 
 /** Show the interactive Help Viewer modal. */
@@ -66,11 +95,17 @@ export function showHelpDialog(initialTopicId?: string): void {
   const searchWrap = document.createElement("div");
   searchWrap.className = "help-search-container";
 
+  const searchField = document.createElement("div");
+  searchField.className = "help-search-field";
+  searchField.innerHTML = `<span class="help-search-icon">${HELP_ICONS.search}</span>`;
+
   const searchInput = document.createElement("input");
   searchInput.type = "text";
-  searchInput.placeholder = "🔍 Search topics, G-code, hotkeys...";
+  searchInput.placeholder = "Search topics, G-code, hotkeys...";
   searchInput.className = "help-search-input";
-  searchWrap.appendChild(searchInput);
+  searchInput.setAttribute("aria-label", "Search topics, G-code, hotkeys");
+  searchField.appendChild(searchInput);
+  searchWrap.appendChild(searchField);
 
   // Category Filter Pills
   const categories = [
@@ -329,16 +364,9 @@ export function showHelpDialog(initialTopicId?: string): void {
     const box = document.createElement("div");
     box.className = `help-callout help-callout-${callout.type}`;
 
-    const iconMap: Record<string, string> = {
-      tip: "💡",
-      note: "ℹ️",
-      warning: "⚠️",
-      "best-practice": "⭐",
-    };
-
     const header = document.createElement("div");
     header.className = "help-callout-header";
-    header.innerHTML = `<span class="help-callout-icon">${iconMap[callout.type] ?? "💡"}</span><strong class="help-callout-title">${callout.title ?? callout.type.toUpperCase()}</strong>`;
+    header.innerHTML = `<span class="help-callout-icon">${CALLOUT_ICONS[callout.type] ?? HELP_ICONS.tip}</span><strong class="help-callout-title">${callout.title ?? callout.type.toUpperCase()}</strong>`;
     box.appendChild(header);
 
     const body = document.createElement("div");
@@ -360,11 +388,15 @@ export function showHelpDialog(initialTopicId?: string): void {
 
       const copyBtn = document.createElement("button");
       copyBtn.className = "help-code-copy-btn";
-      copyBtn.textContent = "📋 Copy";
+      copyBtn.innerHTML = `${HELP_ICONS.copy}<span>Copy</span>`;
       copyBtn.addEventListener("click", () => {
         navigator.clipboard.writeText(snippet.code).then(() => {
-          copyBtn.textContent = "✓ Copied!";
-          setTimeout(() => (copyBtn.textContent = "📋 Copy"), 1800);
+          copyBtn.classList.add("copied");
+          copyBtn.innerHTML = `${HELP_ICONS.check}<span>Copied!</span>`;
+          setTimeout(() => {
+            copyBtn.classList.remove("copied");
+            copyBtn.innerHTML = `${HELP_ICONS.copy}<span>Copy</span>`;
+          }, 1800);
         });
       });
       bar.appendChild(copyBtn);

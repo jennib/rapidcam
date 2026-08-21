@@ -19,11 +19,8 @@
   --tp-color: #f59e42;
   --muted: #9aa4b2;
   --text-muted: #888;
-  /* NOTE: --warn is intentionally left undefined for now: its inline fallbacks
-     disagree (#c8982a in 3 places, #e0a85a in 5), so defining it would change
-     rendering somewhere. Unifying to one amber is a design call — see follow-up.
-     --surface and --hover are also undefined (currently invalid → transparent);
-     defining them would alter dialog/hover backgrounds, out of scope for a token pass. */
+  /* Unified warning amber; was left undefined with disagreeing inline fallbacks. */
+  --warn: #c8982a;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }
@@ -64,11 +61,28 @@ body {
   flex: 0 0 auto;
 }
 
+/* Undo/redo are stroke icons (tools/icons.ts) rendered inside .btn. */
+#topbar .btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 .brand {
   display: flex;
   align-items: center;
   margin-right: 8px;
   flex-shrink: 0;
+}
+
+.topbar-filename {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
 }
 
 
@@ -209,6 +223,11 @@ button.cbtn.solve {
   border-color: var(--accent);
 }
 
+.cbtn svg {
+  width: 20px;
+  height: 20px;
+}
+
 .cb-sep {
   width: 1px;
   height: 24px;
@@ -231,7 +250,7 @@ button.cbtn.solve {
   color: var(--accent);
 }
 .cb-msg.warn {
-  color: var(--warn, #c8982a);
+  color: var(--warn);
 }
 
 /* ---------- Workspace ---------- */
@@ -288,26 +307,19 @@ button.cbtn.solve {
   margin: 4px 0;
 }
 
-/* tooltip */
-.tool-btn::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 48px;
-  top: 50%;
-  transform: translateY(-50%);
+/* Shared JS tooltip (see ui/tooltip.ts): delayed, edge-aware, keyboard-friendly. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 1000;
   background: #000;
   color: #fff;
   padding: 3px 7px;
   border-radius: 4px;
   font-size: 11px;
-  white-space: nowrap;
-  opacity: 0;
+  line-height: 1.4;
+  max-width: 260px;
   pointer-events: none;
-  transition: opacity 0.1s;
-  z-index: 50;
-}
-.tool-btn:hover::after {
-  opacity: 0.92;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- Right panel ---------- */
@@ -656,7 +668,7 @@ button.cbtn.solve {
   margin: -2px 0 6px 10px;
   padding-left: 8px;
   border-left: 2px solid var(--border);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 
@@ -847,7 +859,7 @@ button.cbtn.solve {
 
 .props-row span {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
@@ -931,7 +943,7 @@ button.cbtn.solve {
 
 .props-row .btn {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 7px;
 }
 
@@ -1363,7 +1375,7 @@ button.cbtn.solve {
 /* A toolpath bound to no geometry — cuts nothing. Tint its edge so it stands
    out in the list, not just via the inline warning line. */
 .tp-op-item.tp-op-empty {
-  border-left: 3px solid var(--warn, #e0a85a);
+  border-left: 3px solid var(--warn);
 }
 
 .tp-op-name {
@@ -1593,9 +1605,9 @@ button.cbtn.solve {
 .stl-warning {
   font-size: 12px;
   line-height: 1.4;
-  color: var(--warn, #e0a85a);
-  background: color-mix(in srgb, var(--warn, #e0a85a) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn, #e0a85a) 40%, transparent);
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: 4px;
   padding: 8px 10px;
 }
@@ -2006,7 +2018,7 @@ button.cbtn.solve {
   margin: 0 0 4px;
 }
 .welcome-intro-body {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-dim);
   line-height: 1.45;
   margin: 0;
@@ -2192,19 +2204,19 @@ button.cbtn.solve {
   font-weight: 600;
 }
 .gbe-option-blurb {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   line-height: 1.4;
 }
 .gbe-option-code {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--accent);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .gbe-option-caution {
-  font-size: 11px;
+  font-size: 12px;
   color: #e0a85a;
   line-height: 1.4;
 }
@@ -2222,7 +2234,7 @@ button.cbtn.solve {
   display: none;
 }
 .gbe-finding {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   /* Reset the button back to a line of text. */
   display: block;
@@ -2393,7 +2405,7 @@ button.btn.btn-primary:hover:not(:disabled) {
 }
 
 .welcome-card-desc {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 
@@ -2767,9 +2779,12 @@ button.btn.btn-primary:hover:not(:disabled) {
   border-right: 1px solid var(--border);
 }
 
+/* The design-tree toggle opens a panel rather than a tool: give its icon the
+   brand green so it reads as "tree" and stands apart from the neutral tools. */
 #design-tree-toggle {
-  font-size: 20px;
+  color: #5DCAA5;
 }
+
 body.design-tree-open #design-tree-toggle {
   background: var(--accent-dim);
   border-color: var(--accent);
@@ -2882,7 +2897,7 @@ body.design-tree-open #design-tree-toggle {
 
 .tree-icon {
   flex: 0 0 auto;
-  width: 13px;
+  width: 14px;
   text-align: center;
   color: var(--text-dim);
   font-size: 11px;
@@ -2923,12 +2938,17 @@ body.design-tree-open #design-tree-toggle {
   color: #cfe6ff;
 }
 
-/* The canvas draws these same glyphs as constraint badges — keep them legible
-   at row size rather than letting a "∥" or "◀▶" render as a smudge. */
+/* The constraint bar and tree share the stroke icons (ui/constraintIcons.ts);
+   the canvas keeps its text badges, since a canvas cannot draw SVG. */
 .tree-constraint-glyph {
-  font-size: 10px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--accent);
+}
+.tree-constraint-glyph svg {
+  width: 14px;
+  height: 14px;
 }
 .tree-row.selected .tree-constraint-glyph {
   color: #fff;
@@ -3109,12 +3129,35 @@ body.design-tree-open #design-tree-toggle {
   gap: 8px;
 }
 
+.help-search-field {
+  position: relative;
+}
+
+.help-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text-dim);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-search-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .help-search-input {
   width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 8px 12px;
+  padding: 8px 12px 8px 30px;
   border-radius: 6px;
   font-size: 12.5px;
   outline: none;
@@ -3141,7 +3184,7 @@ body.design-tree-open #design-tree-toggle {
 
 .help-category-pill {
   flex: 0 0 auto;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 500;
   padding: 3px 8px;
   border-radius: 12px;
@@ -3215,7 +3258,7 @@ body.design-tree-open #design-tree-toggle {
 }
 
 .help-nav-category {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-dim);
@@ -3323,8 +3366,21 @@ body.design-tree-open #design-tree-toggle {
 }
 
 .help-callout-icon {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
+
+.help-callout-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.help-callout-tip .help-callout-icon { color: #34d399; }
+.help-callout-note .help-callout-icon { color: #60a5fa; }
+.help-callout-warning .help-callout-icon { color: #fbbf24; }
+.help-callout-best-practice .help-callout-icon { color: #a78bfa; }
 
 .help-callout-title {
   font-weight: 600;
@@ -3385,7 +3441,7 @@ body.design-tree-open #design-tree-toggle {
   background: rgba(255, 255, 255, 0.03);
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-dim);
   display: flex;
@@ -3401,7 +3457,20 @@ body.design-tree-open #design-tree-toggle {
   padding: 2px 8px;
   border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   transition: all 0.12s ease;
+}
+
+.help-code-copy-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.help-code-copy-btn.copied {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.45);
 }
 
 .help-code-copy-btn:hover {

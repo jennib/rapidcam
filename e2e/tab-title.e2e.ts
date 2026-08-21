@@ -1,14 +1,11 @@
 /**
- * The browser tab carries the open file's name and its unsaved-changes marker.
+ * The open file's name and its unsaved-changes marker live in TWO places: the
+ * browser tab (title) and a small readout in the app chrome beside the logo.
  *
- * This matters more than it looks: the app chrome no longer shows the file name
- * anywhere, so the tab is the ONLY place it appears. A regression here loses the
- * information entirely rather than merely duplicating it badly.
- *
- * The marker leads rather than trails because a browser truncates a tab title
- * from the right, and shows very few characters once several tabs are open — a
- * trailing `*` is the first thing to vanish, exactly when the user is scanning
- * tabs for the one with unsaved work.
+ * Both keep the same marker convention: the marker LEADS rather than trails,
+ * because a browser truncates a tab title from the right, and shows very few
+ * characters once several tabs are open — a trailing `*` is the first thing to
+ * vanish, exactly when the user is scanning for the one with unsaved work.
  */
 import { test, expect, waitForApp, APP_URL } from "./appFixture";
 import type { Page } from "@playwright/test";
@@ -41,20 +38,18 @@ test("the tab names the open file, and marks it when there are unsaved changes",
   expect(title.startsWith("●")).toBe(true);
 });
 
-test("the file name appears nowhere in the app chrome — the tab is its only home", async ({
-  page,
-}) => {
+test("the file name also appears in the app chrome beside the logo", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);
   await newProject(page);
 
-  // Positive control: the tab really does carry it, so the absence below is
-  // "moved" rather than "lost".
-  await expect(page).toHaveTitle(/Untitled/);
+  // A fresh project is clean: the chrome readout carries the name, no marker.
+  const readout = page.locator("#topbar .topbar-filename");
+  await expect(readout).toHaveText("Untitled");
 
-  // The old label sat between the logo and the File menu, pushing the menus
-  // right to say what the tab already said.
-  await expect(page.locator("#topbar .topbar-filename")).toHaveCount(0);
-  const topbarText = await page.locator("#topbar").innerText();
-  expect(topbarText).not.toContain("Untitled");
+  // Dirtying the document adds the marker to the chrome too.
+  await page.evaluate(() => {
+    (window as unknown as { __app: { doc: { emitChange(): void } } }).__app.doc.emitChange();
+  });
+  await expect(readout).toHaveText("● Untitled");
 });

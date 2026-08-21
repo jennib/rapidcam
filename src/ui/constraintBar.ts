@@ -4,9 +4,9 @@
  * a solve. Buttons enable/disable based on whether the selection fits the type.
  */
 
+import { CONSTRAINT_ICONS } from "./constraintIcons";
 import { dist } from "../core/vec2";
 import {
-  CONSTRAINT_GLYPH,
   CONSTRAINT_LABELS,
   type Constraint,
   type ConstraintType,
@@ -257,8 +257,9 @@ export class ConstraintBar {
       }
       const btn = document.createElement("button");
       btn.className = "cbtn";
-      btn.textContent = CONSTRAINT_GLYPH[b.type];
+      btn.innerHTML = CONSTRAINT_ICONS[b.type];
       btn.title = `${CONSTRAINT_LABELS[b.type]} — ${b.hint}`;
+      btn.setAttribute("aria-label", CONSTRAINT_LABELS[b.type]);
       btn.addEventListener("click", () => this.apply(b));
       this.host.appendChild(btn);
       this.typeButtons.push({ spec: b, el: btn });

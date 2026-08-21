@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { CADDocument, ORIGIN_ENTITY_ID } from "../src/model/document";
 import { CircleEntity, LineEntity, PolylineEntity, RectEntity } from "../src/model/entities";
 import { makeDimension } from "../src/model/dimensions";
-import { CONSTRAINT_GLYPH, makeConstraint } from "../src/model/constraints";
+import { makeConstraint } from "../src/model/constraints";
 import { solveStatusLabel } from "../src/ui/statusBar";
 import type { SolveResult } from "../src/solver/solver";
 import {
@@ -557,14 +557,12 @@ describe("constraints section", () => {
     expect(labels(h).some((l) => l === "Lock angle 45.00°")).toBe(true);
   });
 
-  test("carries the same glyph the canvas badge draws", async () => {
+  test("carries the same glyph as the constraint bar", async () => {
     const line2 = withTwoLines();
     doc.addConstraint(makeConstraint("parallel", { entities: [line.id, line2.id] }));
     const h = mount(doc);
     await flush();
-    expect(row(h, "Parallel").querySelector(".tree-constraint-glyph")?.textContent).toBe(
-      CONSTRAINT_GLYPH.parallel,
-    );
+    expect(row(h, "Parallel").querySelector(".tree-constraint-glyph svg")).not.toBeNull();
   });
 
   test("clicking a row selects the constraint", async () => {

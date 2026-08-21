@@ -113,7 +113,7 @@ export class StatusBar {
     this.host.appendChild(this.solveEl);
 
     this.patternEl = statusItem("");
-    this.patternEl.style.color = "var(--warn, #c8982a)";
+    this.patternEl.style.color = "var(--warn)";
     this.host.appendChild(this.patternEl);
 
     this.flashEl = statusItem("");
@@ -171,7 +171,7 @@ export class StatusBar {
    *  Auto-clears after a short delay; a new flash replaces the previous one. */
   flash(msg: string, tone: "warn" | "info" = "warn"): void {
     this.flashEl.textContent = msg;
-    this.flashEl.style.color = tone === "warn" ? "var(--warn, #c8982a)" : "";
+    this.flashEl.style.color = tone === "warn" ? "var(--warn)" : "";
     if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
     this.flashTimer = window.setTimeout(() => {
       this.flashEl.textContent = "";

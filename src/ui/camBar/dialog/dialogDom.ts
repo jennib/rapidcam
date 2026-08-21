@@ -20,13 +20,14 @@ export function dSection(title: string): HTMLElement {
   return sec;
 }
 
-export function dField(label: string, control: HTMLElement): HTMLElement {
+export function dField(label: string, control: HTMLElement, help?: string): HTMLElement {
   const g = document.createElement("div");
   g.className = "tp-field";
   const l = document.createElement("label");
   l.textContent = label;
   g.appendChild(l);
   g.appendChild(control);
+  if (help) g.title = help;
   return g;
 }
 
@@ -92,6 +93,8 @@ export interface ParamRowOptions {
   title?: string;
   onChange?: (v: number) => void;
   onFork?: () => void;
+  /** Plain-English definition, shown as a tooltip on the field row. */
+  help?: string;
 }
 
 export interface ParamRowHandle {
@@ -232,7 +235,7 @@ export function paramRow(
 
   attachVarAutocomplete(doc, inp, wrap);
 
-  const el = dField(label, wrap);
+  const el = dField(label, wrap, opts?.help);
   return { el, inp, badge, setValue, updateBadge, syncView };
 }
 

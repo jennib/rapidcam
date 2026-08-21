@@ -15,13 +15,13 @@
  */
 
 import {
-  CONSTRAINT_GLYPH,
   CONSTRAINT_LABELS,
   type Constraint,
   lineRefEntityId,
   SEGMENT_SEP,
 } from "../model/constraints";
 import { type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID } from "../model/document";
+import { CONSTRAINT_ICONS } from "./constraintIcons";
 import type { Dimension } from "../model/dimensions";
 import {
   ArcEntity,
@@ -682,7 +682,7 @@ export class DesignTreePanel {
 
     const icon = document.createElement("span");
     icon.className = "tree-icon tree-constraint-glyph";
-    icon.textContent = CONSTRAINT_GLYPH[con.type] ?? "⚯";
+    icon.innerHTML = CONSTRAINT_ICONS[con.type] ?? "";
 
     const text = document.createElement("span");
     text.className = "tree-label";

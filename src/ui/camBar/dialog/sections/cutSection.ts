@@ -12,6 +12,7 @@ import { formatLength, toMM } from "../../../../core/units";
 import type { CADDocument } from "../../../../model/document";
 import { RasterImageEntity } from "../../../../model/entities";
 import { dField, dSection, lenU, paramRow } from "../dialogDom";
+import { CAM_TERMS } from "../../../../cam/camTerms";
 import type { OpDialogEvents, OpState } from "../opDialogState";
 
 export interface CutSectionController {
@@ -88,6 +89,7 @@ export function buildCutSection(
     "len",
     {
       onChange: () => updateReliefEstimate(),
+      help: CAM_TERMS.stepdown,
     },
   );
   cutSec.appendChild(stepRow.el);
@@ -103,6 +105,7 @@ export function buildCutSection(
       state.peckDepth = v;
     },
     "len",
+    { help: CAM_TERMS.peckDepth },
   );
   cutSec.appendChild(peckRow.el);
 
@@ -116,6 +119,7 @@ export function buildCutSection(
       state.stepover = v;
     },
     undefined,
+    { help: CAM_TERMS.stepover },
   );
   cutSec.appendChild(stepoverRow.el);
 
@@ -580,7 +584,7 @@ export function buildCutSection(
   finishChk.type = "checkbox";
   finishChk.className = "settings-checkbox";
   finishChk.checked = state.finishPass;
-  const finishRow = dField("Finishing pass", finishChk);
+  const finishRow = dField("Finishing pass", finishChk, CAM_TERMS.finishPass);
   cutSec.appendChild(finishRow);
 
   const finishAllowRow = paramRow(
@@ -593,6 +597,7 @@ export function buildCutSection(
       state.finishAllowance = v;
     },
     "len",
+    { help: CAM_TERMS.finishAllowance },
   );
   cutSec.appendChild(finishAllowRow.el);
 
@@ -620,7 +625,7 @@ export function buildCutSection(
   cornerSelect.addEventListener("change", () => {
     state.cornerStyle = cornerSelect.value as "none" | "dogbone" | "tbone";
   });
-  const cornerRow = dField("Corner overcut", cornerSelect);
+  const cornerRow = dField("Corner overcut", cornerSelect, CAM_TERMS.cornerOvercut);
   cutSec.appendChild(cornerRow);
 
   // Cut direction — profile contours (mill). Climb vs conventional relative to
@@ -640,7 +645,7 @@ export function buildCutSection(
   dirSelect.addEventListener("change", () => {
     state.cutDirection = dirSelect.value as "climb" | "conventional";
   });
-  const dirRow = dField("Cut direction", dirSelect);
+  const dirRow = dField("Cut direction", dirSelect, CAM_TERMS.cutDirection);
   cutSec.appendChild(dirRow);
 
   // Plunge ramp angle — pocket and relief-rough ramp into the cut instead of
@@ -658,6 +663,7 @@ export function buildCutSection(
     undefined,
     {
       placeholder: "auto",
+      help: CAM_TERMS.rampAngle,
     },
   );
   cutSec.appendChild(rampRow.el);

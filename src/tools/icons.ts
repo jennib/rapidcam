@@ -69,4 +69,9 @@ export const ICONS = {
       '<line x1="14" y1="8" x2="14" y2="12"/>' +
       '<line x1="18" y1="8" x2="18" y2="12"/>',
   ),
+  // Chrome icons — undo/redo (top bar) and the design-tree toggle (palette) —
+  // share the 24x24 stroke style even though they sit outside the tool list.
+  undo: wrap(`<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>`),
+  redo: wrap(`<path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/>`),
+  tree: wrap(`<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v4"/><path d="M12 11H5v6"/><path d="M12 11h7v6"/>`),
 } as const;

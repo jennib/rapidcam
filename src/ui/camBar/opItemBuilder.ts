@@ -212,7 +212,7 @@ export function buildOpItem(op: CAMOperation, index: number, ctx: OpItemContext)
     face.className = "tp-badge";
     face.textContent = "▽ B";
     face.title = "Bottom face — cut after the flip, mirrored";
-    face.style.cssText = "background:var(--warn, #e0a85a);color:#1a1a1a;";
+    face.style.cssText = "background:var(--warn);color:#1a1a1a;";
     topRow.appendChild(face);
   }
 
@@ -258,7 +258,7 @@ export function buildOpItem(op: CAMOperation, index: number, ctx: OpItemContext)
   // rather than letting it surface only as a "; NOTE:" buried in the G-code.
   if (doc.isLaser && op.type !== "profile" && op.type !== "engrave" && op.type !== "score") {
     params.textContent = "⚠ no laser equivalent — use Cut, Score, or Engrave";
-    params.style.color = "var(--warn, #e0a85a)";
+    params.style.color = "var(--warn)";
     item.title = `"${op.name}" is a ${op.type} operation: it has no laser toolpath and is skipped during G-code export.`;
   }
   info.appendChild(params);
@@ -283,7 +283,7 @@ export function buildOpItem(op: CAMOperation, index: number, ctx: OpItemContext)
   if (gouge) {
     const warn = document.createElement("div");
     warn.className = "tp-op-params";
-    warn.style.color = "var(--warn, #e0a85a)";
+    warn.style.color = "var(--warn)";
     warn.textContent = "⚠ roughing goes below the finish surface";
     warn.title = gouge;
     info.appendChild(warn);
@@ -309,7 +309,7 @@ export function buildOpItem(op: CAMOperation, index: number, ctx: OpItemContext)
   if (op.type !== "face" && nRegions === 0 && nEntities === 0) {
     const warn = document.createElement("div");
     warn.className = "tp-op-params";
-    warn.style.color = "var(--warn, #e0a85a)";
+    warn.style.color = "var(--warn)";
     warn.textContent = "⚠ no geometry — cuts nothing";
     warn.title =
       "This toolpath isn't bound to any shape, so it produces no motion and is skipped on export. Select the shape(s) it should cut, then delete and re-add this toolpath (or use Edit).";

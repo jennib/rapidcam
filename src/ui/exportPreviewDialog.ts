@@ -173,7 +173,7 @@ export function openExportPreview(opts: ExportPreviewOptions): Promise<boolean> 
       box.appendChild(cap);
       for (const f of opts.findings) {
         const row = document.createElement("div");
-        row.style.cssText = `font-size:12px;line-height:1.4;color:${f.severity === "error" ? "#ff6b6b" : "var(--warn,#e0a85a)"};`;
+        row.style.cssText = `font-size:12px;line-height:1.4;color:${f.severity === "error" ? "#ff6b6b" : "var(--warn)"};`;
         row.textContent = `${f.severity === "error" ? "⛔" : "⚠"} ${f.message}`;
         box.appendChild(row);
       }

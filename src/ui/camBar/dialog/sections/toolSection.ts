@@ -17,6 +17,7 @@ import {
   paramRow,
   lenU,
 } from "../dialogDom";
+import { CAM_TERMS } from "../../../../cam/camTerms";
 
 export function buildToolSection(
   doc: CADDocument,
@@ -196,7 +197,7 @@ export function buildToolSection(
       events.emitUpdateVBitHint();
     },
     "len",
-    { onFork: fork, onChange: () => events.emitUpdateVBitHint() },
+    { onFork: fork, onChange: () => events.emitUpdateVBitHint(), help: CAM_TERMS.diameter },
   );
   const vAngleRow = paramRow(
     doc,
@@ -209,7 +210,7 @@ export function buildToolSection(
       events.emitUpdateVBitHint();
     },
     undefined,
-    { onFork: fork, onChange: () => events.emitUpdateVBitHint() },
+    { onFork: fork, onChange: () => events.emitUpdateVBitHint(), help: CAM_TERMS.vAngle },
   );
   const tipAngleRow = paramRow(
     doc,
@@ -257,7 +258,7 @@ export function buildToolSection(
       state.feedrate = v;
     },
     "feed",
-    { onFork: fork },
+    { onFork: fork, help: CAM_TERMS.feedRate },
   );
   const plungeRow = paramRow(
     doc,
@@ -269,7 +270,7 @@ export function buildToolSection(
       state.plungeRate = v;
     },
     "feed",
-    { onFork: fork },
+    { onFork: fork, help: CAM_TERMS.plungeRate },
   );
   const safeZRow = paramRow(
     doc,
