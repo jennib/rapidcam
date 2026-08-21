@@ -265,13 +265,18 @@ export class ConstraintBar {
       this.typeButtons.push({ spec: b, el: btn });
     }
 
-    const sep = document.createElement("div");
-    sep.className = "cb-sep";
-    this.host.appendChild(sep);
+    const existingMsg = document.getElementById("constraint-msg");
+    if (existingMsg) {
+      this.msgEl = existingMsg;
+    } else {
+      const sep = document.createElement("div");
+      sep.className = "cb-sep";
+      this.host.appendChild(sep);
 
-    this.msgEl = document.createElement("span");
-    this.msgEl.className = "cb-msg";
-    this.host.appendChild(this.msgEl);
+      this.msgEl = document.createElement("span");
+      this.msgEl.className = "cb-msg";
+      this.host.appendChild(this.msgEl);
+    }
   }
 
   private apply(spec: ButtonSpec): void {

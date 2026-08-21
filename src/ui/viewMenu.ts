@@ -85,6 +85,17 @@ export class ViewMenu {
       this.close();
       this.cb.onToggle3D();
     });
+    this.separator();
+    this.item("Toggle Fullscreen", "F11", () => {
+      this.close();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    });
   }
 
   private separator(): void {

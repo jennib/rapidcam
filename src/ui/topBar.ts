@@ -40,25 +40,6 @@ export class TopBar {
     brand.innerHTML = '<img src="/rapidcam-logo.svg" height="32" alt="RapidCAM">';
     this.host.appendChild(brand);
 
-    // Project name + dirty marker beside the logo. The tab title carries the same
-    // two facts, but pro-CAD keeps the document name in the chrome where the eye
-    // lands while working.
-    this.nameEl = el("div", "topbar-filename");
-    this.host.appendChild(this.nameEl);
-
-    // Undo/redo sit with the document, before the menus (quick-access position)
-    // rather than trailing after Help.
-    this.undoBtn = button("", () => this.cb.onUndo());
-    this.undoBtn.innerHTML = ICONS.undo;
-    this.undoBtn.title = "Undo (Ctrl+Z)";
-    this.undoBtn.setAttribute("aria-label", "Undo");
-    this.redoBtn = button("", () => this.cb.onRedo());
-    this.redoBtn.innerHTML = ICONS.redo;
-    this.redoBtn.title = "Redo (Ctrl+Y / Ctrl+Shift+Z)";
-    this.redoBtn.setAttribute("aria-label", "Redo");
-    this.host.appendChild(this.undoBtn);
-    this.host.appendChild(this.redoBtn);
-
     new FileMenu(this.host, this.cb.file);
     new EditMenu(this.host, this.cb.edit);
     new InsertMenu(this.host, this.cb.insert);
@@ -73,8 +54,53 @@ export class TopBar {
 
     new HelpMenu(this.host);
 
-    const spacer = el("div", "topbar-spacer");
-    this.host.appendChild(spacer);
+    const sep = el("div", "topbar-sep");
+    this.host.appendChild(sep);
+
+    // Undo/redo sit to the right of the Help menu.
+    this.undoBtn = button("", () => this.cb.onUndo());
+    this.undoBtn.innerHTML = ICONS.undo;
+    this.undoBtn.title = "Undo (Ctrl+Z)";
+    this.undoBtn.setAttribute("aria-label", "Undo");
+    this.redoBtn = button("", () => this.cb.onRedo());
+    this.redoBtn.innerHTML = ICONS.redo;
+    this.redoBtn.title = "Redo (Ctrl+Y / Ctrl+Shift+Z)";
+    this.redoBtn.setAttribute("aria-label", "Redo");
+    this.host.appendChild(this.undoBtn);
+    this.host.appendChild(this.redoBtn);
+
+    // Project name + dirty marker centered to the right of undo/redo.
+    const spacerLeft = el("div", "topbar-spacer");
+    this.host.appendChild(spacerLeft);
+
+    this.nameEl = el("div", "topbar-filename");
+    this.host.appendChild(this.nameEl);
+
+    const spacerRight = el("div", "topbar-spacer");
+    this.host.appendChild(spacerRight);
+
+    const fullscreenBtn = button("", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    });
+    fullscreenBtn.innerHTML = ICONS.fullscreen;
+    fullscreenBtn.title = "Toggle Fullscreen";
+    fullscreenBtn.setAttribute("aria-label", "Toggle Fullscreen");
+
+    const updateFullscreenState = () => {
+      const isFull = !!document.fullscreenElement;
+      fullscreenBtn.innerHTML = isFull ? ICONS.exitFullscreen : ICONS.fullscreen;
+      fullscreenBtn.title = isFull ? "Exit Fullscreen" : "Toggle Fullscreen";
+      fullscreenBtn.setAttribute("aria-label", isFull ? "Exit Fullscreen" : "Toggle Fullscreen");
+    };
+
+    document.addEventListener("fullscreenchange", updateFullscreenState);
+    this.host.appendChild(fullscreenBtn);
   }
 
   private refresh(): void {
