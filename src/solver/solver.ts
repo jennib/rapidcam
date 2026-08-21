@@ -24,7 +24,7 @@ import {
 import { dimensionResiduals } from "../model/dimensions";
 import { builtinContext, type CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID, stockRefEntity } from "../model/document";
 import type { EntityId } from "../model/entities";
-import { ArcEntity, CircleEntity, type Entity, RasterImageEntity } from "../model/entities";
+import { ArcEntity, CircleEntity, type Entity, RasterImageEntity, TextEntity } from "../model/entities";
 import { varMap } from "../model/variables";
 import { determinedVariables, matrixRank, solveLinearSystem } from "./linalg";
 
@@ -209,6 +209,38 @@ export function solve(doc: CADDocument, pins?: PinMap): SolveResult {
     const k = key.slice(i + 1);
     ent.setPoint(k, target);
     if (directPinKeys.has(key)) pinEntries.push({ ent, key: k, target });
+  }
+
+  // If a text entity is referenced by a driving dimension to a free DOF point (e.g. text right margin to rectangle edge),
+  // seed the free DOF point to maintain the intended side of the text box when the text content changes.
+  if (!pins || pins.size === 0) {
+    for (const d of doc.dimensions) {
+      if (!d.driving || d.points.length !== 2) continue;
+      const [ref0, ref1] = d.points;
+      const e0 = byId.get(ref0.entityId);
+      const e1 = byId.get(ref1.entityId);
+      if (e0 instanceof TextEntity && !(e1 instanceof TextEntity) && e1) {
+        const p0 = e0.getPoint(ref0.key);
+        const p1 = e1.getPoint(ref1.key);
+        if (d.type === "horizontal") {
+          if ((ref0.key === "mid_r" || ref0.key === "br" || ref0.key === "tr") && p1.x < p0.x + d.value / 2) {
+            e1.setPoint(ref1.key, { x: p0.x + d.value, y: p1.y });
+          } else if ((ref0.key === "mid_l" || ref0.key === "bl" || ref0.key === "tl") && p1.x > p0.x - d.value / 2) {
+            e1.setPoint(ref1.key, { x: p0.x - d.value, y: p1.y });
+          }
+        }
+      } else if (e1 instanceof TextEntity && !(e0 instanceof TextEntity) && e0) {
+        const p0 = e0.getPoint(ref0.key);
+        const p1 = e1.getPoint(ref1.key);
+        if (d.type === "horizontal") {
+          if ((ref1.key === "mid_r" || ref1.key === "br" || ref1.key === "tr") && p0.x < p1.x + d.value / 2) {
+            e0.setPoint(ref0.key, { x: p1.x + d.value, y: p0.y });
+          } else if ((ref1.key === "mid_l" || ref1.key === "bl" || ref1.key === "tl") && p0.x > p1.x - d.value / 2) {
+            e0.setPoint(ref0.key, { x: p1.x - d.value, y: p0.y });
+          }
+        }
+      }
+    }
   }
 
   // Build variables from all non-fixed DOFs (pinned points stay variable).

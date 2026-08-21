@@ -97,7 +97,7 @@
     },
     {
       "id": "con3",
-      "type": "midpoint",
+      "type": "horizontal",
       "points": [
         {
           "entityId": "ent3",
@@ -106,10 +106,6 @@
         {
           "entityId": "ent2",
           "key": "c"
-        },
-        {
-          "entityId": "ent1",
-          "key": "mid_r"
         }
       ],
       "entities": []
@@ -121,16 +117,16 @@
       "type": "horizontal",
       "points": [
         {
-          "entityId": "ent1",
-          "key": "bl"
+          "entityId": "ent2",
+          "key": "c"
         },
         {
-          "entityId": "ent1",
-          "key": "br"
+          "entityId": "ent3",
+          "key": "mid_l"
         }
       ],
       "entities": [],
-      "value": 60,
+      "value": 11.35,
       "driving": true,
       "offset": -8
     },
@@ -162,6 +158,24 @@
       "value": 6,
       "driving": true,
       "offset": 2.356
+    },
+    {
+      "id": "dim4",
+      "type": "horizontal",
+      "points": [
+        {
+          "entityId": "ent3",
+          "key": "mid_r"
+        },
+        {
+          "entityId": "ent1",
+          "key": "br"
+        }
+      ],
+      "entities": [],
+      "value": 11.35,
+      "driving": true,
+      "offset": -8
     }
   ],
   "variables": [],
