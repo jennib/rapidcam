@@ -351,9 +351,9 @@ button.cbtn.solve {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--text-dim);
+  color: var(--text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   font-family: var(--font);
 }
@@ -361,6 +361,7 @@ button.cbtn.solve {
 .rtab.active {
   color: var(--text);
   border-bottom-color: var(--accent);
+  font-weight: 600;
 }
 
 .rtab:hover:not(.active) {

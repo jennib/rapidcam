@@ -9,16 +9,27 @@ import type { CADDocument } from "../model/document";
 import type { CenterAxis } from "../tools/centerCommand";
 import { canCenter } from "../tools/centerCommand";
 
+/** Stroke icons for the three centring actions, matching ui/constraintIcons.ts. */
+const wrap = (inner: string): string =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
+const ICONS = {
+  centerH: wrap(`<path d="M12 4v16" stroke-dasharray="3 3"/><rect x="3" y="7" width="6" height="10" rx="1"/><rect x="15" y="7" width="6" height="10" rx="1"/>`),
+  centerV: wrap(`<path d="M4 12h16" stroke-dasharray="3 3"/><rect x="7" y="3" width="10" height="6" rx="1"/><rect x="7" y="15" width="10" height="6" rx="1"/>`),
+  centerBoth: wrap(`<path d="M12 4v16M4 12h16" stroke-dasharray="3 3"/><rect x="8" y="8" width="8" height="8" rx="1"/>`),
+} as const;
+
 interface AlignButton {
-  label: string;
+  ariaLabel: string;
   title: string;
   axis: CenterAxis;
+  icon: string;
 }
 
 const BUTTONS: AlignButton[] = [
-  { label: "Center H", title: "Center horizontally in the selected shape", axis: "h" },
-  { label: "Center V", title: "Center vertically in the selected shape", axis: "v" },
-  { label: "Center", title: "Center in the selected shape (both axes)", axis: "both" },
+  { ariaLabel: "Center horizontally", title: "Center horizontally in the selected shape", axis: "h", icon: ICONS.centerH },
+  { ariaLabel: "Center vertically", title: "Center vertically in the selected shape", axis: "v", icon: ICONS.centerV },
+  { ariaLabel: "Center both", title: "Center in the selected shape (both axes)", axis: "both", icon: ICONS.centerBoth },
 ];
 
 export class AlignBar {
@@ -43,13 +54,13 @@ export class AlignBar {
     for (const b of BUTTONS) {
       const btn = document.createElement("button");
       btn.className = "cbtn";
-      btn.textContent = b.label;
+      btn.innerHTML = b.icon;
       btn.title = b.title;
+      btn.setAttribute("aria-label", b.ariaLabel);
       btn.addEventListener("click", () => this.onCenter(b.axis));
       this.host.appendChild(btn);
       this.buttons.push(btn);
     }
-
   }
 
   private refresh(): void {
