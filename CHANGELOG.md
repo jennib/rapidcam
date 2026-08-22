@@ -142,6 +142,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The solver readout is a control, not a caption.** The canvas has always
+  drawn loose geometry blue and the status bar has always reported how many
+  degrees of freedom are left, but nothing joined the two — a newcomer saw blue
+  geometry and a number with no way to learn they were the same fact, and the
+  number could not be acted on. Its tooltip now names the colour, and clicking
+  it selects exactly the geometry the canvas is painting, ready for the
+  constraint bar. When the loose geometry is all on a hidden or locked layer it
+  says so rather than doing nothing.
+
+- **In-app help described solver colours the app never paints.** It promised
+  "Fully Constrained (Green)" — there is no green geometry; a fully constrained
+  entity returns to its *layer* colour, and that return to normal is the signal.
+  Green is the Design Tree's icon. It also offered a "flagged red badge" to
+  click to delete a conflicting constraint; no such badge exists, and conflicts
+  are resolved from the Design Tree's Constraints section.
+
 - **Solver pre-seeding for text-anchored driving dimensions.** When text expands
   or shrinks, driving dimensions connected between text ink-box points
   (`mid_r`, `mid_l`, etc.) and surrounding geometry pre-seed the connected free

@@ -22,6 +22,13 @@ export interface SolveStatusLabel {
   /** Plain-language explanation, shown on hover — the DOF number alone tells a
    *  newcomer nothing about what it means or what to do. */
   tooltip: string;
+  /**
+   * True when clicking the readout does something: only the under-constrained
+   * state has geometry to go and look at. Lives on the label rather than being
+   * re-derived at the click site, so what the cursor promises and what the
+   * click does come from the same branch.
+   */
+  actionable?: boolean;
 }
 
 /**
@@ -73,9 +80,15 @@ export function solveStatusLabel(
     html: `Under-constrained · <b>${n}</b> free`,
     short: `${n} free`,
     color: "var(--accent)",
+    // Names the COLOUR, because the canvas is already saying all of this and
+    // nothing connects the two: a newcomer sees blue geometry and a number, and
+    // has no way to learn they are the same fact. And says what a click does,
+    // since an actionable readout that looks like plain text gets no clicks.
     tooltip:
       `${n} degree${n === 1 ? "" : "s"} of freedom (DOF) are still unconstrained — this sketch can move, ` +
-      "and editing one value may shift other geometry. Add dimensions or constraints to pin it down (0 = fully constrained).",
+      "and editing one value may shift other geometry. The loose geometry is the blue geometry. " +
+      "Click here to select it, then add dimensions or constraints to pin it down (0 = fully constrained).",
+    actionable: true,
   };
 }
 
@@ -89,12 +102,20 @@ export class StatusBar {
   private hintEl!: HTMLElement;
   private gridToggle!: HTMLElement;
   private osnapToggle!: HTMLElement;
+  /** Whether the solve readout currently has geometry to select (see setSolveStatus). */
+  private actionable = false;
 
   constructor(
     private host: HTMLElement,
     private doc: CADDocument,
     private snap: SnapEngine,
     private onToggle: () => void,
+    /**
+     * Select the geometry the solver still considers loose. Optional so the
+     * status bar stays constructible by tests and by any host that has nothing
+     * to select into.
+     */
+    private onSelectLoose?: () => void,
   ) {
     this.build();
     this.doc.onChange(() => this.setCursor(this.lastWorld));
@@ -110,6 +131,9 @@ export class StatusBar {
     this.host.appendChild(this.zoomEl);
 
     this.solveEl = statusItem("");
+    this.solveEl.addEventListener("click", () => {
+      if (this.actionable) this.onSelectLoose?.();
+    });
     this.host.appendChild(this.solveEl);
 
     this.patternEl = statusItem("");
@@ -199,11 +223,18 @@ export class StatusBar {
       this.solveEl.textContent = "";
       this.solveEl.style.color = "";
       this.solveEl.title = "";
+      this.solveEl.style.cursor = "";
+      this.actionable = false;
       return;
     }
     this.solveEl.innerHTML = label.html;
     this.solveEl.style.color = label.color;
     this.solveEl.title = label.tooltip;
+    // Only the under-constrained readout has anything to go and look at, so
+    // only it gets a pointer. A cursor that promises a click on "Fully
+    // constrained ✓" and then does nothing is worse than no cursor.
+    this.actionable = label.actionable === true;
+    this.solveEl.style.cursor = this.actionable ? "pointer" : "";
   }
 
   private toggle(label: string, onClick: () => void, tooltip?: string): HTMLElement {
