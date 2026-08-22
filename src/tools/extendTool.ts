@@ -19,6 +19,18 @@ type Hit =
   | { kind: "line"; ent: LineEntity; end: "a" | "b"; target: Vec2 }
   | { kind: "arc"; ent: ArcEntity; end: "start" | "end"; angle: number };
 
+/**
+ * What a click here would do.
+ *
+ * `null` means nothing extendable is under the cursor — an ordinary miss, and
+ * nothing to say about it. `"no-boundary"` is the case this tool used to
+ * swallow into the same `null`: an extendable entity IS under the cursor, but
+ * nothing lies in the direction it would grow, so there is nothing to extend
+ * TO. Clicking it did nothing and said nothing; AutoCAD answers the same
+ * gesture with "No edge in that direction".
+ */
+type HitResult = Hit | "no-boundary" | null;
+
 /** Entities that can serve as extension boundaries (everything but self/construction/markers). */
 function targets(doc: CADDocument, selfId: string): Entity[] {
   return doc.entities.filter(
@@ -37,7 +49,7 @@ export class ExtendTool implements Tool {
 
   private hover: PreviewShape | null = null;
 
-  private hit(worldPos: Vec2, doc: CADDocument, scale: number): Hit | null {
+  private hit(worldPos: Vec2, doc: CADDocument, scale: number): HitResult {
     const thresh = HIT_PX / scale;
     let best: { ent: Entity; d: number } | null = null;
     for (const ent of doc.entities) {
@@ -53,11 +65,11 @@ export class ExtendTool implements Tool {
 
     if (best.ent instanceof LineEntity) {
       const ext = lineExtension(best.ent, worldPos, targets(doc, best.ent.id));
-      return ext ? { kind: "line", ent: best.ent, end: ext.end, target: ext.target } : null;
+      return ext ? { kind: "line", ent: best.ent, end: ext.end, target: ext.target } : "no-boundary";
     }
     const arc = best.ent as ArcEntity;
     const ext = arcExtension(arc, worldPos, targets(doc, arc.id));
-    return ext ? { kind: "arc", ent: arc, end: ext.end, angle: ext.angle } : null;
+    return ext ? { kind: "arc", ent: arc, end: ext.end, angle: ext.angle } : "no-boundary";
   }
 
   private previewFor(h: Hit): PreviewShape {
@@ -73,13 +85,18 @@ export class ExtendTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     const h = this.hit(e.worldRaw, ctx.doc, ctx.view.scale);
-    this.hover = h ? this.previewFor(h) : null;
+    // No preview for "no-boundary" — there is no resulting entity to draw.
+    this.hover = h && h !== "no-boundary" ? this.previewFor(h) : null;
     ctx.requestRender();
   }
 
   onPointerDown(e: ToolPointerEvent, ctx: ToolContext): void {
     if (e.button !== 0) return;
     const h = this.hit(e.worldRaw, ctx.doc, ctx.view.scale);
+    if (h === "no-boundary") {
+      ctx.notify("Nothing in that direction to extend to.");
+      return;
+    }
     if (!h) return;
     ctx.pushHistory();
     if (h.kind === "line") {

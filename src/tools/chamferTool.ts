@@ -104,12 +104,24 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boole
 
 /**
  * Whether this setback can be committed here — the same test the preview draws
- * from, so what is shown and what is accepted cannot disagree.
+ * from, so what is shown and what is accepted cannot disagree — and, when it
+ * cannot, WHY. See the fillet tool's `check`: the message that existed sat
+ * behind this test and could never fire. A non-positive distance gets no
+ * message; that is an empty gesture, not a refusal.
  */
-function workable(corner: Corner, distance: number): boolean {
-  if (distance <= 0 || !cornerValueFits(corner, distance)) return false;
+function check(corner: Corner, distance: number): { ok: boolean; why?: string } {
+  if (distance <= 0) return { ok: false };
+  if (!cornerValueFits(corner, distance))
+    // Accurate whether or not the neighbour is rounded: the test is
+    // `this + neighbour <= edge`, and a square neighbour contributes zero.
+    return {
+      ok: false,
+      why: "That distance won't fit — each edge has to hold this corner and the one next to it.",
+    };
   const dirs = getCornerDirs(corner);
-  return !!dirs && !!computeGeo(dirs, distance);
+  if (!dirs || !computeGeo(dirs, distance))
+    return { ok: false, why: "That distance is bigger than the lines it has to fit between." };
+  return { ok: true };
 }
 
 /** Bevel the corner, saying so when it could not take the setback. */
@@ -179,7 +191,11 @@ export class ChamferTool implements Tool {
           onCommit: (raws) => {
             const d = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
             if (d === null || d <= 0) return false;
-            if (!workable(corner, d)) return false;
+            const v = check(corner, d);
+            if (!v.ok) {
+              if (v.why) ctx.notify(v.why);
+              return false;
+            }
             ctx.pushHistory();
             commit(corner, d, ctx);
             ctx.solve();
@@ -190,11 +206,14 @@ export class ChamferTool implements Tool {
       );
     } else {
       // drag commit
-      if (workable(corner, this.currentValue)) {
+      const v = check(corner, this.currentValue);
+      if (v.ok) {
         ctx.pushHistory();
         commit(corner, this.currentValue, ctx);
         ctx.solve();
         ctx.doc.emitChange();
+      } else if (v.why) {
+        ctx.notify(v.why);
       }
     }
   }

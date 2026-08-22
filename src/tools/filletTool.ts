@@ -175,12 +175,31 @@ function applyFilletAll(corner: Corner, radius: number, doc: CADDocument): numbe
 
 /**
  * Whether this radius can be committed here at all — the same test the preview
- * draws from, so what is shown and what is accepted cannot disagree.
+ * draws from, so what is shown and what is accepted cannot disagree — and, when
+ * it cannot, WHY.
+ *
+ * The reason matters because the only symptom otherwise is nothing happening.
+ * A message for this already existed inside `commit`, but it sat behind this
+ * check: every call site returned early on a false, so the ordinary case of a
+ * radius simply being too big could never reach it. AutoCAD answers the same
+ * gesture with "Radius is too large".
+ *
+ * A non-positive radius gets no message. That is an empty gesture — a drag that
+ * went nowhere — not a request the tool is turning down.
  */
-function workable(corner: Corner, radius: number): boolean {
-  if (radius <= 0 || !cornerValueFits(corner, radius)) return false;
+function check(corner: Corner, radius: number): { ok: boolean; why?: string } {
+  if (radius <= 0) return { ok: false };
+  if (!cornerValueFits(corner, radius))
+    // Accurate whether or not the neighbour is rounded: the test is
+    // `this + neighbour <= edge`, and a square neighbour contributes zero.
+    return {
+      ok: false,
+      why: "That radius won't fit — each edge has to hold this corner and the one next to it.",
+    };
   const dirs = getCornerDirs(corner);
-  return !!dirs && !!computeGeo(dirs, radius);
+  if (!dirs || !computeGeo(dirs, radius))
+    return { ok: false, why: "That radius is bigger than the lines it has to fit between." };
+  return { ok: true };
 }
 
 /** One corner or the whole shape, saying so when a corner could not take it. */
@@ -265,7 +284,11 @@ export class FilletTool implements Tool {
         onCommit: (raws) => {
           const r = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
           if (r === null || r <= 0) return false;
-          if (!workable(corner, r)) return false;
+          const v = check(corner, r);
+          if (!v.ok) {
+            if (v.why) ctx.notify(v.why);
+            return false;
+          }
           ctx.pushHistory();
           commit(corner, r, all, ctx);
           ctx.solve();
@@ -275,11 +298,14 @@ export class FilletTool implements Tool {
       });
     } else {
       // drag commit
-      if (workable(corner, this.currentValue)) {
+      const v = check(corner, this.currentValue);
+      if (v.ok) {
         ctx.pushHistory();
         commit(corner, this.currentValue, all, ctx);
         ctx.solve();
         ctx.doc.emitChange();
+      } else if (v.why) {
+        ctx.notify(v.why);
       }
     }
   }

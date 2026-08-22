@@ -142,6 +142,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Fillet, chamfer and extend now say why they refused.** A fillet or chamfer
+  value larger than the edges it has to fit between, and an extend with nothing
+  in front of it, all did nothing and said nothing — indistinguishable from a
+  missed click or a dead tool. AutoCAD answers those two gestures with "Radius
+  is too large" and "No edge in that direction"; these now say which of the two
+  things went wrong, so you know whether to shrink the value or draw something
+  to extend to.
+
+  Fillet and chamfer already *had* the message. It sat inside the commit,
+  behind the check every call site returned early on, so the ordinary "too big"
+  case could never reach it. An empty gesture — a drag that went nowhere — is
+  still silent; that is not a refusal.
+
 - **One unreadable dimension no longer stops the whole document solving.** A
   `.rcam` can name a dimension `type` this build has never heard of — a
   hand-authored or AI-authored file with a typo (File → Open does not validate
