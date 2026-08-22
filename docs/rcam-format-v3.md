@@ -60,6 +60,14 @@ vocabularies is unchanged.
   most top-level sections default sensibly when absent (see *Minimum viable file*).
   New, optional capabilities may be added without bumping the version. Anything
   that would change or remove existing semantics gets a new `version`.
+- That tolerance covers unknown **fields**. It does not make a file from a later
+  version render fully in an earlier build: a new value in a closed enum (a
+  dimension `type`, an operation `type`) is not a field to ignore, so that
+  feature simply does not draw. It is dropped rather than guessed at — an
+  unreadable dimension contributes nothing to the solve and RapidCAM says on
+  load that the file has one — but it will be **lost on the next save**. Old
+  files opening in a new build is the direction the promise is about, and that
+  one is exact.
 - A file written by RapidCAM round-trips losslessly. A hand-authored file only
   needs the required fields below.
 

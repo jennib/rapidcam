@@ -142,6 +142,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **One unreadable dimension no longer stops the whole document solving.** A
+  `.rcam` can name a dimension `type` this build has never heard of — a
+  hand-authored or AI-authored file with a typo (File → Open does not validate
+  against the schema; that check is on the AI-assistant path), or a file written
+  by a later RapidCAM. Measuring it returned `undefined`, which slipped past a
+  `=== null` guard, put a NaN in the solver's residual vector and stopped the
+  document converging — reported in the status bar as "Over-constrained /
+  conflicting", blaming geometry that was fine. It is now ignored, and RapidCAM
+  says on load which type it could not read. The same guard covers a *known*
+  type whose measurement comes out NaN, which is what a hand-authored
+  `"radius": null` produces.
+
+  The renderer had the matching hole: an unknown type still had two readable
+  points, so it drew as an aligned dimension labelled with a value nothing had
+  measured. Drawing a plausible wrong number is worse than drawing nothing.
+
 - **The solver readout is a control, not a caption.** The canvas has always
   drawn loose geometry blue and the status bar has always reported how many
   degrees of freedom are left, but nothing joined the two — a newcomer saw blue

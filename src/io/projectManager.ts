@@ -7,6 +7,7 @@ import {
 } from "../model/document";
 import { getBed } from "../core/prefs";
 import { History } from "../model/history";
+import { unreadableDimensionTypes } from "../model/dimensions";
 import { openFile, saveFile, applyFile, serializeDoc, pushRecent } from "./fileio";
 import { exportSvg } from "./svgExport";
 import { importSvg } from "./svgImport";
@@ -389,6 +390,7 @@ export class ProjectManager {
     this.updateTitle();
     this.warnMissingFonts();
     this.warnMissingImages();
+    this.warnUnreadableDimensions();
     return true;
   }
 
@@ -419,6 +421,7 @@ export class ProjectManager {
     this.markClean();
     this.warnMissingFonts();
     this.warnMissingImages();
+    this.warnUnreadableDimensions();
   }
 
   /**
@@ -437,6 +440,34 @@ export class ProjectManager {
       `${missing.length} text item${missing.length > 1 ? "s" : ""} reference a font that ` +
         `isn't available:\n\n${list}\n\nThis text will show as a placeholder and will be ` +
         `omitted from G-code until the font is re-added.`,
+    );
+  }
+
+  /**
+   * A file can name a dimension type this build has never heard of — a
+   * hand-authored or AI-authored `.rcam` with a typo (File → Open does not
+   * validate against the schema; that check lives on the AI-assistant path), or
+   * a file written by a later RapidCAM.
+   *
+   * Such a dimension cannot be drawn or solved, and until now it took the whole
+   * document down with it: the measurement came back `undefined`, that became a
+   * NaN residual, the solve stopped converging, and the status bar reported
+   * "Over-constrained / conflicting" — blaming geometry that was fine, with
+   * nothing pointing at the file. The solver now ignores it, which makes saying
+   * so here the only remaining way anyone finds out.
+   *
+   * A toast rather than `showError()`, on the same rule the image warning
+   * follows: this is one sentence about the document, not a list to work
+   * through with the report still on screen.
+   */
+  private warnUnreadableDimensions(): void {
+    const types = unreadableDimensionTypes(this.doc.dimensions);
+    if (types.length === 0) return;
+    toast(
+      `This file has ${types.length === 1 ? "a dimension" : "dimensions"} this version can't ` +
+        `read (${types.join(", ")}) — ${types.length === 1 ? "it is" : "they are"} not drawn ` +
+        "and will be lost on the next save. It may have been made by a newer RapidCAM.",
+      10000,
     );
   }
 
@@ -963,6 +994,7 @@ export class ProjectManager {
       this.markClean();
       this.warnMissingFonts();
       this.warnMissingImages();
+      this.warnUnreadableDimensions();
     } catch (e) {
       console.error("Failed to restore draft:", e);
       this.isDocumentLoading = false;
