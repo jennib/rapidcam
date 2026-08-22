@@ -440,6 +440,14 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       // External (separate) circles: edge-to-edge distance along the centres.
       return g.nested ? g.rOuter - g.rInner : g.d - g.rOuter - g.rInner;
     }
+    // A type this build does not know — a hand-authored or AI-authored file
+    // with a typo, or a file written by a later version. `dim.type` is typed,
+    // so this is unreachable from our own code and TypeScript narrows it to
+    // `never`; runtime data is under no such obligation. Without it the switch
+    // fell off the end and returned `undefined`, which is not what the
+    // signature promises and which the null guards downstream do not catch.
+    default:
+      return null;
   }
 }
 
@@ -452,7 +460,13 @@ function wrapDeg(a: number): number {
 export function dimensionResiduals(dim: Dimension, geo: Geo): number[] {
   if (!dim.driving) return [];
   const m = dimensionMeasure(dim, geo);
-  if (m === null) return [];
+  // Anything but a real number means "this dimension cannot be measured", and
+  // the only safe thing is to leave it out of the system. It used to test
+  // `m === null` alone, so an `undefined` from an unrecognised type slipped
+  // past, `undefined - dim.value` put a NaN into the residual vector, and the
+  // whole document stopped converging — which the status bar then reported as
+  // "Over-constrained / conflicting", blaming geometry that was fine.
+  if (m === null || !Number.isFinite(m)) return [];
   // An angle read from atan2 wraps at ±180°, so a raw difference is enormous
   // whenever the line sits near that seam (179° vs -179° reads as 358° of error)
   // and would drive the solver the long way round. Compare on the circle.
@@ -1051,6 +1065,13 @@ export function dimensionLayout(
   // is not drawn. Bail rather than fall into the linear path below, which would
   // render an angle as if it were a length.
   if (dim.type === "arc-sweep") return null;
+  // Everything below treats `dim.type` as one of the four linear kinds, and the
+  // cast on the next line is the only thing saying so. A type from a later
+  // version reaching here does have two readable points — its operands are
+  // still point refs — so the linear path drew it happily, as an aligned
+  // dimension labelled with a value nothing had measured. Drawing a plausible
+  // wrong number is worse than drawing nothing.
+  if (!isLinearDimType(dim.type)) return null;
   const type = dim.type as LinearDimType;
 
   if (type === "line-distance") {
@@ -1123,6 +1144,60 @@ export function dimensionLayout(
     textRes.pos = customPos;
   }
   return { segments, arrows: linArrows, textPos: textRes.pos, label: linLabel };
+}
+
+/**
+ * Every dimension type this build can measure.
+ *
+ * Built from a `Record<DimensionType, true>` rather than a bare array, so
+ * adding a member to the union without adding it here is a COMPILE error — not
+ * a file that silently reports its own dimensions as unreadable. That is the
+ * whole point of the list existing separately: `dimensionMeasure` returning
+ * null cannot distinguish "a type I don't know" from "a type I know, whose
+ * geometry is missing".
+ */
+/** The four kinds the linear layout path below can actually draw. */
+const LINEAR_TYPES: ReadonlySet<string> = new Set(
+  Object.keys({
+    distance: true,
+    horizontal: true,
+    vertical: true,
+    "line-distance": true,
+  } satisfies Record<LinearDimType, true>),
+);
+function isLinearDimType(type: string): boolean {
+  return LINEAR_TYPES.has(type);
+}
+
+const KNOWN_TYPES: ReadonlySet<string> = new Set(
+  Object.keys({
+    distance: true,
+    horizontal: true,
+    vertical: true,
+    radius: true,
+    diameter: true,
+    angle: true,
+    arclength: true,
+    "line-distance": true,
+    "point-line-distance": true,
+    "circle-gap": true,
+    "angle-x": true,
+    "arc-sweep": true,
+  } satisfies Record<DimensionType, true>),
+);
+
+/**
+ * Dimensions in `dims` whose `type` this build cannot measure, by type name.
+ *
+ * A file can carry one two ways: a hand-authored or AI-authored `.rcam` with a
+ * typo (File → Open does not validate against the schema — that check lives on
+ * the AI-assistant path), or a file written by a later RapidCAM. Either way the
+ * dimension cannot be drawn or solved, and saying so beats letting it vanish.
+ */
+export function unreadableDimensionTypes(dims: readonly Dimension[]): string[] {
+  const bad = new Set<string>();
+  for (const d of dims) if (!KNOWN_TYPES.has(d.type)) bad.add(String(d.type));
+  return [...bad].sort();
 }
 
 /**
