@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Fullscreen mode toggle.** Added a fullscreen button (`⛶`) to the top header
+  bar to toggle the browser into fullscreen mode.
+
+- **Responsive 2-column tool palette on compact viewports.** On browser windows
+  under 850px height, the left drawing tool palette automatically reorganises
+  into an even 2-column CSS Grid. Tools are grouped into balanced pairs
+  (Design Tree toggle + Select, 2D shape tools, Text + Dimension, Measure +
+  Offset), ensuring large, comfortable hit targets without vertical scrolling or
+  squeezing glyph sizes.
+
 - **A Kumiko pattern picker, and Mitsu-kude.** The generator is now *Kumiko
   Panel* with a **Pattern** dropdown: **Asanoha**, and **Mitsu-kude** (三つ組手) —
   the bare triangular jigumi, a finished pattern in its own right rather than a
@@ -34,6 +44,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Keychain Tag example dynamically grows with text.** The bundled example is
+  now fully parametric with dual driving horizontal margins ($11.35\text{ mm}$
+  between hole and text, and $11.35\text{ mm}$ between text and outer edge) and
+  vertical center alignment. Modifying the text string or changing its font size
+  automatically expands the outer tag rectangle while keeping the name
+  centered.
+
 - **The Text tool places first, then edits.** It no longer asks you to fill in a
   dialog and then click the canvas to "stamp" the result. Now the first canvas
   click sets where the text goes, the Place Text dialog docks to the side, and
@@ -43,6 +60,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Cancel or Escape drops it.
 
 ### Fixed
+
+- **Solver pre-seeding for text-anchored driving dimensions.** When text expands
+  or shrinks, driving dimensions connected between text ink-box points
+  (`mid_r`, `mid_l`, etc.) and surrounding geometry pre-seed the connected free
+  DOFs to maintain their intended side of the bounding box, preventing the
+  solver from falling into inverted local minima.
+
+- **Top bar chrome layout and spacing.** Streamlined top bar element spacing with
+  a single right flex spacer, placing the document title directly adjacent to the
+  Undo/Redo group and adding a dedicated separator before the Undo button.
 
 - **Shrinking a Kumiko panel no longer blanks the pattern.** A pitch coarser
   than the room left between the frames dropped every opening on the border and
