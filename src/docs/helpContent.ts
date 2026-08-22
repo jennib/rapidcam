@@ -174,7 +174,8 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Join Paths (Ctrl+J): Select multiple touching line and arc segments and merge them into a single continuous closed polyline loop.",
           "Explode Paths (Ctrl+Shift+E): Break complex polylines, rectangles, and text blocks into individual fundamental line and arc primitives.",
           "Measure Tool (I): Measure distance, delta X/Y, angle, total perimeter, and enclosed area between any two points or contours.",
-          "Dimension Tool (D): Place driving or reference dimensions directly on canvas entities.",
+          "Dimension Tool (D): Click anywhere on two things, then click to place. What you picked decides what it measures — two points give a distance (or ΔX/ΔY, from the direction you drag out), a point and an edge give the perpendicular distance to that edge, two parallel edges give the gap between them, and two crossing edges give the angle. The value previews live as you position it.",
+          "Dimension Tool — one thing on its own: pick it, then click open space. An edge gives its own length; a full circle gives its diameter, an arc its radius. Tab cycles the alternatives — radius vs diameter, an arc's length, or a line's angle from horizontal (the X axis has nothing to click, so Tab is the only way to reach it).",
         ],
         callout: {
           type: "note",

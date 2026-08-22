@@ -47,6 +47,7 @@ import {
   PolylineEntity,
   RectEntity,
 } from "../src/model/entities";
+import { HELP_TOPICS } from "../src/docs/helpContent";
 import { solve } from "../src/solver/solver";
 import { DimensionTool } from "../src/tools/dimensionTool";
 import type { ToolContext, ToolPointerEvent } from "../src/tools/tool";
@@ -703,5 +704,76 @@ describe("witness lines and arrowheads follow the drafting standard", () => {
     const layout = dimensionLayout(dim, geoOf(doc), "mm", 2)!;
     expect(layout.arrows[0].dir.y).toBeCloseTo(1); // pointing across the gap, from outside
     expect(layout.arrows[1].dir.y).toBeCloseTo(-1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The in-app help has to describe the tool that exists
+
+describe("the Dimension help matches the tool", () => {
+  /** Every tip and body across the help, as one searchable blob. */
+  const helpText = HELP_TOPICS.flatMap((t) =>
+    t.sections.flatMap((sec) => [sec.body, ...(sec.tips ?? [])]),
+  )
+    .join(" ")
+    .toLowerCase();
+
+  /** Click `at`, then `then`, then place; return the dimension. */
+  function dim(doc: CADDocument, at: Vec2, then: Vec2, place: Vec2) {
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+    click(tool, ctx, at);
+    click(tool, ctx, then);
+    move(tool, ctx, place);
+    click(tool, ctx, place);
+    return doc.dimensions[doc.dimensions.length - 1];
+  }
+
+  it("promises a circle's DIAMETER, and the tool delivers one", () => {
+    // The claim and the behaviour, pinned together. Help that describes an
+    // older default is worse than help that says nothing — a reader takes it
+    // as the answer and stops looking.
+    expect(helpText).toMatch(/full circle gives its diameter/);
+
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const c = doc.add(new CircleEntity({ x: 60, y: 60 }, 20)) as CircleEntity;
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+    click(tool, ctx, { x: 60 + c.radius, y: 60 }); // the rim
+    move(tool, ctx, { x: 140, y: 60 });
+    click(tool, ctx, { x: 140, y: 60 }); // open space places it
+    expect(doc.dimensions[0].type).toBe("diameter");
+  });
+
+  it("promises a perpendicular for a point and an edge, and the tool delivers one", () => {
+    expect(helpText).toMatch(/perpendicular distance to that edge/);
+
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const c = doc.add(new CircleEntity({ x: 30, y: 20 }, 5)) as CircleEntity;
+    doc.add(new LineEntity({ x: 0, y: 60 }, { x: 100, y: 60 }));
+    expect(dim(doc, c.center, { x: 25, y: 60 }, { x: 28, y: 110 }).type).toBe(
+      "point-line-distance",
+    );
+  });
+
+  it("promises Tab reaches a line's angle, and the tool answers Tab", () => {
+    expect(helpText).toMatch(/tab cycles the alternatives/);
+
+    const doc = new CADDocument({ width: 200, height: 200 });
+    const l = doc.add(new LineEntity({ x: 20, y: 20 }, { x: 120, y: 20 }));
+    const ctx = makeCtx(doc);
+    const tool = new DimensionTool();
+    click(tool, ctx, { x: 50, y: 20 }); // the line's body
+    click(tool, ctx, { x: 60, y: 90 }); // open space → its own length
+    // No DOM in this suite; the tool reads only `key` and `preventDefault`.
+    tool.onKeyDown({ key: "Tab", preventDefault() {} } as KeyboardEvent, ctx);
+    move(tool, ctx, { x: 60, y: 90 });
+    click(tool, ctx, { x: 60, y: 90 }); // place
+    expect(doc.dimensions[0].type).toBe("angle-x");
+    expect(doc.dimensions[0].entities).toEqual([l.id]);
+  });
+
+  it("no longer advertises the Shift-click re-target, which is gone", () => {
+    expect(helpText).not.toMatch(/shift[- ]click.{0,40}edge/);
   });
 });

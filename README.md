@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/c4c5327a-c474-4d0b-95a6-56a732f8f3a5
 | Polyline | `P` | Click vertices; `Enter` to close; open or closed |
 | Bezier | `B` | Click four control points (cubic) |
 | Text | — | Click to place; double-click to edit in place; outlines can be profiled, pocketed, engraved, or **v-carved**. Fonts come from the bundled pair, a local `.ttf`/`.otf`/`.woff`, or the web — search Google's families in the picker — and are embedded in the project file |
-| Dimension | `D` | Click an entity to annotate; drag the witness line |
+| Dimension | `D` | Click anywhere on two things, then click to place. What you pick decides what it measures: two points give a distance (or Δx/Δy, from which way you drag), a point and an edge the **perpendicular** distance, two parallel edges the gap, two crossing edges the **angle**. Pick one thing and click open space for its own size — a length, or a circle's **diameter** (`Tab` for radius, or a line's angle from horizontal). Drag a placed dimension to reposition it |
 | Offset | `O` | Click an entity to offset inward or outward |
 | Fillet | `F` | Click a sharp corner to round it with a user-typed radius |
 | Chamfer | — | Click a sharp corner to bevel it with a user-typed distance |

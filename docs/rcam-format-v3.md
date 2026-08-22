@@ -289,6 +289,32 @@ The **point keys** below are the addresses constraints and dimensions use to ref
 to a specific point on an entity (via a `{ "entityId", "key" }` pair). Getting
 these right is the single most important thing when authoring constraints.
 
+Two further vocabularies sit alongside them, and both are **dimension-only** —
+the constraint solver never sees either, because neither names a degree of
+freedom the solver may move:
+
+**Anchor keys** address a point that is *derived* from an entity rather than
+being one of its named points. A dimension uses them to witness a shape where
+the user clicked it, rather than only at the handful of points that have names.
+
+| Key form | On | Resolves to |
+|----------|----|-------------|
+| `<edgeKey>@<t>` | any straight edge — a line's `mid`, a rectangle's / image's / the stock's `mid_b` `mid_r` `mid_t` `mid_l`, a polyline's `mid_<vertexId>` | the point a fraction `t` (0…1) along that edge, from its first named corner toward its second |
+| `curve@<t>` | `bezier` | the point at curve parameter `t` (0…1) |
+| `edge@<theta>` | `circle`, `arc` | the point on the rim at angle `theta` **in radians** |
+
+`t = 0.5` IS the midpoint, so a bare `mid_b` and `mid_b@0.5` name the same
+point; writers emit the plain spelling for it and files written before anchor
+keys existed keep resolving unchanged.
+
+**Segment refs** address one *edge* rather than one point, for the dimension
+types whose operand is a whole line (`angle`, `line-distance`,
+`point-line-distance`). They go in `entities`, not `points`, and are spelled
+`<entityId>#<edgeKey>` — for example `rect1#mid_l` for a rectangle's left side,
+`poly1#mid_v3` for the polyline segment starting at vertex `v3`, or
+`__stock__#mid_b` for the blank's bottom edge. A bare id with no `#` means the
+whole entity, which is what a plain `line` always is.
+
 | `type` | Geometry fields | Point keys (for constraints/dimensions) | Scalar DOFs |
 |--------|-----------------|------------------------------------------|-------------|
 | `line` | `a`, `b` (Vec2) | `a`, `b` endpoints; `mid` (derived, pickable) | — |
@@ -522,14 +548,15 @@ to equal `value` (acting as a constraint). `value` is mm, or **radians** for
 | `radius` | `entities[1]` circle/arc | radius |
 | `diameter` | `entities[1]` circle/arc | diameter |
 | `arclength` | `entities[1]` arc | arc length |
-| `angle` | `entities[2]` lines | angle between (radians) |
-| `line-distance` | `entities[2]` lines | perpendicular gap between two parallel lines |
-| `point-line-distance` | `points[1]` + `entities[1]` line | perpendicular distance from that point to that line |
+| `angle` | `entities[2]` lines (or segment refs) | angle between (radians) |
+| `line-distance` | `entities[2]` lines (or segment refs) | perpendicular gap between two parallel lines |
+| `point-line-distance` | `points[1]` + `entities[1]` line (or a segment ref) | perpendicular distance from that point to that line. Drawn as one straight run from the point to its foot, so `offset` is unused |
 | `circle-gap` | `entities[2]` circles/arcs | edge-to-edge gap: radii difference when one lies inside the other (a ring's wall, even off-centre), otherwise the clearance between the edges |
-| `angle-x` | `entities[1]` line | direction from the +X axis, in DEGREES (signed, -180..180). The one angular type stored in degrees, because it backs the Angle property field and a dimension's `expr` is evaluated straight into `value` with no unit applied — storing radians would make `45` and a variable worth `45` mean different things in the same box. Written only as a hidden driving dimension. |
+| `angle-x` | `entities[1]` line | direction from the +X axis, in DEGREES (signed, -180..180). The one angular type stored in degrees, because it backs the Angle property field and a dimension's `expr` is evaluated straight into `value` with no unit applied — storing radians would make `45` and a variable worth `45` mean different things in the same box. Backs the Angle property field as a hidden dimension, and is also placed visibly: pick a line, click open space, then Tab. |
 | `arc-sweep` | `entities[1]` arc | included angle (sweep) in DEGREES, normalised to [0, 360). Unlike `angle-x` its residual is NOT wrapped: a 350° arc and a 10° arc are different arcs, so the shortest path is the wrong answer. Written only as a hidden driving dimension. |
 
-Optional: `anchors` (`[t1, t2]`, for `line-distance` extension lines) and `expr`
+Optional: `anchors` (`[t1, t2]`, where a `line-distance` sits along its two
+edges) and `expr`
 (a formula string driving `value`, e.g. `"width * 2"`, evaluated against
 `variables`).
 
