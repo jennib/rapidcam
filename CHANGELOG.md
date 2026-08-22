@@ -142,6 +142,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Snap markers now use AutoCAD's shapes.** A **diamond** means *quadrant* to
+  anyone who has used a CAD tool — RapidCAM was drawing a diamond for "a point
+  somewhere along this line", and drawing the actual quadrant as a **square**,
+  which is the endpoint marker. So reaching for the top of a circle showed a
+  marker that read as "the quadrant" and gave a point on the rim near it. The
+  quadrant is a diamond, "nearest / along this line" is an hourglass, and the
+  square is reserved for the two kinds that really are an endpoint. The mapping
+  now lives in one table the renderer switches on, so the convention is stated
+  once instead of being spread through a drawing routine.
+
 - **A typed radius of 0 squares the corner again.** AutoCAD's canonical use of
   FILLET — radius 0 removes the round — did nothing here: the field rejected any
   value at or below zero before anything looked at the corner, so you typed 0,
