@@ -38,7 +38,11 @@ import type { Bounds, Entity, EntityId } from "./model/entities";
 import { nextId } from "./model/ids";
 import { varMap } from "./model/variables";
 import { SolveCoordinator, type SolveSinks } from "./shell/solveCoordinator";
-import { constraintJacobianRankChange, type PinMap } from "./solver/solver";
+import {
+  constraintJacobianRankChange,
+  type EntityStatusMap,
+  type PinMap,
+} from "./solver/solver";
 import { ArcTool } from "./tools/arcTool";
 import { BezierTool } from "./tools/bezierTool";
 import { type CenterAxis, canCenter, planCenter } from "./tools/centerCommand";
@@ -443,7 +447,9 @@ export class App {
       (dim, v, expr) => this.commitDimValue(dim, v, expr),
       this.generatorPreviewSink,
     );
-    this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender);
+    this.statusBar = new StatusBar(dom.statusbar, this.doc, this.snapEngine, this.requestRender, () =>
+      this.selectUnderDefined(),
+    );
     this.statusBar.setHint(TOOL_HINTS[this.tools.active.id] ?? "");
     // After the status bar, design tree and renderer exist: the sinks read them
     // through `this`, and nothing above solves synchronously — every runSolve()
@@ -746,10 +752,57 @@ export class App {
    */
   private solver!: SolveCoordinator;
 
+  /**
+   * The last per-entity DOF status, kept so the status bar's readout can act on
+   * it. Read from the same publish that colours the canvas, so "the blue
+   * geometry" and "what clicking selects" cannot come apart.
+   */
+  private entityStatus: EntityStatusMap = new Map();
+
+  /**
+   * Select every entity the solver still considers loose — what the canvas is
+   * already drawing blue.
+   *
+   * The status bar has always been able to say HOW MANY degrees of freedom are
+   * left, and the canvas has always been able to show WHICH geometry carries
+   * them, but nothing joined the two: the number was not clickable and the
+   * colour was not explained. Selecting them is the useful join, because a
+   * selection is what the constraint bar acts on — see the loose geometry, then
+   * constrain it, without hunting for it first.
+   */
+  private selectUnderDefined(): void {
+    this.doc.clearSelection();
+    let n = 0;
+    for (const e of this.doc.entities) {
+      // Every document carries the WCS origin as a hidden PointEntity, and
+      // `isPickable` does not exclude it. It can never be reported loose today
+      // — the solver fixes its DOFs, so it contributes no variables and never
+      // reaches the status map — but a loop over doc.entities that does not say
+      // so is how the origin ends up selected the day that changes.
+      if (e.id === ORIGIN_ENTITY_ID) continue;
+      if (this.entityStatus.get(e.id) !== "under-defined") continue;
+      if (!this.doc.isPickable(e)) continue; // hidden or locked: not selectable
+      e.selected = true;
+      n++;
+    }
+    this.doc.emitChange();
+    this.requestRender();
+    // A count, because the answer can be "none you can reach": the loose
+    // geometry may all be on a hidden or locked layer, and a silent no-op there
+    // reads as a broken control.
+    this.statusBar.flash(
+      n === 0
+        ? "No loose geometry you can select — it may be on a hidden or locked layer"
+        : `Selected ${n} loose ${n === 1 ? "entity" : "entities"}`,
+      n === 0 ? "warn" : "info",
+    );
+  }
+
   /** The UI fan-out for the coordinator. Grouped by fact, not by widget. */
   private buildSolveSinks(): SolveSinks {
     return {
       publishEntityStatus: (status) => {
+        this.entityStatus = status;
         this.renderer.entityStatus = status;
         this.designTree.setEntityStatus(status);
       },

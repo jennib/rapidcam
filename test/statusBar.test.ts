@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { solveStatusLabel } from "../src/ui/statusBar";
 import type { SolveResult } from "../src/solver/solver";
+import { COLORS } from "../src/view/colors";
 
 const res = (o: Partial<SolveResult>): SolveResult => ({
   hasConstraints: true,
@@ -62,5 +63,28 @@ describe("solveStatusLabel", () => {
     const l = solveStatusLabel(res({ converged: false, dof: 0 }))!;
     expect(l.html).toMatch(/over-constrained|conflict/i);
     expect(l.color).toBe("var(--danger)");
+  });
+});
+
+describe("the solve readout joins the number to the geometry", () => {
+  it("names the colour the canvas is already painting", () => {
+    // The canvas draws loose geometry blue and the bar reports a count; nothing
+    // told a newcomer those were the same fact. The tooltip is the only place
+    // the two can be joined, since the canvas has no legend.
+    const l = solveStatusLabel(res({ dof: 3 }))!;
+    expect(l.tooltip).toMatch(/blue/i);
+    expect(COLORS.entityUnderDefined, "there must BE a distinct blue to name").toBeTruthy();
+  });
+
+  it("offers the click only in the state that has something to select", () => {
+    // A pointer cursor over "Fully constrained" that does nothing when clicked
+    // is worse than no cursor at all.
+    expect(solveStatusLabel(res({ dof: 3 }))!.actionable).toBe(true);
+    expect(solveStatusLabel(res({ dof: 0 }))!.actionable).toBeFalsy();
+    expect(solveStatusLabel(res({ converged: false, dof: 2 }))!.actionable).toBeFalsy();
+  });
+
+  it("says what the click does, or nobody clicks a line of plain text", () => {
+    expect(solveStatusLabel(res({ dof: 3 }))!.tooltip).toMatch(/click/i);
   });
 });

@@ -1,13 +1,21 @@
 /**
- * Placing a linear dimension vs. re-targeting it onto a second edge.
+ * A placement click must place, even when it lands inside another edge's pick
+ * band.
  *
- * These two gestures shared one click, separated only by how close it landed to
- * some other edge. That is not separable by position: the pick tolerance is
- * 8px/scale, so at fit zoom it is tens of millimetres of world, and once the
- * stock's edges became pickable while it fills the sheet, that band runs around
- * the whole sheet boundary — exactly where a dimension gets placed. A plain
- * "click just outside the part" was swallowed as a re-pick and the dimension
- * silently measured the part-to-stock gap instead of the edge asked for.
+ * Placing and choosing a second edge once shared one click, separated only by
+ * how close it landed to some other edge. That is not separable by position:
+ * the pick tolerance is 8px/scale, so at fit zoom it is tens of millimetres of
+ * world, and once the stock's edges became pickable while it fills the sheet,
+ * that band runs around the whole sheet boundary — exactly where a dimension
+ * gets placed. A plain "click just outside the part" was swallowed as a re-pick
+ * and the dimension silently measured the part-to-stock gap instead of the edge
+ * asked for.
+ *
+ * The Shift-to-re-target gesture that first separated them is gone: both
+ * operands are now picked before placement, so the placing click has nothing to
+ * be confused with. These tests pin what actually mattered — that the placing
+ * click commits inside the band, and that a dimension from a part edge to the
+ * stock edge is still reachable, now without a modifier.
  *
  * Unit tests cannot see this: they build a viewport with `toWorldLen: px => px`,
  * so the band is 8mm there and the zoom dependence disappears. Only the running
@@ -99,12 +107,14 @@ test("a plain click places the dimension even inside the stock edge's pick band"
 
   await page.locator('button.tool-btn[data-tip^="Dimension"]').click();
 
-  // Click the rectangle's bottom edge, deliberately OFF its midpoint (x0+30):
-  // the midpoint is a pickable DOF hotspot, and hitting it takes the
-  // discrete-point path instead of the "click an edge directly" shortcut this
-  // test is about.
+  // Dimension the rectangle's bottom edge: click that edge, then click it again
+  // to ask for its length. Both clicks are deliberately OFF the midpoint
+  // (x0+30) — that is a pickable DOF hotspot, and hitting it would take the
+  // discrete-point path rather than the edge path this test is about.
   const edge = await toPx(page, [x0 + 18, y0]);
   await page.mouse.click(edge.x, edge.y);
+  const edgeAgain = await toPx(page, [x0 + 44, y0]);
+  await page.mouse.click(edgeAgain.x, edgeAgain.y);
 
   // Now place it just below the stock's bottom edge — INSIDE the pick band.
   const stockBottom = stockRect?.y ?? 0;
@@ -119,7 +129,7 @@ test("a plain click places the dimension even inside the stock edge's pick band"
   expect(v, "should measure the clicked edge, not the part-to-stock gap").toBeCloseTo(60, 0);
 });
 
-test("Shift-click still re-targets onto a second edge", async ({ page }) => {
+test("a part edge to the stock edge — no modifier needed", async ({ page }) => {
   await page.goto(APP_URL);
   await waitForApp(page);
   await newProject(page);
@@ -138,17 +148,16 @@ test("Shift-click still re-targets onto a second edge", async ({ page }) => {
 
   await page.locator('button.tool-btn[data-tip^="Dimension"]').click();
 
-  // Click the rectangle's bottom edge, off its midpoint (see the note above).
+  // Click the rectangle's bottom edge, off its midpoint (see the note above)...
   const edge = await toPx(page, [x0 + 18, y0]);
   await page.mouse.click(edge.x, edge.y);
 
-  // ...then Shift-click the stock's bottom edge to measure to it instead.
+  // ...then the stock's bottom edge. This took Shift before, because the first
+  // click had already consumed both of the dimension's ends.
   const stockBottom = stockRect?.y ?? 0;
   const target = await toPx(page, [x0 + 18, stockBottom]);
-  await page.keyboard.down("Shift");
   await page.mouse.move(target.x, target.y);
   await page.mouse.click(target.x, target.y);
-  await page.keyboard.up("Shift");
 
   // Then a plain click to place it.
   const place = await toPx(page, [x0 + 18, y0 - 20]);
@@ -158,5 +167,6 @@ test("Shift-click still re-targets onto a second edge", async ({ page }) => {
   expect(await dimCount(page)).toBe(1);
   const [v] = await dimValues(page);
   // 40 = the gap from the rectangle's bottom edge down to the stock's bottom.
-  expect(v, "Shift-click should have re-targeted onto the stock edge").toBeCloseTo(40, 0);
+  // Anything near 60 means it measured the rectangle's own width instead.
+  expect(v, "should measure the part-to-stock gap").toBeCloseTo(40, 0);
 });

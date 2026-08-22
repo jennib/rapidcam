@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { HELP_TOPICS } from "../src/docs/helpContent";
 import { BUNDLED } from "../src/core/fontManager";
 import { TOOL_SHORTCUTS } from "../src/tools/shortcuts";
+import { COLORS } from "../src/view/colors";
 import { showHelpDialog } from "../src/ui/helpDialog";
 import { isModalOpen, closeAllModals } from "../src/ui/modal";
 
@@ -134,6 +135,40 @@ describe("Help content stays true to the app", () => {
         ).toBe(true);
       }
     }
+  });
+
+  it("names the solver-health colours the renderer actually paints", () => {
+    // The canvas has exactly three states: a distinct blue for under-defined, a
+    // distinct red for conflict, and — for fully constrained — no colour of its
+    // own at all, because the entity simply returns to its LAYER colour. The
+    // help claimed green for that third state; green is the Design Tree icon,
+    // not the geometry, and a reader waiting for green geometry waits forever.
+    const solverTips = HELP_TOPICS.flatMap((t) => t.sections)
+      .filter((s) => s.heading.includes("Degrees of Freedom"))
+      .flatMap((s) => s.tips ?? []);
+    expect(solverTips.length, "the solver-health section must still exist").toBeGreaterThan(0);
+    const text = solverTips.join(" ").toLowerCase();
+
+    expect(COLORS.entityUnderDefined).toBeTruthy();
+    expect(COLORS.entityConflict).toBeTruthy();
+    expect(text).toMatch(/under-constrained \(blue\)/);
+    expect(text).toMatch(/conflict \(red\)/);
+    // There is no third geometry colour to name...
+    expect(COLORS).not.toHaveProperty("entityFullyDefined");
+    // ...so the help must not promise one.
+    expect(text).not.toMatch(/fully constrained \(green\)/);
+    expect(text).toMatch(/layer colour/);
+  });
+
+  it("does not offer a click target the app never draws", () => {
+    // "Click on the flagged red badge to delete the conflicting constraint"
+    // described a badge that does not exist. Deleting a conflicting constraint
+    // goes through the Design Tree's Constraints section.
+    const all = HELP_TOPICS.flatMap((t) => t.sections)
+      .flatMap((s) => [s.body, ...(s.tips ?? [])])
+      .join(" ")
+      .toLowerCase();
+    expect(all).not.toMatch(/red badge/);
   });
 
   it("does not claim the app talks to a machine over USB", () => {

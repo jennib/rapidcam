@@ -80,9 +80,17 @@ async function click(page: Page, mm: [number, number]): Promise<void> {
 
 interface DimSnapshot {
   id: string;
+  type: string;
   points: { entityId: string; key: string }[];
+  /** Edge-based operands: a whole line or one named edge, as `<id>#<edgeKey>`. */
+  entities: string[];
   value: number;
   driving: boolean;
+}
+
+/** Every entity a dimension names, whichever array it keeps it in. */
+function anchorIds(dim: DimSnapshot): string[] {
+  return [...dim.points.map((p) => p.entityId), ...dim.entities.map((e) => e.split("#")[0])];
 }
 
 function dims(page: Page): Promise<DimSnapshot[]> {
@@ -150,10 +158,12 @@ test("dimensioning from the stock's left edge measures against the ACTUAL stock 
   const dim = created[0];
 
   // The whole point: the dimension is REALLY anchored to the stock, not to
-  // some coincidentally-nearby entity.
-  const stockPoint = dim.points.find((p) => p.entityId === "__stock__");
-  expect(stockPoint).toBeDefined();
-  expect(stockPoint!.key).toBe("mid_l");
+  // some coincidentally-nearby entity. A real point measured to an EDGE is a
+  // perpendicular distance, so the stock's left edge is named as a whole edge
+  // in `entities` rather than as one point in `points`.
+  expect(dim.type).toBe("point-line-distance");
+  expect(anchorIds(dim)).toContain("__stock__");
+  expect(dim.entities).toContain("__stock__#mid_l");
 
   // And the number is real: |circle.x(180) − stock-left-edge.x(50)| = 130.
   // The bug this closes would have measured from canvas (0,0) instead of the

@@ -13,10 +13,9 @@ import {
 } from "../model/constraints";
 import {
   type Dimension,
-  dimensionAnchorsFromCursor,
   dimensionHitDistance,
   dimensionLayout,
-  dimensionOffsetFromCursor,
+  dragDimensionTo,
 } from "../model/dimensions";
 import {
   type CADDocument,
@@ -406,12 +405,11 @@ export class SelectTool implements Tool {
         const byId = new Map(ctx.doc.entities.map((en) => [en.id, en]));
         const geo: Geo = (id) =>
           id === STOCK_ENTITY_ID ? stockRefEntity(ctx.doc) : byId.get(id);
-        // For line-distance dims, slide the anchors along the lines first so
-        // the offset (perpendicular standoff) below is measured from where
-        // the dimension is being dragged to, not where it started.
-        const anchors = dimensionAnchorsFromCursor(dim, geo, e.worldRaw);
-        if (anchors) dim.anchors = anchors;
-        dim.offset = dimensionOffsetFromCursor(dim, geo, e.worldRaw);
+        // Slide whatever can slide along the geometry first, so the offset
+        // (perpendicular standoff) is measured from where the dimension is
+        // being dragged to, not where it started. Shared with the dimension
+        // tool's own drag so the two cannot drift apart.
+        dragDimensionTo(dim, geo, e.worldRaw);
 
         const d = sub(e.worldRaw, this.dragStartWorld);
         dim.textOffset = {

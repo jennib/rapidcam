@@ -103,7 +103,9 @@ export function edgeEndsOf(
   edgeKey: string,
 ): { a: Vec2; b: Vec2 } | null {
   if (!ent) return null;
-  const pair = (ent.type === "image" ? IMAGE_EDGE_CORNERS : RECT_EDGE_CORNERS)[edgeKey];
+  const pair = (ent.type === "image" ? IMAGE_EDGE_CORNERS : RECT_EDGE_CORNERS)[
+    baseAnchorKey(edgeKey)
+  ];
   if (!pair) return null;
   try {
     const a = ent.getPoint(pair[0]);
@@ -115,6 +117,156 @@ export function edgeEndsOf(
   } catch {
     return null; // no such corner: wrong entity kind, or rotary stock (no flat rect)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Edge anchors
+
+/**
+ * Separator between an edge key and the fraction along that edge an anchor
+ * sits at: `mid_b@0.25` is a quarter of the way along the bottom edge, from
+ * its first named corner toward its second.
+ *
+ * WHY the suffix exists. A dimension used to be able to anchor to an edge only
+ * at that edge's MIDPOINT, because the midpoint was the only point on an edge
+ * with a name. Every dimension measured to the same edge therefore started
+ * from the same point, and their extension lines ran along each other — a mess
+ * that moving the dimension cannot fix, since `offset` slides the shaft and
+ * never the anchor. Naming any point along the edge lets each dimension
+ * witness the edge where the user clicked it, which is what AutoCAD's
+ * "nearest" object snap and Fusion's sketch dimensions both do.
+ *
+ * `@0.5` IS the midpoint, so a bare `mid_b` and `mid_b@0.5` name the same
+ * point and `edgeAnchorKey` writes the plain spelling for it. That is what
+ * lets every file saved before this existed keep resolving with no migration.
+ */
+export const EDGE_ANCHOR_SEP = "@";
+
+/** `mid_b@0.25` → `mid_b`; any key without a fraction is returned unchanged. */
+export function baseAnchorKey(key: string): string {
+  const i = key.indexOf(EDGE_ANCHOR_SEP);
+  return i > 0 ? key.slice(0, i) : key;
+}
+
+/**
+ * The fraction along its edge an anchor key names, clamped to [0, 1]. A plain
+ * edge key (and any unparseable fraction) means the midpoint, 0.5 — the
+ * behaviour that predates the suffix.
+ */
+export function edgeAnchorT(key: string): number {
+  const i = key.indexOf(EDGE_ANCHOR_SEP);
+  if (i <= 0) return 0.5;
+  const t = Number.parseFloat(key.slice(i + 1));
+  return Number.isFinite(t) ? clamp(t, 0, 1) : 0.5;
+}
+
+/**
+ * Build an anchor key for `t` along `edgeKey`, so the key stays short and
+ * stable in a saved file rather than carrying 17 digits of mouse noise.
+ *
+ * Five decimals: the fraction only decides where a witness line touches, never
+ * what the dimension reports (see dimensionSlideAnchors — an anchor may only
+ * slide along the axis the dimension does not measure), and 1e-5 of even a
+ * metre-long edge is 0.01 mm.
+ */
+export function edgeAnchorKey(edgeKey: string, t: number): string {
+  const c = Number(clamp(t, 0, 1).toFixed(5));
+  return c === 0.5 ? edgeKey : `${edgeKey}${EDGE_ANCHOR_SEP}${c}`;
+}
+
+/**
+ * True when a point key names an EDGE (so an anchor on it may slide along
+ * that edge) rather than one of the entity's real DOF points.
+ *
+ * Only the `mid*` spellings qualify: they are what the dimension pickers hand
+ * out for "I clicked this edge". The compass spellings `edgeEndsOf` also
+ * accepts (`bottom`, `b`) come from the constraint bar and never name a
+ * dimension anchor, and a line's own `a`/`b` are endpoints the dimension is
+ * genuinely measuring between — sliding those would detach it from what the
+ * user picked.
+ */
+export function isEdgeAnchorKey(key: string): boolean {
+  return baseAnchorKey(key).startsWith("mid");
+}
+
+/**
+ * The two ends of the edge a point key names, for any entity that HAS edges: a
+ * line is its own single edge, everything else looks the key up per
+ * {@link edgeEndsOf}. Returns null when the key names no edge.
+ */
+export function edgeEndsForKey(
+  ent:
+    | {
+        type: string;
+        getPoint(key: string): Vec2;
+        segmentByStartVertexId?(startId: string): [Vec2, Vec2] | null;
+      }
+    | undefined,
+  key: string,
+): { a: Vec2; b: Vec2 } | null {
+  if (!ent) return null;
+  // A line IS its own single edge, so its edge key carries no side to look up.
+  if (ent.type === "line") return { a: ent.getPoint("a"), b: ent.getPoint("b") };
+  // A polyline names each segment by the STABLE id of its start vertex, the
+  // same `mid_<vertexId>` spelling its pickable points already use — so a
+  // segment anchor survives an edit that inserts a vertex ahead of it.
+  if (ent.segmentByStartVertexId) {
+    const base = baseAnchorKey(key);
+    if (!base.startsWith("mid_")) return null;
+    const seg = ent.segmentByStartVertexId(base.slice(4));
+    return seg ? { a: seg[0], b: seg[1] } : null;
+  }
+  return edgeEndsOf(ent, key);
+}
+
+// ---------------------------------------------------------------------------
+// Curve anchors
+
+/**
+ * A point on a Bézier, keyed `curve@<t>` with t the curve parameter in [0, 1].
+ *
+ * A Bézier has no straight edge to lerp along, so it cannot use the
+ * `<edgeKey>@<t>` form — but the same idea applies: a dimension should be able
+ * to witness the curve where you clicked it rather than only at the two
+ * endpoints, which are its only named points. Like every other anchor this is
+ * parametric, so it slides with the curve as its control points move.
+ */
+export const CURVE_ANCHOR_PREFIX = "curve@";
+
+/** The point at parameter `t` on the cubic p0..p3 (de Casteljau, expanded). */
+export function bezierPointAt(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  };
+}
+
+/** Build a `curve@<t>` key, rounded like {@link edgeAnchorKey} and for the same reason. */
+export function curveAnchorKey(t: number): string {
+  return `${CURVE_ANCHOR_PREFIX}${Number(clamp(t, 0, 1).toFixed(5))}`;
+}
+
+/** The parameter a `curve@<t>` key names, or null when the key is not one. */
+export function curveAnchorT(key: string): number | null {
+  if (!key.startsWith(CURVE_ANCHOR_PREFIX)) return null;
+  const t = Number.parseFloat(key.slice(CURVE_ANCHOR_PREFIX.length));
+  return Number.isFinite(t) ? clamp(t, 0, 1) : null;
+}
+
+/** The world point an edge-anchor key resolves to, or null if it names no edge. */
+export function edgeAnchorPos(
+  ent: { type: string; getPoint(key: string): Vec2 } | undefined,
+  key: string,
+): Vec2 | null {
+  const ends = edgeEndsForKey(ent, key);
+  if (!ends) return null;
+  const t = edgeAnchorT(key);
+  return { x: ends.a.x + (ends.b.x - ends.a.x) * t, y: ends.a.y + (ends.b.y - ends.a.y) * t };
 }
 
 export interface SnapPoint {

@@ -75,12 +75,12 @@ test("a circle's Diameter dimension gets an fx badge, and the picker drives it b
   await click(page, [170, 100]); // r=20
 
   // Click the RIM (not the centre — that would pick the centre DOF point and
-  // route through a different tool phase) to hit the circle/arc radius-dim path,
-  // then Tab to switch it to diameter.
+  // route through a different tool phase). A full circle dimensions to its
+  // DIAMETER by default, as it does in Fusion and SolidWorks; Tab would switch
+  // it to the radius.
   await pickTool(page, "Dimension");
   await click(page, [170, 100]);
-  await page.keyboard.press("Tab");
-  await click(page, [230, 100]); // place
+  await click(page, [230, 100]); // place — open space, so it commits the circle
 
   await page.evaluate(() => {
     const doc = (

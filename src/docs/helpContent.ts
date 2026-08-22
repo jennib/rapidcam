@@ -174,7 +174,8 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Join Paths (Ctrl+J): Select multiple touching line and arc segments and merge them into a single continuous closed polyline loop.",
           "Explode Paths (Ctrl+Shift+E): Break complex polylines, rectangles, and text blocks into individual fundamental line and arc primitives.",
           "Measure Tool (I): Measure distance, delta X/Y, angle, total perimeter, and enclosed area between any two points or contours.",
-          "Dimension Tool (D): Place driving or reference dimensions directly on canvas entities.",
+          "Dimension Tool (D): Click anywhere on two things, then click to place. What you picked decides what it measures — two points give a distance (or ΔX/ΔY, from the direction you drag out), a point and an edge give the perpendicular distance to that edge, two parallel edges give the gap between them, and two crossing edges give the angle. The value previews live as you position it.",
+          "Dimension Tool — one thing on its own: pick it, then click open space. An edge gives its own length; a full circle gives its diameter, an arc its radius. Tab cycles the alternatives — radius vs diameter, an arc's length, or a line's angle from horizontal (the X axis has nothing to click, so Tab is the only way to reach it).",
         ],
         callout: {
           type: "note",
@@ -263,11 +264,12 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         heading: "Solver Health & Degrees of Freedom (DOF)",
-        body: "The 2D constraint solver evaluates workspace health in real time, color-coding geometry states:",
+        body: "The 2D constraint solver evaluates workspace health in real time, colour-coding each piece of geometry by how much freedom it has left. The status bar carries the whole-sketch summary — 'Fully constrained', or 'Under-constrained · N free' with the number of remaining degrees of freedom.",
         tips: [
-          "Under-Constrained (Blue): Geometry has remaining degrees of freedom (DOF) and can still be moved or resized.",
-          "Fully Constrained (Green): All dimensions, orientations, and locations are fully locked. Recommended for production parts.",
-          "Over-Constrained / Conflict (Red): Redundant or mathematically contradictory constraints exist. Click on the flagged red badge to delete the conflicting constraint.",
+          "Under-constrained (blue): the geometry has degrees of freedom left and can still move, turn or resize. This is the normal state while you are drafting.",
+          "Fully constrained (its layer colour): every position, size and orientation is locked. Geometry drops back to the colour of its layer once nothing about it is free — that return to normal is the signal. Recommended for production parts.",
+          "Over-constrained / conflict (red): redundant or contradictory constraints. Open the Design Tree (Ctrl+B) and delete one of the constraints involved from the Constraints section.",
+          "The Design Tree (Ctrl+B) says the same thing per entity in words: its icon is blue for under-constrained, green for fully constrained and red for conflicting, with the state on hover.",
         ],
       },
     ],

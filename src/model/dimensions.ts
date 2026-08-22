@@ -35,7 +35,15 @@ import {
   LineEntity,
   ArcEntity,
   PolylineEntity,
+  BezierEntity,
+  baseAnchorKey,
+  bezierPointAt,
+  curveAnchorT,
+  edgeAnchorKey,
+  edgeAnchorPos,
+  edgeEndsForKey,
   edgeEndsOf,
+  isEdgeAnchorKey,
 } from "./entities";
 import type { Geo, PointRef } from "./constraints";
 import { nextId } from "./ids";
@@ -82,7 +90,26 @@ export type DimensionType =
    * of -10° are the same line, but a sweep of 350° and a sweep of 10° are very
    * different arcs. The shortest path is the wrong answer here.
    */
-  | "arc-sweep";
+  | "arc-sweep"
+  /**
+   * The PERPENDICULAR distance from one point to one line: `points[0]` is the
+   * point, `entities[0]` the line (a plain line id, or `<id>#<edgeKey>` for one
+   * side of a rectangle, image, polyline or the stock).
+   *
+   * Why it exists. A point and a line used to be measured as a point pair, with
+   * the second point being wherever along the line the user clicked — so the
+   * dimension reported a number that was not a property of the geometry (click
+   * the line 10mm further along and it changes, with nothing having moved), and
+   * it drew as three segments: a witness line off the point, a shaft offset
+   * sideways, and a witness line back to the line. Every CAD tool answers a
+   * point-and-a-line pick with the perpendicular distance instead, drawn as ONE
+   * straight run from the point to its foot on the line.
+   *
+   * The sibling of `line-distance`, which does the same for two parallel lines,
+   * and it shares that type's placement rule: the span IS the dimension, so
+   * `offset` is meaningless and stays 0.
+   */
+  | "point-line-distance";
 export type LinearDimType = "distance" | "horizontal" | "vertical" | "line-distance";
 
 export interface Dimension {
@@ -142,6 +169,19 @@ export function makeDimension(
 
 export const LEADER_MM = 9; // world-space leader length for radius/diameter
 
+/**
+ * Arrowhead length in SCREEN pixels. The renderer draws heads at a fixed screen
+ * size, so the layout has to reason in the same units to know whether a span
+ * can hold them. Kept here because both sides must agree.
+ */
+export const ARROW_PX = 9;
+/** Gap between the geometry and where its witness line starts (AutoCAD DIMEXO). */
+const EXT_GAP_PX = 4;
+/** How far a witness line runs PAST the dimension line (AutoCAD DIMEXE). */
+const EXT_OVERSHOOT_PX = 5;
+/** Below this much room, the arrowheads will not fit between the two ends. */
+const ARROW_FIT_PX = ARROW_PX * 2.6;
+
 // ---------------------------------------------------------------------------
 // Geometry access
 
@@ -161,6 +201,20 @@ function readPoint(geo: Geo, ref: PointRef | undefined): Vec2 | null {
       x: g.center.x + g.radius * Math.cos(theta),
       y: g.center.y + g.radius * Math.sin(theta),
     };
+  }
+  // Bézier curve anchor: `curve@<t>` (see CURVE_ANCHOR_PREFIX).
+  const ct = curveAnchorT(ref.key);
+  if (ct !== null) {
+    return e instanceof BezierEntity ? bezierPointAt(e.p0, e.p1, e.p2, e.p3, ct) : null;
+  }
+  // Edge anchor: `<edgeKey>@<t>` is a point a fraction of the way along that
+  // edge (see EDGE_ANCHOR_SEP). Resolved here rather than through
+  // Entity.getPoint for the same reason as `edge@` above — it is a synthetic
+  // annotation anchor, never a DOF the solver is allowed to move. A plain
+  // `mid_b` carries no fraction and keeps its original getPoint path, so
+  // nothing about existing files changes.
+  if (baseAnchorKey(ref.key) !== ref.key) {
+    return edgeAnchorPos(e, ref.key);
   }
   try {
     return e.getPoint(ref.key);
@@ -227,7 +281,15 @@ function readLineGeom(geo: Geo, id: EntityId | undefined): { a: Vec2; b: Vec2 } 
     const base = geo(id.slice(0, sep));
     const suffix = id.slice(sep + 1);
     if (base instanceof PolylineEntity) {
-      const seg = base.segmentByStartVertexId(suffix);
+      // A polyline segment ref is spelled either way: `<id>#<vertexId>`, which
+      // is what the constraint side has always written, or `<id>#mid_<vertexId>`
+      // — the entity's own pickable-point key, which is what the dimension
+      // pickers hand out and `lineDistanceRef` therefore passes through. Both
+      // name the same segment, and resolving only one of them leaves a
+      // dimension that silently draws nothing at all.
+      const raw = baseAnchorKey(suffix);
+      const vid = raw.startsWith("mid_") ? raw.slice(4) : raw;
+      const seg = base.segmentByStartVertexId(vid);
       return seg ? { a: seg[0], b: seg[1] } : null;
     }
     // "<id>#mid_l" — one named edge of a rectangle, image, or the stock rect.
@@ -235,6 +297,33 @@ function readLineGeom(geo: Geo, id: EntityId | undefined): { a: Vec2; b: Vec2 } 
   }
   const e = geo(id);
   return e instanceof LineEntity ? { a: e.a, b: e.b } : null;
+}
+
+/**
+ * A point-to-line dimension's two ends: the point, and the foot of the
+ * perpendicular dropped from it onto the line.
+ *
+ * The foot is taken on the line's INFINITE extension, not clamped to the drawn
+ * segment. Clamping would silently turn the measurement into a point-to-corner
+ * distance the moment the point moved past the end of the line — the number
+ * would keep changing while no longer meaning what the dimension says it
+ * means. `beyond` reports that the foot landed off the segment so the renderer
+ * can draw the line's own extension out to it, the way a witness line does.
+ */
+function pointLineGeom(
+  dim: Dimension,
+  geo: Geo,
+): { point: Vec2; foot: Vec2; beyond: Vec2 | null } | null {
+  const point = readPoint(geo, dim.points[0]);
+  const l = readLineGeom(geo, dim.entities[0]);
+  if (!point || !l) return null;
+  const d = sub(l.b, l.a);
+  const l2 = d.x * d.x + d.y * d.y;
+  if (l2 < 1e-12) return null;
+  const t = dot(sub(point, l.a), d) / l2;
+  const foot = add(l.a, scale(d, t));
+  const beyond = t < 0 ? l.a : t > 1 ? l.b : null;
+  return { point, foot, beyond };
 }
 
 /** Compute the vertex and arm directions for an angle between two lines. */
@@ -327,6 +416,10 @@ export function dimensionMeasure(dim: Dimension, geo: Geo): number | null {
       const ag = linesAngleGeometry(l1, l2);
       if (!ag) return null;
       return Math.acos(Math.max(-1, Math.min(1, dot(ag.d1, ag.d2))));
+    }
+    case "point-line-distance": {
+      const g = pointLineGeom(dim, geo);
+      return g ? dist(g.point, g.foot) : null;
     }
     case "line-distance": {
       const l1 = readLineGeom(geo, dim.entities[0]);
@@ -436,7 +529,7 @@ export function dimensionOffsetFromCursor(dim: Dimension, geo: Geo, cursor: Vec2
   // the span between the two lines, so it has nowhere to sit but between
   // them. Where it slides ALONG the lines is `anchors`, not `offset` — see
   // dimensionAnchorsFromCursor and the layout branch.
-  if (dim.type === "line-distance") return 0;
+  if (dim.type === "line-distance" || dim.type === "point-line-distance") return 0;
   const p = readPoint(geo, dim.points[0]);
   const q = readPoint(geo, dim.points[1]);
   if (!p || !q) return dim.offset;
@@ -550,6 +643,64 @@ export function dimensionAnchorsFromCursor(
 }
 
 /**
+ * Slide a linear dimension's EDGE anchors along their own edges to follow the
+ * cursor — the counterpart to `offset`, which only ever moves the shaft
+ * perpendicular to what is being measured.
+ *
+ * Only ALONG THE FREE AXIS. A horizontal dimension reports |Δx| and draws
+ * vertical extension lines, so where its anchors sit vertically is pure
+ * presentation; a vertical dimension is the mirror of that. Sliding the other
+ * way would change the number — and on a driving dimension that means dragging
+ * an annotation silently edits the part — so an anchor whose edge runs along
+ * the measured direction stays exactly where it was put. An aligned
+ * ("distance") dimension is measured between the anchors themselves, so every
+ * direction of travel re-measures it and nothing may slide.
+ *
+ * Returns the updated refs, or null when nothing moved — including every
+ * dimension anchored only to real DOF points, which must stay welded to them.
+ */
+export function dimensionSlideAnchors(dim: Dimension, geo: Geo, cursor: Vec2): PointRef[] | null {
+  if (dim.type !== "horizontal" && dim.type !== "vertical") return null;
+  const freeAxis = dim.type === "horizontal" ? "y" : "x";
+  let changed = false;
+  const out = dim.points.map((ref) => {
+    if (!isEdgeAnchorKey(ref.key)) return ref;
+    const base = baseAnchorKey(ref.key);
+    const ends = edgeEndsForKey(geo(ref.entityId), base);
+    if (!ends) return ref;
+    const d = sub(ends.b, ends.a);
+    const along = freeAxis === "y" ? Math.abs(d.y) : Math.abs(d.x);
+    const across = freeAxis === "y" ? Math.abs(d.x) : Math.abs(d.y);
+    // Same 1.4 ratio the tool uses to call an edge horizontal or vertical, so
+    // a near-axis edge behaves the way it looks. Anything more diagonal than
+    // that would move the measured value as it slid.
+    if (along < across * 1.4) return ref;
+    const key = edgeAnchorKey(base, projectOnLine(cursor, ends.a, ends.b));
+    if (key === ref.key) return ref;
+    changed = true;
+    return { entityId: ref.entityId, key };
+  });
+  return changed ? out : null;
+}
+
+/**
+ * Reposition an existing dimension to the cursor: slide whatever can slide
+ * along the geometry first, then set the perpendicular standoff from where the
+ * dimension now sits.
+ *
+ * ONE function because both drag sites — the dimension tool and the select
+ * tool's label drag — have to agree about what dragging a dimension means, and
+ * they were already two copies of the anchors-then-offset sequence.
+ */
+export function dragDimensionTo(dim: Dimension, geo: Geo, cursor: Vec2): void {
+  const anchors = dimensionAnchorsFromCursor(dim, geo, cursor);
+  if (anchors) dim.anchors = anchors;
+  const points = dimensionSlideAnchors(dim, geo, cursor);
+  if (points) dim.points = points;
+  dim.offset = dimensionOffsetFromCursor(dim, geo, cursor);
+}
+
+/**
  * Real on-screen width of a dimension label, installed by the renderer so the
  * fit test uses the font the label is actually drawn in.
  *
@@ -624,6 +775,69 @@ function linearTextPos(
 function withExpr(dim: Dimension, label: string, showExpr = false): string {
   if (!showExpr || !dim.driving || !dim.expr || dim.type === "angle") return label;
   return `${dim.expr} = ${label}`;
+}
+
+/**
+ * One witness line, drawn the way a drafting standard draws it: starting a
+ * small gap OFF the geometry, so the annotation and the part read as separate
+ * things (AutoCAD's DIMEXO), and running a little PAST the dimension line
+ * (DIMEXE), so the corner reads as deliberate rather than as a line that
+ * stopped short.
+ *
+ * Screen-space, like the arrowheads and the label — every other piece of a
+ * dimension's furniture is a fixed size on screen, so a world-space gap would
+ * vanish when you zoom out and swamp the geometry when you zoom in. Headless
+ * callers pass no scale and get the bare segment, unchanged.
+ */
+function witnessLine(from: Vec2, to: Vec2, pxPerMm: number | undefined): [Vec2, Vec2] {
+  const d = sub(to, from);
+  const l = len(d);
+  if (!pxPerMm || pxPerMm <= 0 || l < 1e-9) return [from, to];
+  const u = scale(d, 1 / l);
+  const gap = EXT_GAP_PX / pxPerMm;
+  const over = EXT_OVERSHOOT_PX / pxPerMm;
+  const end = add(to, scale(u, over));
+  // A witness line shorter than its own gap would be drawn backwards.
+  return l <= gap * 1.5 ? [from, end] : [add(from, scale(u, gap)), end];
+}
+
+/**
+ * The two arrowheads for a span running p → q (with `u` its unit direction),
+ * plus any stub the dimension line needs to grow to carry them.
+ *
+ * Normally the heads sit at the two ends pointing OUTWARD, into the witness
+ * lines. When the span is too short to hold them they go OUTSIDE pointing back
+ * in — otherwise the two heads meet in the middle and a small dimension renders
+ * as a solid blob with no visible span at all. Every drafting standard flips
+ * them; so does every CAD tool.
+ */
+function spanArrows(
+  p: Vec2,
+  q: Vec2,
+  u: Vec2,
+  pxPerMm: number | undefined,
+): { arrows: { tip: Vec2; dir: Vec2 }[]; stubs: [Vec2, Vec2][] } {
+  const spanPx = len(sub(q, p)) * (pxPerMm ?? 0);
+  if (!pxPerMm || pxPerMm <= 0 || spanPx >= ARROW_FIT_PX) {
+    return {
+      arrows: [
+        { tip: p, dir: scale(u, -1) },
+        { tip: q, dir: u },
+      ],
+      stubs: [],
+    };
+  }
+  const stub = scale(u, (ARROW_PX * 2) / pxPerMm);
+  return {
+    arrows: [
+      { tip: p, dir: u },
+      { tip: q, dir: scale(u, -1) },
+    ],
+    stubs: [
+      [sub(p, stub), p],
+      [q, add(q, stub)],
+    ],
+  };
 }
 
 export function dimensionLayout(
@@ -793,6 +1007,30 @@ export function dimensionLayout(
     };
   }
 
+  if (dim.type === "point-line-distance") {
+    // ONE straight run from the point to its foot on the line, arrows landing
+    // on both — the same shape as a line-distance gap, for the same reason:
+    // the span IS the dimension, so there is nowhere to offset it to.
+    const g = pointLineGeom(dim, geo);
+    if (!g) return null;
+    const span = len(sub(g.foot, g.point));
+    const u = span > 1e-9 ? scale(sub(g.foot, g.point), 1 / span) : { x: 1, y: 0 };
+    const label = withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr);
+    const textRes = linearTextPos(g.point, g.foot, u, label, pxPerMm);
+    const { arrows, stubs } = spanArrows(g.point, g.foot, u, pxPerMm);
+    const segments: [Vec2, Vec2][] = [[g.point, g.foot], ...stubs];
+    // The foot fell off the end of the drawn line: extend the line out to meet
+    // it, exactly as a witness line extends geometry to reach a dimension.
+    if (g.beyond) segments.push([g.beyond, g.foot]);
+    if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
+    if (dim.textOffset) {
+      const customPos = add(textRes.pos, dim.textOffset);
+      if (dist(textRes.pos, customPos) > 0.1) segments.push([textRes.pos, customPos]);
+      textRes.pos = customPos;
+    }
+    return { segments, arrows, textPos: textRes.pos, label };
+  }
+
   // linear
   let p: Vec2 | null = null;
   let q: Vec2 | null = null;
@@ -834,7 +1072,8 @@ export function dimensionLayout(
     const u = span > 1e-9 ? scale(sub(q, p), 1 / span) : { x: 1, y: 0 };
     const gapLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr);
     const textRes = linearTextPos(p, q, u, gapLabel, pxPerMm);
-    const segments: [Vec2, Vec2][] = [[p, q]];
+    const gapArrows = spanArrows(p, q, u, pxPerMm);
+    const segments: [Vec2, Vec2][] = [[p, q], ...gapArrows.stubs];
     if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
     if (dim.textOffset) {
       const customPos = add(textRes.pos, dim.textOffset);
@@ -843,16 +1082,9 @@ export function dimensionLayout(
       }
       textRes.pos = customPos;
     }
-    return {
-      segments,
-      // Arrows point outward, each into the line it touches.
-      arrows: [
-        { tip: p, dir: scale(u, -1) },
-        { tip: q, dir: u },
-      ],
-      textPos: textRes.pos,
-      label: gapLabel,
-    };
+    // Arrows point outward, each into the line it touches — or back inward
+    // from outside when the gap is too narrow to hold them.
+    return { segments, arrows: gapArrows.arrows, textPos: textRes.pos, label: gapLabel };
   }
 
   let p2: Vec2;
@@ -875,10 +1107,12 @@ export function dimensionLayout(
   const dir = along > 1e-9 ? scale(sub(q2, p2), 1 / along) : { x: 1, y: 0 };
   const linLabel = withExpr(dim, formatLengthWithUnit(displayVal, unit), showExpr);
   const textRes = linearTextPos(p2, q2, dir, linLabel, pxPerMm);
+  const { arrows: linArrows, stubs } = spanArrows(p2, q2, dir, pxPerMm);
   const segments: [Vec2, Vec2][] = [
-    [p, p2],
-    [q, q2],
+    witnessLine(p, p2, pxPerMm),
+    witnessLine(q, q2, pxPerMm),
     [p2, q2],
+    ...stubs,
   ];
   if (textRes.leaderSegment) segments.push(textRes.leaderSegment);
   if (dim.textOffset) {
@@ -888,15 +1122,7 @@ export function dimensionLayout(
     }
     textRes.pos = customPos;
   }
-  return {
-    segments,
-    arrows: [
-      { tip: p2, dir: scale(dir, -1) },
-      { tip: q2, dir },
-    ],
-    textPos: textRes.pos,
-    label: linLabel,
-  };
+  return { segments, arrows: linArrows, textPos: textRes.pos, label: linLabel };
 }
 
 /**
@@ -907,8 +1133,13 @@ export function dimensionLayout(
  */
 export function dimensionSubjectKey(dim: Dimension): string {
   const ents = [...dim.entities].sort().join(",");
+  // Normalised to the bare edge key: WHERE along an edge a dimension witnesses
+  // it is presentation, not subject. Two dims measuring the same edge-to-edge
+  // distance from different points along it are still the same measurement, and
+  // letting both drive is exactly the unsolvable-sketch case this key exists to
+  // catch. Mirrored in io/aiCheck.ts, which sees raw JSON rather than Dimensions.
   const pts = dim.points
-    .map((p) => `${p.entityId}:${p.key}`)
+    .map((p) => `${p.entityId}:${baseAnchorKey(p.key)}`)
     .sort()
     .join(",");
   return `${dim.type}|${ents}|${pts}`;

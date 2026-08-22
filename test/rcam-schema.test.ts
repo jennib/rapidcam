@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import type { CAMOperation, ToolDef } from "../src/cam/types";
 import { registerEmbeddedImage } from "../src/core/imageManager";
 import { applyFile, serializeDoc } from "../src/io/fileio";
-import { CONSTRAINT_GLYPH } from "../src/model/constraints";
+import { CONSTRAINT_GLYPH, SEGMENT_SEP } from "../src/model/constraints";
 import { makeDimension } from "../src/model/dimensions";
 import { CADDocument, isRotary, MACHINE_KINDS } from "../src/model/document";
 import {
@@ -937,6 +937,17 @@ function parametricDoc(): CADDocument {
       driving: true,
       expr: "margin",
       hidden: true, // hidden driving dim
+    }),
+  );
+  // A point-to-line dimension: the only dim type that fills BOTH `points` and
+  // `entities`, so it is the only kitchen-sink coverage that pairing gets.
+  doc.dimensions.push(
+    makeDimension("point-line-distance", {
+      points: [{ entityId: l.id, key: "a" }],
+      entities: [`${plate.id}${SEGMENT_SEP}mid_b`],
+      value: 12,
+      offset: 0,
+      driving: false,
     }),
   );
 

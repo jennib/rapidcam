@@ -57,13 +57,14 @@ function move(tool: DimensionTool, ctx: ToolContext, pos: Vec2): void {
 
 /** Draw a horizontal edge dimension on `img`'s bottom edge and place it below. */
 function dimensionBottomEdge(tool: DimensionTool, ctx: ToolContext): void {
-  // Image spans x:[20,120] y:[20,80] (position (20,20), 100x60) — bottom edge
-  // midpoint (70,20) is one click away from both corners (mirrors a rectangle's
-  // "click an edge directly" shortcut).
-  click(tool, ctx, { x: 70, y: 20 });
+  // Image spans x:[20,120] y:[20,80] (position (20,20), 100x60). Clicking one
+  // edge TWICE asks for that edge's length — the first click anchors a point on
+  // it, the second says "I meant this whole edge". Both clicks sit well clear
+  // of the corners, so neither is claimed by a point hotspot instead.
+  click(tool, ctx, { x: 50, y: 20 });
+  click(tool, ctx, { x: 90, y: 20 });
   // y=5 sits INSIDE the stock edge's 8-unit pick band (stock fills the sheet,
-  // so its bottom edge is y=0). A bare click there must still commit — during
-  // "placeLinear" only a Shift-click re-targets onto another edge.
+  // so its bottom edge is y=0). A bare click there must still commit.
   move(tool, ctx, { x: 70, y: 5 });
   click(tool, ctx, { x: 70, y: 5 }); // open space below the image -> commits
 }
