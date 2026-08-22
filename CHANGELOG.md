@@ -142,6 +142,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A typed radius of 0 squares the corner again.** AutoCAD's canonical use of
+  FILLET — radius 0 removes the round — did nothing here: the field rejected any
+  value at or below zero before anything looked at the corner, so you typed 0,
+  pressed Enter, and the prompt just sat there. Typing 0 (or a chamfer distance
+  of 0) on a rectangle or polyline corner now clears it. Between two loose lines
+  it says why it cannot: that fillet was surgery, so the arc is its own entity
+  and there is no stored value to clear. Dragging back to zero is still silent —
+  that is a gesture that went nowhere, not a request.
+
 - **Fillet, chamfer and extend now say why they refused.** A fillet or chamfer
   value larger than the edges it has to fit between, and an extend with nothing
   in front of it, all did nothing and said nothing — indistinguishable from a

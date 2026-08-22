@@ -172,3 +172,57 @@ describe("extend refuses out loud", () => {
     expect(said).toEqual([]);
   });
 });
+
+describe("a typed zero means \"make this corner sharp\"", () => {
+  // AutoCAD's canonical use of FILLET: radius 0 removes the round. The field
+  // used to swallow it — `r <= 0` was rejected before anything looked at the
+  // corner — so you typed 0, pressed Enter, and the prompt just sat there.
+
+  it("clears a rectangle corner's radius", () => {
+    const doc = new CADDocument({ width: 300, height: 300 });
+    const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 220, y: 120 })) as RectEntity;
+    r.cornerRadii = [15, 0, 0, 0];
+    const { ctx, said, type } = makeCtx(doc);
+    clickCorner(new FilletTool(), ctx, { x: 20, y: 20 });
+    type("0");
+    expect(r.cornerRadii[0]).toBe(0);
+    expect(said).toEqual([]);
+  });
+
+  it("clears a chamfer's setback the same way", () => {
+    const doc = new CADDocument({ width: 300, height: 300 });
+    const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 220, y: 120 })) as RectEntity;
+    r.cornerRadii = [12, 0, 0, 0];
+    const { ctx, type } = makeCtx(doc);
+    clickCorner(new ChamferTool(), ctx, { x: 20, y: 20 });
+    type("0");
+    expect(r.cornerRadii[0]).toBe(0);
+  });
+
+  it("says why it cannot clear a corner between two loose lines", () => {
+    // That fillet was surgery: the arc is its own entity, and the two legs were
+    // trimmed. There is no stored value for a zero to clear.
+    const doc = new CADDocument({ width: 200, height: 200 });
+    doc.add(new LineEntity({ x: 20, y: 40 }, { x: 60, y: 40 }));
+    doc.add(new LineEntity({ x: 60, y: 40 }, { x: 60, y: 80 }));
+    const { ctx, said, type } = makeCtx(doc);
+    clickCorner(new FilletTool(), ctx, { x: 60, y: 40 });
+    expect(type("0")).toBe(false);
+    expect(said.join(" ")).toMatch(/already rounded/i);
+  });
+
+  it("still says nothing for a drag that ended back at zero", () => {
+    // The distinction the fix turns on: a typed 0 is a request, a drag to 0 is
+    // a non-gesture. Only one of them gets an answer.
+    const doc = new CADDocument({ width: 300, height: 300 });
+    const r = doc.add(new RectEntity({ x: 20, y: 20 }, { x: 220, y: 120 })) as RectEntity;
+    r.cornerRadii = [15, 0, 0, 0];
+    const { ctx, said } = makeCtx(doc);
+    const tool = new FilletTool();
+    tool.onPointerMove?.(ev({ x: 20, y: 20 }), ctx);
+    tool.onPointerDown?.(ev({ x: 20, y: 20 }, { x: 300, y: 300 }), ctx);
+    tool.onPointerUp?.(ev({ x: 20, y: 20 }, { x: 380, y: 380 }), ctx);
+    expect(said).toEqual([]);
+    expect(r.cornerRadii[0], "and it did not clear the corner either").toBe(15);
+  });
+});
