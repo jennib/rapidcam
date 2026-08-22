@@ -44,6 +44,87 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A dimension can start anywhere on an object, not only at its midpoint.**
+  Clicking a line or a rectangle's side used to commit on the spot to
+  dimensioning that whole edge's *length*, so the only way to start a dimension
+  **from** it was to hit one of its point hotspots — its ends, its corners, or
+  its midpoint. The midpoint is the one anybody aims for, so every line-to-line
+  dimension started at the same point: place three of them and all three stacked
+  on top of each other, with no way to pull them apart, because moving a
+  dimension slides its shaft and never its anchor.
+
+  Now a click on any object's body is a point **on that object, where you
+  clicked** — AutoCAD's "nearest" object snap. It works the same everywhere: a
+  line, any side of a rectangle, image or the stock, any segment of a polyline,
+  anywhere on a circle or arc's rim, and anywhere along a Bézier curve (whose
+  only named points were its four control handles, two of which are not even on
+  the curve). Click one object anywhere, click the second anywhere, place.
+
+  An edge's own length is still one gesture: **click that edge, then click it
+  again.** It is measured between the edge's real end points, so it drives them
+  as before.
+
+  Dragging a horizontal or vertical dimension now also slides its edge anchors
+  along their edges — but only along the axis the dimension does not measure, so
+  dragging an annotation can never change what it reports. Anchors on real
+  points (a line's ends, a rectangle's corners, a circle's centre) stay welded
+  to them, and a midpoint anchor is still written the old way, so existing files
+  load unchanged.
+
+- **Each pair of dimension picks now resolves the way Fusion, SolidWorks and
+  AutoCAD resolve it.**
+
+  | You pick | You get |
+  | --- | --- |
+  | two points | distance, Δx or Δy — chosen by which way you drag |
+  | a point and an edge | the **perpendicular distance** to that edge |
+  | two parallel edges | the gap between them, sitting where you clicked |
+  | two crossing edges | the **angle** between them |
+  | one edge, then open space | that edge's own length (**Tab** for a line's angle from horizontal) |
+  | a circle | its **diameter** (**Tab** for radius) |
+  | an arc | its radius (**Tab** for diameter, then arc length) |
+
+  A **full circle now defaults to its diameter**, as it does in Fusion and
+  SolidWorks — and it is the number a machinist wants for a hole. An arc still
+  defaults to its radius, also as both do.
+
+  **Selecting a circle is no longer a dead end.** It used to commit the tool to
+  a radius on the spot, with Escape the only way out, so a circle could not be
+  one end of a distance unless you hit its exact centre hotspot. A second pick
+  now measures from that circle's centre — the same hole that made every line
+  dimension start at a midpoint, left behind for circles.
+
+  **The dimension you are about to place is previewed**, with its live value,
+  from the moment you pick the first thing — the way Fusion and SolidWorks do
+  it. Until now the tool drew a bare rubber-band line, so nothing told you that
+  clicking open space finishes the dimension, or what the number would be.
+
+  A point and a line is a new **point-to-line** dimension, drawn as one straight
+  run from the point to its foot on the line. It replaces two wrong answers.
+  Asked for Δx against a horizontal line, the old dimension reported the
+  sideways gap to *wherever along the line* the click landed — not a property of
+  the geometry at all: click the same line 10 mm further along and it reads
+  10 mm more with nothing having moved, and as a driving dimension it would then
+  move the part to satisfy it. Asked for an aligned distance against a diagonal
+  line, it drew as three segments — a witness line off the point, a shaft
+  offset sideways, a witness line back — which read as a kinked line rather
+  than a measurement.
+
+  Two crossing edges likewise had no honest distance between them (that needs a
+  corner); they have an angle, and now report it.
+
+  **Shift-click to re-target a dimension onto a second edge is gone**, and no
+  longer needed: it existed only because the first click consumed both of a
+  dimension's ends at once. Both operands are now picked before you place.
+
+- **Dimensions are drawn to a drafting standard.** Witness lines now start a
+  small gap off the geometry (AutoCAD's DIMEXO) and run a little past the
+  dimension line (DIMEXE), so the annotation and the part read as separate
+  things. When a span is too narrow to hold its arrowheads they flip to the
+  OUTSIDE pointing in, with the dimension line growing a stub to carry them —
+  previously the two heads met in the middle and a small dimension rendered as
+  a solid blob with no visible span.
+
 - **Keychain Tag example dynamically grows with text.** The bundled example is
   now fully parametric with dual driving horizontal margins ($11.35\text{ mm}$
   between hole and text, and $11.35\text{ mm}$ between text and outer edge) and

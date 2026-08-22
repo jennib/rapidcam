@@ -9,7 +9,7 @@
 
 import { angleInArc, distToSegment } from "../core/geom";
 import type { Unit } from "../core/units";
-import { cross, dist, mid, normalize, sub, type Vec2 } from "../core/vec2";
+import { cross, dist, normalize, sub, type Vec2 } from "../core/vec2";
 import { type Geo, type PointRef, SEGMENT_SEP } from "../model/constraints";
 import {
   avoidDimensionCollision,
@@ -17,13 +17,14 @@ import {
   chooseLinearType,
   type Dimension,
   type DimensionType,
-  dimensionAnchorsFromCursor,
   dimensionLayout,
   dimensionMeasure,
   dimensionOffsetFromCursor,
+  dragDimensionTo,
   findDrivingDuplicate,
   type LinearDimType,
   makeDimension,
+  projectOnLine,
 } from "../model/dimensions";
 import {
   type CADDocument,
@@ -33,10 +34,17 @@ import {
 } from "../model/document";
 import {
   ArcEntity,
+  baseAnchorKey,
+  isEdgeAnchorKey,
+  BezierEntity,
+  bezierPointAt,
   CircleEntity,
-  edgeEndsOf,
+  curveAnchorKey,
+  edgeAnchorKey,
+  edgeEndsForKey,
   type Entity,
   type LineEntity,
+  PolylineEntity,
   type RasterImageEntity,
   type RectEntity,
   TextEntity,
@@ -78,23 +86,35 @@ const POINT_PICK_PX = 8;
  * the start; once the user has picked their points the guidance must change, or
  * a click that gets consumed as a pick reads as "nothing happened" (audit #4).
  *
- * Circle and angle placement still require OPEN SPACE. Linear placement no
- * longer does — a bare click places it anywhere, and re-targeting onto a second
- * edge takes Shift — so its hint advertises the Shift gesture instead, which is
- * otherwise undiscoverable. `null` means "restore the tool default".
+ * Circle and angle placement still require OPEN SPACE. Linear placement does
+ * not — a bare click places it anywhere. The "second" hint names the gesture a
+ * click there can mean that is not simply "the other end": open space, which
+ * dimensions the first pick on its own. `null` means "restore the tool
+ * default".
  */
 export function dimensionHint(phase: Phase): string | null {
   switch (phase) {
     case "second":
-      return "Click the second point or edge — or, from a line, open space for its angle from horizontal";
+      return "Click anywhere on the second object, or open space for the first one's own size";
     case "placeLinear":
-      return "Click to place the dimension — Shift-click another edge to measure to that instead";
+      return "Click to place the dimension — Tab for a line's angle from horizontal";
     case "placeCircle":
     case "placeAngle":
       return "Move to position, then click in open space to place the dimension";
     default:
       return null; // "first" → the tool's default hint
   }
+}
+
+/**
+ * Lock a dimension to an EDGE's own orientation, so where the cursor happens to
+ * sit cannot turn it into a rotationally-invariant "distance" type. Null for a
+ * diagonal edge, where there is no axis to lock to.
+ */
+function forcedTypeFor(a: Vec2, b: Vec2): LinearDimType | null {
+  const dx = Math.abs(b.x - a.x);
+  const dy = Math.abs(b.y - a.y);
+  return dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
 }
 
 /** Exported for testing. */
@@ -120,11 +140,15 @@ export class DimensionTool implements Tool {
   /** True once the second operand was chosen as the X axis rather than a line. */
   private angleToAxis = false;
   private line2Id: string | null = null;
-  private firstMid: Pick | null = null;
-  private hoverP1: Pick | null = null;
-  private hoverP2: Pick | null = null;
+  /**
+   * Set while placing a LINE's own length, so Tab can switch that dimension to
+   * the line's angle from horizontal — the other thing one selected line can be
+   * dimensioned for, and one with no second operand to click.
+   */
+  private lengthOfLineId: string | null = null;
   private firstRaw: Vec2 | null = null;
   private cursor: Vec2 = { x: 0, y: 0 };
+  private cursorRaw: Vec2 = { x: 0, y: 0 };
   private dragDim: Dimension | null = null;
 
   // committed-on-move placement state
@@ -159,60 +183,31 @@ export class DimensionTool implements Tool {
         }
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit && (hit.type === "circle" || hit.type === "arc")) {
+          // A circle or arc is the one shape whose click means something other
+          // than "a point here": it selects the whole circle. A full circle is
+          // dimensioned by its DIAMETER — that is the default in both Fusion
+          // and SolidWorks, and the number a machinist wants for a hole. An arc
+          // defaults to its radius, also as both do. Tab moves between them.
           this.circleId = hit.id;
-          this.circleKind = "radius";
+          this.circleKind = hit.type === "arc" ? "radius" : "diameter";
           this.phase = "placeCircle";
-        } else if (hit && (hit.type === "rectangle" || hit.type === "image")) {
-          // Clicking an edge directly sets both endpoints and skips the second pick.
-          const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, e.worldRaw);
-          if (edge) {
-            this.firstRaw = e.worldRaw;
-            this.firstMid = edge.mid;
-            this.p1 = edge.p1;
-            this.p2 = edge.p2;
-            const dx = Math.abs(edge.p2.pos.x - edge.p1.pos.x);
-            const dy = Math.abs(edge.p2.pos.y - edge.p1.pos.y);
-            this.forcedLinearType =
-              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
-            this.phase = "placeLinear";
-          }
         } else if (hit) {
-          if (hit.type === "line") {
-            // Line body click: dimension the line length directly.
-            const line = hit as LineEntity;
+          // Every other body click is a point ON that object, where it was
+          // clicked — AutoCAD's "nearest" object snap. See pickAnywhereOn.
+          const pick = pickAnywhereOn(hit, e.worldRaw, tol);
+          if (pick) {
             this.firstRaw = e.worldRaw;
-            this.firstMid = { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) };
-            this.p1 = { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } };
-            this.p2 = { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } };
-            // Lock to the line's actual orientation so the cursor position can't
-            // accidentally produce a "distance" type (rotationally invariant).
-            const dx = Math.abs(line.b.x - line.a.x);
-            const dy = Math.abs(line.b.y - line.a.y);
-            this.forcedLinearType =
-              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
-            this.phase = "placeLinear";
-          } else {
-            // Polyline body click: snap to nearest vertex.
-            const entityPick = pickNearestEntityPoint(hit, e.worldRaw, tol);
-            if (entityPick) {
-              this.p1 = entityPick;
-              this.phase = "second";
-            }
+            this.p1 = pick;
+            this.phase = "second";
           }
         } else {
           // Not a hitTest candidate — the stock rect isn't an entity — so check
-          // it explicitly, same as a rectangle/image edge above.
+          // it explicitly, the same way every real edge is handled above.
           const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
           if (edge) {
             this.firstRaw = e.worldRaw;
-            this.firstMid = edge.mid;
-            this.p1 = edge.p1;
-            this.p2 = edge.p2;
-            const dx = Math.abs(edge.p2.pos.x - edge.p1.pos.x);
-            const dy = Math.abs(edge.p2.pos.y - edge.p1.pos.y);
-            this.forcedLinearType =
-              dx > dy * 1.4 ? "horizontal" : dy > dx * 1.4 ? "vertical" : null;
-            this.phase = "placeLinear";
+            this.p1 = edge.mid;
+            this.phase = "second";
           }
         }
         break;
@@ -222,115 +217,82 @@ export class DimensionTool implements Tool {
           ctx.doc.pickPoint(e.worldRaw, tol) ??
           pickVirtualRectCorner(ctx.doc.entities, e.worldRaw, tol);
         if (pick && !samePos(pick.pos, this.p1!.pos)) {
-          this.p2 = pick;
-          this.forcedLinearType = null;
-          this.phase = "placeLinear";
+          this.acceptSecond(ctx, pick);
           break;
         }
-        // Entity body click: snap to nearest point on the hit entity.
+        // Entity body click: anchor ON the edge that was clicked (or, for a
+        // shape with no named edges, the nearest point on it).
         const hit = ctx.doc.hitTest(e.worldRaw, tol);
         if (hit) {
-          const entityPick = pickNearestEntityPoint(hit, e.worldRaw, tol);
-          if (entityPick && !samePos(entityPick.pos, this.p1!.pos)) {
-            this.p2 = entityPick;
-            this.forcedLinearType = null;
+          // Clicking the SAME edge a second time means "this edge's length" —
+          // the one-click shortcut a body click used to be, now spelled as a
+          // deliberate gesture rather than the only thing a body click could
+          // do. It measures between the edge's real END POINTS, so the
+          // dimension drives them; it runs after pickPoint above, so clicking
+          // an endpoint instead still measures a partial length.
+          const span = sameEdgeSpan(pickEntityEdge(hit, e.worldRaw), this.p1!);
+          if (span) {
+            this.p1 = span.p1;
+            this.p2 = span.p2;
+            this.forcedLinearType = forcedTypeFor(span.p1.pos, span.p2.pos);
             this.phase = "placeLinear";
+            break;
+          }
+          const entityPick = pickAnywhereOn(hit, e.worldRaw, tol);
+          if (entityPick && !samePos(entityPick.pos, this.p1!.pos)) {
+            this.acceptSecond(ctx, entityPick);
           }
           break;
         }
         // Stock rect edge click (not an entity, so hitTest won't catch it)
-        if (this.p1 && this.p1.ref.entityId !== STOCK_ENTITY_ID) {
+        if (this.p1) {
           const edge = pickStockEdge(ctx.doc, e.worldRaw, tol);
           if (edge) {
-            this.p2 = edge.mid;
-            const edgeEnds = getEdgeEnds(ctx.doc, edge.mid);
-            if (edgeEnds) {
-              const dir = normalize(sub(edgeEnds.b, edgeEnds.a));
-              if (Math.abs(dir.y) > Math.abs(dir.x) * 1.4) this.forcedLinearType = "horizontal";
-              else if (Math.abs(dir.x) > Math.abs(dir.y) * 1.4) this.forcedLinearType = "vertical";
-              else this.forcedLinearType = null;
+            const span = sameEdgeSpan(edge, this.p1);
+            if (span) {
+              this.p1 = span.p1;
+              this.p2 = span.p2;
+              this.forcedLinearType = forcedTypeFor(span.p1.pos, span.p2.pos);
+              this.phase = "placeLinear";
             } else {
-              this.forcedLinearType = null;
+              this.acceptSecond(ctx, edge.mid);
             }
-            this.phase = "placeLinear";
             break;
           }
         }
-        // Open space, having started on a LINE: dimension that line's angle
-        // from horizontal. There is no second thing to click for it — the X
-        // axis is named by the dimension type rather than being selectable
-        // geometry — so a miss is the only gesture available. It was dead
-        // before (an open-space click here did nothing at all), and the phase
-        // hint advertises it.
-        if (this.p1 && ctx.doc.entities.find((x) => x.id === this.p1!.ref.entityId)?.type === "line") {
-          this.line1Id = this.p1.ref.entityId;
-          this.angleToAxis = true;
-          this.phase = "placeAngle";
+        // Open space, having picked an EDGE: that edge's own LENGTH, the way
+        // Fusion and SolidWorks read "pick one thing, then click away" — one
+        // entity selected means the dimension OF that entity.
+        //
+        // This gesture used to make the line's angle from horizontal instead.
+        // That measurement has no second thing to click (the X axis is named by
+        // the dimension's type, not by selectable geometry), so it now rides on
+        // Tab during placement, the same key this tool already uses to cycle a
+        // circle between radius and diameter.
+        if (this.p1 && isEdgeAnchorKey(this.p1.ref.key)) {
+          const hit = ctx.doc.entities.find((x) => x.id === this.p1!.ref.entityId);
+          const span = hit ? pickEntityEdge(hit, this.p1.pos) : null;
+          if (span && baseAnchorKey(span.mid.ref.key) === baseAnchorKey(this.p1.ref.key)) {
+            this.p1 = span.p1;
+            this.p2 = span.p2;
+            this.forcedLinearType = forcedTypeFor(span.p1.pos, span.p2.pos);
+            this.lengthOfLineId = hit?.type === "line" ? hit.id : null;
+            this.phase = "placeLinear";
+          }
         }
         break;
       }
       case "placeLinear": {
-        // Re-targeting onto a SECOND edge takes Shift; a plain click always
-        // places the dimension.
-        //
-        // These two gestures used to share one click, disambiguated only by
-        // proximity to some other edge — and since `pickStockEdge` stopped
-        // requiring an explicit `doc.stockRect`, the stock's edges are the sheet
-        // boundary in the default fills-the-sheet case. The pick tolerance is
-        // 8px/scale, i.e. ~35mm of world at fit zoom, so an ordinary "click just
-        // outside the part to place it" click landed inside that band and
-        // silently measured the part-to-stock gap instead of committing what the
-        // user had asked for. Placing is the overwhelmingly common action, so it
-        // gets the bare click.
-        if (this.firstMid && e.shiftKey) {
-          const resolved = resolveSecondPick(
-            ctx.doc,
-            this.p1!,
-            this.p2,
-            this.firstMid,
-            this.firstRaw,
-            e.worldRaw,
-            tol,
-          );
-          if (resolved) {
-            const { newP1, newP2, forcedType } = resolved;
-            this.forcedLinearType = forcedType;
-            if (
-              newP1?.ref.key.startsWith("mid") &&
-              newP2?.ref.key.startsWith("mid") &&
-              newP1.ref.entityId !== STOCK_ENTITY_ID &&
-              newP2.ref.entityId !== STOCK_ENTITY_ID
-            ) {
-              const edge1 = getEdgeEnds(ctx.doc, newP1);
-              const edge2 = getEdgeEnds(ctx.doc, newP2);
-              if (edge1 && edge2) {
-                const dir1 = normalize(sub(edge1.b, edge1.a));
-                const dir2 = normalize(sub(edge2.b, edge2.a));
-                if (Math.abs(cross(dir1, dir2)) > 0.05) {
-                  this.line1Id = newP1.ref.entityId;
-                  this.line2Id = newP2.ref.entityId;
-                  this.phase = "placeAngle";
-                  this.hoverP1 = null;
-                  this.hoverP2 = null;
-                  this.firstMid = null;
-                  break;
-                }
-              }
-            }
-            if (newP1) this.p1 = newP1;
-            if (newP2) this.p2 = newP2;
-            this.firstMid = null;
-            this.hoverP1 = null;
-            this.hoverP2 = null;
-            break;
-          }
-        }
+        // A click here always places the dimension. Both operands were picked
+        // in phase "second", so there is nothing left to re-target — this used
+        // to host a Shift-click that added the SECOND edge, back when the first
+        // click on an edge consumed both of a dimension's ends at once.
         this.commitLinear(ctx);
         break;
       }
       case "placeCircle":
         if (this.gapTargetId) this.commitGap(ctx);
-        else this.commitCircle(ctx);
+        else if (!this.circleToSecondPick(ctx, e.worldRaw, tol)) this.commitCircle(ctx);
         break;
       case "placeAngle":
         this.commitAngle(ctx);
@@ -341,6 +303,70 @@ export class DimensionTool implements Tool {
     ctx.requestRender();
   }
 
+  /**
+   * Accept the second operand and move to placement. What the pair MEANS is
+   * decided in `recompute`, which sees the same two picks and can re-decide as
+   * the cursor moves; all this does is clear any type the first pick forced.
+   */
+  private acceptSecond(ctx: ToolContext, pick: Pick): void {
+    const first = this.p1!;
+    // Two EDGES that are not parallel: what lies between them is an ANGLE, not
+    // a distance — there is no canonical distance between two lines that meet.
+    // Fusion, SolidWorks and AutoCAD's DIMANGULAR all answer this pick that way.
+    const e1 = isEdgeAnchorKey(first.ref.key) ? getEdgeEnds(ctx.doc, first) : null;
+    const e2 = isEdgeAnchorKey(pick.ref.key) ? getEdgeEnds(ctx.doc, pick) : null;
+    if (e1 && e2) {
+      const d1 = normalize(sub(e1.b, e1.a));
+      const d2 = normalize(sub(e2.b, e2.a));
+      if (Math.abs(cross(d1, d2)) > 0.05) {
+        this.line1Id = lineDistanceRef(first);
+        this.line2Id = lineDistanceRef(pick);
+        this.angleToAxis = false;
+        this.phase = "placeAngle";
+        return;
+      }
+    }
+    this.p2 = pick;
+    this.forcedLinearType = null;
+    this.phase = "placeLinear";
+  }
+
+  /**
+   * With a circle selected, a click on some OTHER geometry measures from that
+   * circle's centre to it, rather than committing the radius.
+   *
+   * Selecting a circle used to be a one-way door: the click went straight to
+   * radius placement and the only way out was Escape, so a circle could not be
+   * one end of a distance at all unless you hit its exact centre hotspot — the
+   * same "the first click already decided what this dimension is" hole that
+   * made every line dimension start at a midpoint. Fusion and SolidWorks both
+   * let a second selection convert it.
+   *
+   * Open space still places the radius/diameter, which is the same rule the
+   * phase already had (and what its hint says), so nothing here is ambiguous
+   * with placing. Returns false when the click was not on other geometry.
+   */
+  private circleToSecondPick(ctx: ToolContext, raw: Vec2, tol: number): boolean {
+    const circle = ctx.doc.entities.find((x) => x.id === this.circleId);
+    if (!circle) return false;
+    const other = (pick: Pick | null): Pick | null =>
+      pick && pick.ref.entityId !== this.circleId ? pick : null;
+
+    const hit = ctx.doc.hitTest(raw, tol);
+    const pick =
+      other(ctx.doc.pickPoint(raw, tol)) ??
+      other(pickVirtualRectCorner(ctx.doc.entities, raw, tol)) ??
+      (hit && hit.id !== this.circleId ? other(pickAnywhereOn(hit, raw, tol)) : null) ??
+      (hit ? null : (pickStockEdge(ctx.doc, raw, tol)?.mid ?? null));
+    if (!pick) return false;
+
+    this.p1 = { ref: { entityId: circle.id, key: "c" }, pos: circle.getPoint("c") };
+    this.circleId = null;
+    this.gapTargetId = null;
+    this.acceptSecond(ctx, pick);
+    return true;
+  }
+
   /** Push the hint for the current phase (see {@link dimensionHint}). */
   private updateHint(ctx: ToolContext): void {
     ctx.setHint(dimensionHint(this.phase));
@@ -348,36 +374,11 @@ export class DimensionTool implements Tool {
 
   onPointerMove(e: ToolPointerEvent, ctx: ToolContext): void {
     this.cursor = e.world;
+    this.cursorRaw = e.worldRaw;
     if (this.dragDim) {
-      const geo = geoOf(ctx.doc);
-      const anchors = dimensionAnchorsFromCursor(this.dragDim, geo, e.world);
-      if (anchors) this.dragDim.anchors = anchors;
-      this.dragDim.offset = dimensionOffsetFromCursor(this.dragDim, geo, e.world);
+      dragDimensionTo(this.dragDim, geoOf(ctx.doc), e.world);
       ctx.doc.emitChange();
       return;
-    }
-
-    if (this.phase === "placeLinear") {
-      this.hoverP1 = null;
-      this.hoverP2 = null;
-      // Preview the re-target only while Shift is down, so what the preview
-      // shows is always what a click would produce.
-      if (this.firstMid && e.shiftKey) {
-        const tol = ctx.view.toWorldLen(POINT_PICK_PX);
-        const resolved = resolveSecondPick(
-          ctx.doc,
-          this.p1!,
-          this.p2,
-          this.firstMid,
-          this.firstRaw,
-          e.worldRaw,
-          tol,
-        );
-        if (resolved) {
-          this.hoverP1 = resolved.newP1;
-          this.hoverP2 = resolved.newP2;
-        }
-      }
     }
 
     if (this.phase === "placeCircle") {
@@ -398,6 +399,33 @@ export class DimensionTool implements Tool {
   onKeyDown(e: KeyboardEvent, ctx: ToolContext): void {
     if (e.key === "Escape") {
       this.cancel(ctx);
+    } else if (e.key === "Tab" && this.phase === "placeLinear" && this.lengthOfLineId) {
+      // One selected line has two dimensions worth taking: its length, and its
+      // angle from horizontal. Tab moves between them, matching how Tab already
+      // moves a circle between radius and diameter.
+      this.line1Id = this.lengthOfLineId;
+      this.angleToAxis = true;
+      this.lengthOfLineId = null;
+      this.phase = "placeAngle";
+      e.preventDefault();
+      this.updateHint(ctx);
+      this.recompute(ctx);
+      ctx.requestRender();
+    } else if (e.key === "Tab" && this.phase === "placeAngle" && this.angleToAxis) {
+      const l = ctx.doc.entities.find((x) => x.id === this.line1Id) as LineEntity | undefined;
+      if (l) {
+        this.lengthOfLineId = l.id;
+        this.p1 = { ref: { entityId: l.id, key: "a" }, pos: { ...l.a } };
+        this.p2 = { ref: { entityId: l.id, key: "b" }, pos: { ...l.b } };
+        this.forcedLinearType = forcedTypeFor(l.a, l.b);
+        this.line1Id = null;
+        this.angleToAxis = false;
+        this.phase = "placeLinear";
+      }
+      e.preventDefault();
+      this.updateHint(ctx);
+      this.recompute(ctx);
+      ctx.requestRender();
     } else if (e.key === "Tab" && this.phase === "placeCircle") {
       const ent = this.circleId ? ctx.doc.entities.find((e) => e.id === this.circleId) : null;
       if (ent?.type === "arc") {
@@ -409,7 +437,7 @@ export class DimensionTool implements Tool {
               ? "arclength"
               : "radius";
       } else {
-        this.circleKind = this.circleKind === "radius" ? "diameter" : "radius";
+        this.circleKind = this.circleKind === "diameter" ? "radius" : "diameter";
       }
       e.preventDefault();
       this.recompute(ctx);
@@ -425,14 +453,12 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
-    this.firstMid = null;
-    this.hoverP1 = null;
-    this.hoverP2 = null;
     this.firstRaw = null;
     this.circleId = null;
     this.gapTargetId = null;
     this.line1Id = null;
     this.line2Id = null;
+    this.lengthOfLineId = null;
     this.angleToAxis = false;
     this.forcedLinearType = null;
     this.preview = { previews: [], selectionRect: null };
@@ -447,13 +473,25 @@ export class DimensionTool implements Tool {
     this.preview = { previews: [], selectionRect: null };
 
     if (this.phase === "second" && this.p1) {
-      this.preview.previews = [
-        { kind: "line", a: this.p1.pos, b: this.cursor },
-        { kind: "point", pos: this.p1.pos },
-      ];
+      // With one edge picked and nothing under the cursor, show the dimension a
+      // click right here would commit: that edge's own length. Fusion and
+      // SolidWorks both preview the single-entity dimension from the moment you
+      // select one thing, which is the only reason anybody discovers that
+      // clicking open space finishes it — and, via the hint the preview brings
+      // up, that Tab then switches a line to its angle.
+      const pending = this.pendingEdgeLength(ctx);
+      if (pending) {
+        pending.offset = dimensionOffsetFromCursor(pending, geo, this.cursor);
+        this.previewFromLayout(pending, geo, unit);
+      } else {
+        this.preview.previews = [
+          { kind: "line", a: this.p1.pos, b: this.cursor },
+          { kind: "point", pos: this.p1.pos },
+        ];
+      }
     } else if (this.phase === "placeLinear" && this.p1 && this.p2) {
-      const activeP1 = this.hoverP1 ?? this.p1;
-      const activeP2 = this.hoverP2 ?? this.p2;
+      const activeP1 = this.p1;
+      const activeP2 = this.p2;
 
       this.curType =
         this.forcedLinearType ??
@@ -473,6 +511,14 @@ export class DimensionTool implements Tool {
           const dir2 = normalize(sub(edge2.b, edge2.a));
           if (Math.abs(cross(dir1, dir2)) < 0.05) this.curType = "line-distance";
         }
+      } else if (isEdgeAnchorKey(activeP1.ref.key) !== isEdgeAnchorKey(activeP2.ref.key)) {
+        // Exactly one side is an EDGE and the other a real point: the thing
+        // between them is the perpendicular distance to that edge. Measured any
+        // other way it reports the gap to wherever along the edge the click
+        // landed — a number that changes when you click elsewhere on the same
+        // edge, with nothing having moved. See the "point-line-distance" note.
+        const edgePick = isEdgeAnchorKey(activeP1.ref.key) ? activeP1 : activeP2;
+        if (getEdgeEnds(ctx.doc, edgePick)) this.curType = "point-line-distance";
       }
 
       const dim = this.linearDim(ctx, 0, activeP1, activeP2);
@@ -492,12 +538,39 @@ export class DimensionTool implements Tool {
     }
   }
 
+  /**
+   * The dimension an open-space click would commit right now: the whole length
+   * of the edge already picked. Null when there is no such pending dimension —
+   * the pick was a bare point, or the cursor is over geometry the next click
+   * would pick as the second operand instead.
+   */
+  private pendingEdgeLength(ctx: ToolContext): Dimension | null {
+    const p1 = this.p1;
+    if (!p1 || !isEdgeAnchorKey(p1.ref.key)) return null;
+    const tol = ctx.view.toWorldLen(POINT_PICK_PX);
+    if (ctx.doc.pickPoint(this.cursorRaw, tol) || ctx.doc.hitTest(this.cursorRaw, tol)) return null;
+    if (pickStockEdge(ctx.doc, this.cursorRaw, tol)) return null;
+    const ent = ctx.doc.entities.find((x) => x.id === p1.ref.entityId);
+    const edge = ent ? pickEntityEdge(ent, p1.pos) : null;
+    if (!edge || baseAnchorKey(edge.mid.ref.key) !== baseAnchorKey(p1.ref.key)) return null;
+    return makeDimension(forcedTypeFor(edge.p1.pos, edge.p2.pos) ?? "distance", {
+      points: [edge.p1.ref, edge.p2.ref],
+      value: dist(edge.p1.pos, edge.p2.pos),
+      offset: 0,
+    });
+  }
+
   private previewFromLayout(dim: Dimension, geo: Geo, unit: Unit): void {
     const layout = dimensionLayout(dim, geo, unit);
     if (!layout) return;
     const previews: PreviewShape[] = [
       ...layout.segments.map(([a, b]) => ({ kind: "line" as const, a, b })),
-      { kind: "point" as const, pos: layout.textPos },
+      // The VALUE, not just a dot where it will land. Watching the number
+      // change as you position the dimension is how every CAD tool shows what
+      // you are about to commit — and here it is also the only thing that says
+      // whether the pair resolved to a length, a gap, an angle or a diameter
+      // before you click.
+      { kind: "text" as const, pos: layout.textPos, text: layout.label, dx: 8, dy: 0 },
     ];
     if (layout.arc) {
       const { center, radius, startDir, endDir, ccw } = layout.arc;
@@ -528,10 +601,8 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.line1Id = null;
     this.line2Id = null;
+    this.lengthOfLineId = null;
     this.angleToAxis = false;
-    this.firstMid = null;
-    this.hoverP1 = null;
-    this.hoverP2 = null;
     this.firstRaw = null;
     this.finaliseDim(dim, ctx);
   }
@@ -588,8 +659,23 @@ export class DimensionTool implements Tool {
       });
     }
 
+    const ap1 = activeP1 ?? this.p1!;
+    const ap2 = activeP2 ?? this.p2!;
+    if (this.curType === "point-line-distance") {
+      // points[0] is the POINT, entities[0] the LINE — whichever way round they
+      // were clicked.
+      const edge = isEdgeAnchorKey(ap1.ref.key) ? ap1 : ap2;
+      const pt = edge === ap1 ? ap2 : ap1;
+      return makeDimension(this.curType, {
+        points: [pt.ref],
+        entities: [lineDistanceRef(edge)],
+        value: 0,
+        offset: 0,
+      });
+    }
+
     return makeDimension(this.curType, {
-      points: [(activeP1 ?? this.p1!).ref, (activeP2 ?? this.p2!).ref],
+      points: [ap1.ref, ap2.ref],
       value: 0,
       offset,
     });
@@ -636,9 +722,6 @@ export class DimensionTool implements Tool {
     this.phase = "first";
     this.p1 = null;
     this.p2 = null;
-    this.firstMid = null;
-    this.hoverP1 = null;
-    this.hoverP2 = null;
     this.firstRaw = null;
     this.finaliseDim(dim, ctx);
   }
@@ -743,6 +826,142 @@ export function circleEdgePick(ent: CircleEntity | ArcEntity, p: Vec2, tol: numb
   };
 }
 
+/**
+ * The anchor for a click on an entity's body: a point ON THE OBJECT WHERE IT
+ * WAS CLICKED — a line, any side of a rectangle/image/stock, any segment of a
+ * polyline, anywhere on a circle or arc's rim, anywhere along a Bézier.
+ * Falls back to the nearest pickable point only for shapes with no continuous
+ * geometry to land on (text boxes, points).
+ *
+ * That fallback was once the ONLY behaviour, and it is what made a dimension
+ * "only attach to the midpoint of a line": a line's pickable points are its two
+ * ends and its midpoint, a rectangle's are its corners, edge midpoints and
+ * centre, a polyline's are its vertices and segment midpoints. A click aimed
+ * along an edge snapped to that edge's midpoint, so every dimension measured to
+ * it started from the same point and they stacked with no way to pull them
+ * apart.
+ *
+ * `doc.pickPoint` has already claimed every one of those hotspots within this
+ * same tolerance before this runs, so a click that gets here is one the user
+ * aimed at the object's BODY, not at a named point on it.
+ */
+function pickAnywhereOn(ent: Entity, p: Vec2, tol: number): Pick | null {
+  if (ent instanceof CircleEntity || ent instanceof ArcEntity) {
+    const rim = circleEdgePick(ent, p, tol);
+    if (rim) return rim;
+  }
+  if (ent instanceof BezierEntity) {
+    const on = bezierCurvePick(ent, p);
+    if (on) return on;
+  }
+  const edge = pickEntityEdge(ent, p);
+  if (edge) return edge.mid;
+  return pickNearestEntityPoint(ent, p, tol);
+}
+
+/**
+ * The one straight edge a click landed on, for any entity that has straight
+ * edges: its two END PointRefs plus the anchor where the click landed. Null for
+ * everything else. One function so "which edge did they click" is answered the
+ * same way wherever it is asked.
+ */
+function pickEntityEdge(
+  ent: Entity,
+  p: Vec2,
+): { p1: Pick; p2: Pick; mid: Pick } | null {
+  if (ent.type === "line") {
+    const l = ent as LineEntity;
+    return {
+      p1: { ref: { entityId: l.id, key: "a" }, pos: { ...l.a } },
+      p2: { ref: { entityId: l.id, key: "b" }, pos: { ...l.b } },
+      mid: edgeAnchorPick(l.id, "mid", l.a, l.b, p),
+    };
+  }
+  if (ent.type === "rectangle" || ent.type === "image") {
+    return pickRectOrImageEdge(ent as RectEntity | RasterImageEntity, p);
+  }
+  if (ent instanceof PolylineEntity) return pickPolylineSegment(ent, p);
+  return null;
+}
+
+/**
+ * The polyline segment nearest `p`. A segment is named by the STABLE id of its
+ * start vertex — the same `v<id>` / `mid_<id>` spelling the entity's own
+ * pickable points use — so an anchor survives an edit that inserts a vertex
+ * ahead of it, the same way a vertex reference does.
+ */
+function pickPolylineSegment(
+  ent: PolylineEntity,
+  p: Vec2,
+): { p1: Pick; p2: Pick; mid: Pick } | null {
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < ent.segmentCount(); i++) {
+    const [a, b] = ent.segment(i);
+    const d = distToSegment(p, a, b);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best < 0) return null;
+  const [a, b] = ent.segment(best);
+  const startId = ent.vertexIds[best];
+  const endId = ent.vertexIds[(best + 1) % ent.points.length];
+  return {
+    p1: { ref: { entityId: ent.id, key: `v${startId}` }, pos: { ...a } },
+    p2: { ref: { entityId: ent.id, key: `v${endId}` }, pos: { ...b } },
+    mid: edgeAnchorPick(ent.id, `mid_${startId}`, a, b, p),
+  };
+}
+
+/**
+ * The point on a Bézier nearest `p`, as a `curve@<t>` anchor.
+ *
+ * Found on the same flattening the curve is drawn and hit-tested with, so what
+ * the anchor lands on is what the user sees; `t` is then interpolated within
+ * the winning chord. A Bézier's only named points are its four control points,
+ * two of which are not even ON the curve — so without this a dimension could
+ * not touch the curve anywhere between its ends.
+ */
+function bezierCurvePick(ent: BezierEntity, p: Vec2): Pick | null {
+  const N = 64;
+  let bestT = 0;
+  let bestD = Infinity;
+  let prev = bezierPointAt(ent.p0, ent.p1, ent.p2, ent.p3, 0);
+  for (let i = 1; i <= N; i++) {
+    const t1 = i / N;
+    const cur = bezierPointAt(ent.p0, ent.p1, ent.p2, ent.p3, t1);
+    const d = distToSegment(p, prev, cur);
+    if (d < bestD) {
+      bestD = d;
+      // Where along THIS chord, mapped back into the curve's own parameter.
+      bestT = ((i - 1) + projectOnLine(p, prev, cur)) / N;
+    }
+    prev = cur;
+  }
+  return {
+    ref: { entityId: ent.id, key: curveAnchorKey(bestT) },
+    pos: bezierPointAt(ent.p0, ent.p1, ent.p2, ent.p3, bestT),
+  };
+}
+
+/**
+ * When a second click lands on the SAME edge the first pick anchored to, that
+ * edge's two ends — i.e. "dimension this edge's length". Null otherwise, which
+ * includes a different side of the same rectangle: two points on two different
+ * sides is a perfectly ordinary thing to measure.
+ */
+function sameEdgeSpan(
+  edge: { p1: Pick; p2: Pick; mid: Pick } | null,
+  first: Pick,
+): { p1: Pick; p2: Pick } | null {
+  if (!edge) return null;
+  if (edge.mid.ref.entityId !== first.ref.entityId) return null;
+  if (baseAnchorKey(edge.mid.ref.key) !== baseAnchorKey(first.ref.key)) return null;
+  return { p1: edge.p1, p2: edge.p2 };
+}
+
 /** Nearest point on an entity for use as a dimension anchor (pickable points). */
 function pickNearestEntityPoint(ent: Entity, p: Vec2, tol: number): Pick | null {
   if (ent instanceof CircleEntity || ent instanceof ArcEntity) {
@@ -787,9 +1006,7 @@ function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | nul
   // dimension from a stock edge never qualified as an edge-to-edge dimension
   // and silently degraded to a midpoint-to-midpoint point dimension.
   const e = id === STOCK_ENTITY_ID ? stockRefEntity(doc) : doc.entities.find((x) => x.id === id);
-  if (!e) return null;
-  if (e.type === "line") return { a: (e as LineEntity).a, b: (e as LineEntity).b };
-  return edgeEndsOf(e, midRef.ref.key);
+  return edgeEndsForKey(e, midRef.ref.key);
 }
 
 /**
@@ -799,10 +1016,37 @@ function getEdgeEnds(doc: CADDocument, midRef: Pick): { a: Vec2; b: Vec2 } | nul
  */
 function lineDistanceRef(pick: Pick): string {
   const { entityId, key } = pick.ref;
-  return key.startsWith("mid_") ? `${entityId}${SEGMENT_SEP}${key}` : entityId;
+  // The bare edge key: a line-distance dim names two whole EDGES and carries
+  // where it sits along them in `anchors`, so a `@t` fraction in the ref would
+  // be a second, silently disagreeing copy of that same fact.
+  const base = baseAnchorKey(key);
+  return base.startsWith("mid_") ? `${entityId}${SEGMENT_SEP}${base}` : entityId;
 }
 
-/** Find the closest edge of a rectangle or image and return its two corner PointRefs and its midpoint. */
+/**
+ * The anchor Pick for a click at `p` on the edge running a→b: the point on the
+ * edge WHERE THE USER CLICKED, not that edge's midpoint.
+ *
+ * Every edge dimension used to anchor at the midpoint, because the midpoint was
+ * the only named point on an edge. Two dimensions measured to the same edge
+ * therefore started from the same point and their extension lines ran along
+ * each other, which moving the dimension cannot fix — `offset` slides the
+ * shaft, never the anchor. AutoCAD's "nearest" object snap and Fusion's sketch
+ * dimensions both witness an edge where you picked it; so does this.
+ *
+ * Deliberately no snapping to the ends or the middle: all three are DOF
+ * hotspots `pickPoint` has already claimed within this same tolerance, so any
+ * click that reaches here is further than the tolerance from every one of them.
+ */
+function edgeAnchorPick(entityId: string, edgeKey: string, a: Vec2, b: Vec2, p: Vec2): Pick {
+  const t = projectOnLine(p, a, b);
+  return {
+    ref: { entityId, key: edgeAnchorKey(edgeKey, t) },
+    pos: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t },
+  };
+}
+
+/** Find the closest edge of a rectangle or image and return its two corner PointRefs and the clicked anchor on it. */
 function pickRectOrImageEdge(
   ent: RectEntity | RasterImageEntity,
   p: Vec2,
@@ -816,13 +1060,13 @@ function pickRectOrImageEdge(
   const br = ent.getPoint(brKey);
   const tr = ent.getPoint(trKey);
   const tl = ent.getPoint(tlKey);
-  const edges: [string, Vec2, string, Vec2, string, Vec2][] = [
-    [blKey, bl, brKey, br, "mid_b", mid(bl, br)],
-    [brKey, br, trKey, tr, "mid_r", mid(br, tr)],
-    [trKey, tr, tlKey, tl, "mid_t", mid(tr, tl)],
-    [tlKey, tl, blKey, bl, "mid_l", mid(tl, bl)],
+  const edges: [string, Vec2, string, Vec2, string][] = [
+    [blKey, bl, brKey, br, "mid_b"],
+    [brKey, br, trKey, tr, "mid_r"],
+    [trKey, tr, tlKey, tl, "mid_t"],
+    [tlKey, tl, blKey, bl, "mid_l"],
   ];
-  let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
+  let best: [string, Vec2, string, Vec2, string] | null = null;
   let bestD = Infinity;
   for (const edge of edges) {
     const d = distToSegment(p, edge[1], edge[3]);
@@ -835,7 +1079,7 @@ function pickRectOrImageEdge(
   return {
     p1: { ref: { entityId: ent.id, key: best[0] }, pos: best[1] },
     p2: { ref: { entityId: ent.id, key: best[2] }, pos: best[3] },
-    mid: { ref: { entityId: ent.id, key: best[4] }, pos: best[5] },
+    mid: edgeAnchorPick(ent.id, best[4], best[1], best[3], p),
   };
 }
 
@@ -858,15 +1102,14 @@ function pickStockEdge(
   // step with the offset tool's copy or with RECT_EDGE_CORNERS.
   const segs = stockEdgeSegments(doc);
   if (!segs) return null; // rotary: no flat stock to dimension from
-  const edges: [string, Vec2, string, Vec2, string, Vec2][] = segs.map((s) => [
+  const edges: [string, Vec2, string, Vec2, string][] = segs.map((s) => [
     s.edge.corners[0],
     s.a,
     s.edge.corners[1],
     s.b,
     s.edge.mid,
-    mid(s.a, s.b),
   ]);
-  let best: [string, Vec2, string, Vec2, string, Vec2] | null = null;
+  let best: [string, Vec2, string, Vec2, string] | null = null;
   let bestD = tol;
   for (const edge of edges) {
     const d = distToSegment(p, edge[1], edge[3]);
@@ -879,7 +1122,7 @@ function pickStockEdge(
   return {
     p1: { ref: { entityId: STOCK_ENTITY_ID, key: best[0] }, pos: best[1] },
     p2: { ref: { entityId: STOCK_ENTITY_ID, key: best[2] }, pos: best[3] },
-    mid: { ref: { entityId: STOCK_ENTITY_ID, key: best[4] }, pos: best[5] },
+    mid: edgeAnchorPick(STOCK_ENTITY_ID, best[4], best[1], best[3], p),
   };
 }
 
@@ -888,110 +1131,3 @@ function pickStockEdge(
 function measuresStockOnly(dim: Dimension): boolean {
   return dim.points.length === 2 && dim.points.every((p) => p.entityId === STOCK_ENTITY_ID);
 }
-
-function resolveSecondPick(
-  doc: CADDocument,
-  p1: Pick,
-  p2: Pick | null,
-  firstMid: Pick | null,
-  firstRaw: Vec2 | null,
-  raw: Vec2,
-  tol: number,
-): { newP1: Pick | null; newP2: Pick | null; forcedType: LinearDimType | null } | null {
-  const pick =
-    doc.pickPoint(raw, tol) ??
-    pickVirtualRectCorner(doc.entities, raw, tol);
-  if (pick && !samePos(pick.pos, p1.pos) && (!p2 || !samePos(pick.pos, p2.pos))) {
-    let newP1: Pick | null = null;
-    if (firstMid && p2 && firstRaw) {
-      newP1 = dist(firstRaw, p1.pos) <= dist(firstRaw, p2.pos) ? p1 : p2;
-    }
-    return { newP1, newP2: pick, forcedType: null };
-  }
-
-  const hit = doc.hitTest(raw, tol);
-  if (hit) {
-    if (hit.type === "rectangle" || hit.type === "image") {
-      const edge = pickRectOrImageEdge(hit as RectEntity | RasterImageEntity, raw);
-      if (edge && hit.id !== p1.ref.entityId) {
-        return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
-      }
-    } else if (hit.type === "line") {
-      const line = hit as LineEntity;
-      if (hit.id !== p1.ref.entityId) {
-        const edge = {
-          p1: { ref: { entityId: hit.id, key: "a" }, pos: { ...line.a } },
-          p2: { ref: { entityId: hit.id, key: "b" }, pos: { ...line.b } },
-          mid: { ref: { entityId: hit.id, key: "mid" }, pos: mid(line.a, line.b) },
-        };
-        return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
-      }
-    } else {
-      const pt = pickNearestEntityPoint(hit, raw, tol);
-      if (pt && !samePos(pt.pos, p1.pos) && (!p2 || !samePos(pt.pos, p2.pos))) {
-        let newP1: Pick | null = null;
-        if (firstMid && p2 && firstRaw) {
-          newP1 = dist(firstRaw, p1.pos) <= dist(firstRaw, p2.pos) ? p1 : p2;
-        }
-        return { newP1, newP2: pt, forcedType: null };
-      }
-    }
-  } else if (p1.ref.entityId !== STOCK_ENTITY_ID) {
-    const edge = pickStockEdge(doc, raw, tol);
-    if (edge) {
-      return resolveEdgePair(doc, p1, p2, firstMid, firstRaw, edge);
-    }
-  }
-
-  return null;
-}
-
-function resolveEdgePair(
-  doc: CADDocument,
-  p1: Pick,
-  p2: Pick | null,
-  firstMid: Pick | null,
-  firstRaw: Vec2 | null,
-  edge2: { p1: Pick; p2: Pick; mid: Pick },
-): { newP1: Pick | null; newP2: Pick | null; forcedType: LinearDimType | null } {
-  if (firstMid && p2) {
-    const edge1Ends = getEdgeEnds(doc, firstMid);
-    const edge2Ends = getEdgeEnds(doc, edge2.mid);
-    if (edge1Ends && edge2Ends) {
-      const dir1 = normalize(sub(edge1Ends.b, edge1Ends.a));
-      const dir2 = normalize(sub(edge2Ends.b, edge2Ends.a));
-      const isParallel = Math.abs(cross(dir1, dir2)) < 0.05;
-      if (isParallel) {
-        return { newP1: firstMid, newP2: edge2.mid, forcedType: null };
-      }
-      // Non-parallel: dimension from the nearest clicked endpoint of Edge 1 to Edge 2
-      const d1 = firstRaw ? dist(firstRaw, p1.pos) : 0;
-      const d2 = firstRaw ? dist(firstRaw, p2.pos) : Infinity;
-      const newP1 = d1 <= d2 ? p1 : p2;
-      const newP2 = edge2.mid;
-
-      const dx1 = Math.abs(dir1.x), dy1 = Math.abs(dir1.y);
-      const dx2 = Math.abs(dir2.x), dy2 = Math.abs(dir2.y);
-      let forcedType: LinearDimType | null = null;
-      if (dx1 > dy1 * 1.4 && dy2 > dx2 * 1.4) {
-        forcedType = "horizontal";
-      } else if (dy1 > dx1 * 1.4 && dx2 > dy2 * 1.4) {
-        forcedType = "vertical";
-      }
-      return { newP1, newP2, forcedType };
-    }
-    return { newP1: firstMid, newP2: edge2.mid, forcedType: null };
-  }
-
-  // First pick was a discrete point, second pick is an edge
-  let forcedType: LinearDimType | null = null;
-  const edge2Ends = getEdgeEnds(doc, edge2.mid);
-  if (edge2Ends) {
-    const dir2 = normalize(sub(edge2Ends.b, edge2Ends.a));
-    const dx2 = Math.abs(dir2.x), dy2 = Math.abs(dir2.y);
-    if (dy2 > dx2 * 1.4) forcedType = "horizontal";
-    else if (dx2 > dy2 * 1.4) forcedType = "vertical";
-  }
-  return { newP1: null, newP2: edge2.mid, forcedType };
-}
-

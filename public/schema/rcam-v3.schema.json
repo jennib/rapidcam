@@ -573,17 +573,17 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance", "circle-gap", "angle-x", "arc-sweep"]
+          "enum": ["distance", "horizontal", "vertical", "radius", "diameter", "angle", "arclength", "line-distance", "point-line-distance", "circle-gap", "angle-x", "arc-sweep"]
         },
         "points": {
           "type": "array",
           "items": { "$ref": "#/$defs/pointRef" },
-          "description": "Linear dims: the 2 measured points. Optional — defaults to [] for entity-based dims (radius/diameter/arclength/circle-gap)."
+          "description": "Linear dims: the 2 measured points; point-line-distance: the 1 measured point. Optional — defaults to [] for entity-based dims (radius/diameter/arclength/circle-gap)."
         },
         "entities": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids. circle-gap: 2 circle/arc ids (the boundary-to-boundary distance, e.g. an inner/outer offset). Optional — defaults to [] for point-based dims."
+          "description": "radius/diameter/arclength: 1 circle or arc id. angle/line-distance: 2 line ids. point-line-distance: 1 line id, with points[0] the measured point. circle-gap: 2 circle/arc ids (the boundary-to-boundary distance, e.g. an inner/outer offset). Optional — defaults to [] for point-based dims."
         },
         "value": { "type": "number", "description": "mm, or radians for type \"angle\"." },
         "driving": { "type": "boolean", "description": "When true, also constrains the measurement to value." },

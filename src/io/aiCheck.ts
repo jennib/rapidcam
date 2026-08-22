@@ -16,7 +16,7 @@
 
 import { postPrograms } from "../cam/postPrograms";
 import { CADDocument, ORIGIN_ENTITY_ID, STOCK_ENTITY_ID } from "../model/document";
-import { RasterImageEntity } from "../model/entities";
+import { baseAnchorKey, RasterImageEntity } from "../model/entities";
 import { solve } from "../solver/solver";
 import { applyFile, normalizeRcam, type RcamFile } from "./fileio";
 
@@ -170,7 +170,7 @@ function refIssues(file: RcamFile): AiIssue[] {
     if (d.driving === false) continue;
     const ents = [...(d.entities ?? [])].sort().join(",");
     const pts = (d.points ?? [])
-      .map((p) => `${p.entityId}:${p.key}`)
+      .map((p) => `${p.entityId}:${baseAnchorKey(p.key ?? "")}`)
       .sort()
       .join(",");
     const k = `${d.type}|${ents}|${pts}`;

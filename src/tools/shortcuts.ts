@@ -144,7 +144,7 @@ export const TOOLS: Record<string, ToolReference> = {
   dimension: {
     key: "d",
     label: "Dimension",
-    hint: "Click two points (or a circle), then place the dimension",
+    hint: "Click anywhere on two objects (or a circle), then place the dimension",
   },
   measure: { key: "i", label: "Measure", hint: "Click two points to measure" },
 };

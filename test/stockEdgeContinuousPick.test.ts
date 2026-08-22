@@ -20,11 +20,9 @@
  * gesture outright (starting from a line, clicking the stock edge just kept
  * defining the line's own length) precisely when stock fills the sheet.
  *
- * So the two gestures are now separated by INPUT, not position: a bare click
- * always places, and Shift-click re-targets onto another edge. Placing is the
- * overwhelmingly common action, so it keeps the bare click; the hover preview
- * only shows a re-target while Shift is held, so the preview always matches what
- * a click would do.
+ * The two gestures no longer share a click at all: both operands are picked
+ * before placement, so a click during "placeLinear" can only mean "place". The
+ * Shift-click re-target that first separated them is gone with the ambiguity.
  */
 import { describe, expect, it } from "vitest";
 import type { Vec2 } from "../src/core/vec2";
@@ -191,10 +189,12 @@ describe("continuous stock-edge picking", () => {
     const ctx = makeCtx(doc);
     const tool = new DimensionTool();
 
-    // Click the image's bottom edge, then place in open space BELOW it — at
-    // y=5, INSIDE the stock edge's 8-unit pick band, which is exactly where a
-    // bare click used to be swallowed as a re-pick.
-    click(tool, ctx, { x: 70, y: 20 });
+    // Dimension the image's bottom edge — click that edge, then click it again
+    // for its length — and then place in open space BELOW it, at y=5, INSIDE
+    // the stock edge's 8-unit pick band. That last click is the one that used
+    // to be swallowed as a re-pick instead of committing.
+    click(tool, ctx, { x: 50, y: 20 });
+    click(tool, ctx, { x: 90, y: 20 });
     move(tool, ctx, { x: 70, y: 5 });
     click(tool, ctx, { x: 70, y: 5 });
 
@@ -257,10 +257,13 @@ describe("continuous stock-edge picking", () => {
 
     expect(doc.dimensions).toHaveLength(1);
     const dim = doc.dimensions[0];
-    expect(dim.type).toBe("horizontal");
+    // A real point and an EDGE is a perpendicular distance: for an axis-aligned
+    // stock edge that is the same number the old "horizontal" dim reported, but
+    // it stays right when the edge is not axis-aligned.
+    expect(dim.type).toBe("point-line-distance");
     expect(dim.value).toBeCloseTo(50, 3); // |70 - 20|
     expect(dim.points[0]).toEqual({ entityId: line.id, key: "a" });
-    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
   });
 
   it("dimensions from a point to a stock edge when starting with a point pick in phase second", () => {
@@ -281,10 +284,13 @@ describe("continuous stock-edge picking", () => {
 
     expect(doc.dimensions).toHaveLength(1);
     const dim = doc.dimensions[0];
-    expect(dim.type).toBe("horizontal");
+    // A real point and an EDGE is a perpendicular distance: for an axis-aligned
+    // stock edge that is the same number the old "horizontal" dim reported, but
+    // it stays right when the edge is not axis-aligned.
+    expect(dim.type).toBe("point-line-distance");
     expect(dim.value).toBeCloseTo(50, 3); // |70 - 20|
     expect(dim.points[0]).toEqual({ entityId: line.id, key: "a" });
-    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
   });
 
   it("dimensions from the right end of a horizontal line to the right stock edge when clicked near the right end", () => {
@@ -305,10 +311,13 @@ describe("continuous stock-edge picking", () => {
 
     expect(doc.dimensions).toHaveLength(1);
     const dim = doc.dimensions[0];
-    expect(dim.type).toBe("horizontal");
+    // A real point and an EDGE is a perpendicular distance: for an axis-aligned
+    // stock edge that is the same number the old "horizontal" dim reported, but
+    // it stays right when the edge is not axis-aligned.
+    expect(dim.type).toBe("point-line-distance");
     expect(dim.value).toBeCloseTo(50, 3); // |220 - 170|
     expect(dim.points[0]).toEqual({ entityId: line.id, key: "b" });
-    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
   });
 
   it("dimensions from the top end of a vertical line to the top stock edge", () => {
@@ -329,10 +338,10 @@ describe("continuous stock-edge picking", () => {
 
     expect(doc.dimensions).toHaveLength(1);
     const dim = doc.dimensions[0];
-    expect(dim.type).toBe("vertical");
+    expect(dim.type).toBe("point-line-distance");
     expect(dim.value).toBeCloseTo(40, 3); // |170 - 130|
     expect(dim.points[0]).toEqual({ entityId: line.id, key: "b" });
-    expect(dim.points[1].entityId).toBe(STOCK_ENTITY_ID);
+    expect(anchorIds(dim)).toContain(STOCK_ENTITY_ID);
   });
 });
 

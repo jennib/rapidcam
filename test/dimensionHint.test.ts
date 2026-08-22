@@ -15,19 +15,33 @@ describe("dimensionHint (phase-aware Dimension tool guidance)", () => {
   });
 
   it("does NOT send the user hunting for open space on a linear placement", () => {
-    // A bare click places a linear dimension ANYWHERE — re-targeting onto a
-    // second edge takes Shift — so "find open space" would be wrong advice, and
-    // the Shift gesture is otherwise undiscoverable.
+    // A bare click places a linear dimension ANYWHERE, so "find open space"
+    // would be wrong advice.
     const hint = dimensionHint("placeLinear") ?? "";
     expect(hint).not.toMatch(/open space/i);
     expect(hint).toMatch(/place/i);
-    expect(hint).toMatch(/shift/i);
+    // Both operands are picked in phase "second" now, so there is no
+    // Shift-to-re-target gesture left to advertise. A hint naming a gesture
+    // that no longer exists is worse than no hint.
+    expect(hint).not.toMatch(/shift/i);
   });
 
   it("guides the intermediate picks", () => {
-    expect(dimensionHint("second")).toMatch(/second point/i);
-    // The angle-from-horizontal gesture has no second thing to click, so the
-    // hint is the only place it can be discovered.
-    expect(dimensionHint("second")).toMatch(/angle from horizontal/i);
+    const hint = dimensionHint("second") ?? "";
+    // A click here can land ANYWHERE on the second object, which is the whole
+    // point of the pick — saying "the second point" would undersell it.
+    expect(hint).toMatch(/second object/i);
+    // The gesture a click here can mean that is not "the other end", and is
+    // discoverable nowhere else: clicking open space dimensions the first pick
+    // on its own (a line's or an edge's own length).
+    expect(hint).toMatch(/open space/i);
+  });
+
+  it("advertises Tab while placing — a line's angle has no gesture of its own", () => {
+    // The angle from horizontal is measured against an axis that is not
+    // selectable geometry, so there is nothing to click for it. Tab during
+    // placement is the whole discovery path.
+    expect(dimensionHint("placeLinear")).toMatch(/tab/i);
+    expect(dimensionHint("placeLinear")).toMatch(/angle from horizontal/i);
   });
 });

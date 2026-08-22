@@ -523,7 +523,8 @@ to equal `value` (acting as a constraint). `value` is mm, or **radians** for
 | `diameter` | `entities[1]` circle/arc | diameter |
 | `arclength` | `entities[1]` arc | arc length |
 | `angle` | `entities[2]` lines | angle between (radians) |
-| `line-distance` | `entities[2]` lines | perpendicular gap between lines |
+| `line-distance` | `entities[2]` lines | perpendicular gap between two parallel lines |
+| `point-line-distance` | `points[1]` + `entities[1]` line | perpendicular distance from that point to that line |
 | `circle-gap` | `entities[2]` circles/arcs | edge-to-edge gap: radii difference when one lies inside the other (a ring's wall, even off-centre), otherwise the clearance between the edges |
 | `angle-x` | `entities[1]` line | direction from the +X axis, in DEGREES (signed, -180..180). The one angular type stored in degrees, because it backs the Angle property field and a dimension's `expr` is evaluated straight into `value` with no unit applied — storing radians would make `45` and a variable worth `45` mean different things in the same box. Written only as a hidden driving dimension. |
 | `arc-sweep` | `entities[1]` arc | included angle (sweep) in DEGREES, normalised to [0, 360). Unlike `angle-x` its residual is NOT wrapped: a 350° arc and a 10° arc are different arcs, so the shortest path is the wrong answer. Written only as a hidden driving dimension. |
