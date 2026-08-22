@@ -264,11 +264,12 @@ export const HELP_TOPICS: HelpTopic[] = [
       },
       {
         heading: "Solver Health & Degrees of Freedom (DOF)",
-        body: "The 2D constraint solver evaluates workspace health in real time, color-coding geometry states:",
+        body: "The 2D constraint solver evaluates workspace health in real time, colour-coding each piece of geometry by how much freedom it has left. The status bar carries the whole-sketch summary — 'Fully constrained', or 'Under-constrained · N free' with the number of remaining degrees of freedom.",
         tips: [
-          "Under-Constrained (Blue): Geometry has remaining degrees of freedom (DOF) and can still be moved or resized.",
-          "Fully Constrained (Green): All dimensions, orientations, and locations are fully locked. Recommended for production parts.",
-          "Over-Constrained / Conflict (Red): Redundant or mathematically contradictory constraints exist. Click on the flagged red badge to delete the conflicting constraint.",
+          "Under-constrained (blue): the geometry has degrees of freedom left and can still move, turn or resize. This is the normal state while you are drafting.",
+          "Fully constrained (its layer colour): every position, size and orientation is locked. Geometry drops back to the colour of its layer once nothing about it is free — that return to normal is the signal. Recommended for production parts.",
+          "Over-constrained / conflict (red): redundant or contradictory constraints. Open the Design Tree (Ctrl+B) and delete one of the constraints involved from the Constraints section.",
+          "The Design Tree (Ctrl+B) says the same thing per entity in words: its icon is blue for under-constrained, green for fully constrained and red for conflicting, with the state on hover.",
         ],
       },
     ],
