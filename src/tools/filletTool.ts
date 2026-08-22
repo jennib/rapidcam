@@ -188,7 +188,18 @@ function applyFilletAll(corner: Corner, radius: number, doc: CADDocument): numbe
  * went nowhere — not a request the tool is turning down.
  */
 function check(corner: Corner, radius: number): { ok: boolean; why?: string } {
-  if (radius <= 0) return { ok: false };
+  if (radius < 0) return { ok: false };
+  // A typed zero is AutoCAD's "make this corner sharp", not a non-answer. A
+  // rectangle or polyline keeps its corner as a stored value, so clearing it is
+  // exactly that. A pair of loose lines was surgery — the arc is its own entity
+  // now — so there is nothing here for a zero to clear, and saying so beats a
+  // field that swallows what you typed. Callers that mean "no gesture" (a drag
+  // that went nowhere) filter the value before asking.
+  if (radius === 0) {
+    return corner.kind === "line"
+      ? { ok: false, why: "These lines are already rounded — undo, or delete the arc." }
+      : { ok: true };
+  }
   if (!cornerValueFits(corner, radius))
     // Accurate whether or not the neighbour is rounded: the test is
     // `this + neighbour <= edge`, and a square neighbour contributes zero.
@@ -283,7 +294,7 @@ export class FilletTool implements Tool {
       ctx.openTypeToDraw(corner.pos, [{ placeholder: `Fillet radius (${ctx.doc.displayUnit})` }], {
         onCommit: (raws) => {
           const r = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
-          if (r === null || r <= 0) return false;
+          if (r === null || r < 0) return false;
           const v = check(corner, r);
           if (!v.ok) {
             if (v.why) ctx.notify(v.why);
@@ -297,7 +308,10 @@ export class FilletTool implements Tool {
         onCancel: () => {},
       });
     } else {
-      // drag commit
+      // drag commit. A drag that ended back at zero asked for nothing, so it
+      // is filtered here rather than inside `check` — where a typed zero is a
+      // real request to clear the corner.
+      if (this.currentValue <= 0) return;
       const v = check(corner, this.currentValue);
       if (v.ok) {
         ctx.pushHistory();

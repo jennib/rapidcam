@@ -43,8 +43,16 @@ import {
  */
 export function setRectCorner(corner: RectCorner, value: number, type: CornerType): boolean {
   const rect = corner.entity;
-  if (!(value > 0) || !rect.fitsCornerRadius(corner.index, value)) return false;
-  rect.cornerType = type;
+  if (value < 0) return false;
+  // Zero CLEARS the corner — AutoCAD's FILLET with radius 0 — so it is a real
+  // result rather than the non-answer the old `!(value > 0)` treated it as.
+  // It skips the fits test (nothing has ever failed to fit), and it leaves
+  // `cornerType` alone: a square corner has no shape to name, and the type is
+  // whole-shape, so writing it would retype every other corner for nothing.
+  if (value > 0) {
+    if (!rect.fitsCornerRadius(corner.index, value)) return false;
+    rect.cornerType = type;
+  }
   rect.cornerRadii[corner.index] = value;
   return true;
 }
@@ -67,10 +75,17 @@ export function setRectCorner(corner: RectCorner, value: number, type: CornerTyp
  */
 export function setPolyCorner(corner: PolyCorner, value: number, type: CornerType): boolean {
   const pl = corner.entity;
+  if (value < 0) return false;
+  // Zero clears it — see setRectCorner. No retype for the same reason: the type
+  // is whole-shape, and squaring one corner says nothing about the others.
+  if (value === 0) {
+    pl.setCornerValue(corner.index, 0);
+    return true;
+  }
   // The type is whole-shape, so a value that fits must be judged against it.
   const prev = pl.cornerType;
   pl.cornerType = type;
-  if (!(value > 0) || !pl.fitsCornerValue(corner.index, value)) {
+  if (!pl.fitsCornerValue(corner.index, value)) {
     pl.cornerType = prev;
     return false;
   }

@@ -110,7 +110,18 @@ function applyChamfer(corner: Corner, distance: number, doc: CADDocument): boole
  * message; that is an empty gesture, not a refusal.
  */
 function check(corner: Corner, distance: number): { ok: boolean; why?: string } {
-  if (distance <= 0) return { ok: false };
+  if (distance < 0) return { ok: false };
+  // A typed zero is AutoCAD's "make this corner sharp", not a non-answer. A
+  // rectangle or polyline keeps its corner as a stored value, so clearing it is
+  // exactly that. A pair of loose lines was surgery — the arc is its own entity
+  // now — so there is nothing here for a zero to clear, and saying so beats a
+  // field that swallows what you typed. Callers that mean "no gesture" (a drag
+  // that went nowhere) filter the value before asking.
+  if (distance === 0) {
+    return corner.kind === "line"
+      ? { ok: false, why: "These lines are already bevelled — undo, or delete the arc." }
+      : { ok: true };
+  }
   if (!cornerValueFits(corner, distance))
     // Accurate whether or not the neighbour is rounded: the test is
     // `this + neighbour <= edge`, and a square neighbour contributes zero.
@@ -190,7 +201,7 @@ export class ChamferTool implements Tool {
         {
           onCommit: (raws) => {
             const d = parseLength((raws[0] ?? "").trim(), ctx.doc.displayUnit);
-            if (d === null || d <= 0) return false;
+            if (d === null || d < 0) return false;
             const v = check(corner, d);
             if (!v.ok) {
               if (v.why) ctx.notify(v.why);
@@ -205,7 +216,10 @@ export class ChamferTool implements Tool {
         },
       );
     } else {
-      // drag commit
+      // drag commit. A drag that ended back at zero asked for nothing, so it
+      // is filtered here rather than inside `check` — where a typed zero is a
+      // real request to clear the corner.
+      if (this.currentValue <= 0) return;
       const v = check(corner, this.currentValue);
       if (v.ok) {
         ctx.pushHistory();
