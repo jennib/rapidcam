@@ -9,11 +9,43 @@
 
 import { type Vec2, dist, sub, dot, add, scale } from "../core/vec2";
 import { distToSegment } from "../core/geom";
-import { type SnapPoint, type EntityId, LineEntity, RectEntity } from "../model/entities";
+import {
+  type SnapPoint,
+  type SnapKind,
+  type EntityId,
+  LineEntity,
+  RectEntity,
+} from "../model/entities";
 import { type CADDocument, STOCK_ENTITY_ID } from "../model/document";
 import type { Viewport } from "../view/viewport";
 import { computeGrid } from "../view/grid";
 import { intersectionsNear } from "../core/intersect";
+
+/**
+ * The marker shape drawn for each kind of snap.
+ *
+ * These are AutoCAD's object-snap markers, and a CAD user reads them without
+ * looking at any label — which is exactly why getting one wrong is worse than
+ * having no marker: a diamond means QUADRANT to anyone who has used AutoCAD,
+ * and RapidCAM was drawing a diamond for "somewhere along this line" while
+ * drawing the actual quadrant as a square, indistinguishable from an endpoint.
+ * Someone reaching for the top of a circle got a point on its rim near the top.
+ *
+ * A table rather than a switch in the renderer, so the convention is stated in
+ * one place and can be tested without a canvas.
+ */
+export type SnapGlyph = "square" | "triangle" | "circle" | "diamond" | "cross" | "hourglass";
+
+export const SNAP_GLYPHS: Record<SnapKind, SnapGlyph> = {
+  endpoint: "square",
+  vertex: "square", // a polyline's vertex IS an endpoint as far as the eye cares
+  midpoint: "triangle",
+  center: "circle",
+  quadrant: "diamond",
+  intersection: "cross",
+  pointOnLine: "hourglass",
+  nearest: "hourglass",
+};
 
 /** Clamp `raw` to the nearest cardinal axis (H or V) through `start`. */
 export function orthoSnap(start: Vec2, raw: Vec2): Vec2 {

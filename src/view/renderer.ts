@@ -40,6 +40,7 @@ import type {
   StitchPreview,
   FlipPreview,
 } from "./overlay";
+import { SNAP_GLYPHS } from "../input/snapping";
 import type { EntityStatusMap } from "../solver/solver";
 import type { LaserPreviewPath } from "../cam/lasergcode";
 import { rotaryWrapHint, tickLabel } from "./rotaryOverlay";
@@ -1250,9 +1251,10 @@ export class Renderer {
     ctx.fillStyle = "rgba(47, 158, 143, 0.25)";
     ctx.lineWidth = 2.5;
     const r = 9;
-    // Marker shape hints at the snap kind.
-    switch (overlay.snap.kind) {
-      case "center":
+    // AutoCAD's object-snap markers — see SNAP_GLYPHS, which owns the mapping so
+    // the convention is stated once and testable without a canvas.
+    switch (SNAP_GLYPHS[overlay.snap.kind]) {
+      case "circle": // centre
         ctx.beginPath();
         ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -1264,7 +1266,7 @@ export class Renderer {
         ctx.lineTo(s.x, s.y + 4);
         ctx.stroke();
         break;
-      case "midpoint":
+      case "triangle": // midpoint
         ctx.beginPath();
         ctx.moveTo(s.x, s.y - r);
         ctx.lineTo(s.x + r + 1, s.y + r);
@@ -1273,7 +1275,7 @@ export class Renderer {
         ctx.fill();
         ctx.stroke();
         break;
-      case "intersection": // X with box
+      case "cross": // intersection
         ctx.beginPath();
         ctx.moveTo(s.x - r, s.y - r);
         ctx.lineTo(s.x + r, s.y + r);
@@ -1281,8 +1283,7 @@ export class Renderer {
         ctx.lineTo(s.x - r, s.y + r);
         ctx.stroke();
         break;
-      case "pointOnLine":
-      case "nearest":
+      case "diamond": // quadrant
         ctx.beginPath();
         ctx.moveTo(s.x, s.y - r);
         ctx.lineTo(s.x + r, s.y);
@@ -1292,7 +1293,20 @@ export class Renderer {
         ctx.fill();
         ctx.stroke();
         break;
-      default: // endpoint / vertex / quadrant → square
+      case "hourglass": {
+        // nearest / a point along a line: two triangles meeting at the point.
+        const w = r - 1;
+        ctx.beginPath();
+        ctx.moveTo(s.x - w, s.y - r);
+        ctx.lineTo(s.x + w, s.y - r);
+        ctx.lineTo(s.x - w, s.y + r);
+        ctx.lineTo(s.x + w, s.y + r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+      default: // endpoint / vertex → square
         ctx.beginPath();
         ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
         ctx.fill();
